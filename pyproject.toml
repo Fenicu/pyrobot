@@ -1,0 +1,28 @@
+[project]
+name = "pyrobot"
+version = "0.1.0"
+description = "Client telegram bot"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.11.10",
+    "apscheduler>=3.11.0",
+    "pyrogram>=2.0.106",
+    "tgcrypto>=1.2.5",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 99
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.coverage.run]
+source = ["app"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.4",
+]
+

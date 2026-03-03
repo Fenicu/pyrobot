@@ -1,0 +1,9 @@
+services:
+  pyrobot:
+    build: .
+    container_name: pyrobot
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Moscow
+    volumes:
+      - ./sessions/harvestsession.session:/app/harvestsession.session
