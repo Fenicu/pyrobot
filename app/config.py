@@ -41,3 +41,9 @@ FABRICA_MINUTE = "1"
 
 TANGERINE_HOUR = "13"
 TANGERINE_MINUTE = "0"
+
+# === Monitoring (GlitchTip/Sentry) ===
+import os  # noqa: E402
+
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
