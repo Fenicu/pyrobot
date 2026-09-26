@@ -68,3 +68,17 @@ def test_invite_without_button_ignored() -> None:
     invite = replace(game_msg("bulls_invite", 3681068), chat_id=INVITE_CHAT, inline=())
     routed = default_parser(ChatsSection(bulls_invite_chat_id=INVITE_CHAT))
     assert routed.parse(invite) == []
+
+
+def test_invite_chat_shared_with_swinfo_random_message_ignored() -> None:
+    # Общий чат: сообщение от случайного участника, не от SWINFO, без кнопки инвайта.
+    general = -1001109615116
+    parser = default_parser(ChatsSection(bulls_invite_chat_id=general))
+    random_msg = replace(
+        game_msg("bulls_invite", 3681068),
+        chat_id=general,
+        from_id=5,
+        inline=(),
+        text="привет, кто-нибудь ещё играет?",
+    )
+    assert parser.parse(random_msg) == []

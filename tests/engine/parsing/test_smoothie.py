@@ -49,3 +49,11 @@ def test_channel_recipe_only_in_channel() -> None:
             recipe="🍏🍋🍅🍇🍋", bonus="💡Получаешь на +50% больше Опыта в делах с шансом 75%."
         )
     ]
+
+
+def test_recipe_text_in_game_chat_gives_no_recipe_event() -> None:
+    chats = ChatsSection()
+    parser = default_parser(chats)
+    recipe = replace(game_msg("smoothie", 2344), chat_id=chats.game_chat_id)
+    events = parser.parse(recipe)
+    assert not any(isinstance(e, SmoothieRecipe) for e in events)
