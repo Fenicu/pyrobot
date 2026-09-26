@@ -181,6 +181,7 @@ class CharacterState(_Frozen):
     smoothie_recipe: Obs[SmoothieRecipeState] | None = None
     tangerine_ready_at: Obs[datetime] | None = None
     tangerine_not_player: Obs[str] | None = None
+    metro_ready_at: Obs[datetime] | None = None
     activity_stats: dict[str, ActivityStat] = {}
     # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
     # правка итога не начисляет повторно (горизонт хранения — в редьюсере).
@@ -236,6 +237,7 @@ TIMERS = frozenset(
         "smoothie_recipe",
         "tangerine_ready_at",
         "tangerine_not_player",
+        "metro_ready_at",
     }
 )
 SLOW_MAX_AGE = timedelta(hours=6)

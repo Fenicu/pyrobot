@@ -31,6 +31,15 @@ from app.engine.parsing.items import (
     PrizeboxOpened,
 )
 from app.engine.parsing.levelup import LevelUpStep
+from app.engine.parsing.metro import (
+    MetroChestOpened,
+    MetroEntered,
+    MetroEntrance,
+    MetroFight,
+    MetroFinished,
+    MetroFirstAid,
+    MetroMap,
+)
 from app.engine.parsing.profile import ProfileCompact
 from app.engine.parsing.refusals import Busy, Refused
 from app.engine.parsing.screens import (
@@ -83,6 +92,9 @@ FASTFOOD_COOLDOWN = timedelta(minutes=30)
 GORBUSHKA_FIGHT_GAP = timedelta(hours=1)
 # Бой с биржевиками: итог приходит через ~5 мин после присоединения (медиана 292 с).
 BULLS_FIGHT = timedelta(minutes=5)
+# Спуститься в метро снова можно через 16 ч после выхода (экран входа).
+METRO_COOLDOWN = timedelta(hours=16)
+FOOD_KINDS = ("hotdog", "pizza", "burger", "banana")
 METRIC_FIELDS = (
     "level",
     "exp",
@@ -113,6 +125,7 @@ _REFUSAL_TIMERS = {
     "card_cooldown": "card_ready_at",
     "prizebox_locked": "prizebox_ready_at",
     "fastfood_cooldown": "fastfood_ready_at",
+    "metro_cooldown": "metro_ready_at",
 }
 
 
@@ -698,6 +711,69 @@ def _tangerine(p: _Patch, e: TangerineRefused) -> None:
         p.snap("tangerine_ready_at", p.later(e.left_s))
     elif e.reason == "not_player" and e.target is not None:
         p.snap("tangerine_not_player", e.target)
+
+
+@_on(MetroEntrance)
+def _metro_entrance(p: _Patch, e: MetroEntrance) -> None:
+    # Экран входа вместо отказа — кулдаун прошёл.
+    p.snap("metro_ready_at", p.at)
+
+
+@_on(MetroEntered)
+def _metro_entered(p: _Patch, e: MetroEntered) -> None:
+    p.delta("motivation", -e.cost)
+
+
+def _metro_stamina(p: _Patch, e: MetroMap | MetroFirstAid) -> None:
+    # 🔋 в метро — настоящая выносливость персонажа.
+    p.snap("stamina", e.stamina)
+
+
+_on(MetroMap)(_metro_stamina)
+_on(MetroFirstAid)(_metro_stamina)
+
+
+@_on(MetroFight)
+def _metro_fight(p: _Patch, e: MetroFight) -> None:
+    # Награды боя идут в копилку забега и начисляются только на выходе.
+    if e.stamina is not None:
+        p.snap("stamina", e.stamina)
+
+
+@_on(MetroChestOpened)
+def _metro_chest(p: _Patch, e: MetroChestOpened) -> None:
+    if e.result == "arrow":
+        p.snap("stamina", 0)
+
+
+@_on(MetroFinished)
+def _metro_finished(p: _Patch, e: MetroFinished) -> None:
+    loot = e.loot
+    p.rewards(
+        Rewards(
+            exp=loot.get("exp", 0),
+            money=loot.get("money", 0),
+            knowledge=loot.get("knowledge", 0),
+            details=loot.get("details", 0),
+            raw=loot.get("raw", 0),
+            stamina=e.stamina,
+            upgrades_white=loot.get("upgrades_white", 0),
+            upgrades_blue=loot.get("upgrades_blue", 0),
+            upgrades_red=loot.get("upgrades_red", 0),
+        )
+    )
+    food = {kind: n for kind in FOOD_KINDS if (n := loot.get(kind, 0))}
+    stock: Obs[dict[str, FoodStockState]] | None = p.get("food_stock")
+    if food and stock is not None and all(kind in stock.value for kind in food):
+
+        def found(left: dict[str, FoodStockState]) -> dict[str, FoodStockState]:
+            return {
+                kind: item.model_copy(update={"count": item.count + food.get(kind, 0)})
+                for kind, item in left.items()
+            }
+
+        p.change("food_stock", found)
+    p.snap("metro_ready_at", p.at + METRO_COOLDOWN, src="derived")
 
 
 @_on(ResourcesChanged)
