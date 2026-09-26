@@ -32,6 +32,8 @@ Status = Literal["done", "nothing", "refused", "suppressed", "failed", "stopped"
 class ScenarioResult:
     status: Status
     reason: str = ""
+    # Подробности для журнала (у метро — запись забега).
+    details: dict[str, Any] | None = None
 
 
 Params = Mapping[str, Any]
@@ -216,14 +218,18 @@ async def sleep(ctx: ScenarioContext, state: CharacterState, params: Params) -> 
         )
 
 
+def stopped(stop: ScenarioStopped, details: dict[str, Any] | None = None) -> ScenarioResult:
+    if stop.result is not None and stop.result.step is Step.SUPPRESSED:
+        return ScenarioResult("suppressed", stop.reason, details)
+    if stop.result is not None and stop.result.step is Step.REFUSED:
+        return ScenarioResult("refused", stop.reason, details)
+    return ScenarioResult("stopped", stop.reason, details)
+
+
 async def run_scenario(
     fn: ScenarioFn, ctx: ScenarioContext, state: CharacterState, params: Params
 ) -> ScenarioResult:
     try:
         return await fn(ctx, state, params)
     except ScenarioStopped as stop:
-        if stop.result is not None and stop.result.step is Step.SUPPRESSED:
-            return ScenarioResult("suppressed", stop.reason)
-        if stop.result is not None and stop.result.step is Step.REFUSED:
-            return ScenarioResult("refused", stop.reason)
-        return ScenarioResult("stopped", stop.reason)
+        return stopped(stop)

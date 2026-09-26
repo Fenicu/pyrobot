@@ -2,7 +2,7 @@
 
 import asyncio
 import itertools
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
@@ -26,7 +26,8 @@ Ref = tuple[str, int] | tuple[str, int, int]
 @dataclass
 class Reply:
     new: list[Ref] = field(default_factory=list)
-    edit: Ref | None = None
+    # Правки сообщения, по которому кликнули, по очереди (метро: «Идёшь …», затем новое окно).
+    edits: list[Ref] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -55,8 +56,16 @@ class FakeGame:
     def on_text(self, text: str, *new: Ref) -> None:
         self._text.setdefault(text, []).append(Reply(new=list(new)))
 
-    def on_click(self, data: str, *, edit: Ref | None = None, new: tuple[Ref, ...] = ()) -> None:
-        self._click.setdefault(data, []).append(Reply(new=list(new), edit=edit))
+    def on_click(
+        self,
+        data: str,
+        *,
+        edit: Ref | None = None,
+        edits: tuple[Ref, ...] = (),
+        new: tuple[Ref, ...] = (),
+    ) -> None:
+        chain = [edit, *edits] if edit is not None else list(edits)
+        self._click.setdefault(data, []).append(Reply(new=list(new), edits=chain))
 
     def payloads(self) -> list[str]:
         return [s.payload for s in self.sent]
@@ -90,10 +99,10 @@ class FakeGame:
         await asyncio.sleep(0)
         async with self._lock:
             now = datetime.now(UTC)
-            if reply.edit is not None and message_id is not None:
+            for ref in reply.edits if message_id is not None else ():
                 original = self.messages[message_id]
                 msg = replace(
-                    game_msg(*reply.edit),
+                    game_msg(*ref),
                     msg_id=message_id,
                     kind="edit",
                     revision=next(self._revisions),
@@ -131,7 +140,9 @@ LIVE = Settings(
 
 
 class World:
-    def __init__(self, settings: Settings = LIVE) -> None:
+    def __init__(
+        self, settings: Settings = LIVE, game: Callable[[Pipeline], FakeGame] | None = None
+    ) -> None:
         self.settings = StaticSettings(settings.model_copy(deep=True))
         self.bus = Bus()
         self.store = MemoryActionStore()
@@ -141,7 +152,7 @@ class World:
             reducer=StateReducer(),
             bus=self.bus,
         )
-        self.game = FakeGame(self.pipeline)
+        self.game = (game or FakeGame)(self.pipeline)
         self.gateway = ActionGateway(
             transport=self.game,
             store=self.store,
@@ -175,8 +186,10 @@ class World:
             await asyncio.gather(self._task, return_exceptions=True)
 
 
-async def running_world(settings: Settings = LIVE) -> AsyncIterator[World]:
-    world = World(settings)
+async def running_world(
+    settings: Settings = LIVE, game: Callable[[Pipeline], FakeGame] | None = None
+) -> AsyncIterator[World]:
+    world = World(settings, game)
     world.start()
     try:
         yield world

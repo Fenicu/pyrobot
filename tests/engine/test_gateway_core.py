@@ -571,3 +571,49 @@ async def test_internal_error_on_spending_blocks(rig: Rig) -> None:
     res = await rig.gw.submit(send("/harvest", expect=Expectation(lambda d: None, 0.05)))
     assert res.status is ActionStatus.OUTCOME_UNKNOWN and res.reason == "internal_error"
     assert rig.gw.spending_blocked == RECONCILE_REASON
+
+
+def _map_click(content: str) -> ActionRequest:
+    return ActionRequest(
+        kind=ActionKind.CLICK,
+        chat_id=GAME,
+        message_id=77,
+        data="maze_up",
+        expect=expect_text("Вверх", timeout=0.3),
+        expect_revision=10,
+        expect_content=content,
+    )
+
+
+async def test_click_checks_content_of_same_second_edit(rig: Rig) -> None:
+    btn = (Button("⬆️", 0, 1, data="maze_up"),)
+    decided = make_msg("🔋88%\nкадр A", msg_id=77, kind="edit", revision=10, buttons=btn)
+    # Правка в ту же секунду: ревизия та же, кнопка та же, содержимое другое.
+    rig.latest[(GAME, 77)] = make_msg(
+        "🔋88%\nкадр B", msg_id=77, kind="edit", revision=10, buttons=btn
+    )
+    res = await rig.gw.submit(_map_click(decided.content_hash()))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "stale_content")
+    assert rig.transport.sent == []
+
+
+async def test_content_rechecked_before_retry() -> None:
+    cfg = Settings(
+        engine=LIVE.engine.model_copy(update={"antiflood_retry_max": 1, "antiflood_pause_s": 0.05})
+    )
+    btn = (Button("⬆️", 0, 1, data="maze_up"),)
+    decided = make_msg("🔋88%\nкадр A", msg_id=77, kind="edit", revision=10, buttons=btn)
+    async for r in running_rig(cfg):
+        r.latest[(GAME, 77)] = decided
+
+        async def responder(rec: Sent, rig: Rig = r) -> None:
+            # Антифлуд, а за ним — правка той же секунды: повтор уже не для этого кадра.
+            rig.latest[(GAME, 77)] = make_msg(
+                "🔋88%\nкадр B", msg_id=77, kind="edit", revision=10, buttons=btn
+            )
+            await rig.deliver(make_msg("flood", msg_id=900), events=(AntiFlood(),))
+
+        r.transport.responder = responder
+        res = await r.gw.submit(_map_click(decided.content_hash()))
+        assert (res.status, res.reason) == (ActionStatus.REJECTED, "stale_content")
+        assert len(r.transport.sent) == 1

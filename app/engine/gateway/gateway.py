@@ -147,6 +147,10 @@ class ActionGateway:
     def lease(self) -> Lease | None:
         return self._lease
 
+    def latest(self, chat_id: int, message_id: int) -> IncomingMessage | None:
+        """Последняя известная ревизия сообщения — та, по кнопкам которой проверяется клик."""
+        return self._latest(chat_id, message_id)
+
     @property
     def kill_reason(self) -> str | None:
         return self._kill_reason
@@ -411,6 +415,9 @@ class ActionGateway:
                     return ActionStatus.REJECTED, "stale_button"
                 if p.req.expect_revision is not None and latest.revision != p.req.expect_revision:
                     return ActionStatus.REJECTED, "stale_revision"
+                expected = p.req.expect_content
+                if expected is not None and latest.content_hash() != expected:
+                    return ActionStatus.REJECTED, "stale_content"
             return None
 
         return self._guarded(full_check)

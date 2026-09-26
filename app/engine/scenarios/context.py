@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.engine.bus import Delivery
+from app.engine.clock import Clock, SystemClock
 from app.engine.events import Event
 from app.engine.gateway.gateway import ActionGateway, Lease
 from app.engine.gateway.types import (
@@ -17,7 +18,9 @@ from app.engine.gateway.types import (
     Source,
     Verdict,
 )
+from app.engine.notify import Level, NotifierPort
 from app.engine.parsing.refusals import Busy, Refused
+from app.engine.types import IncomingMessage
 
 Predicate = Callable[[Delivery], Match | None]
 
@@ -97,13 +100,29 @@ class ScenarioContext:
         simulate: bool,
         paused: Callable[[], bool],
         timeout_s: float = 20.0,
+        clock: Clock | None = None,
+        notifier: NotifierPort | None = None,
     ) -> None:
         self._gateway = gateway
         self._game = game_chat_id
         self.simulate = simulate
         self._paused = paused
         self._timeout_s = timeout_s
+        self.clock: Clock = clock or SystemClock()
+        self._notifier = notifier
         self._lease: Lease | None = None
+
+    @property
+    def timeout_s(self) -> float:
+        return self._timeout_s
+
+    async def notify(self, level: Level, code: str, text: str) -> None:
+        if self._notifier is not None:
+            await self._notifier.notify(level, code, text)
+
+    def latest(self, message_id: int) -> IncomingMessage | None:
+        """Последняя ревизия сообщения игрового чата из кэша конвейера."""
+        return self._gateway.latest(self._game, message_id)
 
     @asynccontextmanager
     async def lease(self, owner: str) -> AsyncIterator[None]:
@@ -142,10 +161,25 @@ class ScenarioContext:
         )
 
     async def click(
-        self, message_id: int, data: str, expect: Predicate, revision: int | None = None
+        self,
+        message_id: int,
+        data: str,
+        expect: Predicate,
+        revision: int | None = None,
+        *,
+        content: str | None = None,
+        timeout_s: float | None = None,
     ) -> StepResult:
+        """`revision`/`content` — ревизия и хеш кадра, на котором принято решение: шлюз не
+        отправит клик, если последняя правка сообщения уже другая."""
         return await self._submit(
-            ActionKind.CLICK, expect, message_id=message_id, data=data, expect_revision=revision
+            ActionKind.CLICK,
+            expect,
+            message_id=message_id,
+            data=data,
+            expect_revision=revision,
+            expect_content=content,
+            timeout_s=timeout_s,
         )
 
     async def _submit(
@@ -157,11 +191,14 @@ class ScenarioContext:
         message_id: int | None = None,
         data: str | None = None,
         expect_revision: int | None = None,
+        expect_content: str | None = None,
         chat_id: int | None = None,
         reply_to: int | None = None,
         silence_confirms: bool = False,
+        timeout_s: float | None = None,
     ) -> StepResult:
         matched: list[Delivery] = []
+        timeout = timeout_s if timeout_s is not None else self._timeout_s
 
         def capture(delivery: Delivery) -> Match | None:
             match = expect(delivery)
@@ -180,12 +217,13 @@ class ScenarioContext:
                 data=data,
                 reply_to=reply_to,
                 expect_revision=expect_revision,
+                expect_content=expect_content,
                 source=Source.SCENARIO,
                 # Ответы на шаги сценариев всегда приходят от игры, в её чат.
                 expect=Expectation(
-                    capture, self._timeout_s, chat_id=self._game, silence_confirms=silence_confirms
+                    capture, timeout, chat_id=self._game, silence_confirms=silence_confirms
                 ),
-                ttl_s=self._timeout_s * 3,
+                ttl_s=timeout * 3,
                 lease_token=self._lease.token if self._lease else None,
                 simulate=self.simulate,
             )

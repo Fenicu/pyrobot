@@ -68,6 +68,9 @@ class ActionRequest:
     lease_token: str | None = None
     risky_confirmed: bool = False
     expect_revision: int | None = None
+    # Хеш содержимого кадра, на котором принято решение: правки одной секунды не различить по
+    # ревизии, а кнопка на новом кадре может остаться прежней.
+    expect_content: str | None = None
     # Шаг несертифицированного сценария: не-nav подавляется как в dry_run даже в live.
     simulate: bool = False
 
@@ -78,6 +81,7 @@ class ActionRequest:
             "data": self.data,
             "reply_to": self.reply_to,
             "expect_revision": self.expect_revision,
+            "expect_content": self.expect_content,
         }
 
 

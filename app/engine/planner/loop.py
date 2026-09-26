@@ -160,6 +160,8 @@ class PlannerLoop:
             simulate=not spec.certified,
             paused=lambda: self._settings.current.engine.paused,
             timeout_s=self._step_timeout_s,
+            clock=self._clock,
+            notifier=self._notifier,
         )
         started = self._clock.now()
         run_id = await self._store.run_started(decision_id, act.scenario, params, started)
