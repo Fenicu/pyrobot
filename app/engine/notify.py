@@ -14,4 +14,4 @@ class NotifierPort(Protocol):
 
 class LogNotifier:
     async def notify(self, level: Level, code: str, text: str) -> None:
-        log.log(_LEVELS[level], "%s: %s", code, text)
+        log.log(_LEVELS.get(level, logging.ERROR), "%s: %s", code, text)

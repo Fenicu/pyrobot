@@ -16,14 +16,14 @@ class DbNotifier:
         self._log = LogNotifier()
 
     async def notify(self, level: Level, code: str, text: str) -> None:
-        await self._log.notify(level, code, text)
         try:
+            await self._log.notify(level, code, text)
             async with self._db.sessions() as session, session.begin():
                 session.add(
                     NotificationRow(account_id=self._account_id, level=level, code=code, text=text)
                 )
         except Exception:
-            log.exception("notification not persisted: %s", code)
+            log.exception("notify failed: %s", code)
 
     async def recent(self, limit: int = 50) -> list[NotificationRow]:
         async with self._db.sessions() as session:
