@@ -6,7 +6,7 @@ from typing import Any
 
 from app.engine.events import Event
 from app.engine.metro.budget import FRONTIER_AT, LATE_AT, RECENT_MOVES, Budget
-from app.engine.metro.grid import Grid, Pos, step
+from app.engine.metro.grid import DIRS, Grid, Pos, step
 from app.engine.metro.plan import Mode, exit_route, explore_step, reach, reachable_exit, targets
 from app.engine.parsing.metro import (
     EXIT,
@@ -100,6 +100,8 @@ class MetroSolver:
     _heal: bool = False
     _early: bool = False
     _far: bool = False
+    # Кадр разошёлся с картой так, что без человека дальше нельзя (причина остановки).
+    _surprise: str | None = None
     _move_sent_at: datetime | None = None
     _last: str | None = None
     _target: Pos | None = None
@@ -116,13 +118,15 @@ class MetroSolver:
         if isinstance(event, MetroMap):
             self._on_map(event)
             return
-        if isinstance(event, _ON_CELL) and self._pending is not None:
+        if isinstance(event, MetroExit) and self._pending is None:
+            self._exit_unawaited()
+        elif isinstance(event, _ON_CELL) and self._pending is not None:
             self._arrive(self._pending)
             self.grid.visited.add(self.pos)
-        if isinstance(event, MetroExit):
-            self.grid.cells[self.pos] = EXIT
-            self.exit_at = self.pos
-        elif isinstance(event, _ON_CELL) and self.grid.get(self.pos) is None:
+            if isinstance(event, MetroExit):
+                self.grid.cells[self.pos] = EXIT
+                self.exit_at = self.pos
+        if isinstance(event, _ON_CELL) and self.grid.get(self.pos) is None:
             self.grid.cells[self.pos] = FLOOR
         if isinstance(event, MetroFight) and event.stamina is not None:
             self.stamina = event.stamina
@@ -142,6 +146,16 @@ class MetroSolver:
         self._last = direction
         self._pending = None
 
+    def _exit_unawaited(self) -> None:
+        """«Выходишь?» без ожидаемого хода (ход до рестарта не попал в журнал): персонаж на
+        соседнем известном выходе, если он один; иначе позицию найдёт следующий кадр карты."""
+        near = [d for d in DIRS if self.grid.get(step(self.pos, d)) == EXIT]
+        if len(near) == 1:
+            self._arrive(near[0])
+            self.grid.visited.add(self.pos)
+        else:
+            self._far = True
+
     def cancel(self) -> None:
         """Решённый ход не отправлен (экран сменился): не ждать его, цель и решение — заново."""
         self._pending = None
@@ -155,6 +169,7 @@ class MetroSolver:
         self._far = True
 
     def _on_map(self, frame: MetroMap) -> None:
+        self._surprise = None
         if frame.footer == "going":
             # Окно ещё старое: только запоминаем ход (при воспроизведении записи).
             self._pending = frame.direction
@@ -163,6 +178,9 @@ class MetroSolver:
             self._arrive(frame.direction)
         elif frame.footer == "wall":
             self._note_kind("wall", direction=self._pending)
+            if self._pending is not None and self.grid.passable(step(self.pos, self._pending)):
+                # Наш ход в проход по карте, а игра видит там стену: карта разошлась с игрой.
+                self._surprise = "unexpected_wall"
         self._pending = None
         if self.grid.conflicts(frame.window, self.pos):
             located = self.grid.locate(frame.window, self.pos, far=self._far)
@@ -287,6 +305,8 @@ class MetroSolver:
     def _on_map_decision(self, now: datetime) -> Move:
         if self.lost:
             return Halt("lost")
+        if self._surprise is not None:
+            return Halt(self._surprise)
         self._update_mode(now)
         # Намерение не залипает: пересчитывается по каждому кадру.
         self._early = self._early_exit_due(now)

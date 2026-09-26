@@ -418,11 +418,16 @@ async def test_declines_npc_and_chest_like_second_run(world: World) -> None:
 
 
 @certifies("metro")
-async def test_wall_answer_keeps_the_cell(world: World) -> None:
+async def test_wall_answer_to_move_into_open_cell_halts(world: World) -> None:
+    """Ход вправо в проход, видный в окне, а игра отвечает «Стена»: карта разошлась с игрой —
+    остановка, а не повтор хода."""
     start_at(world, RUN2, 388)
     world.game.on_click("maze_right", edit=("metro", RUN2, 389))
-    result = await run(world, ctx(world, stop_after=len(ENTRY) + 3))
-    assert world.game.payloads()[len(ENTRY) :] == ["maze_start", "maze_right", "maze_right"]
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("stopped", "unexpected_wall")
+    assert world.game.payloads()[len(ENTRY) :] == ["maze_start", "maze_right"]
+    assert notes.sent == [("warn", "metro_halted")]
     assert result.details is not None
     record = result.details["metro"]
     # Шаг — только стартовый кадр (приход влево); «Стена» шага не добавляет.

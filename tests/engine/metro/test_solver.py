@@ -409,3 +409,44 @@ def test_no_heal_when_it_would_miss_the_kick() -> None:
     assert s.next(frame, kick - timedelta(seconds=30)) == Click("maze_first_aid", "heal")
     rushed = MetroSolver(Policy(), b, pos=(1, 1))
     assert rushed.next(frame, kick - timedelta(seconds=5)) == Click("maze_exit", "early_exit")
+
+
+def test_exit_screen_without_awaited_move_steps_onto_the_known_exit() -> None:
+    """После рестарта текущий экран — «Выходишь?», а «Идёшь …» до журнала не дошёл: выход —
+    единственная известная соседняя клетка, персонаж на ней; второго выхода нет, «Остался» —
+    там же."""
+    events = [recognize_metro(m)[0] for m in game_versions("metro", 3624441)]
+    s = MetroSolver(Policy(), budget())
+    for event in events[5:278]:
+        s.observe(event)
+    exit_at = s.exit_at
+    assert exit_at is not None and s.grid.exits() == [exit_at]
+    s.resync()
+    assert s.next(events[279], T0) == Click("maze_exit_decline", "explore")
+    assert (s.pos, s.exit_at, s.grid.exits()) == (exit_at, exit_at, [exit_at])
+    assert isinstance(s.next(events[280], T0), Click) and not s.lost
+
+
+def test_exit_screen_without_awaited_move_far_from_exits_waits_for_map() -> None:
+    # Рядом с позицией выхода нет: клетка и выход не трогаются, позицию найдёт следующий кадр.
+    s = _known_tree((4, 3))
+    s.exit_at = (4, 5)
+    s.next(MetroExit(found={}), T0)
+    assert (s.pos, s.exit_at, s.grid.exits()) == ((4, 3), (4, 5), [(4, 5)])
+    assert isinstance(s.next(at((4, 5), "stayed"), T0), Click)
+    assert s.pos == (4, 5) and s.events[-1]["kind"] == "relocated"
+
+
+def test_wall_answer_to_move_into_open_cell_halts() -> None:
+    s = solver()
+    assert s.next(at((1, 1)), T0) == Click("maze_down", "explore")
+    assert s.next(at((1, 1), "wall"), T0) == Halt("unexpected_wall")
+    assert s.events[-1] == {"step": 0, "pos": [1, 1], "kind": "wall", "direction": "down"}
+    # Стена там, где карта её и показывает, или ход не наш — та же клетка, без остановки.
+    known = solver()
+    known.observe(at((1, 1)))
+    known.observe(at((1, 1), "going", direction="up"))
+    assert isinstance(known.next(at((1, 1), "wall"), T0), Click)
+    manual = solver()
+    manual.observe(at((1, 1)))
+    assert isinstance(manual.next(at((1, 1), "wall"), T0), Click)
