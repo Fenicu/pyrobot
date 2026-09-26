@@ -18,6 +18,7 @@ class EngineSection(BaseModel):
     click_answer_timeout_s: float = Field(default=4.0, gt=0, le=30)
     recovered_react_max_age_min: int = Field(default=10, ge=0)
     refresh_min_interval_s: float = Field(default=120.0, gt=0)
+    state_stale_after_min: int = Field(default=15, ge=1)
     urgent_while_paused: bool = True
     manual_while_paused: bool = True
 

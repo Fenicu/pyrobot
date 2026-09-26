@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.lag import LoopLagMonitor
@@ -65,6 +65,9 @@ class EngineFacade:
         self._workers_ok = workers_ok
         self._notifier = notifier
         self._reconciler = reconciler
+
+    def state(self) -> tuple[int, dict[str, Any]]:
+        return self.pipeline.version, self.pipeline.state
 
     def status(self) -> EngineStatus:
         eng = self.settings.current.engine

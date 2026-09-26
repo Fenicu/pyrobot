@@ -392,3 +392,13 @@ code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (�
 `sign_in`/`check_password` оставляет попытку, чтобы код можно было отправить повторно. `GET
 /readyz` (без авторизации) — 200 `{"status":"ready"}`, если движок поднят и `ready()` истинна, иначе
 503 `{"status":"not_ready"}`.
+
+`GET /api/v1/state` (сессия, CSRF не нужен) отдаёт снимок состояния персонажа: `{"version": int,
+"now": ISO-UTC, "state": {...}, "stale": [...]}`. `version` и `state` — из `EngineFacade.state()`
+(`Pipeline.version`/`Pipeline.state`); `stale` — список полей, устаревших по политике свежести
+(`stale_fields`, `app/engine/state/model.py`): для «летучих» полей (`money`, `stamina`,
+`motivation`, `busy`, `exp`, `knowledge`, `raw`, `details`) — старше `engine.state_stale_after_min`
+минут (по умолчанию 15), для «медленных» — старше 6 часов, для таймеров — только если значение
+`doubtful`, для цен — старше 7 дней (`prices.<ключ>`). Поле, которое ещё не встречалось на экране
+(например `books` до `/inv`), в `state` отсутствует и в `stale` не попадает — это не устаревшее
+значение, а ненаблюдавшееся. Без запущенного движка — 503, как `/api/v1/engine/status`.
