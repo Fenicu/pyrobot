@@ -88,3 +88,11 @@ def test_recovered_boundary_is_exactly_60s() -> None:
         _m(date=T0), kind="new", received_at=T0 + timedelta(seconds=60, microseconds=1)
     )
     assert over.recovered is True
+
+
+def test_created_at_kept_for_edits() -> None:
+    edited = T0 + timedelta(seconds=30)
+    msg = to_incoming(_m(edit_date=edited), kind="edit", received_at=edited)
+    assert (msg.created_at, msg.date, msg.origin) == (T0, edited, T0)
+    new = to_incoming(_m(), kind="new", received_at=T0)
+    assert (new.created_at, new.origin) == (T0, T0)

@@ -83,6 +83,7 @@ def to_incoming(
         from_id=m.from_user.id if m.from_user else None,
         outgoing=bool(m.outgoing),
         recovered=(received - date) > recovered_after,
+        created_at=_aware(m.date),
     )
 
 

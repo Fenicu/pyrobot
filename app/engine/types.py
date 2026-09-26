@@ -33,6 +33,11 @@ class IncomingMessage:
     from_id: int | None = None
     outgoing: bool = False
     recovered: bool = False
+    created_at: datetime | None = None
+
+    @property
+    def origin(self) -> datetime:
+        return self.created_at or self.date
 
     def button(self, data: str) -> Button | None:
         return next((b for b in self.inline if b.data == data), None)
