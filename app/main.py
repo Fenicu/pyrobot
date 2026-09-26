@@ -33,6 +33,7 @@ from app.engine.transport.kurigram import ChatFilter, KurigramTransport
 log = logging.getLogger("pyrobot")
 LOCK_CHECK_S = 10.0
 TG_PROBE_S = 60.0
+PIPELINE_DRAIN_S = 10.0
 
 
 class Runtime:
@@ -176,11 +177,19 @@ class Runtime:
         if self.gateway is not None:
             with contextlib.suppress(Exception):
                 await self.gateway.shutdown()
-        with contextlib.suppress(Exception):
-            await self.supervisor.stop()
         if self._kurigram is not None:
             with contextlib.suppress(Exception):
                 await self._kurigram.stop()
+        # Конвейер останавливается после транспорта: всё, что успело прийти, попадает в журнал.
+        if self.pipeline is not None:
+            with contextlib.suppress(Exception):
+                if not await self.pipeline.drain(PIPELINE_DRAIN_S):
+                    log.warning(
+                        "pipeline not drained on stop, %d messages left",
+                        self.pipeline.unfinished,
+                    )
+        with contextlib.suppress(Exception):
+            await self.supervisor.stop()
         with contextlib.suppress(Exception):
             await self.lock.release()
         with contextlib.suppress(Exception):

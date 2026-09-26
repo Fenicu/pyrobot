@@ -181,3 +181,40 @@ async def test_slow_or_failing_subscriber_isolated() -> None:
     )
     await asyncio.wait_for(pipe.process(make_msg("x")), 1)
     assert hits == [1]
+
+
+async def test_drain_waits_for_queued_messages() -> None:
+    class SlowJournal(MemoryJournal):
+        async def append(self, *args: Any, **kwargs: Any) -> int | None:
+            await asyncio.sleep(0.005)
+            return await super().append(*args, **kwargs)
+
+    pipe, seen, journal = _pipeline(journal=SlowJournal())
+    task = asyncio.create_task(pipe.run())
+    try:
+        for i in range(10):
+            await pipe.submit(make_msg(f"m{i}", msg_id=i))
+        assert await pipe.drain(2.0) is True
+        assert len(journal.rows) == 10 and len(seen) == 10
+        assert pipe.unfinished == 0
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_drain_times_out_on_hung_journal() -> None:
+    class HungJournal(MemoryJournal):
+        async def append(self, *args: Any, **kwargs: Any) -> int | None:
+            await asyncio.Event().wait()
+            return None
+
+    pipe, _, _ = _pipeline(journal=HungJournal())
+    task = asyncio.create_task(pipe.run())
+    try:
+        await pipe.submit(make_msg("a", msg_id=1))
+        await pipe.submit(make_msg("b", msg_id=2))
+        assert await pipe.drain(0.05) is False
+        assert pipe.unfinished == 2
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

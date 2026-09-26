@@ -64,6 +64,7 @@ class Pipeline:
         self._version = 0
         self._last_journal_id = 0
         self._healthy = True
+        self._busy = False
 
     @property
     def state(self) -> State:
@@ -93,14 +94,27 @@ class Pipeline:
     def backlog(self) -> int:
         return self._queue.qsize()
 
+    @property
+    def unfinished(self) -> int:
+        return self._queue.qsize() + (1 if self._busy else 0)
+
+    async def drain(self, timeout_s: float) -> bool:
+        try:
+            await asyncio.wait_for(self._queue.join(), timeout_s)
+        except TimeoutError:
+            return False
+        return True
+
     async def run(self) -> None:
         while True:
             msg = await self._queue.get()
+            self._busy = True
             try:
                 await self.process(msg)
             except Exception:
                 log.exception("pipeline failed on %s/%s", msg.chat_id, msg.msg_id)
             finally:
+                self._busy = False
                 self._queue.task_done()
 
     async def process(self, msg: IncomingMessage) -> Delivery | None:

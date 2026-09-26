@@ -3,14 +3,16 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
+from sqlalchemy import func, select
 
 from app.config import AppConfig
 from app.db.base import Database
+from app.db.models import MessageRow
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
 from app.engine.supervisor import Supervisor
 from app.main import create_application
 from tests.conftest import TEST_DB_URL
-from tests.engine.helpers import GAME, until
+from tests.engine.helpers import GAME, make_msg, until
 
 pytestmark = pytest.mark.db
 
@@ -133,3 +135,13 @@ async def test_gateway_rejects_when_tg_offline(clean_db: Database) -> None:
         ok = await runtime.gateway.submit(nav)
         assert ok.status is ActionStatus.CONFIRMED
         assert [s.payload for s in runtime.transport.sent] == ["😎Я"]
+
+
+async def test_stop_drains_pipeline_into_journal(clean_db: Database) -> None:
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    async with app.router.lifespan_context(app):
+        for i in range(50):
+            await runtime.pipeline.submit(make_msg(f"m{i}", msg_id=i + 1))
+    async with clean_db.sessions() as s:
+        assert await s.scalar(select(func.count()).select_from(MessageRow)) == 50
