@@ -385,3 +385,19 @@ class KurigramTransport:
             raise TransportRejected(str(exc.ID or exc)) from exc
         message = getattr(answer, "message", None)
         return str(message) if message else None
+
+    async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
+        from pyrogram import errors
+
+        client = self._client
+        try:
+            message = await client.get_messages(chat_id, message_id)
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        if message is None or getattr(message, "empty", False):
+            return None
+        kind: MessageKind = "edit" if message.edit_date else "new"
+        return to_incoming(message, kind=kind, received_at=datetime.now(UTC))

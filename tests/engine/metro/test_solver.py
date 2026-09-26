@@ -6,7 +6,6 @@ import pytest
 
 from app.engine.events import Event
 from app.engine.metro.budget import Budget
-from app.engine.metro.grid import Grid
 from app.engine.metro.solver import Click, Done, Halt, MetroSolver, Policy
 from app.engine.parsing.metro import (
     MetroBuffs,
@@ -254,14 +253,13 @@ def test_unexpected_screen_halts() -> None:
     assert s.next(buffs, T0) == Halt("unexpected_screen:metro_buffs")
 
 
-def test_snapshot_restore_continues_on_saved_map() -> None:
+def test_snapshot_is_json() -> None:
     s = solver()
     s.next(at((1, 1)), T0)
     s.next(at((2, 1), "arrived", direction="down"), T0)
-    restored = MetroSolver.restore(json.loads(json.dumps(s.snapshot())), Policy(), budget())
-    assert restored.grid == s.grid and restored.pos == (2, 1) and restored.steps == 1
-    assert restored.next(at((2, 1), "waiting"), T0) == Click("maze_down", "explore")
-    assert isinstance(Grid.from_json(s.snapshot()["grid"]), Grid)
+    snap = json.loads(json.dumps(s.snapshot()))
+    assert snap["pos"] == [2, 1] and snap["steps"] == 1 and snap["path"] == [[1, 1], [2, 1]]
+    assert snap["grid"]["visited"] == [[1, 1], [2, 1]]
 
 
 def test_replay_of_second_run_matches_its_snapshot() -> None:

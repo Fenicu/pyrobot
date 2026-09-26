@@ -13,7 +13,7 @@ from app.engine.notify import NotifierPort
 from app.engine.planner.decide import decide
 from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Act, Wait
-from app.engine.scenarios.context import ScenarioContext
+from app.engine.scenarios.context import History, Reread, ScenarioContext
 from app.engine.scenarios.library import ScenarioResult, run_scenario
 from app.engine.scenarios.registry import CERTIFIED, SCENARIOS
 from app.engine.settings import SettingsProvider
@@ -62,6 +62,8 @@ class PlannerLoop:
         max_idle_s: float = 1800.0,
         step_timeout_s: float = 20.0,
         metro_store: MetroRunStore | None = None,
+        history: History | None = None,
+        reread: Reread | None = None,
     ) -> None:
         self._gateway = gateway
         self._state = state
@@ -83,6 +85,8 @@ class PlannerLoop:
         # Последний успешный запуск каждого сценария (кулдауны мандарина и т. п. после рестарта).
         self._last_done: dict[str, datetime] | None = None
         self._metro_store = metro_store
+        self._history = history
+        self._reread = reread
         # Длительности прошлых забегов метро (бюджет по p90): из хранилища при первом решении.
         self._metro_durations: list[float] | None = None
         self._last_wait: DecisionRecord | None = None
@@ -170,6 +174,8 @@ class PlannerLoop:
             timeout_s=self._step_timeout_s,
             clock=self._clock,
             notifier=self._notifier,
+            history=self._history,
+            reread=self._reread,
         )
         started = self._clock.now()
         run_id = await self._store.run_started(decision_id, act.scenario, params, started)

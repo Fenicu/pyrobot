@@ -28,6 +28,7 @@ from app.engine.parsing import default_parser
 from app.engine.pipeline import Pipeline
 from app.engine.planner.loop import PlannerLoop
 from app.engine.reconcile import Reconciler
+from app.engine.scenarios.context import History, Reread
 from app.engine.state.model import load_state
 from app.engine.state.reducer import StateReducer
 from app.engine.supervisor import Supervisor
@@ -35,9 +36,43 @@ from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from app.engine.transport.kurigram import ChatFilter, KurigramTransport
+from app.engine.types import IncomingMessage
 from app.engine.unrecognized import UnrecognizedWatch
 
 log = logging.getLogger("pyrobot")
+REREAD_DRAIN_S = 10.0
+
+
+def journal_history(journal: DbJournal) -> History:
+    """Все записанные правки сообщения — по ним восстанавливается карта забега метро."""
+
+    async def history(chat_id: int, msg_id: int) -> list[IncomingMessage]:
+        return await journal.revisions(chat_id, msg_id)
+
+    return history
+
+
+def live_reread(transport: Transport, pipeline: Pipeline) -> Reread:
+    """Текущая версия сообщения из Telegram через конвейер: журнал и состояние её учтут, а она
+    станет текущей ревизией — после рестарта кэш ревизий пуст, а шлюз кликает только по кнопкам
+    последней ревизии."""
+
+    async def reread(chat_id: int, msg_id: int) -> IncomingMessage | None:
+        try:
+            msg = await transport.fetch(chat_id, msg_id)
+        except Exception:
+            log.exception("message %s/%s not reread", chat_id, msg_id)
+            return None
+        if msg is None:
+            return None
+        await pipeline.submit(msg)
+        await pipeline.drain(REREAD_DRAIN_S)
+        pipeline.prime(msg)
+        return msg
+
+    return reread
+
+
 LOCK_CHECK_S = 10.0
 TG_PROBE_S = 60.0
 PIPELINE_DRAIN_S = 10.0
@@ -92,8 +127,9 @@ class Runtime:
         bus = Bus()
         react_age = self.settings.current.engine.recovered_react_max_age_min
         reducer = StateReducer()
+        journal = DbJournal(self.db, self.config.account_id)
         self.pipeline = Pipeline(
-            journal=DbJournal(self.db, self.config.account_id),
+            journal=journal,
             parser=default_parser(self.settings.current.chats),
             reducer=reducer,
             metrics=reducer.metrics,
@@ -162,6 +198,8 @@ class Runtime:
             ready=self._planner_ready,
             poll_s=self.planner_poll_s,
             metro_store=DbMetroRunStore(self.db, self.config.account_id),
+            history=journal_history(journal),
+            reread=live_reread(transport, pipeline),
         )
         bus.subscribe(self.planner.on_delivery, priority=90)
         lag = LoopLagMonitor()

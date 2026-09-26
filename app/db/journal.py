@@ -7,7 +7,30 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.db.base import Database
 from app.db.models import MessageRow, MetricRow, StateSnapshot, UnrecognizedRow
 from app.engine.events import Event, Unrecognized
-from app.engine.types import IncomingMessage
+from app.engine.types import Button, IncomingMessage
+
+
+def _restored(row: MessageRow) -> IncomingMessage:
+    markup = row.markup or {}
+    inline = tuple(
+        Button(text=b[0], row=b[1], col=b[2], data=b[3], url=b[4], switch=b[5])
+        for b in markup.get("inline", [])
+    )
+    reply = tuple(tuple(r) for r in markup.get("reply", []))
+    return IncomingMessage(
+        chat_id=row.chat_id,
+        msg_id=row.msg_id,
+        revision=row.revision,
+        kind="edit" if row.kind == "edit" else "new",
+        date=row.date,
+        received_at=row.received_at,
+        text=row.text,
+        inline=inline,
+        reply_kb=reply,
+        from_id=row.from_id,
+        outgoing=row.outgoing,
+        recovered=row.recovered,
+    )
 
 
 class DbJournal:
@@ -21,6 +44,21 @@ class DbJournal:
                 select(StateSnapshot).where(StateSnapshot.account_id == self._account_id)
             )
         return (dict(row.state), row.version) if row else ({}, 0)
+
+    async def revisions(self, chat_id: int, msg_id: int) -> list[IncomingMessage]:
+        """Все записанные правки сообщения в порядке журнала."""
+        query = (
+            select(MessageRow)
+            .where(
+                MessageRow.account_id == self._account_id,
+                MessageRow.chat_id == chat_id,
+                MessageRow.msg_id == msg_id,
+            )
+            .order_by(MessageRow.id)
+        )
+        async with self._db.sessions() as session:
+            rows = await session.scalars(query)
+            return [_restored(row) for row in rows]
 
     async def append(
         self,

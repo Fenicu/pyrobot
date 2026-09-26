@@ -367,26 +367,5 @@ class MetroSolver:
             "packs": self.packs,
         }
 
-    @classmethod
-    def restore(cls, data: dict[str, Any], policy: Policy, budget: Budget) -> MetroSolver:
-        """Продолжение после рестарта: карта и позиция из сохранённого, первое окно сверяется
-        с картой (`Grid.locate`)."""
-        exit_at = data.get("exit")
-        solver = cls(
-            policy=policy,
-            budget=budget,
-            grid=Grid.from_json(data["grid"]),
-            pos=(int(data["pos"][0]), int(data["pos"][1])),
-            exit_at=(int(exit_at[0]), int(exit_at[1])) if exit_at else None,
-            steps=int(data.get("steps", 0)),
-            path=[(int(p[0]), int(p[1])) for p in data.get("path", [])],
-            events=list(data.get("events", [])),
-            vitals=list(data.get("vitals", [])),
-            alerts=list(data.get("alerts", [])),
-        )
-        if data.get("mode") == "leave":
-            solver.mode, solver.leave_reason = "leave", data.get("leave_reason")
-        return solver
-
 
 _MOVES = frozenset({"up", "down", "left", "right"})

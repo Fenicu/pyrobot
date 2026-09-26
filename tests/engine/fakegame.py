@@ -52,6 +52,9 @@ class FakeGame:
         self._tasks: set[asyncio.Task[None]] = set()
         self.sent: list[Sent] = []
         self.messages: dict[int, IncomingMessage] = {}
+        # Что `fetch` отдаёт вместо последней доставленной версии; `unreadable` — не прочитать.
+        self.current: dict[int, IncomingMessage] = {}
+        self.unreadable = False
 
     def on_text(self, text: str, *new: Ref) -> None:
         self._text.setdefault(text, []).append(Reply(new=list(new)))
@@ -122,6 +125,33 @@ class FakeGame:
                     created_at=now,
                 )
                 await self._push(msg)
+
+    def now_shows(self, run: int, version: int) -> None:
+        """В игре сообщение уже другое (правка не дошла до конвейера): его вернёт `fetch`."""
+        self.now_shows_other(run, ("metro", run, version))
+
+    def now_shows_other(self, msg_id: int, ref: Ref) -> None:
+        now = datetime.now(UTC)
+        original = self.messages[msg_id]
+        self.current[msg_id] = replace(
+            game_msg(*ref),
+            msg_id=msg_id,
+            kind="edit",
+            revision=next(self._revisions),
+            date=now,
+            received_at=now,
+            created_at=original.origin,
+        )
+
+    async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
+        if self.unreadable:
+            return None
+        return self.current.get(message_id) or self.messages.get(message_id)
+
+    async def show(self, msg: IncomingMessage) -> None:
+        """Сообщение, пришедшее раньше (до рестарта): через конвейер, в журнал. Ревизии — из
+        того же счётчика, что у правок эмулятора, чтобы следующие правки были новее."""
+        await self._push(replace(msg, revision=next(self._revisions)))
 
     async def _push(self, msg: IncomingMessage) -> None:
         self.messages[msg.msg_id] = msg

@@ -237,3 +237,39 @@ async def test_boot_calls_get_me_once(tmp_path: Path) -> None:
     assert (await mgr.boot()).state is TgState.ONLINE
     assert t.client.get_me_calls == 1
     assert t.client.me is not None and t.client.me.id == EXPECTED
+
+
+async def test_fetch_converts_current_message(tmp_path: Path) -> None:
+    from datetime import datetime
+
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    sent = datetime(2026, 9, 26, 20, 4, 52)
+    edited = datetime(2026, 9, 26, 20, 5, 7)
+    t.client.stored[(GAME, 7)] = NS(
+        id=7,
+        chat=NS(id=GAME),
+        from_user=NS(id=GAME),
+        outgoing=False,
+        date=sent,
+        edit_date=edited,
+        text="🔋205%",
+        caption=None,
+        reply_markup=None,
+        empty=False,
+    )
+    msg = await t.fetch(GAME, 7)
+    assert msg is not None
+    assert (msg.msg_id, msg.kind, msg.text) == (7, "edit", "🔋205%")
+    assert msg.revision == int(msg.date.timestamp())
+    assert await t.fetch(GAME, 8) is None
+
+
+async def test_fetch_unauthorized_resets_client(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    lost = await _online(t)
+    t.client.errors["GetMessages"] = rpc_error("AuthKeyUnregistered")
+    with pytest.raises(TransportAuthLost):
+        await t.fetch(GAME, 7)
+    _assert_reset(t)
+    assert lost == [1]

@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from app.engine.events import Event
+from app.engine.events import Event, Unrecognized
 from app.engine.parsing.activities import (
     ActivityCancelled,
     ActivityFinished,
@@ -32,13 +32,19 @@ from app.engine.parsing.items import (
 )
 from app.engine.parsing.levelup import LevelUpStep
 from app.engine.parsing.metro import (
+    MetroBuffs,
+    MetroChest,
     MetroChestOpened,
+    MetroEarlyExit,
     MetroEntered,
     MetroEntrance,
+    MetroExit,
     MetroFight,
     MetroFinished,
     MetroFirstAid,
+    MetroLoot,
     MetroMap,
+    MetroNpc,
 )
 from app.engine.parsing.profile import ProfileCompact
 from app.engine.parsing.refusals import Busy, Refused
@@ -132,10 +138,13 @@ _REFUSAL_TIMERS = {
 class _Patch:
     """Изменения состояния от одного сообщения: `origin` — создание, `at` — правка."""
 
-    def __init__(self, state: CharacterState, at: datetime, origin: datetime) -> None:
+    def __init__(
+        self, state: CharacterState, at: datetime, origin: datetime, msg_id: int = 0
+    ) -> None:
         self.state = state
         self.at = at
         self.origin = min(origin, at)
+        self.msg_id = msg_id
         self.updates: dict[str, Any] = {}
 
     def get(self, name: str) -> Any:
@@ -719,31 +728,49 @@ def _metro_entrance(p: _Patch, e: MetroEntrance) -> None:
     p.snap("metro_ready_at", p.at)
 
 
+@_on(Unrecognized)
+def _unrecognized(p: _Patch, e: Unrecognized) -> None:
+    # Незнакомый экран забега: автопродолжение ждёт нового распознанного экрана (или человека).
+    inside: Obs[int | None] | None = p.get("metro_message")
+    if inside is not None and inside.value == p.msg_id:
+        p.snap("metro_message", p.msg_id, src="doubtful")
+
+
 @_on(MetroEntered)
 def _metro_entered(p: _Patch, e: MetroEntered) -> None:
     p.delta("motivation", -e.cost)
 
 
-def _metro_stamina(p: _Patch, e: MetroMap | MetroFirstAid) -> None:
-    # 🔋 в метро — настоящая выносливость персонажа.
-    p.snap("stamina", e.stamina)
+def _inside(p: _Patch) -> None:
+    # Персонаж в метро: какое сообщение — экран забега (для продолжения после рестарта).
+    p.snap("metro_message", p.msg_id)
 
 
-_on(MetroMap)(_metro_stamina)
-_on(MetroFirstAid)(_metro_stamina)
-
-
-@_on(MetroFight)
-def _metro_fight(p: _Patch, e: MetroFight) -> None:
-    # Награды боя идут в копилку забега и начисляются только на выходе.
-    if e.stamina is not None:
+def _metro_screen(p: _Patch, e: Event) -> None:
+    _inside(p)
+    if isinstance(e, MetroMap | MetroFirstAid):
+        # 🔋 в метро — настоящая выносливость персонажа.
         p.snap("stamina", e.stamina)
-
-
-@_on(MetroChestOpened)
-def _metro_chest(p: _Patch, e: MetroChestOpened) -> None:
-    if e.result == "arrow":
+    elif isinstance(e, MetroFight) and e.stamina is not None:
+        # Награды боя идут в копилку забега и начисляются только на выходе.
+        p.snap("stamina", e.stamina)
+    elif isinstance(e, MetroChestOpened) and e.result == "arrow":
         p.snap("stamina", 0)
+
+
+for _screen in (
+    MetroBuffs,
+    MetroMap,
+    MetroFirstAid,
+    MetroFight,
+    MetroChestOpened,
+    MetroLoot,
+    MetroNpc,
+    MetroChest,
+    MetroEarlyExit,
+    MetroExit,
+):
+    _on(_screen)(_metro_screen)
 
 
 @_on(MetroFinished)
@@ -774,6 +801,7 @@ def _metro_finished(p: _Patch, e: MetroFinished) -> None:
 
         p.change("food_stock", found)
     p.snap("metro_ready_at", p.at + METRO_COOLDOWN, src="derived")
+    p.snap("metro_message", None)
 
 
 @_on(ResourcesChanged)
@@ -826,7 +854,7 @@ class StateReducer:
         self, state: dict[str, Any], msg: IncomingMessage, events: Sequence[Event]
     ) -> dict[str, Any]:
         current = self._load(state)
-        patch = _Patch(current, msg.date, msg.origin)
+        patch = _Patch(current, msg.date, msg.origin, msg.msg_id)
         applied = dict(current.applied)
         newest = max([*applied.values(), patch.origin])
         horizon = newest - OUTCOME_HORIZON

@@ -75,3 +75,26 @@ def test_cooldown_refusal_sets_ready_time() -> None:
     state = feed(reducer, {}, "metro", 3624531, 10)
     assert value(state, "metro_ready_at") == "2026-09-27T00:40:00Z"
     assert load_state(state).metro_ready_at is not None
+
+
+def test_current_run_message_tracked_until_exit() -> None:
+    reducer = StateReducer()
+    state = _version(reducer, _before_metro(reducer), 0, 2)
+    assert value(state, "metro_message") is None
+    state = _version(reducer, state, 1, 3)
+    assert value(state, "metro_message") == 3624441
+    state = _version(reducer, state, 48, 5)
+    assert state["metro_message"]["at"] == "2026-09-26T09:05:00Z"
+    state = _version(reducer, state, 532, 20)
+    assert value(state, "metro_message") is None and "metro_message" in state
+
+
+def test_unknown_run_screen_blocks_resume_until_known_one() -> None:
+    reducer = StateReducer()
+    state = _version(reducer, _before_metro(reducer), 5, 4)
+    unknown = replace(RUN[5], text="🔋88%\nчто-то новое", date=at(5), created_at=at(2))
+    state = reducer.apply(state, unknown, PARSER.parse(unknown))
+    assert state["metro_message"]["src"] == "doubtful"
+    assert value(state, "metro_message") == 3624441
+    state = _version(reducer, state, 7, 6)
+    assert state["metro_message"]["src"] == "screen"

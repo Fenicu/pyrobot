@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.engine.tg_auth import InvalidCode, InvalidPassword, PasswordRequired
+from app.engine.types import IncomingMessage
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +26,7 @@ class FakeTransport:
         self.responder: Callable[[Sent], Awaitable[None]] | None = None
         self.fail_with: list[BaseException] = []
         self.toast: str | None = None
+        self.messages: dict[tuple[int, int], IncomingMessage] = {}
         self._next_id = 1000
         self._tasks: set[asyncio.Future[None]] = set()
 
@@ -49,6 +51,9 @@ class FakeTransport:
     ) -> str | None:
         self._deliver(Sent("click", chat_id, data, message_id, time.monotonic()))
         return self.toast
+
+    async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
+        return self.messages.get((chat_id, message_id))
 
 
 class FakeTgBackend:

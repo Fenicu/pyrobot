@@ -64,6 +64,7 @@ class FakeClient:
         self.get_me_calls = 0
         self.stop_error: BaseException | None = None
         self.me: Any = None
+        self.stored: dict[tuple[int, int], Any] = {}
 
     async def connect(self) -> bool:
         if self.is_connected:
@@ -109,6 +110,12 @@ class FakeClient:
 
     def rnd_id(self) -> int:
         return 1
+
+    async def get_messages(self, chat_id: int, message_ids: int) -> Any:
+        err = self.errors.pop("GetMessages", None)
+        if err is not None:
+            raise err
+        return self.stored.get((chat_id, message_ids))
 
     async def get_me(self) -> Any:
         self.get_me_calls += 1

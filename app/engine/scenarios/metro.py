@@ -134,8 +134,13 @@ def _entrance_answer() -> Predicate:
 
 
 async def metro(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
-    """🏢Офис → 🚇Метро → вход → бафы за 🕳 → старт → обход решателем → выход."""
+    """🏢Офис → 🚇Метро → вход → бафы за 🕳 → старт → обход решателем → выход.
+
+    С `params["resume"]` (id сообщения забега) — продолжение после рестарта или остановки.
+    """
     async with ctx.lease("metro"):
+        if (resume := params.get("resume")) is not None:
+            return await _resume(ctx, params, int(resume))
         require(await ctx.send("🏢Офис", expect_events(InfoScreen, accept=_is_office)))
         await ctx.safe_point()
         entrance = await ctx.send("🚇Метро", _entrance_answer())
@@ -221,6 +226,38 @@ def _budget(params: Params, started: datetime, buffs: MetroBuffs) -> Budget:
 
 def _same(a: IncomingMessage, b: IncomingMessage) -> bool:
     return a.revision == b.revision and a.content_hash() == b.content_hash()
+
+
+async def _resume(ctx: ScenarioContext, params: Params, message: int) -> ScenarioResult:
+    """Продолжение забега. Карту и позицию восстанавливают правки сообщения из журнала, а решение
+    принимается только по текущему экрану, прочитанному из Telegram: клик до рестарта мог дойти
+    до игры, а его правка — не до журнала; повторять его по старому кадру нельзя."""
+    history = await ctx.history(message)
+    if not history:
+        return ScenarioResult("stopped", "resume_without_history")
+    current = await ctx.reread(message)
+    if current is None:
+        return await _halt(ctx, "resume_unreadable")
+    shown = recognize_metro(current)
+    if shown and isinstance(shown[0], MetroBuffs):
+        return await _buy_and_start(ctx, params, current, shown[0])
+    screen = metro_screen(current)
+    if screen is None:
+        # Последний экран незнакомый: без человека не продолжаем.
+        return await _halt(ctx, "resume_unknown_screen")
+    if isinstance(screen, MetroMap) and screen.footer == "going":
+        return ScenarioResult("stopped", "resume_while_moving")
+    frames = [(m, e) for m in history if not _same(m, current) for e in recognize_metro(m)[:1]]
+    bought = [e for _, e in frames if isinstance(e, MetroBuffs)]
+    buffs = bought[-1] if bought else MetroBuffs(bought=(), offers=(), tokens=0, coins=0)
+    maze = [n for n, (_, e) in enumerate(frames) if isinstance(e, SCREENS)]
+    started = frames[maze[0]][0].date if maze else current.date
+    solver = MetroSolver(_policy(params), _budget(params, started, buffs))
+    for _, event in frames[maze[0] :] if maze else ():
+        if isinstance(event, SCREENS):
+            solver.observe(event)
+    solver.resync()
+    return await _explore(ctx, params, message, current, buffs, solver, started)
 
 
 async def _explore(

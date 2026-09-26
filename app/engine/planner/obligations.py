@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from datetime import datetime, time, timedelta
+from typing import Any
 
 from app.engine.gametime import MSK, to_msk
 from app.engine.market import pick_stock
@@ -36,6 +37,10 @@ METRO_COOLDOWN = timedelta(hours=16)
 # 2🔥 на вход в метро держатся от дел, если спуск станет доступен в ближайший час.
 METRO_RESERVE_AHEAD = timedelta(hours=1)
 METRO_SAFETY = 1.5
+# Забег, прерванный рестартом, продолжается, если последний его экран свежий и игра ещё не
+# выкинула персонажа (за 15 минут до битвы).
+METRO_STALE = timedelta(hours=2)
+METRO_KICK = timedelta(minutes=15)
 
 
 def p90(values: Sequence[float]) -> float:
@@ -326,9 +331,12 @@ class Obligations(PlannerBase):
             self.reject("metro", {}, "no_motivation")
             self.wake(self.value("motivation_next_at"), "motivation")
             return None
+        return self.act("metro", self.metro_params(battle), "metro_ready")
+
+    def metro_params(self, battle: datetime | None) -> dict[str, Any]:
         cfg = self.cfg.metro
-        params = {
-            "battle_at": battle.isoformat(),
+        return {
+            "battle_at": battle.isoformat() if battle is not None else None,
             "margin_min": cfg.battle_margin_min + cfg.extra_margin_min,
             "buffs": list(cfg.buffs),
             "heal_at": cfg.heal_at,
@@ -338,7 +346,23 @@ class Obligations(PlannerBase):
             "npc_high": cfg.npc_high_enabled,
             "npc_min_stamina": cfg.npc_min_stamina,
         }
-        return self.act("metro", params, "metro_ready")
+
+    def metro_resume(self, busy: BusyState | None) -> Decision | None:
+        """Персонаж остался в метро (рестарт, остановка сценария): продолжить забег сразу."""
+        inside = self.s.metro_message
+        if not self.feature_on("metro") or inside is None or inside.value is None:
+            return None
+        if self.now - inside.at > METRO_STALE:
+            return None
+        if inside.src == "doubtful":
+            # Последний экран забега незнакомый: продолжать только после нового распознанного.
+            self.reject("metro", {"resume": inside.value}, "metro_unknown_screen")
+            return None
+        battle = self.battle_time()
+        if battle is not None and inside.at < battle - METRO_KICK <= self.now:
+            return None
+        params = {**self.metro_params(battle), "resume": inside.value}
+        return self.act("metro", params, "metro_resume")
 
     # --- сон
 

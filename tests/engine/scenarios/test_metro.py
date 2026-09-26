@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from app.engine.events import Event
+from app.engine.memory import MemoryJournal
 from app.engine.parsing.metro import (
     MetroChest,
     MetroChestOpened,
@@ -23,6 +24,7 @@ from app.engine.scenarios.context import ScenarioContext
 from app.engine.scenarios.library import ScenarioResult, run_scenario
 from app.engine.scenarios.metro import metro
 from app.engine.state.model import CharacterState
+from app.engine.types import IncomingMessage
 from tests.engine.fakegame import GAME, World, running_world
 from tests.engine.metro.sim import hide_events, tree_maze
 from tests.engine.metro.simgame import RUN, SimGame, enter_with_real_frames
@@ -98,6 +100,20 @@ def ctx(
     world: World, stop_after: int | None = None, notes: Notes | None = None
 ) -> ScenarioContext:
     # Пауза после заданного числа отправок останавливает сценарий в безопасной точке.
+    journal = world.pipeline._journal
+    assert isinstance(journal, MemoryJournal)
+
+    async def history(chat_id: int, msg_id: int) -> list[IncomingMessage]:
+        return await journal.revisions(chat_id, msg_id)
+
+    async def reread(chat_id: int, msg_id: int) -> IncomingMessage | None:
+        # Как в рантайме: текущая версия из «Telegram» через конвейер, она же — текущая ревизия.
+        msg = await world.game.fetch(chat_id, msg_id)
+        if msg is not None:
+            await world.pipeline.process(msg)
+            world.pipeline.prime(msg)
+        return msg
+
     return ScenarioContext(
         world.gateway,
         game_chat_id=GAME,
@@ -105,6 +121,8 @@ def ctx(
         paused=lambda: stop_after is not None and len(world.game.sent) >= stop_after,
         timeout_s=0.3,
         notifier=notes,
+        history=history,
+        reread=reread,
     )
 
 
@@ -448,6 +466,94 @@ async def test_early_exit_before_kick(
     assert result.details["metro"]["leave_reason"] == "early_exit"
     if status == "stopped":
         assert result.reason == "unexpected_screen" and ("warn", "metro_halted") in notes.sent
+
+
+@certifies("metro")
+async def test_resume_after_restart_replays_journal(world: World) -> None:
+    """До рестарта забег дошёл до версии 165: правки уже в журнале. После рестарта сценарий
+    читает текущий экран из Telegram (он тот же), восстанавливает карту по журналу и продолжает
+    с того же места — сундук со стрелой, аптечки, тайник и граната, как в записи."""
+    for version in game_versions("metro", RUN)[: 165 + 1]:
+        await world.game.show(version)
+    assert world.state.metro_message is not None
+    assert world.state.metro_message.value == RUN
+    clicks = recorded(165, 260)
+    for data, versions in clicks:
+        world.game.on_click(data, edits=tuple(("metro", RUN, v) for v in versions))
+    expected = [data for data, _ in clicks]
+    context = ctx(world, stop_after=len(expected))
+    result = await run(world, context, resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads() == expected
+    assert result.details is not None
+    record = result.details["metro"]
+    # Карта и путь — продолжение записанного забега, а не новый обход с нуля.
+    assert record["path"][0] == [0, 0] and record["steps"] > 100
+    kinds = [e["kind"] for e in record["events"]]
+    assert kinds.count("metro_chest_opened") == 3 and "metro_loot" in kinds
+
+
+@certifies("metro")
+async def test_resume_does_not_repeat_move_that_reached_the_game(world: World) -> None:
+    """Клик хода ушёл до рестарта, игра персонажа сдвинула, а в журнал правка не попала: после
+    рестарта текущий экран из Telegram — уже новый кадр; ход не повторяется, решение — по нему."""
+    for version in game_versions("metro", RUN)[: 165 + 1]:
+        await world.game.show(version)
+    [(_, versions), *_] = recorded(165, 260)
+    assert versions == (166, 167)
+    world.game.now_shows(RUN, 167)
+    clicks = recorded(167, 201)
+    for data, versions in clicks:
+        world.game.on_click(data, edits=tuple(("metro", RUN, v) for v in versions))
+    expected = [data for data, _ in clicks]
+    result = await run(world, ctx(world, stop_after=len(expected)), resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads() == expected
+    # Свежий кадр — сундук на новой клетке (ход дошёл до игры): прошёл конвейер, состояние
+    # его учло; позицию после «Продолжить» нашло сопоставление окна по всей карте.
+    assert isinstance(EVENTS[RUN][167], MetroChest)
+    journal = world.pipeline._journal
+    assert isinstance(journal, MemoryJournal)
+    assert world.game.current[RUN] in [msg for msg, _ in journal.rows]
+    assert result.details is not None
+    kinds = [e["kind"] for e in result.details["metro"]["events"]]
+    assert "relocated" in kinds and "metro_chest_opened" in kinds
+
+
+@certifies("metro")
+async def test_resume_on_unknown_or_unreadable_screen_does_not_click(world: World) -> None:
+    for version in game_versions("metro", RUN)[: 165 + 1]:
+        await world.game.show(version)
+    world.game.now_shows_other(RUN, OTHER)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes), resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "resume_unknown_screen")
+    assert world.game.payloads() == [] and notes.sent == [("warn", "metro_halted")]
+    world.game.unreadable = True
+    result = await run(world, ctx(world, notes=notes), resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "resume_unreadable")
+    assert world.game.payloads() == []
+
+
+@certifies("metro")
+async def test_resume_on_early_exit_offer_declines(world: World) -> None:
+    """После рестарта на экране — диалог досрочного выхода (решение о нём потеряно): «Остаться»."""
+    for version in game_versions("metro", RUN2)[: 389 + 1]:
+        await world.game.show(version)
+    world.game.now_shows(RUN2, 390)
+    world.game.on_click("maze_exit_decline", edit=("metro", RUN2, 391))
+    result = await run(world, ctx(world, stop_after=1), resume=RUN2)
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads() == ["maze_exit_decline"]
+    # Карта восстановлена по журналу: выход уже известен.
+    assert result.details is not None and result.details["metro"]["exit"] == [14, -2]
+
+
+@certifies("metro")
+async def test_resume_without_history_stops(world: World) -> None:
+    result = await run(world, ctx(world), resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "resume_without_history")
+    assert world.game.payloads() == []
 
 
 @pytest.fixture

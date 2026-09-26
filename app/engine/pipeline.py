@@ -91,6 +91,10 @@ class Pipeline:
     def latest(self, chat_id: int, msg_id: int) -> IncomingMessage | None:
         return self._latest.get((chat_id, msg_id))
 
+    def prime(self, msg: IncomingMessage) -> None:
+        """Последняя ревизия из журнала после рестарта: по ней шлюз проверяет кнопки."""
+        self._remember(msg)
+
     async def submit(self, msg: IncomingMessage) -> None:
         await self._queue.put(msg)
 

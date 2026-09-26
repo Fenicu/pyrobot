@@ -107,15 +107,3 @@ class Grid:
             "cells": {f"{r},{c}": sym for (r, c), sym in sorted(self.cells.items())},
             "visited": [list(p) for p in sorted(self.visited)],
         }
-
-    @classmethod
-    def from_json(cls, data: dict[str, object]) -> Grid:
-        raw_cells = data.get("cells") or {}
-        raw_visited = data.get("visited") or []
-        assert isinstance(raw_cells, dict) and isinstance(raw_visited, list)
-        cells: dict[Pos, str] = {}
-        for key, sym in raw_cells.items():
-            r, c = (int(x) for x in str(key).split(","))
-            cells[(r, c)] = str(sym)
-        visited = {(int(p[0]), int(p[1])) for p in raw_visited}
-        return cls(cells, visited)

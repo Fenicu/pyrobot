@@ -58,10 +58,21 @@ def test_ambiguous_or_unknown_window_not_located() -> None:
     assert empty.locate(window_at(twins, (1, 2)), (7, 7)) == (7, 7)
 
 
-def test_grid_json_round_trip() -> None:
+def test_grid_json() -> None:
     grid = grid_of(["#E#", "#v.", "###"])
-    again = Grid.from_json(grid.to_json())
-    assert again == grid
+    data = grid.to_json()
+    assert data["cells"] == {
+        "0,0": "#",
+        "0,1": "E",
+        "0,2": "#",
+        "1,0": "#",
+        "1,1": ".",
+        "1,2": ".",
+        "2,0": "#",
+        "2,1": "#",
+        "2,2": "#",
+    }
+    assert data["visited"] == [[1, 1]]
 
 
 def test_steps_and_directions() -> None:

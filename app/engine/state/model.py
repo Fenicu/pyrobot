@@ -182,6 +182,8 @@ class CharacterState(_Frozen):
     tangerine_ready_at: Obs[datetime] | None = None
     tangerine_not_player: Obs[str] | None = None
     metro_ready_at: Obs[datetime] | None = None
+    # Сообщение идущего забега метро (None — вышел); момент — последний экран забега.
+    metro_message: Obs[int | None] | None = None
     activity_stats: dict[str, ActivityStat] = {}
     # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
     # правка итога не начисляет повторно (горизонт хранения — в редьюсере).
@@ -238,6 +240,7 @@ TIMERS = frozenset(
         "tangerine_ready_at",
         "tangerine_not_player",
         "metro_ready_at",
+        "metro_message",
     }
 )
 SLOW_MAX_AGE = timedelta(hours=6)

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from app.engine.types import IncomingMessage
 
 
 class FloodWait(Exception):
@@ -23,3 +26,7 @@ class Transport(Protocol):
     async def click(
         self, chat_id: int, message_id: int, data: str, timeout_s: float
     ) -> str | None: ...
+
+    async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
+        """Текущая версия сообщения из Telegram; None — сообщения нет."""
+        ...

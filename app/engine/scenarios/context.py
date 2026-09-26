@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import StrEnum
@@ -23,6 +23,10 @@ from app.engine.parsing.refusals import Busy, Refused
 from app.engine.types import IncomingMessage
 
 Predicate = Callable[[Delivery], Match | None]
+# Записанные правки сообщения игрового чата (журнал).
+History = Callable[[int, int], Awaitable[list[IncomingMessage]]]
+# Текущая версия сообщения, прочитанная из Telegram и пропущенная через конвейер.
+Reread = Callable[[int, int], Awaitable[IncomingMessage | None]]
 
 
 class Step(StrEnum):
@@ -102,6 +106,8 @@ class ScenarioContext:
         timeout_s: float = 20.0,
         clock: Clock | None = None,
         notifier: NotifierPort | None = None,
+        history: History | None = None,
+        reread: Reread | None = None,
     ) -> None:
         self._gateway = gateway
         self._game = game_chat_id
@@ -110,6 +116,8 @@ class ScenarioContext:
         self._timeout_s = timeout_s
         self.clock: Clock = clock or SystemClock()
         self._notifier = notifier
+        self._history = history
+        self._reread = reread
         self._lease: Lease | None = None
 
     @property
@@ -123,6 +131,18 @@ class ScenarioContext:
     def latest(self, message_id: int) -> IncomingMessage | None:
         """Последняя ревизия сообщения игрового чата из кэша конвейера."""
         return self._gateway.latest(self._game, message_id)
+
+    async def history(self, message_id: int) -> list[IncomingMessage]:
+        if self._history is None:
+            return []
+        return await self._history(self._game, message_id)
+
+    async def reread(self, message_id: int) -> IncomingMessage | None:
+        """Текущая версия сообщения игрового чата прямо из Telegram, уже прошедшая конвейер
+        (журнал, состояние, кэш ревизий); None — не прочитать."""
+        if self._reread is None:
+            return None
+        return await self._reread(self._game, message_id)
 
     @asynccontextmanager
     async def lease(self, owner: str) -> AsyncIterator[None]:

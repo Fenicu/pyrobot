@@ -25,6 +25,9 @@ class MemoryJournal:
     async def load_state(self) -> tuple[dict[str, Any], int]:
         return self.snapshot
 
+    async def revisions(self, chat_id: int, msg_id: int) -> list[IncomingMessage]:
+        return [m for m, _ in self.rows if (m.chat_id, m.msg_id) == (chat_id, msg_id)]
+
     async def append(
         self,
         msg: IncomingMessage,

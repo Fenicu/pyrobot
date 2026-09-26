@@ -298,3 +298,20 @@ async def test_latest_evicted_over_capacity() -> None:
     await pipe.process(make_msg("m2 edit", msg_id=2, kind="edit", revision=5))
     await pipe.process(make_msg("m4", msg_id=4))
     assert pipe.latest(GAME, 3) is None and pipe.latest(GAME, 2) is not None
+
+
+async def test_prime_restores_latest_after_restart() -> None:
+    pipe, seen, _ = _pipeline()
+    old = make_msg("карта", msg_id=7, kind="edit", revision=300)
+    pipe.prime(old)
+    assert pipe.latest(GAME, 7) == old and seen == []
+    pipe.prime(make_msg("старее", msg_id=7, kind="edit", revision=100))
+    assert pipe.latest(GAME, 7) == old
+
+
+async def test_memory_journal_revisions() -> None:
+    journal = MemoryJournal()
+    for msg in (make_msg("a", msg_id=3), make_msg("b", msg_id=3, kind="edit", revision=2)):
+        await journal.append(msg, [], None, 0)
+    await journal.append(make_msg("c", msg_id=4), [], None, 0)
+    assert [m.text for m in await journal.revisions(GAME, 3)] == ["a", "b"]

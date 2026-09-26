@@ -31,6 +31,7 @@ class _Planner(Obligations):
                 # Во сне игра позволяет только выбрать цель битвы.
                 return self.battle_target(busy) or self.wait()
         steps: tuple[Step, ...] = (
+            self.metro_resume,
             self.levelup,
             self.bulls,
             self.battle_target,
