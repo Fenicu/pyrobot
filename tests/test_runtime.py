@@ -1,11 +1,15 @@
+import asyncio
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 
 from app.config import AppConfig
 from app.db.base import Database
+from app.engine.supervisor import Supervisor
 from app.main import create_application
 from tests.conftest import TEST_DB_URL
+from tests.engine.helpers import until
 
 pytestmark = pytest.mark.db
 
@@ -50,3 +54,34 @@ async def test_second_runtime_does_not_start_engine(clean_db: Database) -> None:
         async with AsyncClient(transport=ASGITransport(app=second), base_url="http://t") as client:
             assert (await client.get("/healthz")).status_code == 200
             assert (await client.get("/readyz")).status_code == 503
+
+
+async def test_lock_lost_notifies_once_and_parks_watch(clean_db: Database) -> None:
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    # ускоряем lock-watch и супервизор, чтобы повторное срабатывание (если баг есть)
+    # проявилось за доли секунды, а не за реальные LOCK_CHECK_S=10с/backoff=60с
+    runtime.lock_check_s = 0.01
+    runtime.supervisor = Supervisor(runtime.notifier, base_s=0.01, max_s=0.02)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            r = await client.post(
+                "/api/v1/auth/login", json={"login": "admin", "password": "correct horse battery"}
+            )
+            h = {"X-CSRF-Token": r.json()["csrf_token"]}
+            st = await client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+            code = await client.post(
+                "/api/v1/tg/login/code",
+                headers=h,
+                json={"attempt_id": st.json()["attempt_id"], "code": "12345"},
+            )
+            assert code.json()["state"] == "online"
+            assert (await client.get("/readyz")).status_code == 200
+            assert runtime.lock._conn is not None
+            await runtime.lock._conn.invalidate()
+            await until(lambda: runtime.gateway.kill_reason == "lock_lost")
+            assert (await client.get("/readyz")).status_code == 503
+            await asyncio.sleep(0.2)
+            rows = await runtime.notifier.recent()
+            lock_lost = [row for row in rows if row.code == "lock_lost"]
+            assert len(lock_lost) == 1

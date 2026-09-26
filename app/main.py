@@ -44,6 +44,7 @@ class Runtime:
         self.auth = AuthRepo(self.db)
         self.container = Container(config=config, auth=self.auth, limiter=LoginRateLimiter())
         self.supervisor = Supervisor(self.notifier)
+        self.lock_check_s = LOCK_CHECK_S
         self.pipeline: Pipeline | None = None
         self.gateway: ActionGateway | None = None
         self.tg: TgAuthManager | None = None
@@ -137,15 +138,18 @@ class Runtime:
         return kurigram, kurigram
 
     async def _watch_lock(self) -> None:
-        while True:
-            await asyncio.sleep(LOCK_CHECK_S)
+        # После потери лока не выходим (Supervisor трактует выход как штатное
+        # завершение и перезапускает задачу) — паркуемся, чтобы kill/notify
+        # сработали ровно один раз, без ретриггера по backoff.
+        while self.lock.held:
+            await asyncio.sleep(self.lock_check_s)
             if not await self.lock.check():
                 if self.gateway is not None:
                     await self.gateway.kill("lock_lost")
                 await self.notifier.notify(
                     "error", "lock_lost", "single-instance lock lost; sending stopped"
                 )
-                return
+        await asyncio.Event().wait()
 
     async def stop(self) -> None:
         if self.gateway is not None:
