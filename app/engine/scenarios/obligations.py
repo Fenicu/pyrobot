@@ -100,9 +100,13 @@ async def tangerine(ctx: ScenarioContext, state: CharacterState, params: Params)
     # считаем только ответ про мандарины: чужой «занят» или отказ в это окно — не про /gt.
     errors = expect_events(refuse=(TangerineRefused,))
     step = await ctx.send(
-        "/gt", errors, chat_id=int(params["chat"]), reply_to=int(params["reply_to"])
+        "/gt",
+        errors,
+        chat_id=int(params["chat"]),
+        reply_to=int(params["reply_to"]),
+        silence_confirms=True,
     )
-    if step.step is Step.FAILED and step.reason == "timeout":
+    if step.step is Step.OK and step.reason == "silence":
         return ScenarioResult("done", "no_error")
     return finish(step)
 

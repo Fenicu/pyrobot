@@ -129,9 +129,16 @@ class ScenarioContext:
         *,
         chat_id: int | None = None,
         reply_to: int | None = None,
+        silence_confirms: bool = False,
     ) -> StepResult:
+        """`silence_confirms` — игра отвечает только на ошибку: тишина — `Step.OK "silence"`."""
         return await self._submit(
-            ActionKind.SEND, expect, text=text, chat_id=chat_id, reply_to=reply_to
+            ActionKind.SEND,
+            expect,
+            text=text,
+            chat_id=chat_id,
+            reply_to=reply_to,
+            silence_confirms=silence_confirms,
         )
 
     async def click(
@@ -152,6 +159,7 @@ class ScenarioContext:
         expect_revision: int | None = None,
         chat_id: int | None = None,
         reply_to: int | None = None,
+        silence_confirms: bool = False,
     ) -> StepResult:
         matched: list[Delivery] = []
 
@@ -174,7 +182,9 @@ class ScenarioContext:
                 expect_revision=expect_revision,
                 source=Source.SCENARIO,
                 # Ответы на шаги сценариев всегда приходят от игры, в её чат.
-                expect=Expectation(capture, self._timeout_s, chat_id=self._game),
+                expect=Expectation(
+                    capture, self._timeout_s, chat_id=self._game, silence_confirms=silence_confirms
+                ),
                 ttl_s=self._timeout_s * 3,
                 lease_token=self._lease.token if self._lease else None,
                 simulate=self.simulate,

@@ -528,6 +528,25 @@ async def test_uncertain_spending_blocks_and_notifies(rig: Rig) -> None:
     assert [o.action_id for o in await rig.store.unreconciled()] == [res.action_id]
 
 
+@pytest.mark.parametrize(
+    ("silence_confirms", "status", "blocked"),
+    [
+        (True, ActionStatus.CONFIRMED, None),
+        (False, ActionStatus.OUTCOME_UNKNOWN, RECONCILE_REASON),
+    ],
+)
+async def test_silence_confirms_only_when_expected(
+    rig: Rig, silence_confirms: bool, status: ActionStatus, blocked: str | None
+) -> None:
+    noted: list[int | None] = []
+    rig.gw.on_uncertain = lambda req, action_id: noted.append(action_id)
+    expect = Expectation(lambda d: None, 0.05, silence_confirms=silence_confirms)
+    res = await rig.gw.submit(send("/gt", expect=expect))
+    assert (res.status, res.reason) == (status, "silence" if silence_confirms else "timeout")
+    assert rig.gw.spending_blocked == blocked
+    assert len(noted) == len(await rig.store.unreconciled()) == (0 if silence_confirms else 1)
+
+
 async def test_uncertain_nav_does_not_block(rig: Rig) -> None:
     res = await rig.gw.submit(send("/inv", expect=Expectation(lambda d: None, 0.05)))
     assert res.status is ActionStatus.OUTCOME_UNKNOWN

@@ -129,6 +129,7 @@ async def test_tangerine_silence_means_sent(world: World) -> None:
     assert (result.status, result.reason) == ("done", "no_error")
     [sent] = world.game.sent
     assert (sent.payload, sent.chat_id, sent.reply_to) == ("/gt", TANGERINE_CHAT, REPLY_TO)
+    assert world.gateway.spending_blocked is None
 
 
 @certifies("tangerine")
@@ -137,6 +138,7 @@ async def test_tangerine_ignores_unrelated_refusal(world: World) -> None:
     params = {"chat": TANGERINE_CHAT, "reply_to": REPLY_TO}
     result = await run_scenario(tangerine, context(world), CharacterState(), params)
     assert (result.status, result.reason) == ("done", "no_error")
+    assert world.gateway.spending_blocked is None
 
 
 @certifies("tangerine")

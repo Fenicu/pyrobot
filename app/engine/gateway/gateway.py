@@ -559,6 +559,8 @@ class ActionGateway:
                     p, ActionStatus.OUTCOME_UNKNOWN, "antiflood", answer=answer
                 )
             if outcome is None:
+                if req.expect.silence_confirms:
+                    return await self._finish(p, ActionStatus.CONFIRMED, "silence", answer=answer)
                 return await self._finish(
                     p, ActionStatus.OUTCOME_UNKNOWN, "timeout", answer=answer
                 )

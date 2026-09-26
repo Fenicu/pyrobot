@@ -49,6 +49,8 @@ class Expectation:
     timeout_s: float | None = None
     # Чат ответа, если он другой: /gt уходит в чат Tangerine, ошибка приходит от игры.
     chat_id: int | None = None
+    # Игра отвечает только на ошибку: тишина до тайм-аута — подтверждение, а не неизвестный исход.
+    silence_confirms: bool = False
 
 
 @dataclass(frozen=True, slots=True)
