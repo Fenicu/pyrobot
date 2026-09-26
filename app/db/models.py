@@ -157,3 +157,33 @@ class NotificationRow(Base):
     code: Mapped[str] = mapped_column(String(64))
     text: Mapped[str] = mapped_column(Text)
     read: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class DecisionRow(Base):
+    __tablename__ = "decisions"
+    __table_args__ = (Index("ix_decisions_account_at", "account_id", "at"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    kind: Mapped[str] = mapped_column(String(8))
+    scenario: Mapped[str | None] = mapped_column(String(32))
+    params: Mapped[dict[str, Any]]
+    reason: Mapped[str] = mapped_column(String(200))
+    until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    candidates: Mapped[list[Any]]
+
+
+class ScenarioRunRow(Base):
+    __tablename__ = "scenario_runs"
+    __table_args__ = (Index("ix_scenario_runs_account_started", "account_id", "started_at"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    decision_id: Mapped[int | None] = mapped_column(
+        ForeignKey("decisions.id", ondelete="SET NULL")
+    )
+    scenario: Mapped[str] = mapped_column(String(32))
+    params: Mapped[dict[str, Any]]
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(12))
+    reason: Mapped[str] = mapped_column(String(200), default="")

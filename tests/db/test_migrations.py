@@ -39,6 +39,8 @@ async def test_upgrade_and_downgrade() -> None:
         "auth_sessions",
         "metrics",
         "unrecognized",
+        "decisions",
+        "scenario_runs",
     } <= await _tables()
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
     assert await _tables() <= {"alembic_version"}
