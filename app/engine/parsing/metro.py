@@ -13,7 +13,7 @@ from app.engine.types import IncomingMessage
 WALL, FLOOR, ME, EXIT, OTHER = "#", ".", "@", "E", "?"
 _CELLS = {"⬛": WALL, "⬜": FLOOR, "😎": ME, "🚪": EXIT}
 WINDOW = 5
-VS16 = "️"
+VS16 = "\ufe0f"
 DIRECTIONS = {"Вверх": "up", "Вниз": "down", "Влево": "left", "Вправо": "right"}
 # Вход стоит 2🔥 (экран входа); бафы экрана входа не показывают цену входа.
 ENTRY_COST = 2
