@@ -114,3 +114,18 @@ uv run alembic upgrade head
 уникальным `(account_id, idempotency_key)` для дедупликации повторных отправок и
 `mark_unfinished_unknown()` для восстановления после рестарта (незавершённые
 `INTENT`/`SENT` переводятся в `OUTCOME_UNKNOWN "restart"`).
+
+## API
+
+`app/api` (`create_api(container) -> FastAPI`) — HTTP API админки. Авторизация — сессионная cookie
+`pyrobot_session` (`Secure` в боевой конфигурации, `HttpOnly`, `SameSite=Strict`), срок жизни 30 дней
+со скольжением: если с последнего обращения прошли сутки, срок и сама cookie продлеваются заново при
+следующем запросе. Пароль хранится как argon2-хэш (`argon2-cffi`), хэширование и проверка выполняются
+в threadpool не более чем в 2 параллельных потока (`LoginRateLimiter.slots`). `POST
+/api/v1/auth/login` принимает `{login, password}` и в ответ отдаёт `{login, csrf_token}` вместе с
+cookie; мутирующие запросы (`POST /api/v1/auth/logout`, `POST /api/v1/auth/password`) требуют
+заголовок `X-CSRF-Token` с токеном текущей сессии, иначе 403. Попытки входа с одного IP
+сериализуются (`LoginRateLimiter.lock_for`) и ограничены экспоненциальным backoff: 5 бесплатных
+попыток, дальше — 429 с заголовком `Retry-After`, растущим от `base_s` до `max_s`. Смена пароля
+(`POST /api/v1/auth/password`, новый пароль не короче 12 символов) отзывает все сессии админа,
+включая текущую. `GET /healthz` — проверка живости, без авторизации.

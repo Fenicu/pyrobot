@@ -1,0 +1,96 @@
+import asyncio
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import update
+
+from app.api.app import create_api
+from app.api.container import Container
+from app.api.deps import COOKIE
+from app.db.base import Database
+from app.db.models import AuthSession
+from tests.api.conftest import PASSWORD, login, make_container
+
+pytestmark = pytest.mark.db
+
+
+async def test_login_me_logout(api_client: AsyncClient) -> None:
+    assert (await api_client.get("/api/v1/auth/me")).status_code == 401
+    csrf = await login(api_client)
+    me = await api_client.get("/api/v1/auth/me")
+    assert me.status_code == 200 and me.json() == {"login": "admin", "csrf_token": csrf}
+    assert (await api_client.post("/api/v1/auth/logout")).status_code == 403
+    resp = await api_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": csrf})
+    assert resp.status_code == 204
+    assert (await api_client.get("/api/v1/auth/me")).status_code == 401
+
+
+async def test_rate_limit_sequential_and_parallel(api_client: AsyncClient) -> None:
+    bad = {"login": "admin", "password": "x"}
+    results = await asyncio.gather(
+        *(api_client.post("/api/v1/auth/login", json=bad) for _ in range(8))
+    )
+    assert {r.status_code for r in results} <= {401, 429}
+    assert sum(r.status_code == 401 for r in results) == 6
+    r = await api_client.post("/api/v1/auth/login", json={"login": "admin", "password": PASSWORD})
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
+
+
+async def test_password_change_revokes_other_sessions(
+    container: Container, api_client: AsyncClient
+) -> None:
+    csrf = await login(api_client)
+    old_cookie = api_client.cookies[COOKIE]
+    short = await api_client.post(
+        "/api/v1/auth/password",
+        headers={"X-CSRF-Token": csrf},
+        json={"current": PASSWORD, "new": "short"},
+    )
+    assert short.status_code == 422
+    ok = await api_client.post(
+        "/api/v1/auth/password",
+        headers={"X-CSRF-Token": csrf},
+        json={"current": PASSWORD, "new": "a much longer password"},
+    )
+    assert ok.status_code == 204
+    app = create_api(container)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", cookies={COOKIE: old_cookie}
+    ) as stale:
+        assert (await stale.get("/api/v1/auth/me")).status_code == 401
+
+
+async def test_sliding_expiry_refreshes_cookie(
+    clean_db: Database, api_client: AsyncClient
+) -> None:
+    await login(api_client)
+    async with clean_db.sessions() as s, s.begin():
+        await s.execute(
+            update(AuthSession).values(
+                last_seen_at=datetime.now(UTC) - timedelta(days=2),
+                expires_at=datetime.now(UTC) + timedelta(days=1),
+            )
+        )
+    me = await api_client.get("/api/v1/auth/me")
+    assert me.status_code == 200
+    cookie = me.headers.get("set-cookie", "")
+    assert (
+        COOKIE in cookie and "httponly" in cookie.lower() and "samesite=strict" in cookie.lower()
+    )
+
+
+async def test_secure_cookie_over_https(clean_db: Database) -> None:
+    c = make_container(clean_db, secure=True)
+    await c.auth.ensure_admin("admin", PASSWORD)
+    app = create_api(c)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as client:
+        resp = await client.post(
+            "/api/v1/auth/login", json={"login": "admin", "password": PASSWORD}
+        )
+        assert "secure" in resp.headers["set-cookie"].lower()
+        assert (await client.get("/api/v1/auth/me")).status_code == 200
+
+
+async def test_healthz(api_client: AsyncClient) -> None:
+    assert (await api_client.get("/healthz")).json() == {"status": "ok"}
