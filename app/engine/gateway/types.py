@@ -46,7 +46,7 @@ Predicate = Callable[[Delivery], Match | None]
 @dataclass(frozen=True, slots=True)
 class Expectation:
     predicate: Predicate
-    timeout_s: float = 20.0
+    timeout_s: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
@@ -40,6 +40,8 @@ Boundary = Callable[[], int]
 Blocked = tuple[ActionStatus, str]
 DATE_SKEW = timedelta(seconds=2)
 MAX_FLOODWAIT_S = 300.0
+MAX_KEY_LEN = 100
+_NEXT_ERROR_PAUSE_S = 0.05
 
 
 @dataclass(eq=False)
@@ -97,6 +99,7 @@ class ActionGateway:
         self._inflight: _InFlight | None = None
         self._lease: Lease | None = None
         self._last_send = 0.0
+        self._paused_until = 0.0
         self._kill_reason: str | None = None
         self._spend_block: str | None = None
         self._keys: dict[str, asyncio.Future[ActionResult]] = {}
@@ -123,22 +126,27 @@ class ActionGateway:
         return self._spend_block
 
     async def submit(self, req: ActionRequest) -> ActionResult:
-        if self._closed:
-            return ActionResult(ActionStatus.SUPPRESSED, reason="shutdown")
         key = req.idempotency_key
+        if key is not None and len(key) > MAX_KEY_LEN:
+            return ActionResult(ActionStatus.REJECTED, reason="bad_key")
         if key is not None:
-            shared = self._keys.get(key)
+            shared = self._live_shared(key)
             if shared is None:
-                known = await self._store.get_by_key(key)
+                try:
+                    known = await self._store.get_by_key(key)
+                except Exception:
+                    log.exception("idempotency lookup failed for key %s", key)
+                    known = None
                 if known is not None:
                     return known.to_result()
-                shared = self._keys.get(key)
+                shared = self._live_shared(key)
             if shared is not None:
                 return await asyncio.shield(shared)
         eng = self._settings.current.engine
+        cls = command_class(req)
         pending = _Pending(
             req=req,
-            cls=command_class(req),
+            cls=cls,
             seq=next(self._seq),
             enqueued=time.monotonic(),
             ttl=req.ttl_s if req.ttl_s is not None else eng.action_ttl_s,
@@ -147,18 +155,31 @@ class ActionGateway:
         if key is not None:
             self._keys[key] = pending.future
 
-            def forget(_: asyncio.Future[ActionResult]) -> None:
-                self._keys.pop(key, None)
+            def forget(fut: asyncio.Future[ActionResult]) -> None:
+                if self._keys.get(key) is fut:
+                    self._keys.pop(key, None)
 
             pending.future.add_done_callback(forget)
+        blocked = self._static_checks(req, cls)
+        if blocked is not None:
+            result = await self._record(pending, *blocked)
+            self._resolve(pending, result)
+            return result
         async with self._cond:
             self._queue.append(pending)
             self._cond.notify_all()
         try:
             return await asyncio.shield(pending.future)
         except asyncio.CancelledError:
-            await self._withdraw(pending)
+            if req.idempotency_key is None:
+                await self._withdraw(pending)
             raise
+
+    def _live_shared(self, key: str) -> asyncio.Future[ActionResult] | None:
+        # done_callback снимает ключ через call_soon — без .done() можно поймать
+        # уже отработавший future раньше, чем сработает его собственная очистка.
+        shared = self._keys.get(key)
+        return shared if shared is not None and not shared.done() else None
 
     async def acquire_lease(self, owner: str) -> Lease:
         async with self._cond:
@@ -199,8 +220,12 @@ class ActionGateway:
     async def cancel_queued(self, reason: str) -> int:
         async with self._cond:
             dropped, self._queue = self._queue, []
-        for p in dropped:
-            self._resolve(p, await self._record(p, ActionStatus.SUPPRESSED, reason))
+        try:
+            for p in dropped:
+                self._resolve(p, await self._record(p, ActionStatus.SUPPRESSED, reason))
+        finally:
+            for p in dropped:
+                self._resolve(p, ActionResult(ActionStatus.SUPPRESSED, reason=reason))
         return len(dropped)
 
     async def shutdown(self) -> None:
@@ -226,7 +251,14 @@ class ActionGateway:
 
     async def run(self) -> None:
         while True:
-            pending = await self._next()
+            try:
+                pending = await self._next()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("gateway failed to pick next action")
+                await asyncio.sleep(_NEXT_ERROR_PAUSE_S)
+                continue
             try:
                 result = await self._execute(pending)
             except asyncio.CancelledError:
@@ -239,9 +271,10 @@ class ActionGateway:
                 result = ActionResult(ActionStatus.OUTCOME_UNKNOWN, reason="internal_error")
             self._resolve(pending, result)
 
-    def _blocked(self, p: _Pending) -> Blocked | None:
-        req, cls = p.req, p.cls
+    def _static_checks(self, req: ActionRequest, cls: CommandClass) -> Blocked | None:
         eng = self._settings.current.engine
+        if self._closed:
+            return ActionStatus.SUPPRESSED, "shutdown"
         if cls in (CommandClass.FORBIDDEN, CommandClass.DONATE):
             return ActionStatus.REJECTED, cls.value
         if cls is CommandClass.RISKY and not (req.source is Source.MANUAL and req.risky_confirmed):
@@ -254,15 +287,25 @@ class ActionGateway:
             return ActionStatus.SUPPRESSED, "dry_run"
         if self._spend_block is not None and cls is not CommandClass.NAV:
             return ActionStatus.REJECTED, f"blocked:{self._spend_block}"
-        if time.monotonic() - p.enqueued >= p.ttl:
-            return ActionStatus.REJECTED, "expired"
-        if req.kind is ActionKind.CLICK:
-            latest = self._latest(req.chat_id, req.message_id or 0)
-            if latest is None or req.data is None or latest.button(req.data) is None:
-                return ActionStatus.REJECTED, "stale_button"
-            if req.expect_revision is not None and latest.revision != req.expect_revision:
-                return ActionStatus.REJECTED, "stale_revision"
         return None
+
+    def _check(self, p: _Pending) -> Blocked | None:
+        try:
+            blocked = self._static_checks(p.req, p.cls)
+            if blocked is not None:
+                return blocked
+            if time.monotonic() - p.enqueued >= p.ttl:
+                return ActionStatus.REJECTED, "expired"
+            if p.req.kind is ActionKind.CLICK:
+                latest = self._latest(p.req.chat_id, p.req.message_id or 0)
+                if latest is None or p.req.data is None or latest.button(p.req.data) is None:
+                    return ActionStatus.REJECTED, "stale_button"
+                if p.req.expect_revision is not None and latest.revision != p.req.expect_revision:
+                    return ActionStatus.REJECTED, "stale_revision"
+            return None
+        except Exception as exc:
+            log.exception("action check failed")
+            return ActionStatus.REJECTED, f"check_failed:{type(exc).__name__}"
 
     def _eligible(self, p: _Pending) -> bool:
         lease = self._lease
@@ -279,7 +322,7 @@ class ActionGateway:
     async def _next(self) -> _Pending:
         while True:
             async with self._cond:
-                terminal = [(p, b) for p in self._queue if (b := self._blocked(p)) is not None]
+                terminal = [(p, b) for p in self._queue if (b := self._check(p)) is not None]
                 for p, _ in terminal:
                     self._queue.remove(p)
                 if not terminal:
@@ -293,8 +336,12 @@ class ActionGateway:
                     except TimeoutError:
                         pass
                     continue
-            for p, (status, reason) in terminal:
-                self._resolve(p, await self._record(p, status, reason))
+            try:
+                for p, (status, reason) in terminal:
+                    self._resolve(p, await self._record(p, status, reason))
+            finally:
+                for p, (status, reason) in terminal:
+                    self._resolve(p, ActionResult(status, reason=reason))
 
     async def _withdraw(self, pending: _Pending) -> None:
         async with self._cond:
@@ -310,7 +357,7 @@ class ActionGateway:
             p.future.set_result(result)
 
     async def _execute(self, p: _Pending) -> ActionResult:
-        blocked = self._blocked(p)
+        blocked = self._check(p)
         if blocked is not None:
             return await self._record(p, *blocked)
         action_id: int | None
@@ -326,8 +373,11 @@ class ActionGateway:
         return await self._attempts(p, action_id)
 
     async def _record(self, p: _Pending, status: ActionStatus, reason: str) -> ActionResult:
+        # Действие не дошло до INTENT — ключ идемпотентности не расходуется,
+        # чтобы тем же ключом можно было повторить попытку (например, после dry_run).
+        req_for_store = replace(p.req, idempotency_key=None)
         try:
-            action_id: int | None = await self._store.create(p.req, p.cls, status, reason)
+            action_id: int | None = await self._store.create(req_for_store, p.cls, status, reason)
         except DuplicateKey as dup:
             return dup.existing.to_result()
         except Exception:
@@ -338,10 +388,11 @@ class ActionGateway:
     async def _attempts(self, p: _Pending, action_id: int | None) -> ActionResult:
         req = p.req
         attempts = 0
+        antiflood_tries = 0
         while True:
             attempts += 1
             await self._pace()
-            blocked = self._blocked(p)
+            blocked = self._check(p)
             if blocked is not None:
                 return await self._finish(action_id, *blocked)
             eng = self._settings.current.engine
@@ -357,13 +408,13 @@ class ActionGateway:
                 try:
                     answer = await self._transmit(req, eng.click_answer_timeout_s)
                 except FloodWait as fw:
+                    self._paused_until = max(self._paused_until, time.monotonic() + fw.seconds)
                     left = p.ttl - (time.monotonic() - p.enqueued)
                     if fw.seconds > MAX_FLOODWAIT_S or fw.seconds >= left:
                         return await self._finish(
                             action_id, ActionStatus.REFUSED, f"flood_wait:{fw.seconds:.0f}"
                         )
                     self._inflight = None
-                    await asyncio.sleep(fw.seconds)
                     continue
                 except TransportAuthLost:
                     return await self._finish(action_id, ActionStatus.REFUSED, "auth_lost")
@@ -378,12 +429,21 @@ class ActionGateway:
                     return await self._finish(
                         action_id, ActionStatus.CONFIRMED, "sent", answer=answer
                     )
-                outcome = await self._await_outcome(inflight, req.expect.timeout_s)
+                timeout_s = (
+                    req.expect.timeout_s
+                    if req.expect.timeout_s is not None
+                    else eng.default_expect_timeout_s
+                )
+                outcome = await self._await_outcome(inflight, timeout_s)
             finally:
                 self._inflight = None
             if outcome == "antiflood":
-                if attempts <= eng.antiflood_retry_max and time.monotonic() - p.enqueued < p.ttl:
-                    await asyncio.sleep(eng.antiflood_pause_s)
+                antiflood_tries += 1
+                within_ttl = time.monotonic() - p.enqueued < p.ttl
+                if antiflood_tries <= eng.antiflood_retry_max and within_ttl:
+                    self._paused_until = max(
+                        self._paused_until, time.monotonic() + eng.antiflood_pause_s
+                    )
                     continue
                 return await self._finish(
                     action_id, ActionStatus.OUTCOME_UNKNOWN, "antiflood", answer=answer
@@ -428,7 +488,8 @@ class ActionGateway:
 
     async def _pace(self) -> None:
         interval = self._settings.current.engine.min_request_interval_s
-        wait = self._last_send + interval - time.monotonic()
+        target = max(self._last_send + interval, self._paused_until)
+        wait = target - time.monotonic()
         if wait > 0:
             await asyncio.sleep(wait)
         self._last_send = time.monotonic()
