@@ -82,7 +82,7 @@ def test_current_run_message_tracked_until_exit() -> None:
     state = _version(reducer, _before_metro(reducer), 0, 2)
     assert value(state, "metro_message") is None
     state = _version(reducer, state, 1, 3)
-    assert value(state, "metro_message") == 3624441
+    assert value(state, "metro_message")["message_id"] == 3624441
     state = _version(reducer, state, 48, 5)
     assert state["metro_message"]["at"] == "2026-09-26T09:05:00Z"
     state = _version(reducer, state, 532, 20)
@@ -95,6 +95,27 @@ def test_unknown_run_screen_blocks_resume_until_known_one() -> None:
     unknown = replace(RUN[5], text="🔋88%\nчто-то новое", date=at(5), created_at=at(2))
     state = reducer.apply(state, unknown, PARSER.parse(unknown))
     assert state["metro_message"]["src"] == "doubtful"
-    assert value(state, "metro_message") == 3624441
+    assert value(state, "metro_message")["message_id"] == 3624441
     state = _version(reducer, state, 7, 6)
     assert state["metro_message"]["src"] == "screen"
+
+
+def test_run_keeps_battle_known_at_its_start() -> None:
+    # Выброс считается по битве, известной на входе: свежий профиль после неё показывает уже
+    # следующую битву, а забег её не пережидает.
+    reducer = StateReducer()
+    state = _version(reducer, _before_metro(reducer), 1, 3)
+    entered_with = state["battle_at"]
+    assert value(state, "metro_message") == {"message_id": 3624441, "battle_at": entered_with}
+    state = feed(reducer, state, "profile", 3624478, 30)
+    assert state["battle_at"] != entered_with
+    state = _version(reducer, state, 48, 31)
+    assert value(state, "metro_message")["battle_at"] == entered_with
+    state = _version(reducer, state, 532, 40)
+    assert value(state, "metro_message") is None
+    again = replace(RUN[1], msg_id=3700000, date=at(50), created_at=at(50))
+    state = reducer.apply(state, again, PARSER.parse(again))
+    assert value(state, "metro_message") == {
+        "message_id": 3700000,
+        "battle_at": state["battle_at"],
+    }

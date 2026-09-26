@@ -476,7 +476,8 @@ async def test_resume_after_restart_replays_journal(world: World) -> None:
     for version in game_versions("metro", RUN)[: 165 + 1]:
         await world.game.show(version)
     assert world.state.metro_message is not None
-    assert world.state.metro_message.value == RUN
+    assert world.state.metro_message.value is not None
+    assert world.state.metro_message.value.message_id == RUN
     clicks = recorded(165, 260)
     for data, versions in clicks:
         world.game.on_click(data, edits=tuple(("metro", RUN, v) for v in versions))

@@ -82,6 +82,7 @@ from app.engine.state.model import (
     CharacterState,
     FoodStockState,
     GorbushkaState,
+    MetroRunRef,
     Obs,
     PriceState,
     RefusalState,
@@ -743,9 +744,9 @@ def _metro_entrance(p: _Patch, e: MetroEntrance) -> None:
 @_on(Unrecognized)
 def _unrecognized(p: _Patch, e: Unrecognized) -> None:
     # Незнакомый экран забега: автопродолжение ждёт нового распознанного экрана (или человека).
-    inside: Obs[int | None] | None = p.get("metro_message")
-    if inside is not None and inside.value == p.msg_id:
-        p.snap("metro_message", p.msg_id, src="doubtful")
+    inside: Obs[MetroRunRef | None] | None = p.get("metro_message")
+    if inside is not None and inside.value is not None and inside.value.message_id == p.msg_id:
+        p.snap("metro_message", inside.value, src="doubtful")
 
 
 @_on(MetroEntered)
@@ -755,7 +756,11 @@ def _metro_entered(p: _Patch, e: MetroEntered) -> None:
 
 def _inside(p: _Patch) -> None:
     # Персонаж в метро: какое сообщение — экран забега (для продолжения после рестарта).
-    p.snap("metro_message", p.msg_id)
+    inside: Obs[MetroRunRef | None] | None = p.get("metro_message")
+    run = inside.value if inside is not None else None
+    if run is None or run.message_id != p.msg_id:
+        run = MetroRunRef(message_id=p.msg_id, battle_at=p.get("battle_at"))
+    p.snap("metro_message", run)
 
 
 def _metro_screen(p: _Patch, e: Event) -> None:

@@ -7,6 +7,7 @@ from typing import Any
 
 from app.engine.gametime import MSK, to_msk
 from app.engine.market import pick_stock
+from app.engine.metro.budget import GAME_KICK
 from app.engine.parsing.smoothie import recipe_need
 from app.engine.planner.base import (
     BATTLE_AFTER,
@@ -16,7 +17,7 @@ from app.engine.planner.base import (
     battle_hour,
 )
 from app.engine.planner.types import Decision
-from app.engine.state.model import BusyState, StockLimits
+from app.engine.state.model import BusyState, MetroRunRef, StockLimits
 
 # Деньги на отель дела не тратят за столько до начала сна.
 HOTEL_RESERVE_AHEAD = timedelta(hours=3)
@@ -38,9 +39,8 @@ METRO_COOLDOWN = timedelta(hours=16)
 METRO_RESERVE_AHEAD = timedelta(hours=1)
 METRO_SAFETY = 1.5
 # Забег, прерванный рестартом, продолжается, если последний его экран свежий и игра ещё не
-# выкинула персонажа (за 15 минут до битвы).
+# выкинула персонажа.
 METRO_STALE = timedelta(hours=2)
-METRO_KICK = timedelta(minutes=15)
 
 
 def p90(values: Sequence[float]) -> float:
@@ -299,8 +299,23 @@ class Obligations(PlannerBase):
             return 0
         return METRO_COST
 
+    def metro_inside(self) -> tuple[MetroRunRef, datetime] | None:
+        """Забег, в котором персонаж ещё может быть, и его битва (известная на входе, к началу
+        часа): игра выкидывает из метро за 15 минут до неё."""
+        inside = self.s.metro_message
+        if inside is None or inside.value is None or inside.value.battle_at is None:
+            return None
+        known = inside.value.battle_at
+        battle = battle_hour(known.value, known.at)
+        return (inside.value, battle) if self.now < battle - GAME_KICK else None
+
     def metro(self, busy: BusyState | None) -> Decision | None:
         if not self.feature_on("metro"):
+            return None
+        if (inside := self.metro_inside()) is not None:
+            # Нового входа нет, пока персонаж в метро: забег продолжается или ждёт выброса.
+            self.reject("metro", {}, "in_metro")
+            self.wake(inside[1] - GAME_KICK, "metro_kick")
             return None
         if (ready := self.metro_ready()) is not None:
             self.wake(ready, "metro_ready")
@@ -333,10 +348,10 @@ class Obligations(PlannerBase):
             return None
         return self.act("metro", self.metro_params(battle), "metro_ready")
 
-    def metro_params(self, battle: datetime | None) -> dict[str, Any]:
+    def metro_params(self, battle: datetime) -> dict[str, Any]:
         cfg = self.cfg.metro
         return {
-            "battle_at": battle.isoformat() if battle is not None else None,
+            "battle_at": battle.isoformat(),
             "margin_min": cfg.battle_margin_min + cfg.extra_margin_min,
             "buffs": list(cfg.buffs),
             "heal_at": cfg.heal_at,
@@ -349,19 +364,17 @@ class Obligations(PlannerBase):
 
     def metro_resume(self, busy: BusyState | None) -> Decision | None:
         """Персонаж остался в метро (рестарт, остановка сценария): продолжить забег сразу."""
-        inside = self.s.metro_message
-        if not self.feature_on("metro") or inside is None or inside.value is None:
+        seen = self.s.metro_message
+        if not self.feature_on("metro") or seen is None:
             return None
-        if self.now - inside.at > METRO_STALE:
+        if (inside := self.metro_inside()) is None or self.now - seen.at > METRO_STALE:
             return None
-        if inside.src == "doubtful":
+        run, battle = inside
+        if seen.src == "doubtful":
             # Последний экран забега незнакомый: продолжать только после нового распознанного.
-            self.reject("metro", {"resume": inside.value}, "metro_unknown_screen")
+            self.reject("metro", {"resume": run.message_id}, "metro_unknown_screen")
             return None
-        battle = self.battle_time()
-        if battle is not None and inside.at < battle - METRO_KICK <= self.now:
-            return None
-        params = {**self.metro_params(battle), "resume": inside.value}
+        params = {**self.metro_params(battle), "resume": run.message_id}
         return self.act("metro", params, "metro_resume")
 
     # --- сон

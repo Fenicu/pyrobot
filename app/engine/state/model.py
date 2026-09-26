@@ -95,6 +95,14 @@ class SmoothieRecipeState(_Frozen):
     bonus: str
 
 
+class MetroRunRef(_Frozen):
+    """Идущий забег метро: его сообщение и наблюдение времени битвы на входе — игра выкинет
+    персонажа за 15 минут до этой битвы, а не до той, что покажет профиль после неё."""
+
+    message_id: int
+    battle_at: Obs[datetime] | None = None
+
+
 class ActivityStat(_Frozen):
     """Скользящее среднее наград одного дела (без его цены)."""
 
@@ -182,8 +190,8 @@ class CharacterState(_Frozen):
     tangerine_ready_at: Obs[datetime] | None = None
     tangerine_not_player: Obs[str] | None = None
     metro_ready_at: Obs[datetime] | None = None
-    # Сообщение идущего забега метро (None — вышел); момент — последний экран забега.
-    metro_message: Obs[int | None] | None = None
+    # Идущий забег метро (None — вышел); момент — последний экран забега.
+    metro_message: Obs[MetroRunRef | None] | None = None
     activity_stats: dict[str, ActivityStat] = {}
     # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
     # правка итога не начисляет повторно (горизонт хранения — в редьюсере).

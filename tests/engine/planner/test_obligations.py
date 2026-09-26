@@ -14,6 +14,7 @@ from app.engine.state.model import (
     CharacterState,
     FoodStockState,
     GorbushkaState,
+    MetroRunRef,
     Obs,
     SmoothieRecipeState,
     StockLimits,
@@ -670,8 +671,20 @@ def test_deeds_keep_motivation_for_metro_ready_soon() -> None:
     assert act(decide(soon, only(), NOON))[0].startswith("deed:")
 
 
+def run_in(
+    seen: datetime, battle: Obs[datetime] | None = None, src: str = "screen"
+) -> Obs[MetroRunRef]:
+    """Идущий забег: последний экран в `seen`, битва — наблюдение на момент входа."""
+    known = battle or Obs(value=BATTLE_EVENING, at=seen)
+    return Obs(value=MetroRunRef(message_id=3624441, battle_at=known), at=seen, src=src)
+
+
+def candidates(decision: Decision) -> list[tuple[str, str]]:
+    return [(c.scenario, c.verdict) for c in decision.candidates]
+
+
 def test_metro_resumed_after_restart_regardless_of_cooldown() -> None:
-    inside = Obs(value=3624441, at=NOON - timedelta(minutes=3))
+    inside = run_in(NOON - timedelta(minutes=3))
     s = metro_state(
         NOON, metro_message=inside, metro_ready_at=NOON + timedelta(hours=16), motivation=0
     )
@@ -689,7 +702,8 @@ def test_metro_resumed_after_restart_regardless_of_cooldown() -> None:
     ],
 )
 def test_metro_not_resumed(seen_min_ago: int, battle: datetime, flags: dict[str, bool]) -> None:
-    inside = Obs(value=3624441, at=NOON - timedelta(minutes=seen_min_ago))
+    seen = NOON - timedelta(minutes=seen_min_ago)
+    inside = run_in(seen, Obs(value=battle, at=seen))
     s = metro_state(NOON, metro_message=inside, battle_at=battle, metro_ready_at=NOON + DAY)
     cfg = METRO_ALONE.model_copy(
         update={"features": METRO_ALONE.features.model_copy(update=flags)}
@@ -702,7 +716,7 @@ def test_metro_resume_counts_kick_from_start_of_battle_hour() -> None:
     # Профиль в 12:00: «Битва через 1 ч 58 мин» — битва в 14:00, игра выкинет в 13:45.
     battle = Obs(value=NOON + timedelta(minutes=118, seconds=30), at=NOON)
     now = msk(13, 44)
-    inside = Obs(value=3624441, at=now - timedelta(minutes=2))
+    inside = run_in(now - timedelta(minutes=2), battle)
     s = metro_state(now, metro_message=inside, battle_at=battle, metro_ready_at=now + DAY)
     decision = decide(s, METRO_ALONE, now)
     assert act(decision) == (
@@ -714,12 +728,63 @@ def test_metro_resume_counts_kick_from_start_of_battle_hour() -> None:
     assert isinstance(decide(gone, METRO_ALONE, later), Wait)
 
 
+def test_resume_counts_kick_from_battle_of_its_own_run() -> None:
+    # Пауза в 12:40 (битва 13:00, игра выкинула в 12:45); в 13:10 профиль уже показывает
+    # следующую битву — забег, из которого игра выкинула, не продолжается.
+    entered = Obs(value=msk(13), at=msk(12, 20))
+    inside = run_in(msk(12, 40), entered)
+    ready = Obs(value=msk(12, 20), at=msk(12, 20))
+    now = msk(13, 10)
+    s = metro_state(
+        now,
+        metro_message=inside,
+        battle_at=Obs(value=msk(16), at=msk(13, 5)),
+        metro_ready_at=ready,
+    )
+    decision = decide(s, METRO_ALONE, now, last_done={"metro": now - timedelta(hours=20)})
+    assert not isinstance(decision, Act) or "resume" not in decision.params
+    # До выброса параметры продолжения — битва забега, а не последняя увиденная.
+    early = msk(12, 44)
+    s = metro_state(
+        early,
+        metro_message=inside,
+        battle_at=Obs(value=msk(16), at=msk(12, 43)),
+        metro_ready_at=ready,
+    )
+    assert act(decide(s, METRO_ALONE, early)) == (
+        "metro",
+        {**METRO_PARAMS, "battle_at": msk(13).isoformat(), "resume": 3624441},
+    )
+
+
+def test_no_new_entrance_while_inside_until_kick() -> None:
+    # Забег начат в 09:00, последний экран 09:40, процесс лежал до 12:00: продолжать поздно,
+    # но персонаж в метро до выброса (21:45) — нового входа нет, ожидание выброса.
+    entered = NOON - timedelta(hours=3)
+    ready = Obs(value=entered, at=entered)
+    stale = run_in(NOON - timedelta(minutes=140))
+    s = metro_state(NOON, metro_message=stale, metro_ready_at=ready)
+    decision = decide(s, METRO_ALONE, NOON, last_done={"metro": NOON - timedelta(hours=20)})
+    assert isinstance(decision, Wait)
+    assert (decision.until, decision.reason) == (msk(21, 45) + TIMER_MARGIN, "metro_kick")
+    assert ("metro", "in_metro") in candidates(decision)
+    doubtful = run_in(NOON - timedelta(minutes=3), src="doubtful")
+    s = metro_state(NOON, metro_message=doubtful, metro_ready_at=ready)
+    decision = decide(s, METRO_ALONE, NOON, last_done={"metro": NOON - timedelta(hours=20)})
+    assert isinstance(decision, Wait)
+    assert ("metro", "metro_unknown_screen") in candidates(decision)
+    assert ("metro", "in_metro") in candidates(decision)
+    after = msk(21, 50)
+    s = metro_state(after, metro_message=stale, metro_ready_at=ready)
+    assert ("metro", "in_metro") not in candidates(decide(s, METRO_ALONE, after))
+
+
 def test_unknown_last_run_screen_blocks_resume() -> None:
-    inside = Obs(value=3624441, at=NOON - timedelta(minutes=3), src="doubtful")
+    inside = run_in(NOON - timedelta(minutes=3), src="doubtful")
     s = metro_state(NOON, metro_message=inside, metro_ready_at=NOON + DAY)
     decision = decide(s, METRO_ALONE, NOON)
     assert isinstance(decision, Wait)
-    assert verdicts(decision)["metro"] == "metro_unknown_screen"
+    assert ("metro", "metro_unknown_screen") in candidates(decision)
 
 
 def test_left_metro_is_not_resumed() -> None:
