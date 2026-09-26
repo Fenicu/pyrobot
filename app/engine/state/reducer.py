@@ -16,7 +16,9 @@ from app.engine.parsing.activities import (
     WorkshopScreen,
 )
 from app.engine.parsing.battle import BattleTargetSet
+from app.engine.parsing.bulls import BullsJoined, BullsRefused, BullsResult
 from app.engine.parsing.common import Rewards
+from app.engine.parsing.crew import CrewScreen, FactoryScreen, FactorySignup
 from app.engine.parsing.food import FastfoodEaten, FoodMenu
 from app.engine.parsing.gorbushka import GorbushkaFight, GorbushkaScreen
 from app.engine.parsing.items import (
@@ -30,7 +32,19 @@ from app.engine.parsing.items import (
 from app.engine.parsing.levelup import LevelUpStep
 from app.engine.parsing.profile import ProfileCompact
 from app.engine.parsing.refusals import Busy, Refused
+from app.engine.parsing.screens import (
+    BattleMenu,
+    DeedFinishedInstantly,
+    EtherScreen,
+    LotterySkillsExpired,
+    LotteryWin,
+    ResourcesChanged,
+)
 from app.engine.parsing.sleep import FellAsleep, RobberyFight, SleepMenu, SleepWarning, WokeUp
+from app.engine.parsing.smoothie import SmoothieCooked, SmoothieRecipe, SmoothieScreen
+from app.engine.parsing.stocks import Dividends, StockBought, StockScreen
+from app.engine.parsing.swinfo import BattleSummary, FactoryCall, FactoryResult
+from app.engine.parsing.tangerine import TangerineRefused
 from app.engine.state.model import (
     DEED_PRIORS,
     DEFAULT_PRICES,
@@ -43,7 +57,9 @@ from app.engine.state.model import (
     PriceState,
     RefusalState,
     Skills,
+    SmoothieRecipeState,
     Src,
+    StockLimits,
     TeamTask,
     Upgrades,
     dump_state,
@@ -57,6 +73,8 @@ AWAKE_LIMIT = timedelta(hours=72)
 SLEEP_COOLDOWN = timedelta(hours=12)
 FASTFOOD_COOLDOWN = timedelta(minutes=30)
 GORBUSHKA_FIGHT_GAP = timedelta(hours=1)
+# Бой с биржевиками: итог приходит через ~5 мин после присоединения (медиана 292 с).
+BULLS_FIGHT = timedelta(minutes=5)
 METRIC_FIELDS = (
     "level",
     "exp",
@@ -495,6 +513,15 @@ def _gorbushka_fight(p: _Patch, e: GorbushkaFight) -> None:
     )
 
 
+def _add_skills(p: _Patch, changes: dict[str, int]) -> None:
+    def apply(skills: Skills) -> Skills:
+        update = {name: getattr(skills, name) + n for name, n in changes.items()}
+        return skills.model_copy(update=update)
+
+    if changes:
+        p.change("skills", apply)
+
+
 @_on(LevelUpStep)
 def _levelup(p: _Patch, e: LevelUpStep) -> None:
     if e.step == "menu":
@@ -503,9 +530,167 @@ def _levelup(p: _Patch, e: LevelUpStep) -> None:
         p.snap("levelup_pending", False)
         p.delta("money", e.money)
         p.delta("motivation", e.motivation)
-    skill = e.skill
-    if skill is not None and skill in Skills.model_fields:
-        p.change("skills", lambda s: s.model_copy(update={skill: getattr(s, skill) + 1}))
+    if e.skill is not None and e.skill in Skills.model_fields:
+        _add_skills(p, {e.skill: 1})
+
+
+@_on(BattleMenu)
+def _battle_menu(p: _Patch, e: BattleMenu) -> None:
+    p.snap("battle_at", p.later(e.battle_in_s))
+
+
+@_on(CrewScreen)
+def _crew(p: _Patch, e: CrewScreen) -> None:
+    p.snap("team_tag", e.tag)
+    p.snap("factory_wins", e.factory_wins)
+
+
+@_on(FactoryResult)
+def _factory_result(p: _Patch, e: FactoryResult) -> None:
+    # Победа своей команды — следующую битву за фабрику команда пропускает.
+    tag: Obs[str] | None = p.get("team_tag")
+    if tag is not None and e.winner == tag.value:
+        p.snap("factory_won_at", p.at)
+
+
+@_on(FactoryScreen)
+def _factory_screen(p: _Patch, e: FactoryScreen) -> None:
+    if e.status in ("signed", "not_signed"):
+        p.snap("factory_signed", e.status == "signed")
+
+
+@_on(FactorySignup)
+def _factory_signup(p: _Patch, e: FactorySignup) -> None:
+    if e.result == "skip":
+        p.snap("factory_skip", True)
+    else:
+        p.snap("factory_signed", True)
+
+
+@_on(FactoryCall)
+def _factory_call(p: _Patch, e: FactoryCall) -> None:
+    p.snap("factory_call_at", p.at)
+
+
+@_on(BullsJoined)
+def _bulls_joined(p: _Patch, e: BullsJoined) -> None:
+    p.snap("busy", BusyState(activity="bulls", until=p.at + BULLS_FIGHT), src="derived")
+
+
+@_on(BullsResult)
+def _bulls_result(p: _Patch, e: BullsResult) -> None:
+    p.snap("busy", None)
+    p.rewards(e.rewards)
+    if e.won:
+        p.snap("bulls_won_at", p.at)
+
+
+@_on(BullsRefused)
+def _bulls_refused(p: _Patch, e: BullsRefused) -> None:
+    if e.reason == "already_won":
+        p.snap("bulls_won_at", p.at)
+
+
+def _merged(p: _Patch, name: str, update: dict[str, int]) -> dict[str, int]:
+    current: Obs[dict[str, int]] | None = p.get(name)
+    return {**(current.value if current is not None else {}), **update}
+
+
+def _limits(e: StockScreen) -> StockLimits | None:
+    # Все лимиты есть только на главном экране биржи.
+    if e.min_buy is None or e.max_sell is None or e.reserve is None:
+        return None
+    if e.open_hour is None or e.close_hour is None:
+        return None
+    return StockLimits(
+        min_buy=e.min_buy,
+        max_sell=e.max_sell,
+        reserve=e.reserve,
+        open_hour=e.open_hour,
+        close_hour=e.close_hour,
+    )
+
+
+@_on(StockScreen)
+def _stock_screen(p: _Patch, e: StockScreen) -> None:
+    if e.quotes:
+        p.snap("stock_quotes", e.quotes)
+        p.snap("stock_holdings", e.holdings)
+    if (limits := _limits(e)) is not None:
+        p.snap("stock_limits", limits)
+    if e.money is not None:
+        p.snap("money", e.money)
+
+
+@_on(StockBought)
+def _stock_bought(p: _Patch, e: StockBought) -> None:
+    p.snap("money", e.money)
+    p.snap("stock_holdings", _merged(p, "stock_holdings", {e.company: e.shares}))
+
+
+@_on(Dividends)
+def _dividends(p: _Patch, e: Dividends) -> None:
+    p.delta("money", e.amount)
+
+
+@_on(BattleSummary)
+def _battle_summary(p: _Patch, e: BattleSummary) -> None:
+    if e.prices:
+        p.snap("stock_quotes", _merged(p, "stock_quotes", e.prices))
+
+
+@_on(SmoothieScreen)
+def _smoothie_screen(p: _Patch, e: SmoothieScreen) -> None:
+    p.snap("smoothie_ingredients", e.ingredients)
+    p.snap("smoothie_bonus", e.bonus)
+
+
+@_on(SmoothieCooked)
+def _smoothie_cooked(p: _Patch, e: SmoothieCooked) -> None:
+    p.snap("smoothie_bonus", e.bonus)
+
+
+@_on(SmoothieRecipe)
+def _smoothie_recipe(p: _Patch, e: SmoothieRecipe) -> None:
+    p.snap("smoothie_recipe", SmoothieRecipeState(recipe=e.recipe, bonus=e.bonus))
+
+
+@_on(TangerineRefused)
+def _tangerine(p: _Patch, e: TangerineRefused) -> None:
+    if e.reason == "cooldown" and e.left_s is not None:
+        p.snap("tangerine_ready_at", p.later(e.left_s))
+    elif e.reason == "not_player" and e.target is not None:
+        p.snap("tangerine_not_player", e.target)
+
+
+@_on(ResourcesChanged)
+def _resources(p: _Patch, e: ResourcesChanged) -> None:
+    p.rewards(e.rewards)
+
+
+@_on(LotteryWin)
+def _lottery_win(p: _Patch, e: LotteryWin) -> None:
+    p.rewards(e.rewards)
+    p.delta("motivation", e.motivation)
+    p.delta("containers_small", e.containers_small)
+    p.delta("containers_medium", e.containers_medium)
+    _add_skills(p, e.skills)
+
+
+@_on(LotterySkillsExpired)
+def _lottery_skills_expired(p: _Patch, e: LotterySkillsExpired) -> None:
+    p.rewards(e.rewards)
+    _add_skills(p, {skill: -1 for skill in e.skills})
+
+
+@_on(EtherScreen)
+def _ether(p: _Patch, e: EtherScreen) -> None:
+    p.snap("money", e.money)
+
+
+@_on(DeedFinishedInstantly)
+def _instant(p: _Patch, e: DeedFinishedInstantly) -> None:
+    p.snap("busy", None)
 
 
 class StateReducer:

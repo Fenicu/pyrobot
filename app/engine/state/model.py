@@ -77,6 +77,19 @@ class TeamTask(_Frozen):
     resource: str
 
 
+class StockLimits(_Frozen):
+    min_buy: int
+    max_sell: int
+    reserve: int
+    open_hour: int
+    close_hour: int
+
+
+class SmoothieRecipeState(_Frozen):
+    recipe: str
+    bonus: str
+
+
 class ActivityStat(_Frozen):
     """Скользящее среднее наград одного дела (без его цены)."""
 
@@ -146,6 +159,21 @@ class CharacterState(_Frozen):
     gorbushka: Obs[GorbushkaState] | None = None
     last_refusal: Obs[RefusalState] | None = None
     team_task: Obs[TeamTask] | None = None
+    team_tag: Obs[str] | None = None
+    factory_wins: Obs[int] | None = None
+    factory_won_at: Obs[datetime] | None = None
+    factory_signed: Obs[bool] | None = None
+    factory_skip: Obs[bool] | None = None
+    factory_call_at: Obs[datetime] | None = None
+    bulls_won_at: Obs[datetime] | None = None
+    stock_quotes: Obs[dict[str, int]] | None = None
+    stock_holdings: Obs[dict[str, int]] | None = None
+    stock_limits: Obs[StockLimits] | None = None
+    smoothie_ingredients: Obs[dict[str, int]] | None = None
+    smoothie_bonus: Obs[str | None] | None = None
+    smoothie_recipe: Obs[SmoothieRecipeState] | None = None
+    tangerine_ready_at: Obs[datetime] | None = None
+    tangerine_not_player: Obs[str] | None = None
     activity_stats: dict[str, ActivityStat] = {}
     # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
     # правка итога не начисляет повторно (горизонт хранения — в редьюсере).
@@ -190,6 +218,15 @@ TIMERS = frozenset(
         "card_ready_at",
         "prizebox_ready_at",
         "last_refusal",
+        "factory_won_at",
+        "factory_signed",
+        "factory_skip",
+        "factory_call_at",
+        "bulls_won_at",
+        "smoothie_bonus",
+        "smoothie_recipe",
+        "tangerine_ready_at",
+        "tangerine_not_player",
     }
 )
 SLOW_MAX_AGE = timedelta(hours=6)
