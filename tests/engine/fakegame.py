@@ -19,8 +19,13 @@ from app.engine.types import IncomingMessage
 from tests.fixtures import game_msg
 
 GAME = 227859379
-# (семейство, id) или (семейство, id, номер версии сообщения с правками).
-Ref = tuple[str, int] | tuple[str, int, int]
+# (семейство, id), (семейство, id, номер версии сообщения с правками) или готовое сообщение —
+# образец (например, кадр с изменённым текстом).
+Ref = tuple[str, int] | tuple[str, int, int] | IncomingMessage
+
+
+def _template(ref: Ref) -> IncomingMessage:
+    return ref if isinstance(ref, IncomingMessage) else game_msg(*ref)
 
 
 @dataclass
@@ -105,7 +110,7 @@ class FakeGame:
             for ref in reply.edits if message_id is not None else ():
                 original = self.messages[message_id]
                 msg = replace(
-                    game_msg(*ref),
+                    _template(ref),
                     msg_id=message_id,
                     kind="edit",
                     revision=next(self._revisions),
@@ -116,7 +121,7 @@ class FakeGame:
                 await self._push(msg)
             for ref in reply.new:
                 msg = replace(
-                    game_msg(*ref),
+                    _template(ref),
                     msg_id=next(self._ids),
                     kind="new",
                     revision=0,
@@ -134,7 +139,7 @@ class FakeGame:
         now = datetime.now(UTC)
         original = self.messages[msg_id]
         self.current[msg_id] = replace(
-            game_msg(*ref),
+            _template(ref),
             msg_id=msg_id,
             kind="edit",
             revision=next(self._revisions),

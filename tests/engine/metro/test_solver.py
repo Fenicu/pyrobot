@@ -536,3 +536,12 @@ def test_replay_keeps_leaving_decided_before_restart() -> None:
     fresh = known()
     fresh.pos = (4, 4)
     assert fresh.next(at((4, 4), "waiting"), now).reason == "explore"  # type: ignore[union-attr]
+
+
+def test_unknown_cell_symbol_alerts_once() -> None:
+    s = solver()
+    odd = map_frame(("#####", "#####", "##@?.", "##.##", "##.##"), "entry")
+    assert s.next(odd, T0) == Click("maze_down", "explore")
+    assert s.alerts == ["unknown_cell"] and s.events[-1]["kind"] == "unknown_cell"
+    s.next(map_frame(("#####", "#####", "#?@..", "##.##", "##.##"), "waiting"), T0)
+    assert s.alerts == ["unknown_cell"]

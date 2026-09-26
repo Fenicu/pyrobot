@@ -32,6 +32,15 @@ def test_entrance_means_metro_ready_and_entering_costs_motivation() -> None:
     assert value(state, "motivation") == 70
 
 
+def test_entrance_without_motivation_for_entry_sets_it() -> None:
+    reducer = StateReducer()
+    short = replace(
+        RUN[0], text=(RUN[0].text or "").replace("У тебя 73🔥", "У тебя 1🔥"), date=at(2)
+    )
+    state = reducer.apply(_before_metro(reducer), short, PARSER.parse(short))
+    assert value(state, "motivation") == 1
+
+
 def test_map_fight_and_traps_track_stamina() -> None:
     reducer = StateReducer()
     state = _version(reducer, _before_metro(reducer), 5, 4)

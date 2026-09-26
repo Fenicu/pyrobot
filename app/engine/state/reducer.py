@@ -739,6 +739,9 @@ def _tangerine(p: _Patch, e: TangerineRefused) -> None:
 def _metro_entrance(p: _Patch, e: MetroEntrance) -> None:
     # Экран входа вместо отказа — кулдаун прошёл.
     p.snap("metro_ready_at", p.at)
+    if e.motivation < e.cost:
+        # Планировщик считал, что 🔥 на вход хватит: без снимка он заходил бы снова.
+        p.snap("motivation", e.motivation)
 
 
 @_on(Unrecognized)

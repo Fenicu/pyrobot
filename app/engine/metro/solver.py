@@ -12,6 +12,7 @@ from app.engine.metro.plan import Mode, exit_route, explore_step, reach, reachab
 from app.engine.parsing.metro import (
     EXIT,
     FLOOR,
+    OTHER,
     MetroChest,
     MetroChestOpened,
     MetroEarlyExit,
@@ -181,6 +182,10 @@ class MetroSolver:
             # Окно ещё старое: только запоминаем ход (при воспроизведении записи).
             self._pending = frame.direction
             return
+        if "unknown_cell" not in self.alerts and any(OTHER in row for row in frame.window):
+            # Незнакомый символ карта считает неизвестной клеткой; сообщить один раз.
+            self.alerts.append("unknown_cell")
+            self._note_kind("unknown_cell", window=list(frame.window))
         if frame.footer == "arrived" and frame.direction is not None:
             self._arrive(frame.direction)
         elif frame.footer == "wall":

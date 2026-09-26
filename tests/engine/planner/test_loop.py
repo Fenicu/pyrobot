@@ -254,6 +254,15 @@ async def test_closed_market_holds_dump_longer(world: World) -> None:
     assert rig.loop._cooldowns == {"stocks_dump": at + NOTHING_RETRY}
 
 
+async def test_changed_metro_price_holds_metro_for_hours(world: World) -> None:
+    # Цена входа сама не вернётся: не повторять заход (и уведомление) каждую минуту.
+    rig = Rig(world)
+    at = moment()
+    metro = Act("metro", {}, "metro_ready")
+    await rig.loop._after(metro, ScenarioResult("nothing", "entry_cost_changed"), at, at)
+    assert rig.loop._cooldowns == {"metro": at + timedelta(hours=2)}
+
+
 async def test_battle_refusal_holds_all_deeds(world: World) -> None:
     world.game.on_text("/job", ("refusals", 3520502))
     await world.feed("profile", 3624478)

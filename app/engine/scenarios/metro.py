@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -9,6 +10,7 @@ from app.engine.gateway.types import Match, Predicate, Verdict
 from app.engine.metro.budget import Budget, prior_step_s
 from app.engine.metro.solver import Click, Done, MetroSolver, Policy
 from app.engine.parsing.metro import (
+    ENTRY_COST,
     MetroBuffs,
     MetroChest,
     MetroChestOpened,
@@ -50,7 +52,13 @@ SCREENS = (
     MetroEarlyExit,
     MetroFinished,
 )
-ALERTS = {"late_risk": "metro: 85% of the time budget used and the exit is still unknown"}
+ALERTS = {
+    "late_risk": "metro: 85% of the time budget used and the exit is still unknown",
+    "unknown_cell": "metro: unknown symbol in the map window, treated as an unknown cell",
+}
+# Продолжение застало ход («Идёшь …»): новое окно приходит через секунды — перечитать.
+MOVING_WAIT_S = 10.0
+MOVING_POLL_S = 2.0
 
 
 def expect_metro(message_id: int) -> Predicate:
@@ -147,8 +155,11 @@ async def metro(ctx: ScenarioContext, state: CharacterState, params: Params) -> 
         if entrance.step is Step.REFUSED:
             return finish(entrance)
         shown = require(entrance).delivery
-        if shown is None or entrance.first(MetroEntrance) is None:
+        offer = entrance.first(MetroEntrance)
+        if shown is None or offer is None:
             return await _halt(ctx, "unexpected_screen")
+        if offer.cost != ENTRY_COST or offer.motivation < offer.cost:
+            return await _decline(ctx, shown.msg, offer)
         try:
             await ctx.safe_point()
             opened = await _click_on(ctx, shown.msg, "maze_enter_accept")
@@ -156,6 +167,27 @@ async def metro(ctx: ScenarioContext, state: CharacterState, params: Params) -> 
             return await _buy_and_start(ctx, params, opened.delivery.msg, _buffs_of(opened))
         except Halted as halted:
             return await _halt(ctx, halted.reason)
+
+
+async def _decline(
+    ctx: ScenarioContext, shown: IncomingMessage, offer: MetroEntrance
+) -> ScenarioResult:
+    """Вход стоит не столько, сколько закладывает планировщик, или 🔥 не хватает: «Вхожу» не
+    нажимаем. Ответ на отказ живьём не видели — итог от него не зависит."""
+    reason = "entry_cost_changed" if offer.cost != ENTRY_COST else "no_motivation"
+    if reason == "entry_cost_changed":
+        text = f"metro: entry costs {offer.cost} motivation instead of {ENTRY_COST}, not entering"
+        await ctx.notify("warn", "metro_entry_cost", text)
+    await ctx.safe_point()
+    message = shown.msg_id
+    await ctx.click(
+        message,
+        "maze_enter_decline",
+        expect_metro(message),
+        revision=shown.revision,
+        content=shown.content_hash(),
+    )
+    return ScenarioResult("nothing", reason)
 
 
 async def _click_on(
@@ -236,6 +268,13 @@ async def _resume(ctx: ScenarioContext, params: Params, message: int) -> Scenari
     if not history:
         return ScenarioResult("stopped", "resume_without_history")
     current = await ctx.reread(message)
+    waited = 0.0
+    moving: list[IncomingMessage] = []
+    while current is not None and _moving(current) and waited < MOVING_WAIT_S:
+        moving.append(current)
+        await asyncio.sleep(MOVING_POLL_S)
+        waited += MOVING_POLL_S
+        current = await ctx.reread(message)
     if current is None:
         return await _halt(ctx, "resume_unreadable")
     shown = recognize_metro(current)
@@ -245,9 +284,11 @@ async def _resume(ctx: ScenarioContext, params: Params, message: int) -> Scenari
     if screen is None:
         # Последний экран незнакомый: без человека не продолжаем.
         return await _halt(ctx, "resume_unknown_screen")
-    if isinstance(screen, MetroMap) and screen.footer == "going":
+    if _moving(current):
         return ScenarioResult("stopped", "resume_while_moving")
-    frames = [(m, e) for m in history if not _same(m, current) for e in recognize_metro(m)[:1]]
+    # «Идёшь …», прочитанное при ожидании, — ход, которым пришли к текущему кадру.
+    seen = [*history, *moving]
+    frames = [(m, e) for m in seen if not _same(m, current) for e in recognize_metro(m)[:1]]
     bought = [e for _, e in frames if isinstance(e, MetroBuffs)]
     buffs = bought[-1] if bought else MetroBuffs(bought=(), offers=(), tokens=0, coins=0)
     maze = [n for n, (_, e) in enumerate(frames) if isinstance(e, SCREENS)]
@@ -259,6 +300,11 @@ async def _resume(ctx: ScenarioContext, params: Params, message: int) -> Scenari
     solver.update_mode(ctx.clock.now())
     solver.resync()
     return await _explore(ctx, params, message, current, buffs, solver, started)
+
+
+def _moving(msg: IncomingMessage) -> bool:
+    screen = metro_screen(msg)
+    return isinstance(screen, MetroMap) and screen.footer == "going"
 
 
 async def _explore(

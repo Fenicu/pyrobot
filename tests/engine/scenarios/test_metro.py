@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+import app.engine.scenarios.metro as metro_module
 from app.engine.events import Event
 from app.engine.memory import MemoryJournal
 from app.engine.parsing.metro import (
@@ -553,6 +554,111 @@ async def test_resume_on_early_exit_offer_declines(world: World) -> None:
     assert world.game.payloads() == ["maze_exit_decline"]
     # Карта восстановлена по журналу: выход уже известен.
     assert result.details is not None and result.details["metro"]["exit"] == [14, -2]
+
+
+def _entrance_says(world: World, cost: int, motivation: int) -> None:
+    """На 🚇Метро игра показывает экран входа с другой ценой или мотивацией."""
+    entrance = game_msg("metro", RUN, 0)
+    text = (entrance.text or "").replace("требует 2🔥", f"требует {cost}🔥")
+    text = text.replace("У тебя 73🔥", f"У тебя {motivation}🔥")
+    world.game.on_text("🏢Офис", OTHER)
+    send_text = world.game.send_text
+
+    async def answer(chat_id: int, sent_text: str, reply_to: int | None = None) -> int:
+        sent = await send_text(chat_id, sent_text, reply_to)
+        if sent_text == "🚇Метро":
+            now = datetime.now(UTC)
+            shown = replace(
+                entrance, msg_id=8_000_001, text=text, date=now, received_at=now, created_at=now
+            )
+            await world.game._push(shown)
+        return sent
+
+    world.game.send_text = answer  # type: ignore[method-assign]
+
+
+@certifies("metro")
+@pytest.mark.parametrize(
+    ("cost", "motivation", "reason", "notified"),
+    [
+        (3, 73, "entry_cost_changed", [("warn", "metro_entry_cost")]),
+        (2, 1, "no_motivation", []),
+    ],
+)
+async def test_entrance_declined_when_price_changed_or_motivation_short(
+    world: World, cost: int, motivation: int, reason: str, notified: list[tuple[str, str]]
+) -> None:
+    _entrance_says(world, cost, motivation)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("nothing", reason)
+    assert world.game.payloads() == ["🏢Офис", "🚇Метро", "maze_enter_decline"]
+    assert notes.sent == notified
+
+
+@certifies("metro")
+async def test_unknown_cell_symbol_notified(world: World) -> None:
+    frame = game_msg("metro", RUN, 5)
+    odd = replace(frame, text=(frame.text or "").replace("⬛️", "🟫", 1))
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=odd)
+    notes = Notes()
+    result = await run(world, ctx(world, stop_after=len(ENTRY) + 1, notes=notes))
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert notes.sent == [("warn", "metro_unknown_cell")]
+
+
+def _moving_until_reread(world: World, rereads: int) -> None:
+    """Текущий экран — «Идёшь Вправо» (версия 166), новое окно (сундук, 167) игра покажет после
+    `rereads` прочтений."""
+    world.game.now_shows(RUN, 166)
+    fetch = world.game.fetch
+    seen: list[int] = []
+
+    async def moving(chat_id: int, message_id: int) -> IncomingMessage | None:
+        msg = await fetch(chat_id, message_id)
+        seen.append(message_id)
+        if len(seen) == rereads:
+            world.game.now_shows(RUN, 167)
+        return msg
+
+    world.game.fetch = moving  # type: ignore[method-assign]
+
+
+@certifies("metro")
+async def test_resume_while_moving_rereads_until_new_window(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """После рестарта на экране «Идёшь …»: ход ещё идёт — сценарий коротко ждёт и читает
+    сообщение заново, а решение принимает по новому кадру (сундук на следующей клетке)."""
+    monkeypatch.setattr(metro_module, "MOVING_POLL_S", 0.01)
+    for version in game_versions("metro", RUN)[: 165 + 1]:
+        await world.game.show(version)
+    _moving_until_reread(world, 2)
+    clicks = recorded(167, 201)
+    for data, versions in clicks:
+        world.game.on_click(data, edits=tuple(("metro", RUN, v) for v in versions))
+    expected = [data for data, _ in clicks]
+    result = await run(world, ctx(world, stop_after=len(expected)), resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads() == expected
+    assert result.details is not None
+    # Ход «Идёшь Вправо» учтён: сундук — на клетке, куда он вёл, позицию искать не пришлось.
+    assert "relocated" not in [e["kind"] for e in result.details["metro"]["events"]]
+
+
+@certifies("metro")
+async def test_resume_still_moving_after_wait_stops(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "MOVING_POLL_S", 0.01)
+    monkeypatch.setattr(metro_module, "MOVING_WAIT_S", 0.05)
+    for version in game_versions("metro", RUN)[: 165 + 1]:
+        await world.game.show(version)
+    _moving_until_reread(world, 100)
+    result = await run(world, ctx(world), resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "resume_while_moving")
+    assert world.game.payloads() == []
 
 
 @certifies("metro")

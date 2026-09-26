@@ -25,9 +25,11 @@ RETRY_AFTER = timedelta(minutes=5)
 MAX_RETRY = timedelta(hours=2)
 # «Нечего делать» и «занят» уже обновили состояние; короткая пауза страхует от зацикливания.
 NOTHING_RETRY = timedelta(minutes=1)
-# «Нечего делать», которое за минуту не изменится: биржа не откроется до конца окна слива.
+# «Нечего делать», которое за минуту не изменится: биржа не откроется до конца окна слива, цена
+# входа в метро сама не вернётся.
 NOTHING_HOLD: dict[tuple[str, str], timedelta] = {
     ("stocks_dump", "market_closed"): timedelta(minutes=30),
+    ("metro", "entry_cost_changed"): timedelta(hours=2),
 }
 # Подавленное действие (dry_run) состояние не меняет: сценарий откладывается, решаются остальные.
 SUPPRESSED_HOLD = timedelta(minutes=10)
