@@ -24,6 +24,7 @@ from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.lag import LoopLagMonitor
 from app.engine.parsing import default_parser
 from app.engine.pipeline import Pipeline
+from app.engine.reconcile import Reconciler
 from app.engine.state.reducer import StateReducer
 from app.engine.supervisor import Supervisor
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
@@ -120,6 +121,23 @@ class Runtime:
         )
         if self._kurigram is not None:
             self._kurigram.on_auth_lost = self.tg.mark_lost
+        settings = self.settings
+        gateway = self.gateway
+        reconciler = Reconciler(
+            gateway=gateway,
+            store=actions,
+            state=lambda: pipeline.state,
+            notifier=self.notifier,
+            settings=settings,
+            clock=SystemClock(),
+            ready=lambda: (
+                self._can_send() is None
+                and gateway.kill_reason is None
+                and not settings.current.engine.killed
+            ),
+            game_chat_id=settings.current.chats.game_chat_id,
+        )
+        gateway.on_uncertain = reconciler.note
         lag = LoopLagMonitor()
         lock = self.lock
         self.facade = EngineFacade(
@@ -131,10 +149,12 @@ class Runtime:
             lock_ok=lambda: lock.held,
             workers_ok=self.supervisor.healthy,
             notifier=self.notifier,
+            reconciler=reconciler,
         )
         self.container.facade = self.facade
         self.supervisor.start("pipeline", pipeline.run)
         self.supervisor.start("gateway", self.gateway.run)
+        self.supervisor.start("reconcile", reconciler.run)
         self.supervisor.start("lag", lag.run)
         self.supervisor.start("lock-watch", self._watch_lock)
         self.supervisor.start("session-purge", self._purge_sessions)

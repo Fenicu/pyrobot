@@ -1,4 +1,6 @@
 import asyncio
+import itertools
+from dataclasses import replace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -6,13 +8,18 @@ from pydantic import SecretStr
 from sqlalchemy import func, select
 
 from app.config import AppConfig
+from app.db.actions import DbActionStore
 from app.db.base import Database
 from app.db.models import MessageRow
-from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
+from app.engine.commands import CommandClass
+from app.engine.gateway.gateway import RECONCILE_REASON
+from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.supervisor import Supervisor
+from app.engine.transport.fake import Sent
 from app.main import create_application
 from tests.conftest import TEST_DB_URL
-from tests.engine.helpers import GAME, make_msg, until
+from tests.engine.helpers import GAME, make_msg, now, until
+from tests.fixtures import game_msg
 
 pytestmark = pytest.mark.db
 
@@ -145,3 +152,41 @@ async def test_stop_drains_pipeline_into_journal(clean_db: Database) -> None:
             await runtime.pipeline.submit(make_msg(f"m{i}", msg_id=i + 1))
     async with clean_db.sessions() as s:
         assert await s.scalar(select(func.count()).select_from(MessageRow)) == 50
+
+
+async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database) -> None:
+    # Незавершённое действие с прошлого запуска (класс не nav) — обязательство сверки,
+    # которое движок должен снять сам, без ручного POST /engine/reconciled.
+    stuck = ActionRequest(
+        kind=ActionKind.SEND, chat_id=GAME, text="/harvest", source=Source.PLANNER
+    )
+    await DbActionStore(clean_db, 1).create(stuck, CommandClass.ACTION, ActionStatus.SENT)
+
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    ids = itertools.count(5_000_000)
+
+    async def respond(rec: Sent) -> None:
+        if rec.payload != "😎Я":
+            return
+        moment = now()
+        msg = replace(
+            game_msg("profile", 3624478),
+            msg_id=next(ids),
+            date=moment,
+            created_at=moment,
+            received_at=moment,
+        )
+        assert runtime.pipeline is not None
+        await runtime.pipeline.submit(msg)
+
+    async with app.router.lifespan_context(app):
+        assert runtime.gateway is not None
+        assert runtime.gateway.spending_blocked == RECONCILE_REASON
+        assert runtime.transport is not None
+        runtime.transport.responder = respond
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            await _login_tg(client)
+            await until(lambda: runtime.gateway.spending_blocked is None, timeout=10.0)
+            assert await DbActionStore(clean_db, 1).unreconciled() == []
+            assert (await client.get("/readyz")).status_code == 200

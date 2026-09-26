@@ -17,6 +17,7 @@ class EngineSection(BaseModel):
     default_expect_timeout_s: float = Field(default=20.0, gt=0)
     click_answer_timeout_s: float = Field(default=4.0, gt=0, le=30)
     recovered_react_max_age_min: int = Field(default=10, ge=0)
+    refresh_min_interval_s: float = Field(default=120.0, gt=0)
     urgent_while_paused: bool = True
     manual_while_paused: bool = True
 

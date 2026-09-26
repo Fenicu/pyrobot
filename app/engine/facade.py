@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.lag import LoopLagMonitor
@@ -10,6 +11,9 @@ from app.engine.notify import NotifierPort
 from app.engine.pipeline import Pipeline
 from app.engine.settings import Settings, SettingsProvider
 from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
+
+if TYPE_CHECKING:
+    from app.engine.reconcile import Reconciler
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +54,7 @@ class EngineFacade:
         lock_ok: Callable[[], bool] = _always,
         workers_ok: Callable[[], bool] = _always,
         notifier: NotifierPort | None = None,
+        reconciler: Reconciler | None = None,
     ) -> None:
         self.settings = settings
         self.gateway = gateway
@@ -59,6 +64,7 @@ class EngineFacade:
         self._lock_ok = lock_ok
         self._workers_ok = workers_ok
         self._notifier = notifier
+        self._reconciler = reconciler
 
     def status(self) -> EngineStatus:
         eng = self.settings.current.engine
@@ -121,7 +127,10 @@ class EngineFacade:
 
     async def reconciled(self, *, by: str) -> None:
         log.info("spending unblocked by %s", by)
-        await self.gateway.allow_spending()
+        if self._reconciler is not None:
+            await self._reconciler.override()
+        else:
+            await self.gateway.allow_spending()
         await self._audit("engine_reconciled", f"spending unblocked by {by}")
 
     async def _audit(self, code: str, text: str) -> None:
