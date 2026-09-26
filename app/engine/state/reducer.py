@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from app.engine.events import Event
 from app.engine.parsing.activities import (
@@ -10,15 +10,32 @@ from app.engine.parsing.activities import (
     ActivityFinished,
     ActivityStarted,
     BonusRewards,
+    DeedsMenu,
     MotivationFull,
+    PricesScreen,
+    WorkshopScreen,
 )
 from app.engine.parsing.battle import BattleTargetSet
 from app.engine.parsing.common import Rewards
+from app.engine.parsing.food import FastfoodEaten, FoodMenu
+from app.engine.parsing.gorbushka import GorbushkaFight, GorbushkaScreen
+from app.engine.parsing.items import (
+    BookRead,
+    CardUsed,
+    ContainerOpened,
+    GiftsScreen,
+    Inventory,
+    PrizeboxOpened,
+)
+from app.engine.parsing.levelup import LevelUpStep
 from app.engine.parsing.profile import ProfileCompact
 from app.engine.parsing.refusals import Busy, Refused
+from app.engine.parsing.sleep import FellAsleep, RobberyFight, SleepMenu, SleepWarning, WokeUp
 from app.engine.state.model import (
     BusyState,
     CharacterState,
+    FoodStockState,
+    GorbushkaState,
     Obs,
     PriceState,
     RefusalState,
@@ -35,6 +52,8 @@ OUTCOME_HORIZON = timedelta(days=14)
 # Принудительный сон — через 72 ч бодрствования, лечь снова можно через 12 ч после пробуждения.
 AWAKE_LIMIT = timedelta(hours=72)
 SLEEP_COOLDOWN = timedelta(hours=12)
+FASTFOOD_COOLDOWN = timedelta(minutes=30)
+GORBUSHKA_FIGHT_GAP = timedelta(hours=1)
 METRIC_FIELDS = (
     "level",
     "exp",
@@ -89,18 +108,29 @@ class _Patch:
             return
         self.updates[name] = Obs(value=value, at=self.at, src=src)
 
-    def delta(self, name: str, diff: int) -> None:
-        current: Obs[int] | None = self.get(name)
-        if diff == 0 or current is None or current.at > self.at:
-            return
-        own = name in self.updates
-        if own or current.at < self.origin:
-            src: Src = "doubtful" if current.src == "doubtful" else "derived"
-            self.updates[name] = Obs(value=current.value + diff, at=self.at, src=src)
-            return
+    def _increment_mode(self, name: str) -> Literal["skip", "apply", "doubt"]:
+        current: Obs[Any] | None = self.get(name)
+        if current is None or current.at > self.at:
+            return "skip"
+        if name in self.updates or current.at < self.origin:
+            return "apply"
         # Снимок снят между созданием сообщения и его правкой (или в ту же секунду):
-        # неизвестно, учёл ли он событие — значение не трогаем, но не доверяем ему.
-        self.updates[name] = current.model_copy(update={"src": "doubtful"})
+        # неизвестно, учёл ли он событие.
+        return "doubt"
+
+    def delta(self, name: str, diff: int) -> None:
+        if diff == 0:
+            return
+        mode = self._increment_mode(name)
+        if mode == "skip":
+            return
+        current: Obs[int] = self.get(name)
+        if mode == "doubt":
+            # Значение не трогаем, но не доверяем ему.
+            self.updates[name] = current.model_copy(update={"src": "doubtful"})
+            return
+        src: Src = "doubtful" if current.src == "doubtful" else "derived"
+        self.updates[name] = Obs(value=current.value + diff, at=self.at, src=src)
 
     def price(self, key: str, value: PriceState) -> None:
         prices: dict[str, Obs[PriceState]] = dict(self.get("prices"))
@@ -115,17 +145,23 @@ class _Patch:
             self.delta(name, getattr(r, name))
         if r.stamina is not None:
             self.snap("stamina", r.stamina)
-        upgrades: Obs[Upgrades] | None = self.get("upgrades")
-        if upgrades is not None and (r.upgrades_white or r.upgrades_blue or r.upgrades_red):
-            self.snap(
-                "upgrades",
-                Upgrades(
-                    white=upgrades.value.white + r.upgrades_white,
-                    blue=upgrades.value.blue + r.upgrades_blue,
-                    red=upgrades.value.red + r.upgrades_red,
-                ),
-                src="derived",
-            )
+        if r.upgrades_white or r.upgrades_blue or r.upgrades_red:
+            mode = self._increment_mode("upgrades")
+            if mode == "doubt":
+                existing: Obs[Upgrades] = self.get("upgrades")
+                self.updates["upgrades"] = existing.model_copy(update={"src": "doubtful"})
+            elif mode == "apply":
+                existing = self.get("upgrades")
+                src: Src = "doubtful" if existing.src == "doubtful" else "derived"
+                self.updates["upgrades"] = Obs(
+                    value=Upgrades(
+                        white=existing.value.white + r.upgrades_white,
+                        blue=existing.value.blue + r.upgrades_blue,
+                        red=existing.value.red + r.upgrades_red,
+                    ),
+                    at=self.at,
+                    src=src,
+                )
         if r.prizebox:
             self.snap("prizebox", True, src="derived")
             self.snap("prizebox_ready_at", None, src="derived")
@@ -242,6 +278,207 @@ def _refused(p: _Patch, e: Refused) -> None:
         p.snap("levelup_pending", True)
     elif e.reason in _REFUSAL_TIMERS and e.left_s is not None:
         p.snap(_REFUSAL_TIMERS[e.reason], p.later(e.left_s))
+
+
+@_on(SleepWarning)
+def _sleep_warning(p: _Patch, e: SleepWarning) -> None:
+    p.snap("sleep_deadline", p.later(e.forced_in_s))
+
+
+@_on(FellAsleep)
+def _fell_asleep(p: _Patch, e: FellAsleep) -> None:
+    p.snap("busy", BusyState(activity=f"sleep_{e.where}", until=p.at + timedelta(hours=e.hours)))
+    p.snap("sleep_deadline", None, src="derived")
+    p.delta("money", -e.cost)
+
+
+@_on(SleepMenu)
+def _sleep_menu(p: _Patch, e: SleepMenu) -> None:
+    p.price("hotel", PriceState(money=e.hotel_cost))
+
+
+def _woke(p: _Patch, rewards: Rewards) -> None:
+    p.snap("busy", None)
+    p.snap("woke_at", p.at)
+    p.snap("sleep_deadline", p.at + AWAKE_LIMIT, src="derived")
+    p.snap("sleep_allowed_at", p.at + SLEEP_COOLDOWN, src="derived")
+    p.rewards(rewards)
+
+
+@_on(WokeUp)
+def _woke_up(p: _Patch, e: WokeUp) -> None:
+    _woke(p, e.rewards)
+
+
+@_on(RobberyFight)
+def _robbery(p: _Patch, e: RobberyFight) -> None:
+    _woke(p, e.rewards)
+
+
+@_on(DeedsMenu)
+def _deeds(p: _Patch, e: DeedsMenu) -> None:
+    p.snap("stamina", e.stamina)
+    if e.sleep_in_s is not None:
+        p.snap("sleep_deadline", p.later(e.sleep_in_s))
+    if e.sleeping is not None and e.sleeping_left_s is not None:
+        until = p.at + timedelta(seconds=e.sleeping_left_s)
+        p.snap("busy", BusyState(activity=f"sleep_{e.sleeping}", until=until))
+
+
+@_on(PricesScreen)
+def _prices(p: _Patch, e: PricesScreen) -> None:
+    for key, price in e.prices.items():
+        p.price(
+            key,
+            PriceState(
+                motivation=price.motivation,
+                money=price.money,
+                minutes=price.minutes,
+                details=price.details,
+                white=price.white,
+                blue=price.blue,
+            ),
+        )
+
+
+@_on(WorkshopScreen)
+def _workshop(p: _Patch, e: WorkshopScreen) -> None:
+    p.snap("money", e.money)
+    p.snap("raw", e.raw)
+    p.snap("details", e.details)
+    p.snap("upgrades", Upgrades(white=e.upgrades_white, blue=e.upgrades_blue, red=e.upgrades_red))
+
+
+@_on(FoodMenu)
+def _food_menu(p: _Patch, e: FoodMenu) -> None:
+    p.snap("stamina", e.stamina)
+    stock = {k: FoodStockState(count=v.count, low=v.low, high=v.high) for k, v in e.stock.items()}
+    p.snap("food_stock", stock)
+    p.snap("fastfood_ready_at", p.later(e.fastfood_in_s or 0))
+
+
+@_on(FastfoodEaten)
+def _fastfood(p: _Patch, e: FastfoodEaten) -> None:
+    p.snap("stamina", e.stamina)
+    p.snap("fastfood_ready_at", p.at + FASTFOOD_COOLDOWN, src="derived")
+    p.delta("motivation", e.motivation)
+    stock: Obs[dict[str, FoodStockState]] | None = p.get("food_stock")
+    if stock is None or e.food not in stock.value or p.at < stock.at:
+        return
+    left = dict(stock.value)
+    item = left[e.food]
+    left[e.food] = item.model_copy(update={"count": max(item.count - 1, 0)})
+    p.snap("food_stock", left, src="derived")
+
+
+@_on(Inventory)
+def _inventory(p: _Patch, e: Inventory) -> None:
+    for name in ("books", "cards", "bag", "bag_cap", "prizebox"):
+        p.snap(name, getattr(e, name))
+    p.snap("prizebox_ready_at", p.later(e.prizebox_in_s or 0) if e.prizebox else None)
+
+
+@_on(BookRead)
+def _book(p: _Patch, e: BookRead) -> None:
+    p.delta("exp", e.exp)
+    p.delta("books", -1)
+    p.snap("book_ready_at", p.later(e.next_in_s))
+
+
+@_on(CardUsed)
+def _card(p: _Patch, e: CardUsed) -> None:
+    p.delta("money", e.money)
+    p.delta("cards", -1)
+    p.snap("card_ready_at", p.later(e.next_in_s))
+
+
+@_on(GiftsScreen)
+def _gifts(p: _Patch, e: GiftsScreen) -> None:
+    p.snap("containers_small", e.containers_small)
+    p.snap("containers_medium", e.containers_medium)
+    if e.tangerines is not None:
+        p.snap("tangerines", e.tangerines)
+
+
+@_on(ContainerOpened)
+def _container(p: _Patch, e: ContainerOpened) -> None:
+    p.delta(f"containers_{e.size}", -1)
+
+
+@_on(PrizeboxOpened)
+def _prizebox(p: _Patch, e: PrizeboxOpened) -> None:
+    p.snap("prizebox", False)
+    p.snap("prizebox_ready_at", None)
+    if e.money_after is not None:
+        p.snap("money", e.money_after)
+
+
+@_on(GorbushkaScreen)
+def _gorbushka(p: _Patch, e: GorbushkaScreen) -> None:
+    previous: Obs[GorbushkaState] | None = p.get("gorbushka")
+    bought = (
+        previous is not None
+        and previous.at <= p.at
+        and previous.value.state == "need_ticket"
+        and e.state in ("meeting", "waiting")
+        and e.won == 0
+    )
+    next_fight = p.at if e.state == "meeting" else p.later(e.next_in_s)
+    p.snap(
+        "gorbushka",
+        GorbushkaState(
+            state=e.state,
+            won=e.won,
+            total=e.total,
+            ticket_until=p.later(e.ticket_left_s),
+            next_fight_at=next_fight,
+            comeback_at=p.later(e.comeback_in_s),
+            fight_cost=e.fight_cost_motivation,
+        ),
+    )
+    for name in ("stamina", "money", "knowledge"):
+        if (observed := getattr(e, name)) is not None:
+            p.snap(name, observed)
+    if e.state == "need_ticket" and e.ticket_money is not None:
+        p.price(
+            "gorbushka_ticket",
+            PriceState(money=e.ticket_money, knowledge=e.ticket_knowledge or 0),
+        )
+    prices: dict[str, Obs[PriceState]] = p.get("prices")
+    ticket = prices.get("gorbushka_ticket")
+    if bought and ticket is not None:
+        p.delta("money", -ticket.value.money)
+        p.delta("knowledge", -ticket.value.knowledge)
+
+
+@_on(GorbushkaFight)
+def _gorbushka_fight(p: _Patch, e: GorbushkaFight) -> None:
+    p.rewards(e.rewards)
+    current: Obs[GorbushkaState] | None = p.get("gorbushka")
+    cost = current.value.fight_cost if current is not None else None
+    p.delta("motivation", -(cost if cost is not None else 1))
+    if current is None or p.at < current.at:
+        return
+    won = current.value.won
+    if e.won and won is not None:
+        won += 1
+    p.snap(
+        "gorbushka",
+        current.value.model_copy(
+            update={"state": "waiting", "won": won, "next_fight_at": p.at + GORBUSHKA_FIGHT_GAP}
+        ),
+        src="derived",
+    )
+
+
+@_on(LevelUpStep)
+def _levelup(p: _Patch, e: LevelUpStep) -> None:
+    if e.step == "menu":
+        p.snap("levelup_pending", True)
+    elif e.step == "done":
+        p.snap("levelup_pending", False)
+        p.delta("money", e.money)
+        p.delta("motivation", e.motivation)
 
 
 class StateReducer:
