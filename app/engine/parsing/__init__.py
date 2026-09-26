@@ -4,6 +4,17 @@ import logging
 from collections.abc import Callable, Collection, Sequence
 
 from app.engine.events import AntiFlood, Event, Unrecognized
+from app.engine.parsing import (
+    activities,
+    battle,
+    food,
+    gorbushka,
+    items,
+    levelup,
+    profile,
+    refusals,
+    sleep,
+)
 from app.engine.parsing.common import first_line
 from app.engine.settings import ChatsSection
 from app.engine.types import IncomingMessage
@@ -54,7 +65,18 @@ class Parser:
 
 
 def game_recognizers() -> tuple[Recognizer, ...]:
-    return (recognize_antiflood,)
+    return (
+        recognize_antiflood,
+        *profile.RECOGNIZERS,
+        *battle.RECOGNIZERS,
+        *activities.RECOGNIZERS,
+        *refusals.RECOGNIZERS,
+        *sleep.RECOGNIZERS,
+        *food.RECOGNIZERS,
+        *items.RECOGNIZERS,
+        *gorbushka.RECOGNIZERS,
+        *levelup.RECOGNIZERS,
+    )
 
 
 def default_parser(chats: ChatsSection | None = None) -> Parser:
