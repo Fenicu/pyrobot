@@ -16,7 +16,9 @@ class Base(DeclarativeBase):
 
 class Database:
     def __init__(self, url: str) -> None:
-        self.engine: AsyncEngine = create_async_engine(url, pool_pre_ping=True)
+        self.engine: AsyncEngine = create_async_engine(
+            url, pool_pre_ping=True, connect_args={"command_timeout": 30}
+        )
         self.sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(
             self.engine, expire_on_commit=False
         )

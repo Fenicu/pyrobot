@@ -1,9 +1,10 @@
 from pathlib import Path
+from types import SimpleNamespace as NS
 
 import pytest
 
 from app.engine.notify import Level
-from app.engine.tg_auth import TgAuthManager, TgState
+from app.engine.tg_auth import InvalidPhone, TgAuthManager, TgState
 from app.engine.transport.base import TransportAuthLost, TransportRejected
 from tests.engine.helpers import GAME
 from tests.engine.kurigram_fakes import EXPECTED, FakeKurigram, rpc_error
@@ -126,3 +127,32 @@ async def test_click_other_bad_request_rejected(tmp_path: Path) -> None:
     t.client.errors["GetBotCallbackAnswer"] = rpc_error("DataInvalid")
     with pytest.raises(TransportRejected, match="DATA_INVALID"):
         await t.click(GAME, 1, "maze_up", 1.0)
+
+
+async def test_sdk_invoke_single_attempt_on_timeout() -> None:
+    # Фиксирует поведение kurigram 2.2.x: TimeoutError — подкласс OSError, и Session.invoke
+    # с retries=1 делает ровно одну попытку send, прежде чем поднять TimeoutError.
+    from pyrogram import raw
+    from pyrogram.session import Session
+
+    session = Session(NS(name="t"), 2, "127.0.0.1", 443, b"\0" * 256, False)
+    session.is_started.set()
+    calls = 0
+
+    async def send(data: object, wait_response: bool = True, timeout: float = 0) -> None:  # noqa: ASYNC109
+        nonlocal calls
+        calls += 1
+        raise TimeoutError("Request timed out")
+
+    session.send = send  # type: ignore[method-assign]
+    with pytest.raises(TimeoutError):
+        await session.invoke(raw.functions.updates.GetState(), retries=1, retry_delay=0)
+    assert calls == 1
+
+
+async def test_send_code_invalid_phone_classified(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path, authorized=False)
+    await t.connect()
+    t.client.errors["SendCode"] = rpc_error("PhoneNumberInvalid")
+    with pytest.raises(InvalidPhone):
+        await t.send_code("+1")

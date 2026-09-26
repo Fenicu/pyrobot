@@ -13,15 +13,16 @@ from app.engine.memory import MemoryActionStore, MemoryJournal
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
 from app.engine.settings import SettingsChange, StaticSettings
-from app.engine.tg_auth import TgAuthManager, TgState
+from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
-from tests.engine.helpers import until
+from tests.engine.helpers import GAME, until
 
 
 def build(
     authorized: bool = True,
     settings: StaticSettings | None = None,
     lock_ok: Callable[[], bool] = lambda: True,
+    backend: TgAuthBackend | None = None,
 ) -> EngineFacade:
     settings = settings or StaticSettings()
     pipeline = Pipeline(
@@ -35,7 +36,7 @@ def build(
         boundary=lambda: pipeline.last_journal_id,
         clock=SystemClock(),
     )
-    tg = TgAuthManager(FakeTgBackend(authorized=authorized), expected_user_id=267519921)
+    tg = TgAuthManager(backend or FakeTgBackend(authorized=authorized), expected_user_id=267519921)
     return EngineFacade(
         settings=settings,
         gateway=gateway,
@@ -66,7 +67,7 @@ async def test_kill_latches_even_if_persist_fails() -> None:
     f = build(settings=Failing())
     await f.tg.boot()
     pending = asyncio.create_task(
-        f.gateway.submit(ActionRequest(kind=ActionKind.SEND, chat_id=1, text="😎Я"))
+        f.gateway.submit(ActionRequest(kind=ActionKind.SEND, chat_id=GAME, text="😎Я"))
     )
     await until(lambda: f.gateway.queue_size == 1)
     await f.kill("test", by="admin")

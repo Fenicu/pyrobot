@@ -17,6 +17,7 @@ PASSWORD = "correct horse battery"
 def make_container(db: Database, *, secure: bool = False) -> Container:
     cfg = AppConfig(
         _env_file=None,
+        transport="fake",
         cookie_secure=secure,
         admin_login="admin",
         admin_password=SecretStr(PASSWORD),

@@ -15,31 +15,41 @@ log = logging.getLogger(__name__)
 
 
 class TgAuthError(Exception):
-    pass
+    code = "tg_auth_error"
 
 
 class PasswordRequired(TgAuthError):
-    pass
+    code = "password_required"
 
 
 class InvalidCode(TgAuthError):
-    pass
+    code = "invalid_code"
 
 
 class CodeExpired(TgAuthError):
-    pass
+    code = "code_expired"
 
 
 class InvalidPassword(TgAuthError):
-    pass
+    code = "invalid_password"
 
 
 class SignUpRequired(TgAuthError):
-    pass
+    code = "signup_required"
+
+
+class InvalidPhone(TgAuthError):
+    code = "invalid_phone"
 
 
 class AttemptMismatch(TgAuthError):
-    pass
+    code = "attempt_mismatch"
+
+
+class TgBackendError(TgAuthError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
 
 
 class TgState(StrEnum):
@@ -124,8 +134,18 @@ class TgAuthManager:
             active = self._attempt
             if active is not None and active.owner != owner and active.expires > time.monotonic():
                 raise AttemptMismatch("another login in progress")
-            await self._backend.connect()
-            code_hash = await self._backend.send_code(phone)
+            try:
+                await self._backend.connect()
+                code_hash = await self._backend.send_code(phone)
+            except TgAuthError as exc:
+                self._attempt = None
+                self._set(TgState.ERROR, error=exc.code)
+                raise
+            except Exception as exc:
+                log.exception("telegram send_code failed")
+                self._attempt = None
+                self._set(TgState.ERROR, error="send_code_failed")
+                raise TgBackendError("send_code_failed") from exc
             self._attempt = _Attempt(
                 uuid.uuid4().hex, owner, phone, code_hash, time.monotonic() + self._ttl
             )
@@ -151,6 +171,11 @@ class TgAuthManager:
                 self._attempt = None
                 self._set(TgState.ERROR, error="signup_required")
                 return self.status()
+            except TgAuthError:
+                raise
+            except Exception as exc:
+                log.exception("telegram sign_in failed")
+                raise TgBackendError("sign_in_failed") from exc
             self._attempt = None
             await self._accept(user_id)
             return self.status()
@@ -163,6 +188,11 @@ class TgAuthManager:
             except InvalidPassword:
                 self._error = "invalid_password"
                 return self.status()
+            except TgAuthError:
+                raise
+            except Exception as exc:
+                log.exception("telegram check_password failed")
+                raise TgBackendError("check_password_failed") from exc
             self._attempt = None
             await self._accept(user_id)
             return self.status()

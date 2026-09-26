@@ -300,6 +300,8 @@ class ActionGateway:
             return ActionStatus.SUPPRESSED, "shutdown"
         if cls in (CommandClass.FORBIDDEN, CommandClass.DONATE):
             return ActionStatus.REJECTED, cls.value
+        if req.chat_id not in self._allowed_chats():
+            return ActionStatus.REJECTED, "chat_not_allowed"
         if cls is CommandClass.RISKY and not (req.source is Source.MANUAL and req.risky_confirmed):
             return ActionStatus.REJECTED, "risky_requires_confirm"
         if cls is not CommandClass.NAV and req.expect is None:
@@ -314,6 +316,13 @@ class ActionGateway:
         if self._spend_block is not None and cls is not CommandClass.NAV:
             return ActionStatus.REJECTED, f"blocked:{self._spend_block}"
         return None
+
+    def _allowed_chats(self) -> set[int]:
+        chats = self._settings.current.chats
+        allowed = {chats.game_chat_id, chats.tangerine_chat_id}
+        if chats.bulls_invite_chat_id is not None:
+            allowed.add(chats.bulls_invite_chat_id)
+        return allowed
 
     def _check(self, p: _Pending) -> Blocked | None:
         def full_check() -> Blocked | None:
@@ -351,13 +360,19 @@ class ActionGateway:
                 for p, _ in terminal:
                     self._queue.remove(p)
                 if not terminal:
-                    ready = [p for p in self._queue if self._eligible(p)]
+                    # Во время паузы (FloodWait/антифлуд) действие не выбирается и INTENT не
+                    # пишется, но TTL стоящих в очереди продолжает истекать.
+                    paused = self._paused_until - time.monotonic()
+                    ready = [] if paused > 0 else [p for p in self._queue if self._eligible(p)]
                     if ready:
                         chosen = min(ready, key=lambda p: (p.req.source, p.seq))
                         self._queue.remove(chosen)
                         return chosen
+                    timeout = self._nearest_deadline()
+                    if paused > 0:
+                        timeout = paused if timeout is None else min(timeout, paused)
                     try:
-                        await asyncio.wait_for(self._cond.wait(), self._nearest_deadline())
+                        await asyncio.wait_for(self._cond.wait(), timeout)
                     except TimeoutError:
                         pass
                     continue

@@ -401,3 +401,45 @@ async def test_can_send_rechecked_before_attempt() -> None:
         res2 = await t2
         assert res2.status is ActionStatus.REJECTED and res2.reason == "lock_lost"
         assert len(r.transport.sent) == 1
+
+
+async def test_no_intent_while_paused(rig: Rig) -> None:
+    pause_end = time.monotonic() + 0.3
+    rig.gw._paused_until = pause_end  # type: ignore[attr-defined]
+    intent_at: list[float] = []
+    rig.transport.before_send = lambda rec: intent_at.append(time.monotonic())
+    rig.reply_with("Ты отправился работать")
+    task = asyncio.create_task(rig.gw.submit(send("/job", expect=expect_text("работать"))))
+    await asyncio.sleep(0.15)
+    assert rig.store.rows == {} and rig.gw.queue_size == 1
+    assert (await task).status is ActionStatus.CONFIRMED
+    assert rig.store.rows[1].history[0] is ActionStatus.INTENT
+    assert intent_at and intent_at[0] >= pause_end
+
+
+async def test_ttl_expires_during_pause(rig: Rig) -> None:
+    rig.gw._paused_until = time.monotonic() + 0.5  # type: ignore[attr-defined]
+    t0 = time.monotonic()
+    res = await rig.gw.submit(send("😎Я", ttl_s=0.1))
+    assert res.status is ActionStatus.REJECTED and res.reason == "expired"
+    assert time.monotonic() - t0 < 0.4
+    assert rig.store.rows[res.action_id or 0].history == [ActionStatus.REJECTED]
+    assert rig.transport.sent == []
+
+
+async def test_chat_not_allowed(rig: Rig) -> None:
+    res = await rig.gw.submit(ActionRequest(kind=ActionKind.SEND, chat_id=42, text="😎Я"))
+    assert res.status is ActionStatus.REJECTED and res.reason == "chat_not_allowed"
+    tangerine = rig.settings.current.chats.tangerine_chat_id
+    ok = await rig.gw.submit(ActionRequest(kind=ActionKind.SEND, chat_id=tangerine, text="😎Я"))
+    assert ok.status is ActionStatus.CONFIRMED
+    bulls = ActionRequest(kind=ActionKind.SEND, chat_id=-100500, text="😎Я")
+    assert (await rig.gw.submit(bulls)).reason == "chat_not_allowed"
+    await rig.settings.update(
+        lambda s: s.model_copy(
+            update={"chats": s.chats.model_copy(update={"bulls_invite_chat_id": -100500})}
+        ),
+        changed_by="t",
+    )
+    assert (await rig.gw.submit(bulls)).status is ActionStatus.CONFIRMED
+    assert [s.chat_id for s in rig.transport.sent] == [tangerine, -100500]

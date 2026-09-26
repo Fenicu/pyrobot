@@ -23,16 +23,16 @@ uv run mypy
 |---|---|
 | `PYROBOT_DATABASE_URL` | Connection string к PostgreSQL (по умолчанию localhost:55432). |
 | `PYROBOT_DATA_DIR` | Путь к директории для хранения игровых данных. |
-| `PYROBOT_TG_API_ID` | Telegram API ID (из my.telegram.org, обязательно). |
-| `PYROBOT_TG_API_HASH` | Telegram API hash (из my.telegram.org, обязательно). |
+| `PYROBOT_TG_API_ID` | Telegram API ID (из my.telegram.org). При `PYROBOT_TRANSPORT=kurigram` обязателен и больше 0, иначе процесс не стартует (ошибка валидации конфигурации). |
+| `PYROBOT_TG_API_HASH` | Telegram API hash (из my.telegram.org). При `PYROBOT_TRANSPORT=kurigram` обязателен и не пуст. |
 | `PYROBOT_ADMIN_LOGIN` | Логин для доступа в админку. |
 | `PYROBOT_ADMIN_PASSWORD` | Пароль для админки (если не задан, доступ отключён). |
 | `PYROBOT_COOKIE_SECURE` | Использовать флаг Secure для cookies (true в боевой, false в локальной разработке). |
 | `PYROBOT_TRANSPORT` | Транспорт Telegram: `kurigram` (боевой MTProto) или `fake` (для тестов). |
-| `PYROBOT_LOG_LEVEL` | Уровень логирования (DEBUG, INFO, WARNING, ERROR). |
+| `PYROBOT_LOG_LEVEL` | Уровень логирования (DEBUG, INFO, WARNING, ERROR). Логгер `pyrogram` никогда не опускается ниже INFO: в DEBUG kurigram печатает код входа в Telegram. |
 | `PYROBOT_HTTP_HOST` | IP для привязки HTTP сервера. |
 | `PYROBOT_HTTP_PORT` | Порт для HTTP API. |
-| `PYROBOT_ACCOUNT_ID` | ID аккаунта в игре (по умолчанию 1). |
+| `PYROBOT_ACCOUNT_ID` | Внутренний `accounts.id` в базе pyrobot (по умолчанию 1), не ID игрока в игре. |
 
 ## База данных
 
@@ -53,7 +53,12 @@ docker compose -f compose.dev.yml up -d
 uv run alembic upgrade head
 ```
 
-Новую миграцию генерировать через `uv run alembic revision --autogenerate -m "..."`.
+Новую миграцию генерировать через `uv run alembic revision --autogenerate -m "..."`. Alembic читает
+только `PYROBOT_DATABASE_URL` (`DbConfig`), Telegram-параметры для миграций не нужны.
+
+Пул соединений (`app/db/base.py`) задаёт asyncpg `command_timeout=30` — ни один запрос не висит
+дольше 30 секунд; проверка single-instance лока (`SingleInstanceLock.check`) ограничена 5 секундами,
+таймаут считается потерей лока.
 
 ## Запуск
 
@@ -74,8 +79,8 @@ advisory lock) → если лок не взят, движок не старту
 транспорт (`PYROBOT_TRANSPORT=kurigram|fake`) → шлюз действий, подписанный на шину → `TgAuthManager`
 → фасад → супервизор (`app/engine/supervisor.py`, `Supervisor`) поднимает и перезапускает с
 экспоненциальным backoff фоновые задачи конвейера, шлюза, монитора лага event loop, наблюдателя за
-локом и (для kurigram) пробы сессии Telegram `tg-probe`, уведомляя `task_failed:<имя>` при падении → `tg.boot()` пытается восстановить существующую
-сессию Telegram.
+локом и (для kurigram) пробы сессии Telegram `tg-probe`, уведомляя `task_failed:<имя>` при падении
+→ `tg.boot()` пытается восстановить существующую сессию Telegram.
 
 Режим по умолчанию — `dry_run` (`settings.engine.mode`): любое действие, кроме `nav`, подавляется
 шлюзом ещё до отправки, в игру ничего не уходит. Переключение в `live` — через настройки движка.
@@ -103,7 +108,9 @@ advisory lock) → если лок не взят, движок не старту
 - `app/db` — Postgres: модели, миграции, хранилища.
 - `app/api` — HTTP API для админки.
 
-Транспорт kurigram (`app/engine/transport/kurigram.py`) держит `workers=1` — апдейты обрабатываются
+Транспорт kurigram (`app/engine/transport/kurigram.py`; зависимость закреплена `kurigram>=2.2.26,<2.3`
+— транспорт опирается на внутреннее поведение SDK 2.2.x, например на то, что `invoke(retries=1)` при
+таймауте делает ровно одну попытку) держит `workers=1` — апдейты обрабатываются
 строго по порядку — и `skip_updates=False`, чтобы при старте догнать пропуски; identity (`get_me`)
 проверяется до запуска апдейтов. Исходящие RPC (`SendMessage`, `GetBotCallbackAnswer`) — одна попытка
 без сна и повторов SDK, все повторы и паузы идут только через шлюз действий. Потеря авторизации
@@ -114,10 +121,10 @@ advisory lock) → если лок не взят, движок не старту
 после чего вызывается `on_auth_lost`; отправка и клик дополнительно поднимают `TransportAuthLost`.
 Прочие ошибки пробы только логируются. `log_out()` при любом исходе `auth.LogOut` делает ту же
 очистку: 401 (сессия уже отозвана) считается успешным выходом, другая ошибка пробрасывается после
-очистки. `BadRequest` при клике — `TransportRejected`; если бот
-не прислал тост (таймаут ожидания ответа или `BOT_RESPONSE_TIMEOUT` от Telegram — игра часто выполняет
-действие без тоста), `click()` возвращает `None`, и исход проверяется ожиданием шлюза, а не считается
-отказом. Таймаут тоста `click_answer_timeout_s` — не больше 30 секунд. Фильтр чатов (`ChatFilter`) пропускает: игровой чат и
+очистки. `BadRequest` при клике — `TransportRejected`; если бот не прислал тост (таймаут ожидания
+ответа или `BOT_RESPONSE_TIMEOUT` от Telegram — игра часто выполняет действие без тоста), `click()`
+возвращает `None`, и исход проверяется ожиданием шлюза, а не считается отказом. Таймаут тоста
+`click_answer_timeout_s` — не больше 30 секунд. Фильтр чатов (`ChatFilter`) пропускает: игровой чат и
 канал смузи — любые сообщения; чат SWINFO — только от пользователя SWINFO; чат приглашений в бой —
 только сообщения с кнопкой `join_fight_<11 символов>` (один текст без кнопки не считается); всё
 остальное отбрасывается ещё до журнала. Наивные даты pyrogram трактуются как локальные и переводятся
@@ -150,8 +157,10 @@ advisory lock) → если лок не взят, движок не старту
 (`maze_buf_coins_*`), весенние розыгрыши и смену призов за 🌐 (`spring_roll_coins*`,
 `spring_regenerate*`) и весенние призы `/sbN`. Callback метро и весны принимаются только по белому
 списку реально встреченных значений (`maze_up`, `maze_exit_accept`, `maze_buf_tokens_*`, …,
-`spring_roll_smiles`); любое другое значение, как и неизвестная команда, — `forbidden`. Правила проверяются при постановке в очередь, при выборе и перед каждой
-попыткой отправки: `risky` уходит только при `source=MANUAL` и подтверждённом `risky_confirmed`,
+`spring_roll_smiles`); любое другое значение, как и неизвестная команда, — `forbidden`. Правила
+проверяются при постановке в очередь, при выборе и перед каждой попыткой отправки: отправлять можно
+только в разрешённые чаты — игровой, Tangerine и чат приглашений в бой, если он задан
+(`settings.chats`), иначе `REJECTED "chat_not_allowed"`; `risky` уходит только при `source=MANUAL` и подтверждённом `risky_confirmed`,
 иначе `REJECTED "risky_requires_confirm"`; `action`/`risky` без `Expectation` отклоняются
 (`REJECTED "expectation_required"`) — успешный вызов API сам по себе не подтверждает результат в
 игре, подтверждает только ответ игры по предикату; только `nav` без ожидания подтверждается сразу
@@ -160,9 +169,11 @@ advisory lock) → если лок не взят, движок не старту
 (`SUPPRESSED "dry_run"`), блок трат (`block_spending`) отклоняет всё, кроме `nav`
 (`REJECTED "blocked:<reason>"`). Предикат `can_send` (из `Runtime`) проверяется там же, где kill
 switch и `dry_run`, и отклоняет любую команду, включая `nav`: без single-instance лока — `REJECTED
-"lock_lost"`, если Telegram не в состоянии `ONLINE` — `REJECTED "tg_offline"`. Истёкший TTL — `REJECTED "expired"`, клик по кнопке вне последней
-ревизии сообщения — `REJECTED "stale_button"`, несовпадение `expect_revision` — `REJECTED
-"stale_revision"`.
+"lock_lost"`, если Telegram не в состоянии `ONLINE` — `REJECTED "tg_offline"`. Истёкший TTL —
+`REJECTED "expired"`, клик по кнопке вне последней ревизии сообщения — `REJECTED "stale_button"`,
+несовпадение `expect_revision` — `REJECTED "stale_revision"`. Пока действует пауза после FloodWait
+или антифлуда, шлюз не выбирает действия и не пишет `INTENT`; TTL стоящих в очереди при этом
+продолжает истекать, и они разрешаются как `REJECTED "expired"`.
 
 Действие в хранилище (`ActionStore`) проходит `INTENT` (пишется до отправки) → `SENT` → терминальный
 статус (`CONFIRMED`/`REFUSED`/`SUPPRESSED`/`OUTCOME_UNKNOWN`/`REJECTED`). Ожидание ответа
@@ -182,13 +193,15 @@ switch и `dry_run`, и отклоняет любую команду, включ
 со скольжением: если с последнего обращения прошли сутки, срок и сама cookie продлеваются заново при
 следующем запросе. Пароль хранится как argon2-хэш (`argon2-cffi`), хэширование и проверка выполняются
 в threadpool не более чем в 2 параллельных потока (`LoginRateLimiter.slots`). `POST
-/api/v1/auth/login` принимает `{login, password}` и в ответ отдаёт `{login, csrf_token}` вместе с
+/api/v1/auth/login` принимает `{login, password}` (логин до 64 символов, пароль до 1024, иначе 422)
+и в ответ отдаёт `{login, csrf_token}` вместе с
 cookie; мутирующие запросы (`POST /api/v1/auth/logout`, `POST /api/v1/auth/password`) требуют
 заголовок `X-CSRF-Token` с токеном текущей сессии, иначе 403. Попытки входа с одного IP
 сериализуются (`LoginRateLimiter.lock_for`) и ограничены экспоненциальным backoff: 5 бесплатных
 попыток, дальше — 429 с заголовком `Retry-After`, растущим от `base_s` до `max_s`. Смена пароля
-(`POST /api/v1/auth/password`, новый пароль не короче 12 символов) отзывает все сессии админа,
-включая текущую. `GET /healthz` — проверка живости, без авторизации.
+(`POST /api/v1/auth/password`, новый пароль не короче 12 и не длиннее 1024 символов, текущий — не
+длиннее 1024) отзывает все сессии админа, включая текущую. `GET /healthz` — проверка живости, без
+авторизации. Swagger UI, ReDoc и `/openapi.json` отключены (404).
 
 `EngineFacade` (`app/engine/facade.py`) — фасад над `ActionGateway`, `Pipeline` и `TgAuthManager`:
 `status()` отдаёт режим, kill switch, блок трат, статус Telegram, длину очереди, текущее действие,
@@ -204,5 +217,11 @@ cookie; мутирующие запросы (`POST /api/v1/auth/logout`, `POST /
 `GET /api/v1/tg/status` (сессия) и `POST /api/v1/tg/login/start {phone}`, `.../login/code
 {attempt_id, code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (все —
 CSRF) проксируют `TgAuthManager`; несовпадение попытки входа (`AttemptMismatch`) отдаёт 409.
+Неверный или истёкший код и неверный пароль 2FA — это 200 с полем `error` (`invalid_code`,
+`code_expired`, `invalid_password`). Прочие ошибки входа — наследники `TgAuthError` с кодом:
+распознанные (например, `invalid_phone`) — 400 `{"detail": "<код>"}`, сбой Telegram или сети
+(`TgBackendError`: `send_code_failed`, `sign_in_failed`, `check_password_failed`) — 502. Сбой
+`send_code` переводит статус Telegram в `ERROR` с тем же кодом, сбой `sign_in`/`check_password`
+оставляет попытку, чтобы код можно было отправить повторно.
 `GET /readyz` (без авторизации) — 200 `{"status":"ready"}`, если движок поднят и `ready()` истинна,
 иначе 503 `{"status":"not_ready"}`.

@@ -116,3 +116,24 @@ async def test_csrf_empty_header_rejected(api_client: AsyncClient) -> None:
 
 async def test_healthz(api_client: AsyncClient) -> None:
     assert (await api_client.get("/healthz")).json() == {"status": "ok"}
+
+
+async def test_login_field_limits(api_client: AsyncClient) -> None:
+    long_login = {"login": "a" * 65, "password": PASSWORD}
+    assert (await api_client.post("/api/v1/auth/login", json=long_login)).status_code == 422
+    long_pw = {"login": "admin", "password": "p" * 1025}
+    assert (await api_client.post("/api/v1/auth/login", json=long_pw)).status_code == 422
+
+
+async def test_password_change_field_limits(api_client: AsyncClient) -> None:
+    h = {"X-CSRF-Token": await login(api_client)}
+    url = "/api/v1/auth/password"
+    long_current = {"current": "p" * 1025, "new": "a much longer password"}
+    assert (await api_client.post(url, headers=h, json=long_current)).status_code == 422
+    long_new = {"current": PASSWORD, "new": "n" * 1025}
+    assert (await api_client.post(url, headers=h, json=long_new)).status_code == 422
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+async def test_api_docs_disabled(api_client: AsyncClient, path: str) -> None:
+    assert (await api_client.get(path)).status_code == 404

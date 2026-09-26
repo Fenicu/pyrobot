@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -7,8 +9,9 @@ LOCK_KEY = 0x7079726F626F74
 
 
 class SingleInstanceLock:
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, *, check_timeout_s: float = 5.0) -> None:
         self._db = db
+        self._check_timeout = check_timeout_s
         self._conn: AsyncConnection | None = None
         self.held = False
 
@@ -27,12 +30,13 @@ class SingleInstanceLock:
             self.held = False
             return False
         try:
-            owned = await self._conn.scalar(
-                text(
-                    "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' "
-                    "AND pid = pg_backend_pid() AND granted)"
+            async with asyncio.timeout(self._check_timeout):
+                owned = await self._conn.scalar(
+                    text(
+                        "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' "
+                        "AND pid = pg_backend_pid() AND granted)"
+                    )
                 )
-            )
         except Exception:
             self.held = False
             return False

@@ -1,14 +1,17 @@
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AppConfig(BaseSettings):
+class DbConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PYROBOT_", env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+asyncpg://pyrobot:pyrobot@localhost:55432/pyrobot"
+
+
+class AppConfig(DbConfig):
     data_dir: Path = Path("/data")
     tg_api_id: int = 0
     tg_api_hash: SecretStr = SecretStr("")
@@ -20,3 +23,12 @@ class AppConfig(BaseSettings):
     transport: Literal["kurigram", "fake"] = "kurigram"
     log_level: str = "INFO"
     account_id: int = 1
+
+    @model_validator(mode="after")
+    def _kurigram_credentials(self) -> Self:
+        if self.transport == "kurigram":
+            if self.tg_api_id <= 0:
+                raise ValueError("tg_api_id must be set for kurigram transport")
+            if not self.tg_api_hash.get_secret_value():
+                raise ValueError("tg_api_hash must be set for kurigram transport")
+        return self

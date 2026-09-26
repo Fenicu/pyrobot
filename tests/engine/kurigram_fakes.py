@@ -114,6 +114,9 @@ class FakeClient:
             yield item
 
     async def send_phone_number_code(self, phone: str) -> Any:
+        err = self.errors.pop("SendCode", None)
+        if err is not None:
+            raise err
         return NS(phone_code_hash="hash")
 
     async def sign_in(self, phone: str, code_hash: str, code: str) -> Any:

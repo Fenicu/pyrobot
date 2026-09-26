@@ -5,7 +5,7 @@ description = "Userbot для автоматической игры в StartupWa
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "kurigram>=2.2.26",
+    "kurigram>=2.2.26,<2.3",
     "tgcrypto>=1.2.5",
     "fastapi>=0.141",
     "uvicorn[standard]>=0.54",

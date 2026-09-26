@@ -18,8 +18,8 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 class LoginIn(BaseModel):
-    login: str
-    password: str
+    login: str = Field(max_length=64)
+    password: str = Field(max_length=1024)
 
 
 class MeOut(BaseModel):
@@ -28,8 +28,8 @@ class MeOut(BaseModel):
 
 
 class PasswordIn(BaseModel):
-    current: str
-    new: str = Field(min_length=12)
+    current: str = Field(max_length=1024)
+    new: str = Field(min_length=12, max_length=1024)
 
 
 @router.post("/login", response_model=MeOut)

@@ -7,7 +7,9 @@ from app.api.routes_engine import router as engine_router
 
 
 def create_api(container: Container) -> FastAPI:
-    app = FastAPI(title="pyrobot", version="0.1.0")
+    app = FastAPI(
+        title="pyrobot", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None
+    )
     app.state.container = container
     app.include_router(auth_router)
     app.include_router(engine_router)

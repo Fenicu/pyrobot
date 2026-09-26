@@ -13,6 +13,7 @@ from app.engine.tg_auth import (
     CodeExpired,
     InvalidCode,
     InvalidPassword,
+    InvalidPhone,
     PasswordRequired,
     SignUpRequired,
 )
@@ -198,8 +199,13 @@ class KurigramTransport:
         return (await self._client.storage.user_id()) is not None
 
     async def send_code(self, phone: str) -> str:
+        from pyrogram import errors
+
         # kurigram 2.2.x: метод называется send_phone_number_code (переименован из send_code).
-        sent = await self._client.send_phone_number_code(phone)
+        try:
+            sent = await self._client.send_phone_number_code(phone)
+        except errors.PhoneNumberInvalid as exc:
+            raise InvalidPhone from exc
         return str(sent.phone_code_hash)
 
     async def sign_in(self, phone: str, code_hash: str, code: str) -> int:

@@ -2,7 +2,13 @@ import asyncio
 
 import pytest
 
-from app.engine.tg_auth import AttemptMismatch, TgAuthManager, TgState
+from app.engine.tg_auth import (
+    AttemptMismatch,
+    InvalidPhone,
+    TgAuthManager,
+    TgBackendError,
+    TgState,
+)
 from app.engine.transport.fake import FakeTgBackend
 
 EXPECTED = 267519921
@@ -142,3 +148,46 @@ async def test_mark_lost_notifies_once_per_online_session() -> None:
     await mgr.boot()
     await mgr.mark_lost()
     assert rec.items == [("error", "tg_auth_lost")] * 2
+
+
+class _SendCodeDown(FakeTgBackend):
+    async def send_code(self, phone: str) -> str:
+        raise ConnectionError("network down")
+
+
+class _BadPhone(FakeTgBackend):
+    async def send_code(self, phone: str) -> str:
+        raise InvalidPhone
+
+
+class _SignInDown(FakeTgBackend):
+    async def sign_in(self, phone: str, code_hash: str, code: str) -> int:
+        raise ConnectionError("network down")
+
+
+async def test_start_backend_failure_sets_error_and_raises() -> None:
+    mgr = TgAuthManager(_SendCodeDown(), expected_user_id=EXPECTED)
+    await mgr.boot()
+    with pytest.raises(TgBackendError) as info:
+        await mgr.start("+888", owner="s1")
+    assert info.value.code == "send_code_failed"
+    st = mgr.status()
+    assert st.state is TgState.ERROR and st.error == "send_code_failed" and st.attempt_id is None
+
+
+async def test_start_classified_error_keeps_code() -> None:
+    mgr = TgAuthManager(_BadPhone(), expected_user_id=EXPECTED)
+    await mgr.boot()
+    with pytest.raises(InvalidPhone):
+        await mgr.start("+888", owner="s1")
+    assert mgr.status().state is TgState.ERROR and mgr.status().error == "invalid_phone"
+
+
+async def test_sign_in_backend_failure_keeps_attempt() -> None:
+    mgr = TgAuthManager(_SignInDown(), expected_user_id=EXPECTED)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    with pytest.raises(TgBackendError) as info:
+        await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    assert info.value.code == "sign_in_failed"
+    assert mgr.status().state is TgState.AWAITING_CODE

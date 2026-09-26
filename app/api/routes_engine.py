@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
 from app.engine.facade import EngineFacade, LockLostError
-from app.engine.tg_auth import AttemptMismatch, TgStatus
+from app.engine.tg_auth import AttemptMismatch, TgAuthError, TgBackendError, TgStatus
 
 router = APIRouter(prefix="/api/v1", tags=["engine"])
 
@@ -98,6 +98,10 @@ async def _guard(coro: Awaitable[TgStatus]) -> dict[str, Any]:
         return _tg(await coro)
     except AttemptMismatch as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except TgBackendError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, exc.code) from exc
+    except TgAuthError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.code) from exc
 
 
 @router.post("/tg/login/start")
