@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, Step
@@ -46,6 +46,7 @@ class _Planner(Obligations):
             self.gorbushka,
             self.tangerine,
             self.smoothie,
+            self.metro,
             self.deeds,
         )
         for step in steps:
@@ -231,7 +232,7 @@ class _Planner(Obligations):
             return self.refresh("deeds", field)
         battle = self.battle_time()
         deadline: datetime | None = self.value("sleep_deadline")
-        motivation = self.value("motivation") - self.motivation_reserve()
+        motivation = self.value("motivation") - self.motivation_reserve() - self.metro_reserve()
         money = self.value("money") - self.ticket_reserve() - self.hotel_reserve()
         details: int = self.value("details")
         ok: list[Candidate] = []
@@ -287,12 +288,21 @@ def decide(
     last_refresh: Mapping[str, datetime] | None = None,
     cooldowns: Mapping[str, datetime] | None = None,
     last_done: Mapping[str, datetime] | None = None,
+    metro_durations: Sequence[float] = (),
 ) -> Decision:
     """Следующий шаг: сценарий или ожидание. `certified=None` — без ограничения (dry_run).
 
-    `last_done` — момент последнего успешного запуска каждого сценария (журнал запусков).
+    `last_done` — момент последнего успешного запуска каждого сценария (журнал запусков);
+    `metro_durations` — длительности прошлых забегов метро в секундах (бюджет по p90).
     """
     planner = _Planner(
-        state, settings, now, certified, last_refresh or {}, cooldowns or {}, last_done or {}
+        state,
+        settings,
+        now,
+        certified,
+        last_refresh or {},
+        cooldowns or {},
+        last_done or {},
+        metro_durations,
     )
     return planner.decide()

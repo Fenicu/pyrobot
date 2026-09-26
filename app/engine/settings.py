@@ -117,6 +117,26 @@ class TangerineSection(BaseModel):
     interval_h: int = Field(default=20, ge=20)
 
 
+MetroBuff = Literal["fastMove", "strong", "firstAid"]
+
+
+class MetroSection(BaseModel):
+    # До битвы нужно не меньше max(min_budget_min, p90 прошлых забегов × 1.5) + запасы.
+    min_budget_min: int = Field(default=60, ge=1)
+    # Игра выкидывает из метро за 15 минут до битвы с половиной найденного.
+    battle_margin_min: int = Field(default=15, ge=15)
+    extra_margin_min: int = Field(default=10, ge=0)
+    # Бафы за 🕳; за 🌐 — никогда (донат).
+    buffs: tuple[MetroBuff, ...] = ("fastMove", "strong", "firstAid")
+    heal_at: int = Field(default=50, ge=0, le=100)
+    heal_before_exit: bool = True
+    chest_min_packs: int = Field(default=2, ge=0)
+    npc_low_enabled: bool = True
+    npc_high_enabled: bool = False
+    # Без аптечек с NPC не драться при 🔋 ниже этого: на экране NPC лечиться нельзя.
+    npc_min_stamina: int = Field(default=30, ge=0)
+
+
 class Settings(BaseModel):
     engine: EngineSection = Field(default_factory=EngineSection)
     telegram: TelegramSection = Field(default_factory=TelegramSection)
@@ -129,6 +149,7 @@ class Settings(BaseModel):
     battle: BattleSection = Field(default_factory=BattleSection)
     stocks: StocksSection = Field(default_factory=StocksSection)
     tangerine: TangerineSection = Field(default_factory=TangerineSection)
+    metro: MetroSection = Field(default_factory=MetroSection)
 
 
 class SettingsConflict(Exception):

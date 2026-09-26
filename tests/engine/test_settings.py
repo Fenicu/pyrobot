@@ -73,3 +73,21 @@ def test_battle_override_hour_bounds(hour: int) -> None:
     assert set(ok.battle.overrides) == {0, 23}
     with pytest.raises(ValidationError):
         Settings.model_validate({"battle": {"overrides": {hour: "🛡Защита"}}})
+
+
+def test_metro_defaults_follow_spec() -> None:
+    m = Settings().metro
+    assert (m.min_budget_min, m.battle_margin_min, m.extra_margin_min) == (60, 15, 10)
+    assert m.buffs == ("fastMove", "strong", "firstAid")
+    assert (m.heal_at, m.heal_before_exit, m.chest_min_packs) == (50, True, 2)
+    assert (m.npc_low_enabled, m.npc_high_enabled, m.npc_min_stamina) == (True, False, 30)
+    assert Settings().features.metro is True
+
+
+def test_metro_bounds() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"metro": {"battle_margin_min": 10}})
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"metro": {"buffs": ["fastMove", "coins"]}})
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"metro": {"heal_at": 120}})

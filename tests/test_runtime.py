@@ -209,7 +209,7 @@ async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database
 
 def _without_windows(s: Settings) -> Settings:
     off = dict.fromkeys(
-        ("stocks_dump", "factory", "bulls", "tangerine", "smoothie", "sleep"), False
+        ("stocks_dump", "factory", "bulls", "tangerine", "smoothie", "sleep", "metro"), False
     )
     return s.model_copy(update={"features": s.features.model_copy(update=off)})
 

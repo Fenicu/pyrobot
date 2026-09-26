@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -73,6 +73,7 @@ FEATURE = {
     "bulls_join": "bulls",
     "tangerine": "tangerine",
     "smoothie": "smoothie",
+    "metro": "metro",
 }
 
 Step = Callable[[BusyState | None], Decision | None]
@@ -99,6 +100,7 @@ class PlannerBase:
         last_refresh: Mapping[str, datetime],
         cooldowns: Mapping[str, datetime],
         last_done: Mapping[str, datetime],
+        metro_durations: Sequence[float] = (),
     ) -> None:
         self.s = state
         self.cfg = settings
@@ -107,6 +109,7 @@ class PlannerBase:
         self.last_refresh = last_refresh
         self.cooldowns = cooldowns
         self.last_done = last_done
+        self.metro_durations = metro_durations
         volatile = timedelta(minutes=settings.engine.state_stale_after_min)
         stale = set(stale_fields(state, now, volatile))
         # После тика регенерации 🔥 наблюдение мотивации устарело независимо от возраста.

@@ -67,6 +67,7 @@ QUIET = LIVE.model_copy(
                 "tangerine": False,
                 "smoothie": False,
                 "sleep": False,
+                "metro": False,
             }
         )
     }

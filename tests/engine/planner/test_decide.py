@@ -25,6 +25,7 @@ QUIET = {
     "bulls": False,
     "tangerine": False,
     "smoothie": False,
+    "metro": False,
 }
 
 

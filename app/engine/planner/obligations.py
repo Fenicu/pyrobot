@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import math
+from collections.abc import Sequence
 from datetime import datetime, time, timedelta
 
 from app.engine.gametime import MSK, to_msk
 from app.engine.market import pick_stock
 from app.engine.parsing.smoothie import recipe_need
-from app.engine.planner.base import BATTLE_BEFORE, READY_SLACK, PlannerBase, battle_hour
+from app.engine.planner.base import (
+    BATTLE_AFTER,
+    BATTLE_BEFORE,
+    READY_SLACK,
+    PlannerBase,
+    battle_hour,
+)
 from app.engine.planner.types import Decision
 from app.engine.state.model import BusyState, StockLimits
 
@@ -23,6 +31,18 @@ FACTORY_OPEN, FACTORY_CLOSE, FACTORY_BATTLE = time(18, 0), time(18, 15), time(18
 NIGHT_START, NIGHT_END = time(22, 0), time(8, 0)
 SLEEP_NIGHT_OPEN, SLEEP_AFTER_BULLS, SLEEP_WAKE_BY = time(22, 5), time(0, 30), time(12, 45)
 SMOOTHIE_RESET = time(3, 0)
+METRO_COST = 2
+METRO_COOLDOWN = timedelta(hours=16)
+# 2🔥 на вход в метро держатся от дел, если спуск станет доступен в ближайший час.
+METRO_RESERVE_AHEAD = timedelta(hours=1)
+METRO_SAFETY = 1.5
+
+
+def p90(values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    return ordered[max(0, math.ceil(0.9 * len(ordered)) - 1)]
 
 
 def msk_at(moment: datetime, at: time, days: int = 0) -> datetime:
@@ -239,6 +259,86 @@ class Obligations(PlannerBase):
             self.reject("smoothie", {}, "busy")
             return None
         return self.act("smoothie", {"recipe": recipe.value.recipe}, "smoothie_recipe")
+
+    # --- метро
+
+    def metro_run(self) -> timedelta:
+        """Консервативная длительность забега: max(min_budget_min, p90 прошлых × 1.5)."""
+        history = timedelta(seconds=p90(self.metro_durations) * METRO_SAFETY)
+        return max(timedelta(minutes=self.cfg.metro.min_budget_min), history)
+
+    def metro_margin(self) -> timedelta:
+        cfg = self.cfg.metro
+        return timedelta(minutes=cfg.battle_margin_min + cfg.extra_margin_min)
+
+    def metro_ready(self) -> datetime | None:
+        """Когда кулдаун метро пройдёт; None — уже прошёл или неизвестен (экран входа покажет)."""
+        if (ready := self.timer("metro_ready_at")) is not None:
+            return ready
+        last = self.last_done.get("metro")
+        if self.s.metro_ready_at is None and last is not None:
+            after = last + METRO_COOLDOWN
+            if not self.due(after):
+                return after
+        return None
+
+    def metro_fits(self, start: datetime) -> bool:
+        battle = self.upcoming_battle()
+        return battle is None or battle - start >= self.metro_run() + self.metro_margin()
+
+    def metro_reserve(self) -> int:
+        if not self.feature_on("metro"):
+            return 0
+        ready = self.metro_ready() or self.now
+        if ready - self.now > METRO_RESERVE_AHEAD or not self.metro_fits(ready):
+            return 0
+        return METRO_COST
+
+    def metro(self, busy: BusyState | None) -> Decision | None:
+        if not self.feature_on("metro"):
+            return None
+        if (ready := self.metro_ready()) is not None:
+            self.wake(ready, "metro_ready")
+            return None
+        if (field := self.stale_of("battle_at")) is not None:
+            return self.refresh("metro", field)
+        battle = self.upcoming_battle()
+        if battle is None:
+            return None
+        if not self.metro_fits(self.now):
+            self.reject("metro", {}, "battle_window")
+            self.wake(battle + BATTLE_AFTER, "battle")
+            return None
+        end = self.now + self.metro_run()
+        deadline: datetime | None = self.value("sleep_deadline")
+        if deadline is not None and end > deadline:
+            self.reject("metro", {}, "sleep_deadline")
+            return None
+        if self.blocks_factory(end):
+            self.reject("metro", {}, "factory_window")
+            return None
+        if busy is not None:
+            self.reject("metro", {}, "busy")
+            return None
+        if (field := self.stale_of("motivation")) is not None:
+            return self.refresh("metro", field)
+        if self.value("motivation") - self.motivation_reserve() < METRO_COST:
+            self.reject("metro", {}, "no_motivation")
+            self.wake(self.value("motivation_next_at"), "motivation")
+            return None
+        cfg = self.cfg.metro
+        params = {
+            "battle_at": battle.isoformat(),
+            "margin_min": cfg.battle_margin_min + cfg.extra_margin_min,
+            "buffs": list(cfg.buffs),
+            "heal_at": cfg.heal_at,
+            "heal_before_exit": cfg.heal_before_exit,
+            "chest_min_packs": cfg.chest_min_packs,
+            "npc_low": cfg.npc_low_enabled,
+            "npc_high": cfg.npc_high_enabled,
+            "npc_min_stamina": cfg.npc_min_stamina,
+        }
+        return self.act("metro", params, "metro_ready")
 
     # --- сон
 

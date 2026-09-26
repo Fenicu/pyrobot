@@ -19,7 +19,7 @@ from app.engine.state.model import (
     TargetSet,
 )
 
-PHASE4 = ("stocks_dump", "factory", "bulls", "tangerine", "smoothie")
+PHASE4 = ("stocks_dump", "factory", "bulls", "tangerine", "smoothie", "metro")
 FOOD = {"hotdog": FoodStockState(count=100, low=50, high=140)}
 LIMITS = StockLimits(min_buy=11, max_sell=80, reserve=100, open_hour=8, close_hour=22)
 QUOTES = {"piper": 10, "hooli": 10, "stark": 31, "umbrl": 100, "wayne": 10, "bmesa": 10}
@@ -550,3 +550,111 @@ def test_long_sleep_must_end_before_battle() -> None:
     decision = decide(state(late), cfg, late)
     assert isinstance(decision, Wait)
     assert decision.until == msk(22, 5, day=27) + TIMER_MARGIN
+
+
+# --- метро
+
+METRO = only("metro")
+# Только метро: без дел и сна решение — либо метро, либо ожидание.
+METRO_ALONE = Settings.model_validate(
+    {"features": {**dict.fromkeys(PHASE4, False), "metro": True, "deeds": False, "sleep": False}}
+)
+BATTLE_EVENING = msk(22)
+METRO_PARAMS = {
+    "battle_at": BATTLE_EVENING.isoformat(),
+    "margin_min": 25,
+    "buffs": ["fastMove", "strong", "firstAid"],
+    "heal_at": 50,
+    "heal_before_exit": True,
+    "chest_min_packs": 2,
+    "npc_low": True,
+    "npc_high": False,
+    "npc_min_stamina": 30,
+}
+
+
+def metro_state(now: datetime, **over: Any) -> CharacterState:
+    fields: dict[str, Any] = {"motivation": 10, "battle_at": BATTLE_EVENING}
+    return state(now, **{**fields, **over})
+
+
+def test_metro_when_ready_and_battle_far() -> None:
+    assert act(decide(metro_state(NOON), METRO, NOON)) == ("metro", METRO_PARAMS)
+    ready = metro_state(NOON, metro_ready_at=Obs(value=NOON, at=NOON))
+    assert act(decide(ready, METRO, NOON))[0] == "metro"
+    assert act(decide(metro_state(NOON), only(), NOON))[0] != "metro"
+
+
+def test_metro_budget_counts_from_start_of_battle_hour() -> None:
+    # «Битва через 1 ч 24 мин» в 12:00 — это битва в 14:00 (отсчёт округлён вниз), а не 13:24.
+    rounded_down = metro_state(NOON, battle_at=NOON + timedelta(minutes=84))
+    assert act(decide(rounded_down, METRO, NOON)) == (
+        "metro",
+        {**METRO_PARAMS, "battle_at": msk(14).isoformat()},
+    )
+
+
+def test_metro_waits_for_cooldown() -> None:
+    later = NOON + timedelta(hours=3)
+    decision = decide(metro_state(NOON, metro_ready_at=later), METRO_ALONE, NOON)
+    assert isinstance(decision, Wait)
+    assert (decision.until, decision.reason) == (later + READY_SLACK + TIMER_MARGIN, "metro_ready")
+
+
+def test_metro_cooldown_from_last_run_when_timer_unknown() -> None:
+    last = NOON - timedelta(hours=10)
+    decision = decide(metro_state(NOON), METRO_ALONE, NOON, last_done={"metro": last})
+    assert isinstance(decision, Wait)
+    assert decision.until == last + timedelta(hours=16) + TIMER_MARGIN
+    old = NOON - timedelta(hours=17)
+    assert act(decide(metro_state(NOON), METRO, NOON, last_done={"metro": old}))[0] == "metro"
+
+
+@pytest.mark.parametrize(
+    ("battle_in", "history", "chosen"),
+    [
+        (84, (), False),
+        (86, (), True),
+        (86, (3000.0,) * 10, False),
+        (101, (3000.0,) * 10, True),
+        (86, (1800.0,) * 9 + (6000.0,), True),
+    ],
+)
+def test_metro_budget_before_battle(
+    battle_in: int, history: tuple[float, ...], chosen: bool
+) -> None:
+    # Бюджет: max(60 мин, p90 × 1.5) + 15 + 10 мин запаса до битвы. Битва — в начале часа:
+    # отсчёт «Битва через …» округлён вниз, поэтому её время нормируется, и сдвигается «сейчас».
+    battle = msk(14)
+    now = battle - timedelta(minutes=battle_in)
+    s = metro_state(now, battle_at=battle)
+    decision = decide(s, METRO, now, metro_durations=history)
+    if chosen:
+        assert act(decision)[0] == "metro"
+    else:
+        assert verdicts(decision)["metro"] == "battle_window"
+
+
+def test_metro_needs_motivation_over_reserve() -> None:
+    fight = GorbushkaState(
+        state="waiting", won=1, total=4, next_fight_at=NOON + timedelta(minutes=20)
+    )
+    ok = metro_state(NOON, motivation=3, gorbushka=fight)
+    assert act(decide(ok, METRO_ALONE, NOON))[0] == "metro"
+    short = metro_state(NOON, motivation=2, gorbushka=fight)
+    assert verdicts(decide(short, METRO_ALONE, NOON))["metro"] == "no_motivation"
+
+
+def test_metro_needs_free_character_and_time_before_sleep() -> None:
+    busy = BusyState(activity="job", until=NOON + timedelta(minutes=5))
+    assert verdicts(decide(metro_state(NOON, busy=busy), METRO_ALONE, NOON))["metro"] == "busy"
+    sleepy = metro_state(NOON, sleep_deadline=NOON + timedelta(minutes=30))
+    assert verdicts(decide(sleepy, METRO_ALONE, NOON))["metro"] == "sleep_deadline"
+
+
+def test_deeds_keep_motivation_for_metro_ready_soon() -> None:
+    soon = metro_state(NOON, motivation=2, metro_ready_at=NOON + timedelta(minutes=30))
+    decision = decide(soon, METRO, NOON)
+    assert isinstance(decision, Wait)
+    assert {v for k, v in verdicts(decision).items() if k.startswith("deed:")} == {"no_motivation"}
+    assert act(decide(soon, only(), NOON))[0].startswith("deed:")
