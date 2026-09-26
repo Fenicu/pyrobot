@@ -1,0 +1,71 @@
+name: Проверки pyrobot
+
+on:
+  push:
+    branches: [master, rewrite]
+    tags: ['*']
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: docker
+    container:
+      image: ghcr.io/astral-sh/uv:debian-slim
+    timeout-minutes: 10
+    steps:
+      - name: Получить исходники
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git ca-certificates
+          AUTH_URL="$(echo "${{ github.server_url }}/${{ github.repository }}.git" \
+            | sed "s|https://|https://ci:${{ secrets.GITEA_TOKEN }}@|")"
+          git init -q . && git remote add origin "$AUTH_URL"
+          git fetch -q --depth 1 origin "${{ github.sha }}"
+          git checkout -q FETCH_HEAD
+      - name: ruff
+        run: |
+          uvx --from 'ruff==0.16.9' ruff check .
+          uvx --from 'ruff==0.16.9' ruff format --check .
+      - name: mypy
+        run: |
+          uv sync --frozen
+          uv run mypy
+
+  test:
+    runs-on: docker
+    container:
+      image: ghcr.io/astral-sh/uv:debian-slim
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: pyrobot_test
+          POSTGRES_USER: pyrobot
+          POSTGRES_PASSWORD: pyrobot
+    env:
+      PYROBOT_TEST_DATABASE_URL: "postgresql+asyncpg://pyrobot:pyrobot@postgres:5432/pyrobot_test"
+      PYROBOT_TEST_MIGRATIONS_URL: "postgresql+asyncpg://pyrobot:pyrobot@postgres:5432/pyrobot_migtest"
+    steps:
+      - name: Получить исходники
+        run: |
+          echo 'Acquire::http::Proxy "http://10.10.40.23:3142";' > /etc/apt/apt.conf.d/00proxy
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git ca-certificates postgresql-client
+          AUTH_URL="$(echo "${{ github.server_url }}/${{ github.repository }}.git" \
+            | sed "s|https://|https://ci:${{ secrets.GITEA_TOKEN }}@|")"
+          git init -q . && git remote add origin "$AUTH_URL"
+          git fetch -q --depth 1 origin "${{ github.sha }}"
+          git checkout -q FETCH_HEAD
+      - name: Дождаться PostgreSQL и создать базу миграций
+        run: |
+          for i in $(seq 1 30); do pg_isready -h postgres -U pyrobot && break; sleep 2; done
+          PGPASSWORD=pyrobot psql -h postgres -U pyrobot -d pyrobot_test -c "CREATE DATABASE pyrobot_migtest"
+      - name: pytest
+        run: |
+          uv sync --frozen
+          uv run pytest -q -m "not corpus"
