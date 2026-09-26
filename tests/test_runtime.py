@@ -164,6 +164,7 @@ async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database
 
     app = create_application(_cfg())
     runtime = app.state.runtime
+    runtime.reconcile_poll_s = 0.05
     ids = itertools.count(5_000_000)
 
     async def respond(rec: Sent) -> None:
@@ -187,6 +188,6 @@ async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database
         runtime.transport.responder = respond
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             await _login_tg(client)
-            await until(lambda: runtime.gateway.spending_blocked is None, timeout=10.0)
+            await until(lambda: runtime.gateway.spending_blocked is None)
             assert await DbActionStore(clean_db, 1).unreconciled() == []
             assert (await client.get("/readyz")).status_code == 200

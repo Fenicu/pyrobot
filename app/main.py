@@ -38,6 +38,7 @@ LOCK_CHECK_S = 10.0
 TG_PROBE_S = 60.0
 PIPELINE_DRAIN_S = 10.0
 SESSION_PURGE_S = 3600.0
+RECONCILE_POLL_S = 5.0
 
 
 class Runtime:
@@ -53,6 +54,7 @@ class Runtime:
         self.lock_check_s = LOCK_CHECK_S
         self.tg_probe_s = TG_PROBE_S
         self.session_purge_s = SESSION_PURGE_S
+        self.reconcile_poll_s = RECONCILE_POLL_S
         self.pipeline: Pipeline | None = None
         self.gateway: ActionGateway | None = None
         self.tg: TgAuthManager | None = None
@@ -136,6 +138,7 @@ class Runtime:
                 and not settings.current.engine.killed
             ),
             game_chat_id=settings.current.chats.game_chat_id,
+            poll_s=self.reconcile_poll_s,
         )
         gateway.on_uncertain = reconciler.note
         lag = LoopLagMonitor()

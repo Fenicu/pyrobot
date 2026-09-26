@@ -48,7 +48,6 @@ GIFTS = RefreshSource("gifts", "/gifts", GiftsScreen, "containers_small")
 GORBUSHKA = RefreshSource("gorbushka", "/gorbushka", GorbushkaScreen, "gorbushka")
 _FOOD_COMMANDS = frozenset({"🌭Хот-дог", "🍕Пицца", "🍔Бургер", "🍌Банан", "/eat", "🍴Есть"})
 _INVENTORY_COMMANDS = frozenset({"/read_exp", "/use_card", "/unbox"})
-_GORBUSHKA_COMMANDS = frozenset({"/gorbushka", "🏛Горбушка"})
 
 
 def sources_for(obligation: Obligation) -> tuple[RefreshSource, ...]:
@@ -60,7 +59,7 @@ def sources_for(obligation: Obligation) -> tuple[RefreshSource, ...]:
         return (PROFILE, INVENTORY)
     if text.startswith("/unbox_"):
         return (PROFILE, GIFTS)
-    if text in _GORBUSHKA_COMMANDS or data.startswith("gorbushka_"):
+    if data.startswith("gorbushka_"):
         return (PROFILE, GORBUSHKA)
     return (PROFILE,)
 
