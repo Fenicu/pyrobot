@@ -54,3 +54,10 @@ def test_doing_variants() -> None:
 
 def test_foreign_text_ignored() -> None:
     assert recognize_compact(game_msg("battle", 3624402)) == []
+
+
+def test_other_busy_variants() -> None:
+    assert (_profile(3603794).busy_kind, _profile(3603794).busy_left_s) == ("learn", 108)
+    assert (_profile(3620232).busy_kind, _profile(3620232).busy_left_s) == ("eat", 169)
+    assert (_profile(3618555).busy_kind, _profile(3618555).busy_left_s) == ("fight", 245)
+    assert (_profile(3586615).busy_kind, _profile(3586615).busy_left_s) == ("sleep_hotel", 3120)
