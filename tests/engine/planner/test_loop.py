@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.engine.notify import Level
-from app.engine.planner.decide import TIMER_MARGIN
+from app.engine.planner.base import TIMER_MARGIN
 from app.engine.planner.loop import DEEDS, MAX_RETRY, RETRY_AFTER, PlannerLoop
 from app.engine.planner.store import MemoryPlannerStore
 from app.engine.planner.types import Act, Decision
@@ -55,12 +55,28 @@ class Rig:
             await self.loop.step()
 
 
-DRY = LIVE.model_copy(update={"engine": LIVE.engine.model_copy(update={"mode": "dry_run"})})
+# Цикл проверяется на механиках фазы 3; календарь фазы 4 — в test_obligations.py. Окна по часам
+# (обязательства, ночной сон) выключены: часы здесь настоящие.
+QUIET = LIVE.model_copy(
+    update={
+        "features": LIVE.features.model_copy(
+            update={
+                "stocks_dump": False,
+                "factory": False,
+                "bulls": False,
+                "tangerine": False,
+                "smoothie": False,
+                "sleep": False,
+            }
+        )
+    }
+)
+DRY = QUIET.model_copy(update={"engine": QUIET.engine.model_copy(update={"mode": "dry_run"})})
 
 
 @pytest.fixture
 async def world() -> AsyncIterator[World]:
-    async for w in running_world():
+    async for w in running_world(QUIET):
         yield w
 
 
@@ -316,6 +332,11 @@ async def test_pause_after_decision_stops_first_step(world: World) -> None:
 
 
 async def test_uncertified_step_stays_suppressed_after_switch_to_live(dry_world: World) -> None:
+    # Сон здесь по дедлайну (через 58 мин.), от часов не зависит.
+    await dry_world.settings.update(
+        lambda s: s.model_copy(update={"features": s.features.model_copy(update={"sleep": True})}),
+        changed_by="test",
+    )
     dry_world.game.on_text("🛌Спать", ("sleep", 3526861))
     await dry_world.feed("profile", 3610633)
     send_text = dry_world.game.send_text

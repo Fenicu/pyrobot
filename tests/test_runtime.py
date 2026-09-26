@@ -17,6 +17,7 @@ from app.engine.commands import CommandClass
 from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.planner.types import Act
+from app.engine.settings import Settings
 from app.engine.supervisor import Supervisor
 from app.engine.transport.fake import Sent
 from app.main import create_application
@@ -206,6 +207,13 @@ async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database
             assert (await client.get("/readyz")).status_code == 200
 
 
+def _without_windows(s: Settings) -> Settings:
+    off = dict.fromkeys(
+        ("stocks_dump", "factory", "bulls", "tangerine", "smoothie", "sleep"), False
+    )
+    return s.model_copy(update={"features": s.features.model_copy(update=off)})
+
+
 async def test_planner_refreshes_state_in_dry_run(clean_db: Database) -> None:
     app = create_application(_cfg().model_copy(update={"planner": True}))
     runtime = app.state.runtime
@@ -227,6 +235,8 @@ async def test_planner_refreshes_state_in_dry_run(clean_db: Database) -> None:
         await runtime.pipeline.submit(msg)
 
     async with app.router.lifespan_context(app):
+        # Рефреш проверяется на механиках фазы 3: окна обязательств и сна зависят от часов.
+        await runtime.settings.update(_without_windows, changed_by="test")
         assert runtime.transport is not None
         runtime.transport.responder = respond
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
