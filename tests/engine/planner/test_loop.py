@@ -6,9 +6,10 @@ import pytest
 
 from app.engine.notify import Level
 from app.engine.planner.decide import TIMER_MARGIN
-from app.engine.planner.loop import PlannerLoop
+from app.engine.planner.loop import DEEDS, MAX_RETRY, RETRY_AFTER, PlannerLoop
 from app.engine.planner.store import MemoryPlannerStore
-from app.engine.planner.types import Decision
+from app.engine.planner.types import Act, Decision
+from app.engine.scenarios.library import ScenarioResult
 from tests.engine.fakegame import LIVE, World, running_world
 
 
@@ -125,6 +126,16 @@ async def test_not_ready_does_not_decide(world: World) -> None:
     assert rig.store.decisions == [] and world.game.payloads() == []
 
 
+async def test_not_ready_clears_next_wake(world: World) -> None:
+    script_day(world)
+    rig = Rig(world)
+    await rig.steps(9)
+    assert rig.loop.next_wake is not None
+    rig.ready = "paused"
+    await rig.loop.step()
+    assert rig.loop.next_wake is None
+
+
 async def test_dry_run_defers_suppressed_and_decides_the_rest(dry_world: World) -> None:
     script_day(dry_world)
     rig = Rig(dry_world)
@@ -132,9 +143,32 @@ async def test_dry_run_defers_suppressed_and_decides_the_rest(dry_world: World) 
     assert dry_world.game.payloads() == ["😎Я", "/inv", "/to_eat", "/gifts", "/gorbushka"]
     runs = [(r.scenario, r.status) for r in rig.store.runs if r.status == "suppressed"]
     assert runs == [("book", "suppressed"), ("card", "suppressed"), ("deed:job", "suppressed")]
-    held = {name for name, until in rig.loop._cooldowns.items() if until > rig.clock.now()}
+    held = {name for name, until in rig.loop._held.items() if until > rig.clock.now()}
     assert {"book", "card", "deed:job", "deed:harvest"} <= held
     assert rig.store.decisions[-1][1].kind == "wait"
+
+
+async def test_switch_to_live_lifts_dry_run_holds(dry_world: World) -> None:
+    script_day(dry_world)
+    rig = Rig(dry_world)
+    await rig.steps(12)
+    assert "book" in rig.loop._held
+    await set_engine(dry_world, mode="live")
+    await rig.loop.step()
+    assert dry_world.game.payloads()[-1] == "/read_exp"
+    assert rig.store.runs[-1].status == "done"
+
+
+async def test_kill_switch_suppression_is_not_held(world: World) -> None:
+    await world.feed("profile", 3624478)
+    await world.feed("items", 3625102)
+    await world.gateway.kill("test")
+    rig = Rig(world)
+    await rig.loop.step()
+    assert [(r.scenario, r.status, r.reason) for r in rig.store.runs] == [
+        ("book", "suppressed", "kill_switch")
+    ]
+    assert rig.loop._held == {} and rig.loop._cooldowns == {}
 
 
 async def test_failures_cool_down_and_notify(world: World) -> None:
@@ -146,11 +180,94 @@ async def test_failures_cool_down_and_notify(world: World) -> None:
     await rig.loop.step()
     assert len(rig.store.runs) == 1
     assert rig.notes.codes == ["scenario_failed"]
-    for _ in range(2):
-        rig.clock.shift += timedelta(minutes=6)
+    # Серия неудач: 5 мин, затем 10.
+    for shift, runs in ((6, 2), (6, 2), (5, 3)):
+        rig.clock.shift += timedelta(minutes=shift)
         await rig.loop.step()
-    assert len(rig.store.runs) == 3
+        assert len(rig.store.runs) == runs
     assert rig.notes.codes == ["scenario_failed"]
+
+
+def moment() -> datetime:
+    return datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
+
+
+async def test_failure_series_backs_off_until_done(world: World) -> None:
+    rig = Rig(world)
+    at = moment()
+    act = Act("gorbushka", {"buy": False}, "gorbushka_fight")
+    failed = ScenarioResult("failed", "timeout")
+    spans = []
+    for _ in range(3):
+        await rig.loop._after(act, failed, at, at)
+        spans.append(rig.loop._cooldowns["gorbushka"] - at)
+    assert spans == [timedelta(minutes=m) for m in (5, 10, 20)]
+    assert rig.notes.codes == ["scenario_failed"]
+    await rig.loop._after(act, ScenarioResult("done", "gorbushka_fight"), at, at)
+    await rig.loop._after(act, ScenarioResult("stopped", "unexpected_screen"), at, at)
+    assert rig.loop._cooldowns["gorbushka"] - at == RETRY_AFTER
+    assert rig.notes.codes == ["scenario_failed", "scenario_failed"]
+    for _ in range(60):
+        await rig.loop._after(act, failed, at, at)
+    assert rig.loop._cooldowns["gorbushka"] - at == MAX_RETRY
+
+
+async def test_refusal_cooldowns(world: World) -> None:
+    rig = Rig(world)
+    at = moment()
+    job = Act("deed:job", {}, "best")
+    await rig.loop._after(job, ScenarioResult("refused", "busy"), at, at)
+    assert rig.loop._cooldowns == {"deed:job": at + timedelta(minutes=1)}
+    await rig.loop._after(job, ScenarioResult("refused", "no_money"), at, at)
+    assert rig.loop._cooldowns == {"deed:job": at + RETRY_AFTER}
+    assert rig.notes.codes == []
+
+
+async def test_battle_refusal_holds_all_deeds(world: World) -> None:
+    world.game.on_text("/job", ("refusals", 3520502))
+    await world.feed("profile", 3624478)
+    await world.feed("gorbushka", 3516741)
+    await world.settings.update(
+        lambda s: s.model_copy(
+            update={
+                "features": s.features.model_copy(
+                    update={"books": False, "cards_containers": False, "fastfood": False}
+                )
+            }
+        ),
+        changed_by="test",
+    )
+    rig = Rig(world)
+    await rig.steps(2)
+    assert world.game.payloads() == ["/job"]
+    assert [(r.scenario, r.status, r.reason) for r in rig.store.runs] == [
+        ("deed:job", "refused", "battle_soon")
+    ]
+    assert set(DEEDS) <= set(rig.loop._cooldowns)
+    assert rig.store.decisions[-1][1].kind == "wait"
+
+
+async def test_failed_profile_refresh_does_not_hold_inventory(world: World) -> None:
+    world.game.on_text("/inv", ("items", 3625102))
+    rig = Rig(world)
+    await rig.loop.step()
+    assert [(r.scenario, r.status) for r in rig.store.runs] == [("refresh", "failed")]
+    await world.feed("profile", 3624478)
+    await rig.loop.step()
+    assert world.game.payloads() == ["😎Я", "/inv"]
+    assert set(rig.loop._cooldowns) == {"refresh:profile"}
+
+
+async def test_cooldown_survives_run_journal_failure(world: World) -> None:
+    rig = Rig(world)
+
+    async def broken(run_id: int, status: str, reason: str, at: datetime) -> None:
+        raise ConnectionError("db down")
+
+    rig.store.run_finished = broken  # type: ignore[method-assign]
+    with pytest.raises(ConnectionError):
+        await rig.loop.step()
+    assert set(rig.loop._cooldowns) == {"refresh:profile"}
 
 
 async def test_pause_between_steps_is_not_failure(world: World) -> None:
@@ -192,7 +309,7 @@ async def test_pause_after_decision_stops_first_step(world: World) -> None:
     rig.store.record = pause_then_record  # type: ignore[method-assign]
     await rig.loop.step()
     assert [(r.scenario, r.status, r.reason) for r in rig.store.runs] == [
-        ("book", "failed", "paused")
+        ("book", "stopped", "paused")
     ]
     assert world.game.payloads() == [] and rig.loop._cooldowns == {}
     assert rig.notes.codes == []

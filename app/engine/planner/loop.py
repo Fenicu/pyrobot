@@ -19,12 +19,27 @@ from app.engine.settings import SettingsProvider
 from app.engine.state.model import CharacterState
 
 log = logging.getLogger(__name__)
+# Серия неудач сценария: 5 мин, 10, 20… но не больше 2 ч.
 RETRY_AFTER = timedelta(minutes=5)
-# «Нечего делать» уже обновило состояние экраном; короткая пауза страхует от зацикливания.
+MAX_RETRY = timedelta(hours=2)
+# «Нечего делать» и «занят» уже обновили состояние; короткая пауза страхует от зацикливания.
 NOTHING_RETRY = timedelta(minutes=1)
 # Подавленное действие (dry_run) состояние не меняет: сценарий откладывается, решаются остальные.
 SUPPRESSED_HOLD = timedelta(minutes=10)
+# Подавление остановкой движка к сценарию не относится.
+NOT_HELD = frozenset({"kill_switch", "shutdown"})
 DEEDS = tuple(name for name in SCENARIOS if name.startswith("deed:"))
+# Отказы, которые получит любое дело, а не только отказанное.
+SHARED_REFUSALS = frozenset(
+    {"battle_soon", "battle_running", "factory_running", "tired", "levelup_required"}
+)
+
+
+def cooldown_key(act: Act) -> str:
+    """Кулдаун и серия неудач рефреша — свои у каждого источника."""
+    if act.scenario == "refresh":
+        return f"refresh:{act.params['source']}"
+    return act.scenario
 
 
 class PlannerLoop:
@@ -55,7 +70,10 @@ class PlannerLoop:
         self._wake = asyncio.Event()
         self._last_refresh: dict[str, datetime] = {}
         self._cooldowns: dict[str, datetime] = {}
-        self._failing: set[str] = set()
+        # Отложенные подавлением: снимаются при смене режима движка.
+        self._held: dict[str, datetime] = {}
+        self._mode: str | None = None
+        self._failures: dict[str, int] = {}
         self._last_wait: DecisionRecord | None = None
         self.current: str | None = None
         self.next_wake: datetime | None = None
@@ -83,15 +101,19 @@ class PlannerLoop:
         """Одно решение; возвращает, сколько ждать до следующего (None — сразу)."""
         now = self._clock.now()
         if self._ready() is not None:
+            self.next_wake = None
             return self._poll_s
         settings = self._settings.current
+        if settings.engine.mode != self._mode:
+            self._held.clear()
+            self._mode = settings.engine.mode
         decision = decide(
             self._state(),
             settings,
             now,
             certified=CERTIFIED if settings.engine.mode == "live" else None,
             last_refresh=self._last_refresh,
-            cooldowns=self._cooldowns,
+            cooldowns=self._blocked(),
         )
         if isinstance(decision, Wait):
             return await self._wait(now, decision)
@@ -100,6 +122,12 @@ class PlannerLoop:
         decision_id = await self._store.record(now, decision)
         await self._execute(decision, decision_id)
         return None
+
+    def _blocked(self) -> dict[str, datetime]:
+        blocked = dict(self._cooldowns)
+        for key, until in self._held.items():
+            blocked[key] = max(until, blocked.get(key, until))
+        return blocked
 
     async def _wait(self, now: datetime, decision: Wait) -> float:
         # Одинаковые ожидания подряд (пробуждение по каждому сообщению) журналим один раз.
@@ -134,30 +162,50 @@ class PlannerLoop:
             result = ScenarioResult("failed", "crashed")
         finally:
             self.current = None
+        if result.reason == "paused":
+            result = ScenarioResult("stopped", "paused")
         finished = self._clock.now()
-        await self._store.run_finished(run_id, result.status, result.reason, finished)
+        # Кулдаун — до записи в журнал: сбой БД не должен оставить сценарий без него.
         await self._after(act, result, started, finished)
+        await self._store.run_finished(run_id, result.status, result.reason, finished)
 
     async def _after(
         self, act: Act, result: ScenarioResult, started: datetime, finished: datetime
     ) -> None:
         name = act.scenario
+        key = cooldown_key(act)
         if name == "refresh":
             self._last_refresh[str(act.params["source"])] = started
+        if result.reason == "paused":
+            return
+        is_deed = name.startswith("deed:")
         if result.status == "suppressed":
+            if result.reason in NOT_HELD:
+                return
             # Подавленное дело означает «занят делом»: откладываются все дела.
-            for held in DEEDS if name.startswith("deed:") else (name,):
-                self._cooldowns[held] = finished + SUPPRESSED_HOLD
+            for held in DEEDS if is_deed else (key,):
+                self._held[held] = finished + SUPPRESSED_HOLD
             return
-        if result.status == "done" or result.reason == "paused":
-            self._failing.discard(name)
+        if result.status == "done":
+            self._failures.pop(key, None)
             return
-        retry = NOTHING_RETRY if result.status == "nothing" else RETRY_AFTER
-        self._cooldowns[name] = finished + retry
-        if result.status not in ("failed", "stopped") or name in self._failing:
+        if result.status in ("failed", "stopped"):
+            await self._failed(key, result, finished)
             return
-        # Одно уведомление на серию неудач сценария, до его следующего успеха.
-        self._failing.add(name)
-        await self._notifier.notify(
-            "warn", "scenario_failed", f"{name}: {result.status} {result.reason}"
-        )
+        if result.status == "nothing" or result.reason == "busy":
+            self._cooldowns[key] = finished + NOTHING_RETRY
+            return
+        shared = is_deed and result.reason in SHARED_REFUSALS
+        for target in DEEDS if shared else (key,):
+            self._cooldowns[target] = finished + RETRY_AFTER
+
+    async def _failed(self, key: str, result: ScenarioResult, finished: datetime) -> None:
+        count = self._failures.get(key, 0) + 1
+        self._failures[key] = count
+        retry = RETRY_AFTER * 2 ** min(count - 1, 10)
+        self._cooldowns[key] = finished + min(retry, MAX_RETRY)
+        if count == 1:
+            # Одно уведомление на серию неудач, до следующего успеха.
+            await self._notifier.notify(
+                "warn", "scenario_failed", f"{key}: {result.status} {result.reason}"
+            )
