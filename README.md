@@ -129,3 +129,19 @@ cookie; мутирующие запросы (`POST /api/v1/auth/logout`, `POST /
 попыток, дальше — 429 с заголовком `Retry-After`, растущим от `base_s` до `max_s`. Смена пароля
 (`POST /api/v1/auth/password`, новый пароль не короче 12 символов) отзывает все сессии админа,
 включая текущую. `GET /healthz` — проверка живости, без авторизации.
+
+`EngineFacade` (`app/engine/facade.py`) — фасад над `ActionGateway`, `Pipeline` и `TgAuthManager`:
+`status()` отдаёт режим, kill switch, блок трат, статус Telegram, длину очереди, текущее действие,
+бэклог и здоровье конвейера, `lock_ok`/`workers_ok` и лаг event loop (`LoopLagMonitor`,
+`app/engine/lag.py`, максимум лага за скользящее окно 60с); `ready()` — истина, когда лок и воркеры
+в порядке, Telegram в состоянии `ONLINE`, нет kill switch, нет блока трат и конвейер здоров.
+`GET /api/v1/engine/status` (сессия) отдаёт этот статус целиком. `POST /api/v1/engine/kill {reason}`
+(CSRF) сперва латчит `ActionGateway` и обрывает очередь, затем сохраняет настройку — если сохранение
+не удалось, latch остаётся активным. `POST /api/v1/engine/unkill` (CSRF) — в обратном порядке:
+сначала сохраняет настройку, затем снимает latch; если сохранение падает, шлюз остаётся выключенным
+и исключение уходит наверх. `POST /api/v1/engine/reconciled` (CSRF) снимает блок трат после сверки.
+`GET /api/v1/tg/status` (сессия) и `POST /api/v1/tg/login/start {phone}`, `.../login/code
+{attempt_id, code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (все —
+CSRF) проксируют `TgAuthManager`; несовпадение попытки входа (`AttemptMismatch`) отдаёт 409.
+`GET /readyz` (без авторизации) — 200 `{"status":"ready"}`, если движок поднят и `ready()` истинна,
+иначе 503 `{"status":"not_ready"}`.
