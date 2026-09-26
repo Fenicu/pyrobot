@@ -27,10 +27,20 @@ async def test_fastfood_opens_menu_then_eats(world: World) -> None:
     ],
 )
 async def test_fastfood_refused(world: World, fixture: int, reason: str) -> None:
-    world.game.on_text("/to_eat", ("food", 3624997))
+    world.game.on_text("/to_eat", ("food", 3521844))
     world.game.on_text("🍔Бургер", ("refusals", fixture))
     result = await run_scenario(fastfood, context(world), CharacterState(), {"food": "burger"})
     assert (result.status, result.reason) == ("refused", reason)
+
+
+@certifies("fastfood")
+async def test_fastfood_cooldown_in_menu_is_nothing(world: World) -> None:
+    world.game.on_text("/to_eat", ("food", 3624997))
+    world.game.on_text("🍔Бургер", ("refusals", 3624999))
+    result = await run_scenario(fastfood, context(world), CharacterState(), {"food": "burger"})
+    assert (result.status, result.reason) == ("nothing", "fastfood_cooldown")
+    assert world.game.payloads() == ["/to_eat"]
+    assert world.gateway.lease is None
 
 
 @certifies("fastfood")

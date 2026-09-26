@@ -108,7 +108,10 @@ async def refresh(ctx: ScenarioContext, state: CharacterState, params: Params) -
 async def fastfood(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
     # Кнопки еды — из меню 🍴, поэтому сначала открываем меню (nav).
     async with ctx.lease("fastfood"):
-        _require(await ctx.send("/to_eat", expect_events(FoodMenu)))
+        menu = _require(await ctx.send("/to_eat", expect_events(FoodMenu))).first(FoodMenu)
+        # Кулдаун виден в самом меню: кнопка дала бы только отказ.
+        if menu is not None and (menu.fastfood_in_s or 0) > 0:
+            return ScenarioResult("nothing", "fastfood_cooldown")
         await ctx.safe_point()
         return _finish(
             await ctx.send(FOOD_BUTTONS[str(params["food"])], expect_events(FastfoodEaten))

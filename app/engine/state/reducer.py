@@ -503,6 +503,9 @@ def _levelup(p: _Patch, e: LevelUpStep) -> None:
         p.snap("levelup_pending", False)
         p.delta("money", e.money)
         p.delta("motivation", e.motivation)
+    skill = e.skill
+    if skill is not None and skill in Skills.model_fields:
+        p.change("skills", lambda s: s.model_copy(update={skill: getattr(s, skill) + 1}))
 
 
 class StateReducer:

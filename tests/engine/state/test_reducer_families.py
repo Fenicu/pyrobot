@@ -201,8 +201,21 @@ def test_motivation_full_clears_timer() -> None:
 
 def test_levelup_steps() -> None:
     reducer = StateReducer()
-    state = feed(reducer, _profiled(reducer), "levelup", 3532816, 1)
+    profiled = _profiled(reducer)
+    skills = value(profiled, "skills")
+    state = feed(reducer, profiled, "levelup", 3532816, 1)
     assert value(state, "levelup_pending") is True
-    state = feed(reducer, state, "levelup", 3532820, 2)
+    state = feed(reducer, state, "levelup", 3532818, 2)
+    skills = {**skills, "practice": skills["practice"] + 1}
+    assert value(state, "skills") == skills
+    state = feed(reducer, state, "levelup", 3532820, 3)
     assert value(state, "levelup_pending") is False
     assert (value(state, "money"), value(state, "motivation")) == (867 + 142, 73)
+    assert value(state, "skills") == {**skills, "cunning": skills["cunning"] + 1}
+    assert state["skills"]["src"] == "derived"
+
+
+def test_levelup_skill_needs_known_skills() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "levelup", 3532818, 1)
+    assert value(state, "skills") is None
