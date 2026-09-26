@@ -6,6 +6,7 @@ from app.engine.parsing.smoothie import (
     SmoothieCooking,
     SmoothieRecipe,
     SmoothieScreen,
+    recipe_need,
     recognize_smoothie,
 )
 from app.engine.settings import ChatsSection
@@ -76,3 +77,7 @@ def test_recipe_text_in_game_chat_gives_no_recipe_event() -> None:
     recipe = replace(game_msg("smoothie", 2344), chat_id=chats.game_chat_id)
     events = parser.parse(recipe)
     assert not any(isinstance(e, SmoothieRecipe) for e in events)
+
+
+def test_recipe_need_counts_ingredients() -> None:
+    assert recipe_need("🍇🥕🥕🍋🍅") == {"grape": 1, "carrot": 2, "lemon": 1, "tomato": 1}

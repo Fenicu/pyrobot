@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import ClassVar
 
@@ -22,6 +23,11 @@ _GOT = re.compile(r"\nПолучен бонус\n(?P<bonus>[^\n]+)")
 _RECIPE = re.compile(
     r"\AРецепт: (?P<recipe>" + _FRUIT + r"{5})\n\nПриготовил: [^\n]+\n\nБонус: (?P<bonus>[^\n]+)"
 )
+
+
+def recipe_need(recipe: str) -> Counter[str]:
+    """Сколько каждого ингредиента уходит на рецепт."""
+    return Counter(INGREDIENTS[fruit] for fruit in recipe)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

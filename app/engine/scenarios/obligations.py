@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
-
 from app.engine.gateway.types import Predicate
 from app.engine.market import dump_size, pick_stock
 from app.engine.parsing.battle import BattleTargetSet
@@ -14,6 +12,7 @@ from app.engine.parsing.smoothie import (
     SmoothieCooked,
     SmoothieCooking,
     SmoothieScreen,
+    recipe_need,
 )
 from app.engine.parsing.stocks import StockBought, StockScreen
 from app.engine.parsing.tangerine import TangerineRefused
@@ -120,8 +119,7 @@ async def smoothie(ctx: ScenarioContext, state: CharacterState, params: Params) 
             raise ScenarioStopped("unexpected_screen", opened)
         if screen.bonus is not None:
             return ScenarioResult("nothing", "cooked_today")
-        need = Counter(INGREDIENTS[fruit] for fruit in recipe)
-        if any(screen.ingredients.get(name, 0) < n for name, n in need.items()):
+        if any(screen.ingredients.get(name, 0) < n for name, n in recipe_need(recipe).items()):
             return ScenarioResult("nothing", "no_ingredients")
         await ctx.safe_point()
         cooking = require(await ctx.send("🍹Готовить", _dropped("")))

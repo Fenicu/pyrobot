@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections import Counter
 from datetime import datetime, time, timedelta
 
 from app.engine.gametime import MSK, to_msk
 from app.engine.market import pick_stock
-from app.engine.parsing.smoothie import INGREDIENTS
+from app.engine.parsing.smoothie import recipe_need
 from app.engine.planner.base import BATTLE_BEFORE, READY_SLACK, PlannerBase, battle_hour
 from app.engine.planner.types import Decision
 from app.engine.state.model import BusyState, StockLimits, TargetSet
@@ -232,8 +231,8 @@ class Obligations(PlannerBase):
         if bonus is not None and bonus.at >= day and bonus.value is not None:
             return None
         stock = self.s.smoothie_ingredients
-        need = Counter(INGREDIENTS[fruit] for fruit in recipe.value.recipe)
         if stock is not None and stock.at >= day:
+            need = recipe_need(recipe.value.recipe)
             if any(stock.value.get(name, 0) < n for name, n in need.items()):
                 return None
         if busy is not None:

@@ -43,7 +43,12 @@ from app.engine.parsing.screens import (
     ResourcesChanged,
 )
 from app.engine.parsing.sleep import FellAsleep, RobberyFight, SleepMenu, SleepWarning, WokeUp
-from app.engine.parsing.smoothie import INGREDIENTS, SmoothieCooked, SmoothieRecipe, SmoothieScreen
+from app.engine.parsing.smoothie import (
+    SmoothieCooked,
+    SmoothieRecipe,
+    SmoothieScreen,
+    recipe_need,
+)
 from app.engine.parsing.stocks import Dividends, StockBought, StockScreen, StockSold
 from app.engine.parsing.swinfo import BattleSummary, FactoryCall, FactoryResult
 from app.engine.parsing.tangerine import TangerineRefused
@@ -674,7 +679,7 @@ def _smoothie_screen(p: _Patch, e: SmoothieScreen) -> None:
 @_on(SmoothieCooked)
 def _smoothie_cooked(p: _Patch, e: SmoothieCooked) -> None:
     p.snap("smoothie_bonus", e.bonus)
-    used = Counter(INGREDIENTS[ch] for ch in e.recipe)
+    used = recipe_need(e.recipe)
 
     def spent(ingredients: dict[str, int]) -> dict[str, int]:
         return {k: v - used.get(k, 0) for k, v in ingredients.items()}

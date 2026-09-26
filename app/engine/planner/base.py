@@ -38,7 +38,6 @@ _PROFILE = (
     "motivation",
     "motivation_next_at",
     "battle_at",
-    "battle_target",
     "busy",
     "sleep_deadline",
     "sleep_allowed_at",
