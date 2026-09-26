@@ -340,3 +340,51 @@ def classify_text(text: str) -> CommandClass:
 
 def classify_callback(data: str) -> CommandClass:
     return _classify(data, CALLBACK_RULES)
+
+
+# Какой механике принадлежит команда. Не вручную шлюз пропускает её, только если механика
+# включена в настройках (features).
+_FEATURE_TEXT: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(p), f)
+    for p, f in (
+        (
+            r"(/harvest|⛏Добывать|/job|💻Работать|/learns|📚Учиться|/confa|📚Конфа|/dconv"
+            r"|⚙️ → 🔩|/walk|🚶Гулять|🔫Грабить|/eat|🍴Есть)\Z",
+            "deeds",
+        ),
+        (r"/read_exp\Z", "books"),
+        (r"(🌭Хот-дог|🍕Пицца|🍔Бургер|🍌Банан)\Z", "fastfood"),
+        (r"(/use_card|/unbox(_\w+)?)\Z", "cards_containers"),
+        (r"(/levelup|\+1 🔨Практика|\+1 🎓Теория|\+1 🐿Хитрость|\+1 🐢Мудрость)\Z", "levelup"),
+        (r"(/tickets_all|(💵|📚|🔩|⚙️) => 🤑)\Z", "lottery"),
+        (r"🍹Готовить\Z", "smoothie"),
+        (r"(/capitalization|/daily_income|/index_pe)\Z", "paid_info"),
+        (r"(/open|/open_all|/spring|/ch_all|/ch\d+)\Z", "seasonal"),
+        (r"/t_\w+\Z", "daily_tasks"),
+        (r"/gt\Z", "tangerine"),
+        (r"(👍Записаться|👎Выписаться)\Z", "factory"),
+        (r"join_fight_\w{11}\Z", "bulls"),
+        (rf"/(buys|sells)_{_COMPANIES}_\d+\Z", "stocks_dump"),
+    )
+)
+_FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(p), f)
+    for p, f in (
+        (r"gorbushka_(new|new_accept|fight)\Z", "gorbushka"),
+        (r"sleep_\d+\Z", "sleep"),
+        (r"maze_", "metro"),
+        (r"(sm_drop_[1-5]|smoothie_accept)\Z", "smoothie"),
+        (rf"buys_{_COMPANIES}\Z", "stocks_dump"),
+        (r"pet_feast_accept_", "pet_feast"),
+        (r"spring_roll_smiles\Z", "seasonal"),
+    )
+)
+
+
+def feature_of_text(text: str) -> str | None:
+    value = text.strip()
+    return next((f for p, f in _FEATURE_TEXT if p.match(value)), None)
+
+
+def feature_of_callback(data: str) -> str | None:
+    return next((f for p, f in _FEATURE_CALLBACK if p.match(data)), None)

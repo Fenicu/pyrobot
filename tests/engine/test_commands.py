@@ -1,6 +1,12 @@
 import pytest
 
-from app.engine.commands import CommandClass, classify_callback, classify_text
+from app.engine.commands import (
+    CommandClass,
+    classify_callback,
+    classify_text,
+    feature_of_callback,
+    feature_of_text,
+)
 
 N, A, R, F, D = (
     CommandClass.NAV,
@@ -191,3 +197,57 @@ def test_metro_whitelist_is_action(data: str) -> None:
 def test_spring_smiles_action_and_maze_nothing_nav() -> None:
     assert classify_callback("spring_roll_smiles") is A
     assert classify_callback("maze_nothing") is N
+
+
+@pytest.mark.parametrize(
+    ("text", "feature"),
+    [
+        ("/harvest", "deeds"),
+        ("💻Работать", "deeds"),
+        ("🔫Грабить", "deeds"),
+        ("/read_exp", "books"),
+        ("🍔Бургер", "fastfood"),
+        ("/unbox_ls", "cards_containers"),
+        ("/use_card", "cards_containers"),
+        ("+1 🐢Мудрость", "levelup"),
+        ("/tickets_all", "lottery"),
+        ("💵 => 🤑", "lottery"),
+        ("🍹Готовить", "smoothie"),
+        ("/index_pe", "paid_info"),
+        ("/ch12", "seasonal"),
+        ("/t_harvest", "daily_tasks"),
+        ("/gt", "tangerine"),
+        ("👍Записаться", "factory"),
+        ("/sells_piper_10", "stocks_dump"),
+        ("join_fight_abcdefghijk", "bulls"),
+        ("/inv", None),
+        ("😎Я", None),
+    ],
+)
+def test_feature_of_text(text: str, feature: str | None) -> None:
+    assert feature_of_text(text) == feature
+
+
+@pytest.mark.parametrize(
+    ("data", "feature"),
+    [
+        ("gorbushka_new_accept", "gorbushka"),
+        ("gorbushka_fight", "gorbushka"),
+        ("gorbushka_new_decline", None),
+        ("sleep_7", "sleep"),
+        ("maze_start", "metro"),
+        ("sm_drop_3", "smoothie"),
+        ("pet_feast_accept_1", "pet_feast"),
+        ("buys_hooli", "stocks_dump"),
+    ],
+)
+def test_feature_of_callback(data: str, feature: str | None) -> None:
+    assert feature_of_callback(data) == feature
+
+
+def test_feature_names_exist_in_settings() -> None:
+    from app.engine.commands import _FEATURE_CALLBACK, _FEATURE_TEXT
+    from app.engine.settings import FeaturesSection
+
+    names = {f for _, f in (*_FEATURE_TEXT, *_FEATURE_CALLBACK)}
+    assert names <= set(FeaturesSection.model_fields)
