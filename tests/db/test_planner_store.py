@@ -61,3 +61,24 @@ async def test_close_running_interrupts_own_unfinished_runs(clean_db: Database) 
         finished: ("done", "card_used", AT),
         foreign: ("running", "", None),
     }
+
+
+async def test_last_done_per_scenario(clean_db: Database) -> None:
+    store = DbPlannerStore(clean_db, account_id=1)
+    decided = await store.record(AT, Act("tangerine", {}, "tangerine_ready"))
+    first = await store.run_started(decided, "tangerine", {}, AT)
+    await store.run_finished(first, "done", "no_error", AT)
+    later = AT + timedelta(hours=21)
+    second = await store.run_started(decided, "tangerine", {}, later)
+    await store.run_finished(second, "done", "no_error", later)
+    failed = await store.run_started(decided, "book", {}, later)
+    await store.run_finished(failed, "failed", "timeout", later)
+    assert await store.last_done() == {"tangerine": later}
+
+
+async def test_last_done_counts_run_interrupted_by_restart(clean_db: Database) -> None:
+    store = DbPlannerStore(clean_db, account_id=1)
+    decided = await store.record(AT, Act("tangerine", {}, "tangerine_ready"))
+    await store.run_started(decided, "tangerine", {}, AT)
+    assert await store.close_running(AT + timedelta(minutes=1)) == 1
+    assert await store.last_done() == {"tangerine": AT}

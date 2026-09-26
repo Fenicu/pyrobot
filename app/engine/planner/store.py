@@ -7,6 +7,9 @@ from typing import Any, Protocol
 
 from app.engine.planner.types import Act, Decision
 
+# Запуски, после которых сценарий мог исполниться: мандарин после рестарта не повторяется.
+LAST_DONE = ("done", "interrupted")
+
 
 @dataclass(frozen=True, slots=True)
 class DecisionRecord:
@@ -38,6 +41,10 @@ class PlannerStore(Protocol):
 
     async def close_running(self, at: datetime) -> int:
         """Незавершённые запуски прошлого процесса → `interrupted`; возвращает их число."""
+        ...
+
+    async def last_done(self) -> dict[str, datetime]:
+        """Начало последнего успешного или прерванного рестартом (исход неизвестен) запуска."""
         ...
 
 
@@ -76,3 +83,10 @@ class MemoryPlannerStore:
         for run in running:
             run.status, run.reason, run.finished_at = "interrupted", "restart", at
         return len(running)
+
+    async def last_done(self) -> dict[str, datetime]:
+        done: dict[str, datetime] = {}
+        for run in self.runs:
+            if run.status in LAST_DONE:
+                done[run.scenario] = max(run.started_at, done.get(run.scenario, run.started_at))
+        return done

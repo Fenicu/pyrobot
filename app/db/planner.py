@@ -2,11 +2,11 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import func, select, update
 
 from app.db.base import Database
 from app.db.models import DecisionRow, ScenarioRunRow
-from app.engine.planner.store import DecisionRecord
+from app.engine.planner.store import LAST_DONE, DecisionRecord
 from app.engine.planner.types import Decision
 
 
@@ -68,3 +68,16 @@ class DbPlannerStore:
                 .returning(ScenarioRunRow.id)
             )
             return len(closed.all())
+
+    async def last_done(self) -> dict[str, datetime]:
+        query = (
+            select(ScenarioRunRow.scenario, func.max(ScenarioRunRow.started_at))
+            .where(
+                ScenarioRunRow.account_id == self._account_id,
+                ScenarioRunRow.status.in_(LAST_DONE),
+            )
+            .group_by(ScenarioRunRow.scenario)
+        )
+        async with self._db.sessions() as session:
+            rows = await session.execute(query)
+        return {scenario: started for scenario, started in rows.all()}

@@ -74,6 +74,8 @@ class PlannerLoop:
         self._held: dict[str, datetime] = {}
         self._mode: str | None = None
         self._failures: dict[str, int] = {}
+        # Последний успешный запуск каждого сценария (кулдауны мандарина и т. п. после рестарта).
+        self._last_done: dict[str, datetime] | None = None
         self._last_wait: DecisionRecord | None = None
         self.current: str | None = None
         self.next_wake: datetime | None = None
@@ -104,6 +106,8 @@ class PlannerLoop:
             self.next_wake = None
             return self._poll_s
         settings = self._settings.current
+        if self._last_done is None:
+            self._last_done = await self._store.last_done()
         if settings.engine.mode != self._mode:
             self._held.clear()
             self._mode = settings.engine.mode
@@ -114,6 +118,7 @@ class PlannerLoop:
             certified=CERTIFIED if settings.engine.mode == "live" else None,
             last_refresh=self._last_refresh,
             cooldowns=self._blocked(),
+            last_done=self._last_done,
         )
         if isinstance(decision, Wait):
             return await self._wait(now, decision)
@@ -188,7 +193,13 @@ class PlannerLoop:
             return
         if result.status == "done":
             self._failures.pop(key, None)
+            if self._last_done is not None:
+                self._last_done[name] = started
             return
+        if name == "tangerine" and result.status == "refused" and result.reason == "not_player":
+            await self._notifier.notify(
+                "warn", "tangerine_not_player", "tangerine recipient is not playing; paused 24h"
+            )
         if result.status in ("failed", "stopped"):
             await self._failed(key, result, finished)
             return

@@ -367,3 +367,36 @@ async def test_memory_store_closes_running_runs() -> None:
         ("interrupted", "restart"),
         ("done", "card_used"),
     ]
+    # Прерванный рестартом запуск мог исполниться — он тоже «последний».
+    assert await store.last_done() == {"book": at, "card": at}
+
+
+async def test_last_done_loaded_from_store_and_updated(world: World) -> None:
+    rig = Rig(world)
+    earlier = rig.clock.now() - timedelta(hours=2)
+    run = await rig.store.run_started(1, "tangerine", {}, earlier)
+    await rig.store.run_finished(run, "done", "no_error", earlier)
+    world.game.on_text("😎Я", ("profile", 3624478))
+    await rig.loop.step()
+    assert [(r.scenario, r.status) for r in rig.store.runs][-1] == ("refresh", "done")
+    assert rig.loop._last_done is not None
+    assert rig.loop._last_done["tangerine"] == earlier
+    assert set(rig.loop._last_done) == {"tangerine", "refresh"}
+
+
+async def test_not_playing_recipient_notified(world: World) -> None:
+    only_tangerine = {
+        name: name == "tangerine" for name in type(world.settings.current.features).model_fields
+    }
+    await world.settings.update(
+        lambda s: s.model_copy(update={"features": s.features.model_copy(update=only_tangerine)}),
+        changed_by="test",
+    )
+    world.game.on_text("/gt", ("tangerine", 3599304))
+    await world.feed("profile", 3624478)
+    rig = Rig(world)
+    await rig.loop.step()
+    assert [(r.scenario, r.status, r.reason) for r in rig.store.runs] == [
+        ("tangerine", "refused", "not_player")
+    ]
+    assert rig.notes.codes == ["tangerine_not_player"]
