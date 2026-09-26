@@ -1,6 +1,7 @@
 import pytest
+from pydantic import ValidationError
 
-from app.engine.settings import Settings, SettingsConflict, StaticSettings
+from app.engine.settings import EngineSection, Settings, SettingsConflict, StaticSettings
 
 
 def test_defaults_are_safe() -> None:
@@ -21,3 +22,9 @@ async def test_static_update_and_conflict() -> None:
     assert store.version == 1
     with pytest.raises(SettingsConflict):
         await store.update(lambda s: s, changed_by="test", expected_version=0)
+
+
+def test_click_answer_timeout_bounded() -> None:
+    assert EngineSection(click_answer_timeout_s=30).click_answer_timeout_s == 30
+    with pytest.raises(ValidationError):
+        EngineSection(click_answer_timeout_s=30.5)

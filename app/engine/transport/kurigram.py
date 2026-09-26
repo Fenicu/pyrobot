@@ -326,6 +326,8 @@ class KurigramTransport:
         except errors.Unauthorized as exc:
             await self._lose_auth(client)
             raise TransportAuthLost(str(exc)) from exc
+        except errors.BotResponseTimeout:
+            return None
         except errors.BadRequest as exc:
             raise TransportRejected(str(exc.ID or exc)) from exc
         message = getattr(answer, "message", None)

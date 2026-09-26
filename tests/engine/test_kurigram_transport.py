@@ -4,7 +4,7 @@ import pytest
 
 from app.engine.notify import Level
 from app.engine.tg_auth import TgAuthManager, TgState
-from app.engine.transport.base import TransportAuthLost
+from app.engine.transport.base import TransportAuthLost, TransportRejected
 from tests.engine.helpers import GAME
 from tests.engine.kurigram_fakes import EXPECTED, FakeKurigram, rpc_error
 
@@ -110,3 +110,19 @@ async def test_relogin_after_loss_reaches_online(tmp_path: Path) -> None:
     st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
     assert st.state is TgState.ONLINE and t._client is t.clients[1]
     assert t.clients[1].is_initialized
+
+
+async def test_click_bot_response_timeout_is_no_toast(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    lost = await _online(t)
+    t.client.errors["GetBotCallbackAnswer"] = rpc_error("BotResponseTimeout")
+    assert await t.click(GAME, 1, "maze_up", 1.0) is None
+    assert len(t.clients) == 1 and lost == []
+
+
+async def test_click_other_bad_request_rejected(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    t.client.errors["GetBotCallbackAnswer"] = rpc_error("DataInvalid")
+    with pytest.raises(TransportRejected, match="DATA_INVALID"):
+        await t.click(GAME, 1, "maze_up", 1.0)
