@@ -222,7 +222,7 @@ class KurigramTransport:
         await self._client.initialize()
 
     async def log_out(self) -> None:
-        from pyrogram import raw
+        from pyrogram import errors, raw
 
         client = self._client
         try:
@@ -230,7 +230,7 @@ class KurigramTransport:
                 await client.log_out()
             else:
                 if client.is_connected:
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(errors.RPCError, OSError, ConnectionError):
                         await client.invoke(raw.functions.auth.LogOut())
                     await client.disconnect()
                 with contextlib.suppress(FileNotFoundError):
