@@ -77,6 +77,36 @@ class TeamTask(_Frozen):
     resource: str
 
 
+class ActivityStat(_Frozen):
+    """Скользящее среднее наград одного дела (без его цены)."""
+
+    count: int = 0
+    exp: float = 0
+    money: float = 0
+    knowledge: float = 0
+    details: float = 0
+    raw: float = 0
+
+
+# Стартовые значения — средние по корпусу (mechanics_core §2.4, живой замер переработки).
+DEED_PRIORS = {
+    "harvest": ActivityStat(exp=203),
+    "job": ActivityStat(exp=117, money=25.7, details=2.3, raw=0.8),
+    "learn": ActivityStat(exp=235, knowledge=11),
+    "dconv": ActivityStat(exp=253, raw=5),
+}
+DEFAULT_PRICES = {
+    "harvest": PriceState(motivation=1, money=30, minutes=5),
+    "job": PriceState(motivation=1, minutes=2),
+    "learn": PriceState(motivation=2, minutes=4),
+    "dconv": PriceState(motivation=1, money=5, details=10, minutes=6),
+    "eat": PriceState(money=5, minutes=5),
+    "walk": PriceState(motivation=1, minutes=5),
+    "confa": PriceState(motivation=3, money=7, minutes=10),
+    "rob": PriceState(motivation=1, minutes=8),
+}
+
+
 class CharacterState(_Frozen):
     schema_version: int = SCHEMA_VERSION
     level: Obs[int] | None = None
@@ -116,6 +146,7 @@ class CharacterState(_Frozen):
     gorbushka: Obs[GorbushkaState] | None = None
     last_refusal: Obs[RefusalState] | None = None
     team_task: Obs[TeamTask] | None = None
+    activity_stats: dict[str, ActivityStat] = {}
     # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
     # правка итога не начисляет повторно (горизонт хранения — в редьюсере).
     applied: dict[str, datetime] = {}

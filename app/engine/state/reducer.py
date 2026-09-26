@@ -32,6 +32,9 @@ from app.engine.parsing.profile import ProfileCompact
 from app.engine.parsing.refusals import Busy, Refused
 from app.engine.parsing.sleep import FellAsleep, RobberyFight, SleepMenu, SleepWarning, WokeUp
 from app.engine.state.model import (
+    DEED_PRIORS,
+    DEFAULT_PRICES,
+    ActivityStat,
     BusyState,
     CharacterState,
     FoodStockState,
@@ -65,7 +68,7 @@ METRIC_FIELDS = (
     "details",
     "books",
 )
-DEFAULT_MOTIVATION_COST = {"harvest": 1, "job": 1, "learn": 2, "dconv": 1, "eat": 0}
+STATS_ALPHA = 0.1
 _PROFILE_FIELDS = (
     "level",
     "exp",
@@ -171,6 +174,16 @@ class _Patch:
             current, goal, resource = r.team_task
             self.snap("team_task", TeamTask(current=current, goal=goal, resource=resource))
 
+    def stat(self, activity: str, r: Rewards) -> None:
+        stats: dict[str, ActivityStat] = dict(self.get("activity_stats"))
+        old = stats.get(activity) or DEED_PRIORS.get(activity) or ActivityStat()
+        fields = ("exp", "money", "knowledge", "details", "raw")
+        moved = {
+            f: getattr(old, f) + STATS_ALPHA * (getattr(r, f) - getattr(old, f)) for f in fields
+        }
+        stats[activity] = ActivityStat(count=old.count + 1, **moved)
+        self.updates["activity_stats"] = stats
+
     def result(self) -> CharacterState:
         return self.state.model_copy(update=self.updates) if self.updates else self.state
 
@@ -220,10 +233,10 @@ def _battle_target(p: _Patch, e: BattleTargetSet) -> None:
 
 def _motivation_cost(p: _Patch, activity: str) -> int:
     prices: dict[str, Obs[PriceState]] = p.get("prices")
-    known = prices.get(activity)
-    if known is not None:
+    if (known := prices.get(activity)) is not None:
         return known.value.motivation
-    return DEFAULT_MOTIVATION_COST.get(activity, 1)
+    default = DEFAULT_PRICES.get(activity)
+    return default.motivation if default is not None else 1
 
 
 @_on(ActivityStarted)
@@ -239,6 +252,7 @@ def _finished(p: _Patch, e: ActivityFinished) -> None:
     p.snap("busy", None)
     p.rewards(e.rewards)
     p.delta("motivation", e.motivation_refund)
+    p.stat(e.activity, e.rewards)
 
 
 @_on(BonusRewards)
