@@ -84,3 +84,39 @@ async def test_mark_lost() -> None:
     await mgr.mark_lost()
     st = mgr.status()
     assert st.state is TgState.UNAUTHORIZED and st.error == "session_revoked"
+
+
+class _RaisingGoOnline(FakeTgBackend):
+    async def go_online(self) -> None:
+        raise RuntimeError("boom")
+
+
+class _RaisingLogOut(FakeTgBackend):
+    async def log_out(self) -> None:
+        raise RuntimeError("boom")
+
+
+async def test_go_online_failure_reports_online_failed_without_raising() -> None:
+    mgr = TgAuthManager(_RaisingGoOnline(), expected_user_id=EXPECTED)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    assert st.state is TgState.ERROR and st.error == "online_failed"
+
+
+async def test_foreign_user_log_out_failure_still_reports_unexpected_user() -> None:
+    backend = _RaisingLogOut(user_id=42)
+    mgr = TgAuthManager(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    assert st.state is TgState.ERROR and st.error == "unexpected_user"
+    assert not backend.online
+
+
+async def test_logout_failure_reports_logout_failed_without_raising() -> None:
+    backend = _RaisingLogOut(authorized=True)
+    mgr = TgAuthManager(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+    st = await mgr.logout()
+    assert st.state is TgState.ERROR and st.error == "logout_failed"

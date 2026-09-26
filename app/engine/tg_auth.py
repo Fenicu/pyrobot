@@ -161,9 +161,14 @@ class TgAuthManager:
 
     async def logout(self) -> TgStatus:
         async with self._lock:
-            await self._backend.log_out()
             self._attempt = None
             self._user_id = None
+            try:
+                await self._backend.log_out()
+            except Exception:
+                log.exception("logout failed")
+                self._set(TgState.ERROR, error="logout_failed")
+                return self.status()
             self._set(TgState.UNAUTHORIZED)
             return self.status()
 
@@ -182,11 +187,20 @@ class TgAuthManager:
 
     async def _accept(self, user_id: int) -> None:
         if user_id != self._expected:
-            await self._backend.log_out()
+            try:
+                await self._backend.log_out()
+            except Exception:
+                log.exception("log_out of unexpected user failed")
             self._user_id = None
             self._set(TgState.ERROR, error="unexpected_user")
             return
-        await self._backend.go_online()
+        try:
+            await self._backend.go_online()
+        except Exception:
+            log.exception("go_online failed")
+            self._user_id = None
+            self._set(TgState.ERROR, error="online_failed")
+            return
         self._user_id = user_id
         self._set(TgState.ONLINE)
         for cb in self._callbacks:
