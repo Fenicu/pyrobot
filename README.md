@@ -42,7 +42,7 @@ Postgres для разработки и тестов поднимается че
 docker compose -f compose.dev.yml up -d
 ```
 
-Контейнер слушает `127.0.0.1:55432` и создаёт три базы: `pyrobot` (боевая для разработки),
+Контейнер слушает `127.0.0.1:55432` и создаёт три базы: `pyrobot` (основная база для разработки),
 `pyrobot_test` (юнит- и интеграционные тесты, фикстуры `db`/`clean_db`) и `pyrobot_migtest`
 (тест миграций `tests/db/test_migrations.py`). Список тестовых баз задаётся в
 `docker/initdb/10-test-dbs.sql`, который накатывается только при первой инициализации volume.
@@ -53,9 +53,7 @@ docker compose -f compose.dev.yml up -d
 uv run alembic upgrade head
 ```
 
-Новую миграцию генерировать через `uv run python -m alembic revision --autogenerate -m "..."`
-(не `uv run alembic` напрямую — консольный скрипт не добавляет корень проекта в `sys.path`,
-и `app.config`/`app.db.models` не импортируются).
+Новую миграцию генерировать через `uv run alembic revision --autogenerate -m "..."`.
 
 ## Структура
 
