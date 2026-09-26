@@ -2,6 +2,7 @@ import asyncio
 import itertools
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 
@@ -219,6 +220,71 @@ async def test_override_clears_everything(world: World) -> None:
     await world.reconciler.override()
     assert world.rig.gw.spending_blocked is None
     assert await world.rig.store.unreconciled() == []
+
+
+async def test_note_during_override_keeps_block(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world.answer = False
+    await _uncertain(world, "/harvest")
+    store = world.rig.store
+    mark = store.mark_reconciled
+
+    async def racing(ids: list[int]) -> None:
+        # Новое неопределённое действие приходит, пока override закрывает старые.
+        world.rig.gw.block_spending(RECONCILE_REASON)
+        world.reconciler.note(send("/job"), None)
+        await mark(ids)
+
+    monkeypatch.setattr(store, "mark_reconciled", racing)
+    await world.reconciler.override()
+    assert world.rig.gw.spending_blocked == RECONCILE_REASON
+    assert [o.text for o in await world.reconciler.pending()] == ["/job"]
+
+
+async def test_final_check_catches_field_spoiled_by_later_screen(world: World) -> None:
+    spoiled = False
+
+    async def respond(rec: Sent) -> None:
+        nonlocal spoiled
+        if rec.payload == "/inv" and not spoiled:
+            spoiled = True
+            # Итог, созданный до свежего профиля, делает его money сомнительным.
+            moment = now()
+            card = replace(
+                game_msg("items", 3516678),
+                msg_id=next(world.ids),
+                date=moment,
+                created_at=moment - timedelta(minutes=1),
+                received_at=moment,
+            )
+            await world.pipeline.process(card)
+            assert world.pipeline.state["money"]["src"] == "doubtful"
+        await World._respond(world, rec)
+
+    world.rig.transport.responder = respond
+    await _uncertain(world, "/read_exp")
+    await until(lambda: world.rig.gw.spending_blocked is None, timeout=2.0)
+    assert spoiled
+    assert world.sent().count("😎Я") >= 2
+
+
+async def test_shutdown_is_not_a_reconcile_failure() -> None:
+    ready = False
+    w = World(ready=lambda: ready)
+    w.rig.start()
+    task = asyncio.create_task(w.reconciler.run())
+    try:
+        await _uncertain(w, "/harvest")
+        await w.rig.gw.shutdown()
+        ready = True
+        await asyncio.sleep(0.3)
+        assert w.rig.gw.spending_blocked == RECONCILE_REASON
+        assert "reconcile_stuck" not in w.notes.codes
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await w.rig.stop()
 
 
 async def test_not_ready_waits() -> None:
