@@ -30,6 +30,7 @@ from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from app.engine.transport.kurigram import ChatFilter, KurigramTransport
+from app.engine.unrecognized import UnrecognizedWatch
 
 log = logging.getLogger("pyrobot")
 LOCK_CHECK_S = 10.0
@@ -110,6 +111,7 @@ class Runtime:
                 f"{len(unknown)} actions interrupted by restart",
             )
         bus.subscribe(self.gateway.on_delivery, priority=0)
+        bus.subscribe(UnrecognizedWatch(self.notifier, SystemClock()).on_delivery, priority=50)
         self.tg = TgAuthManager(
             backend,
             expected_user_id=self.settings.current.telegram.expected_user_id,
