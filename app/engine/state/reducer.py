@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -543,6 +544,9 @@ def _battle_menu(p: _Patch, e: BattleMenu) -> None:
 def _crew(p: _Patch, e: CrewScreen) -> None:
     p.snap("team_tag", e.tag)
     p.snap("factory_wins", e.factory_wins)
+    if e.signup_open:
+        # Запасной сигнал о начале записи, если SWINFO пропущен.
+        p.snap("factory_call_at", p.at)
 
 
 @_on(FactoryResult)
@@ -579,7 +583,10 @@ def _bulls_joined(p: _Patch, e: BullsJoined) -> None:
 
 @_on(BullsResult)
 def _bulls_result(p: _Patch, e: BullsResult) -> None:
-    p.snap("busy", None)
+    busy: Obs[BusyState | None] | None = p.get("busy")
+    # Снимаем только свою занятость: итог мог прийти, пока игрок уже занят другим делом.
+    if busy is not None and busy.value is not None and busy.value.activity == "bulls":
+        p.snap("busy", None)
     p.rewards(e.rewards)
     if e.won:
         p.snap("bulls_won_at", p.at)
@@ -625,7 +632,10 @@ def _stock_screen(p: _Patch, e: StockScreen) -> None:
 @_on(StockBought)
 def _stock_bought(p: _Patch, e: StockBought) -> None:
     p.snap("money", e.money)
-    p.snap("stock_holdings", _merged(p, "stock_holdings", {e.company: e.shares}))
+    portfolio: Obs[dict[str, int]] | None = p.get("stock_holdings")
+    # Портфель неизвестен целиком — не выдумываем его из одной купленной позиции.
+    if portfolio is not None:
+        p.snap("stock_holdings", {**portfolio.value, e.company: e.shares})
 
 
 @_on(Dividends)
@@ -680,7 +690,7 @@ def _lottery_win(p: _Patch, e: LotteryWin) -> None:
 @_on(LotterySkillsExpired)
 def _lottery_skills_expired(p: _Patch, e: LotterySkillsExpired) -> None:
     p.rewards(e.rewards)
-    _add_skills(p, {skill: -1 for skill in e.skills})
+    _add_skills(p, {s: -n for s, n in Counter(e.skills).items()})
 
 
 @_on(EtherScreen)

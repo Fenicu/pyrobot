@@ -1,8 +1,11 @@
 from datetime import timedelta
 
+from app.engine.parsing.common import Rewards
+from app.engine.parsing.crew import CrewScreen
+from app.engine.parsing.screens import LotterySkillsExpired
 from app.engine.state.model import load_state, stale_fields
 from app.engine.state.reducer import StateReducer
-from tests.engine.state.helpers import at, feed, value
+from tests.engine.state.helpers import at, feed, fixture_at, value
 
 
 def _profiled(reducer: StateReducer) -> dict:
@@ -42,6 +45,20 @@ def test_closed_factory_screen_keeps_signup() -> None:
     assert value(state, "factory_signed") is True
 
 
+def test_crew_screen_signup_open_sets_factory_call_at() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "crew", 3624389, 1)
+    assert value(state, "factory_call_at") == "2026-09-26T09:01:00Z"
+
+
+def test_crew_screen_signup_closed_keeps_factory_call_at() -> None:
+    reducer = StateReducer()
+    msg = fixture_at("crew", 3624389, 1)
+    event = CrewScreen(tag="SU", factory_wins=247, signup_open=False)
+    state = reducer.apply({}, msg, [event])
+    assert value(state, "factory_call_at") is None
+
+
 def test_bulls_fight_busy_rewards_and_night_flag() -> None:
     reducer = StateReducer()
     state = feed(reducer, _profiled(reducer), "bulls", 3624430, 1)
@@ -59,6 +76,15 @@ def test_bulls_already_won_marks_night() -> None:
     assert value(state, "bulls_won_at") == "2026-09-26T09:03:00Z"
     state = feed(reducer, state, "bulls", 3526549, 4)
     assert value(state, "bulls_won_at") == "2026-09-26T09:03:00Z"
+
+
+def test_bulls_result_keeps_unrelated_busy() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "activities", 3517898, 1)
+    assert value(state, "busy")["activity"] == "job"
+    state = feed(reducer, state, "bulls", 3624431, 5)
+    assert value(state, "busy")["activity"] == "job"
+    assert value(state, "money") == 867 + 150
 
 
 def test_stock_screen_trade_and_dividends() -> None:
@@ -80,6 +106,13 @@ def test_stock_screen_trade_and_dividends() -> None:
     assert value(state, "stock_holdings")["hooli"] == 1838
     state = feed(reducer, state, "stocks", 3621194, 3)
     assert value(state, "money") == 110 + 1065
+
+
+def test_stock_bought_without_known_portfolio() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "stocks", 3564237, 1)
+    assert value(state, "stock_holdings") is None
+    assert value(state, "money") == 110
 
 
 def test_buy_screen_keeps_main_limits() -> None:
@@ -151,6 +184,17 @@ def test_lottery_win_and_expired_skills() -> None:
     state = feed(reducer, state, "screens", 3545091, 3)
     assert value(state, "skills")["theory"] == 460
     assert value(state, "exp") == 17_496_049 + 142
+
+
+def test_lottery_skills_expired_counts_duplicate_skills() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "screens", 3545091, 1)
+    assert value(state, "skills")["practice"] == 461
+    # Событие собрано напрямую: в корпусе нет фикстуры с потерей одного навыка дважды.
+    msg = fixture_at("screens", 3606840, 2)
+    event = LotterySkillsExpired(skills=("practice", "practice"), rewards=Rewards())
+    state = reducer.apply(state, msg, [event])
+    assert value(state, "skills")["practice"] == 461 - 2
 
 
 def test_instant_finish_frees_character() -> None:

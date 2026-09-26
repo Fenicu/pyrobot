@@ -52,7 +52,6 @@ class StockScreen(Event):
 @dataclass(frozen=True, slots=True, kw_only=True)
 class StockBought(Event):
     kind: ClassVar[str] = "stock_bought"
-    outcome: ClassVar[bool] = True
     company: str
     price: int
     n: int
