@@ -108,29 +108,39 @@ class _Patch:
             return
         self.updates[name] = Obs(value=value, at=self.at, src=src)
 
-    def _increment_mode(self, name: str) -> Literal["skip", "apply", "doubt"]:
+    def _increment_mode(
+        self, name: str, since: datetime | None = None
+    ) -> Literal["skip", "apply", "doubt"]:
         current: Obs[Any] | None = self.get(name)
         if current is None or current.at > self.at:
             return "skip"
-        if name in self.updates or current.at < self.origin:
+        if name in self.updates:
+            return "apply"
+        # `since` — момент, раньше которого событие произойти не могло: снимок новее
+        # него мог событие уже учесть.
+        if current.at < self.origin and (since is None or current.at <= since):
             return "apply"
         # Снимок снят между созданием сообщения и его правкой (или в ту же секунду):
         # неизвестно, учёл ли он событие.
         return "doubt"
 
-    def delta(self, name: str, diff: int) -> None:
-        if diff == 0:
-            return
-        mode = self._increment_mode(name)
+    def change(
+        self, name: str, fn: Callable[[Any], Any], *, since: datetime | None = None
+    ) -> None:
+        mode = self._increment_mode(name, since)
         if mode == "skip":
             return
-        current: Obs[int] = self.get(name)
+        current: Obs[Any] = self.get(name)
         if mode == "doubt":
             # Значение не трогаем, но не доверяем ему.
             self.updates[name] = current.model_copy(update={"src": "doubtful"})
             return
         src: Src = "doubtful" if current.src == "doubtful" else "derived"
-        self.updates[name] = Obs(value=current.value + diff, at=self.at, src=src)
+        self.updates[name] = Obs(value=fn(current.value), at=self.at, src=src)
+
+    def delta(self, name: str, diff: int, *, since: datetime | None = None) -> None:
+        if diff != 0:
+            self.change(name, lambda v: v + diff, since=since)
 
     def price(self, key: str, value: PriceState) -> None:
         prices: dict[str, Obs[PriceState]] = dict(self.get("prices"))
@@ -146,22 +156,14 @@ class _Patch:
         if r.stamina is not None:
             self.snap("stamina", r.stamina)
         if r.upgrades_white or r.upgrades_blue or r.upgrades_red:
-            mode = self._increment_mode("upgrades")
-            if mode == "doubt":
-                existing: Obs[Upgrades] = self.get("upgrades")
-                self.updates["upgrades"] = existing.model_copy(update={"src": "doubtful"})
-            elif mode == "apply":
-                existing = self.get("upgrades")
-                src: Src = "doubtful" if existing.src == "doubtful" else "derived"
-                self.updates["upgrades"] = Obs(
-                    value=Upgrades(
-                        white=existing.value.white + r.upgrades_white,
-                        blue=existing.value.blue + r.upgrades_blue,
-                        red=existing.value.red + r.upgrades_red,
-                    ),
-                    at=self.at,
-                    src=src,
-                )
+            self.change(
+                "upgrades",
+                lambda u: Upgrades(
+                    white=u.white + r.upgrades_white,
+                    blue=u.blue + r.upgrades_blue,
+                    red=u.red + r.upgrades_red,
+                ),
+            )
         if r.prizebox:
             self.snap("prizebox", True, src="derived")
             self.snap("prizebox_ready_at", None, src="derived")
@@ -258,6 +260,7 @@ def _motivation_full(p: _Patch, e: MotivationFull) -> None:
     top: Obs[int] | None = p.get("motivation_max")
     if top is not None:
         p.snap("motivation", top.value, src="derived")
+    p.snap("motivation_next_at", None, src="derived")
 
 
 @_on(Busy)
@@ -363,18 +366,22 @@ def _fastfood(p: _Patch, e: FastfoodEaten) -> None:
     p.snap("fastfood_ready_at", p.at + FASTFOOD_COOLDOWN, src="derived")
     p.delta("motivation", e.motivation)
     stock: Obs[dict[str, FoodStockState]] | None = p.get("food_stock")
-    if stock is None or e.food not in stock.value or p.at < stock.at:
+    if stock is None or e.food not in stock.value:
         return
-    left = dict(stock.value)
-    item = left[e.food]
-    left[e.food] = item.model_copy(update={"count": max(item.count - 1, 0)})
-    p.snap("food_stock", left, src="derived")
+
+    def eaten(left: dict[str, FoodStockState]) -> dict[str, FoodStockState]:
+        item = left[e.food]
+        return {**left, e.food: item.model_copy(update={"count": max(item.count - 1, 0)})}
+
+    p.change("food_stock", eaten)
 
 
 @_on(Inventory)
 def _inventory(p: _Patch, e: Inventory) -> None:
     for name in ("books", "cards", "bag", "bag_cap", "prizebox"):
         p.snap(name, getattr(e, name))
+    p.snap("book_ready_at", p.later(e.books_in_s or 0))
+    p.snap("card_ready_at", p.later(e.cards_in_s or 0))
     p.snap("prizebox_ready_at", p.later(e.prizebox_in_s or 0) if e.prizebox else None)
 
 
@@ -416,12 +423,15 @@ def _prizebox(p: _Patch, e: PrizeboxOpened) -> None:
 @_on(GorbushkaScreen)
 def _gorbushka(p: _Patch, e: GorbushkaScreen) -> None:
     previous: Obs[GorbushkaState] | None = p.get("gorbushka")
-    bought = (
-        previous is not None
+    # Билет куплен после экрана «нужен билет»: его момент — нижняя граница покупки.
+    bought_after = (
+        previous.at
+        if previous is not None
         and previous.at <= p.at
         and previous.value.state == "need_ticket"
         and e.state in ("meeting", "waiting")
         and e.won == 0
+        else None
     )
     next_fight = p.at if e.state == "meeting" else p.later(e.next_in_s)
     p.snap(
@@ -446,9 +456,9 @@ def _gorbushka(p: _Patch, e: GorbushkaScreen) -> None:
         )
     prices: dict[str, Obs[PriceState]] = p.get("prices")
     ticket = prices.get("gorbushka_ticket")
-    if bought and ticket is not None:
-        p.delta("money", -ticket.value.money)
-        p.delta("knowledge", -ticket.value.knowledge)
+    if bought_after is not None and ticket is not None:
+        p.delta("money", -ticket.value.money, since=bought_after)
+        p.delta("knowledge", -ticket.value.knowledge, since=bought_after)
 
 
 @_on(GorbushkaFight)

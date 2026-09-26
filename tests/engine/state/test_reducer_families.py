@@ -93,6 +93,14 @@ def test_food_menu_and_fastfood() -> None:
     assert value(state, "fastfood_ready_at") == "2026-09-26T10:01:00Z"
 
 
+def test_food_menu_and_fastfood_same_second_marks_stock_doubtful() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "food", 3624997, 1)
+    same_second = feed(reducer, state, "food", 3536881, 1, created=1)
+    assert value(same_second, "food_stock")["banana"]["count"] == 12
+    assert same_second["food_stock"]["src"] == "doubtful"
+
+
 def test_inventory_books_cards() -> None:
     reducer = StateReducer()
     state = feed(reducer, _profiled(reducer), "items", 3625102, 1)
@@ -108,6 +116,19 @@ def test_inventory_books_cards() -> None:
     state = feed(reducer, state, "items", 3516678, 3)
     assert (value(state, "cards"), value(state, "money")) == (12, 867 + 597)
     assert value(state, "card_ready_at") == "2026-09-26T09:53:00Z"
+
+
+def test_inventory_timers_and_missing_cards_line() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "items", 3618363, 1)
+    assert (value(state, "books"), value(state, "cards")) == (848, 15)
+    assert value(state, "book_ready_at") == "2026-09-26T09:39:00Z"
+    assert value(state, "card_ready_at") == "2026-09-26T09:39:00Z"
+    state = feed(reducer, state, "items", 3595611, 2)
+    assert (value(state, "books"), value(state, "cards")) == (785, 0)
+    assert value(state, "book_ready_at") == "2026-09-26T09:02:00Z"
+    assert value(state, "card_ready_at") == "2026-09-26T09:02:00Z"
+    assert value(state, "prizebox_ready_at") == "2026-09-27T00:08:00Z"
 
 
 def test_gifts_containers_prizebox() -> None:
@@ -157,6 +178,25 @@ def test_gorbushka_ticket_purchase_deducted() -> None:
     # Если снимок ресурсов старше сообщения, цена вычитается.
     later = feed(reducer, state, "gorbushka", 3516738, 3, created=2)
     assert (value(later, "money"), value(later, "knowledge")) == (1544 - 120, 17977 - 20)
+
+
+def test_gorbushka_ticket_bought_before_newer_snapshot_marks_doubtful() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "gorbushka", 3537930, 1)
+    # Профиль после покупки билета уже учёл её: второй раз вычитать нельзя.
+    state = feed(reducer, state, "profile", PROFILE, 1.5)
+    state = feed(reducer, state, "gorbushka", 3516738, 2, created=2)
+    assert value(state, "gorbushka")["state"] == "meeting"
+    assert (value(state, "money"), value(state, "knowledge")) == (867, 21942)
+    assert (state["money"]["src"], state["knowledge"]["src"]) == ("doubtful", "doubtful")
+
+
+def test_motivation_full_clears_timer() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "activities", 3517795, 1)
+    assert value(state, "motivation") == 85
+    assert value(state, "motivation_next_at") is None
+    assert state["motivation_next_at"]["src"] == "derived"
 
 
 def test_levelup_steps() -> None:
