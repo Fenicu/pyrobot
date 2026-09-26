@@ -49,11 +49,23 @@ def record_message(rec: dict[str, Any]) -> IncomingMessage:
 
 
 @cache
-def game(family: str) -> dict[int, IncomingMessage]:
+def _family(family: str) -> tuple[IncomingMessage, ...]:
     path = GAME_DIR / f"{family}.jsonl"
-    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
-    return {rec["id"]: record_message(rec) for rec in records}
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return tuple(record_message(json.loads(line)) for line in lines)
 
 
-def game_msg(family: str, msg_id: int) -> IncomingMessage:
-    return game(family)[msg_id]
+@cache
+def game(family: str) -> dict[int, IncomingMessage]:
+    """Сообщения семейства по id; у сохранённого с правками — последняя версия."""
+    return {msg.msg_id: msg for msg in _family(family)}
+
+
+def game_versions(family: str, msg_id: int) -> list[IncomingMessage]:
+    return [msg for msg in _family(family) if msg.msg_id == msg_id]
+
+
+def game_msg(family: str, msg_id: int, version: int | None = None) -> IncomingMessage:
+    if version is None:
+        return game(family)[msg_id]
+    return game_versions(family, msg_id)[version]

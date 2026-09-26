@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import timedelta
 
 from app.engine.parsing.common import Rewards
@@ -5,7 +6,8 @@ from app.engine.parsing.crew import CrewScreen
 from app.engine.parsing.screens import LotterySkillsExpired
 from app.engine.state.model import load_state, stale_fields
 from app.engine.state.reducer import StateReducer
-from tests.engine.state.helpers import at, feed, fixture_at, value
+from tests.engine.state.helpers import PARSER, at, feed, fixture_at, value
+from tests.fixtures import game_versions
 
 
 def _profiled(reducer: StateReducer) -> dict:
@@ -113,6 +115,15 @@ def test_stock_bought_without_known_portfolio() -> None:
     state = feed(reducer, {}, "stocks", 3564237, 1)
     assert value(state, "stock_holdings") is None
     assert value(state, "money") == 110
+
+
+def test_stock_sold_updates_money_and_known_portfolio() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "stocks", 3624065, 1)
+    state = feed(reducer, state, "stocks", 3625251, 2)
+    assert value(state, "money") == 699
+    assert value(state, "stock_holdings")["piper"] == 3762
+    assert value(state, "stock_holdings")["hooli"] == 1838
 
 
 def test_buy_screen_keeps_main_limits() -> None:
@@ -224,3 +235,15 @@ def test_gadgets_screens_update_money() -> None:
     assert value(state, "money") == 445
     state = feed(reducer, state, "screens", 3525610, 2)
     assert value(state, "money") == 3250
+
+
+def test_cooking_screen_does_not_count_drops_twice() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "smoothie", 3581573, 1)
+    # Экран варки показывает остатки уже без вброшенного, итог отнимает рецепт от экрана.
+    for version, msg in enumerate(game_versions("smoothie_cooking", 3625241)):
+        edit = replace(msg, date=at(2 + version), created_at=at(2))
+        state = reducer.apply(state, edit, PARSER.parse(edit))
+    ingredients = value(state, "smoothie_ingredients")
+    assert ingredients == {"lemon": 3, "grape": 3, "apple": 4, "carrot": 2, "tomato": 3}
+    assert value(state, "smoothie_bonus") is None

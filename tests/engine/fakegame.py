@@ -19,7 +19,8 @@ from app.engine.types import IncomingMessage
 from tests.fixtures import game_msg
 
 GAME = 227859379
-Ref = tuple[str, int]
+# (семейство, id) или (семейство, id, номер версии сообщения с правками).
+Ref = tuple[str, int] | tuple[str, int, int]
 
 
 @dataclass

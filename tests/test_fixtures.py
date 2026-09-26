@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from tests.fixtures import game, game_msg
+from tests.fixtures import game, game_msg, game_versions
 
 FAMILIES = (
     "profile",
@@ -16,6 +16,7 @@ FAMILIES = (
     "bulls",
     "stocks",
     "smoothie",
+    "smoothie_cooking",
     "tangerine",
     "screens",
     "swinfo",
@@ -50,3 +51,11 @@ def test_sender_kept_for_other_chats() -> None:
     post = game_msg("swinfo", 3817108)
     assert (post.chat_id, post.from_id) == (-1001109615116, 376592453)
     assert game_msg("profile", 3610633).from_id == 227859379
+
+
+def test_versions_of_edited_message() -> None:
+    versions = game_versions("smoothie_cooking", 3625241)
+    assert [m.kind for m in versions] == ["new"] + ["edit"] * 6
+    assert [m.date for m in versions] == sorted(m.date for m in versions)
+    assert game_msg("smoothie_cooking", 3625241) == versions[-1]
+    assert game_msg("smoothie_cooking", 3625241, 1) == versions[1]

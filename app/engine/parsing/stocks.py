@@ -24,10 +24,26 @@ _HOURS = re.compile(
 _MIN_BUY = re.compile(r"Акции дешевле (?P<n>\d+) 💵 нельзя купить")
 _MAX_SELL = re.compile(r"Акции дороже (?P<n>\d+) 💵 нельзя продать")
 _RESERVE = re.compile(r"не менее (?P<n>\d+) 💵 после покупки")
+# Строка «можешь купить/продать от … до …» есть, пока лимит не исчерпан (кнопка «на все»
+# правкой её убирает).
 _BOUGHT = re.compile(
     r"\AПокупаем акции (?P<co>" + COMPANY + r")\nЦена (?P<price>\d+) 💵 за шт\.\n\n"
-    r"💵Деньги: \$(?P<money>" + NUM + r")\n📈Акции: (?P<shares>" + NUM + r")\n\n"
+    r"💵Деньги: \$(?P<money>" + NUM + r")\n📈Акции: (?P<shares>" + NUM + r")\n"
+    r"(?:Ты можешь купить от \d+ до " + NUM + r" акций\n)?\n"
     r"Куплено акций (?:" + COMPANY + r"): (?P<n>\d+)"
+)
+_SOLD = re.compile(
+    r"\AПродаём акции (?P<co>" + COMPANY + r")\nЦена (?P<price>\d+) 💵 за шт\.\n\n"
+    r"💵Деньги: \$(?P<money>"
+    + NUM
+    + r")\n📈Акции: (?P<shares>"
+    + NUM
+    + r") на \$"
+    + NUM
+    + r" 💵\n\n(?:Ты можешь продать от \d+ до "
+    + NUM
+    + r" акций\n\n)?"
+    r"Продано (?P<n>\d+) акций (?:" + COMPANY + r")"
 )
 _DIVIDENDS = re.compile(
     r"\AТы получаешь дивиденды на все акции своей компании в размере: \$(?P<amount>" + NUM + r")"
@@ -54,6 +70,16 @@ class StockScreen(Event):
 @dataclass(frozen=True, slots=True, kw_only=True)
 class StockBought(Event):
     kind: ClassVar[str] = "stock_bought"
+    company: str
+    price: int
+    n: int
+    money: int
+    shares: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class StockSold(Event):
+    kind: ClassVar[str] = "stock_sold"
     company: str
     price: int
     n: int
@@ -114,6 +140,16 @@ def recognize_stocks(msg: IncomingMessage) -> list[Event]:
     if m := _BOUGHT.match(text):
         return [
             StockBought(
+                company=COMPANIES[m["co"]],
+                price=int(m["price"]),
+                n=int(m["n"]),
+                money=num(m["money"]),
+                shares=num(m["shares"]),
+            )
+        ]
+    if m := _SOLD.match(text):
+        return [
+            StockSold(
                 company=COMPANIES[m["co"]],
                 price=int(m["price"]),
                 n=int(m["n"]),

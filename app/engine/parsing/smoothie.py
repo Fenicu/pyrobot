@@ -13,6 +13,10 @@ _FRUIT = "[" + "".join(INGREDIENTS) + "]"
 _SCREEN = "🍹Смузийная\n"
 _STOCK = re.compile(r"^(?P<emo>" + _FRUIT + r")\w+ - (?P<n>\d+) шт\.$", re.M)
 _CURRENT = re.compile(r"\nТекущий бонус\n(?P<bonus>[^\n]+)")
+_COOKING = re.compile(
+    r"\A🍹Готовлю\n\n(?:Вброшено\n(?:Пока ничего|(?P<dropped>" + _FRUIT + r"{1,5}))"
+    r"|(?P<cancelled>Приготовление отменено)[^\n]*)\n\nУ тебя\n"
+)
 _COOKED = re.compile(r"\AТы приготовил 🍹Смузи\n(?P<recipe>" + _FRUIT + r"{5})\n")
 _GOT = re.compile(r"\nПолучен бонус\n(?P<bonus>[^\n]+)")
 _RECIPE = re.compile(
@@ -25,6 +29,15 @@ class SmoothieScreen(Event):
     kind: ClassVar[str] = "smoothie_screen"
     ingredients: dict[str, int] = field(default_factory=dict)
     bonus: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SmoothieCooking(Event):
+    """Экран варки: что уже вброшено. Остатки на нём уже без вброшенного — в состояние не идут."""
+
+    kind: ClassVar[str] = "smoothie_cooking"
+    dropped: str = ""
+    cancelled: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -53,6 +66,8 @@ def recognize_smoothie(msg: IncomingMessage) -> list[Event]:
         return [
             SmoothieScreen(ingredients=ingredients, bonus=current["bonus"] if current else None)
         ]
+    if m := _COOKING.match(text):
+        return [SmoothieCooking(dropped=m["dropped"] or "", cancelled=bool(m["cancelled"]))]
     if m := _COOKED.match(text):
         got = _GOT.search(text)
         return [SmoothieCooked(recipe=m["recipe"], bonus=got["bonus"] if got else None)]

@@ -3,12 +3,13 @@ from dataclasses import replace
 from app.engine.parsing import default_parser
 from app.engine.parsing.smoothie import (
     SmoothieCooked,
+    SmoothieCooking,
     SmoothieRecipe,
     SmoothieScreen,
     recognize_smoothie,
 )
 from app.engine.settings import ChatsSection
-from tests.fixtures import game_msg
+from tests.fixtures import game_msg, game_versions
 
 FOOD_BONUS = "🍴На еде или фастфуде получаешь дополнительно +110%🔋 с шансом 75%."
 FULL = {"lemon": 4, "grape": 4, "apple": 4, "carrot": 4, "tomato": 4}
@@ -37,6 +38,24 @@ def test_cooked() -> None:
     assert recognize_smoothie(game_msg("smoothie", 3581575)) == [
         SmoothieCooked(recipe="🍇🥕🥕🍋🍅", bonus=FOOD_BONUS)
     ]
+
+
+def test_cooking_screen_follows_drops() -> None:
+    events = [recognize_smoothie(m) for m in game_versions("smoothie_cooking", 3625241)]
+    assert events == [
+        [SmoothieCooking(dropped="")],
+        [SmoothieCooking(dropped="🍇")],
+        [SmoothieCooking(dropped="🍇🥕")],
+        [SmoothieCooking(dropped="🍇🥕🥕")],
+        [SmoothieCooking(dropped="🍇🥕🥕🍋")],
+        [SmoothieCooking(dropped="🍇🥕🥕🍋🍅")],
+        [SmoothieCooked(recipe="🍇🥕🥕🍋🍅", bonus=None)],
+    ]
+
+
+def test_cooking_cancelled() -> None:
+    [*_, cancelled] = game_versions("smoothie_cooking", 3625245)
+    assert recognize_smoothie(cancelled) == [SmoothieCooking(cancelled=True)]
 
 
 def test_channel_recipe_only_in_channel() -> None:

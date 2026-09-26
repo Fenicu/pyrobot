@@ -1,6 +1,12 @@
 from dataclasses import replace
 
-from app.engine.parsing.stocks import Dividends, StockBought, StockScreen, recognize_stocks
+from app.engine.parsing.stocks import (
+    Dividends,
+    StockBought,
+    StockScreen,
+    StockSold,
+    recognize_stocks,
+)
 from tests.fixtures import game_msg
 
 QUOTES = {"piper": 10, "hooli": 10, "stark": 31, "umbrl": 100, "wayne": 10, "bmesa": 10}
@@ -43,6 +49,15 @@ def test_bought_and_dividends() -> None:
     assert recognize_stocks(game_msg("stocks", 3582720)) == [Dividends(amount=236)]
     assert recognize_stocks(game_msg("stocks", 3624068)) == [
         StockBought(company="stark", price=31, n=70, money=124, shares=121)
+    ]
+
+
+def test_trade_by_command_while_limit_remains() -> None:
+    assert recognize_stocks(game_msg("stocks", 3625255)) == [
+        StockBought(company="stark", price=31, n=1, money=667, shares=122)
+    ]
+    assert recognize_stocks(game_msg("stocks", 3625251)) == [
+        StockSold(company="piper", price=10, n=1, money=699, shares=3762)
     ]
 
 

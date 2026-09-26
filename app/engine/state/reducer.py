@@ -44,7 +44,7 @@ from app.engine.parsing.screens import (
 )
 from app.engine.parsing.sleep import FellAsleep, RobberyFight, SleepMenu, SleepWarning, WokeUp
 from app.engine.parsing.smoothie import INGREDIENTS, SmoothieCooked, SmoothieRecipe, SmoothieScreen
-from app.engine.parsing.stocks import Dividends, StockBought, StockScreen
+from app.engine.parsing.stocks import Dividends, StockBought, StockScreen, StockSold
 from app.engine.parsing.swinfo import BattleSummary, FactoryCall, FactoryResult
 from app.engine.parsing.tangerine import TangerineRefused
 from app.engine.state.model import (
@@ -630,13 +630,16 @@ def _stock_screen(p: _Patch, e: StockScreen) -> None:
         p.snap("money", e.money)
 
 
-@_on(StockBought)
-def _stock_bought(p: _Patch, e: StockBought) -> None:
+def _stock_trade(p: _Patch, e: StockBought | StockSold) -> None:
     p.snap("money", e.money)
     portfolio: Obs[dict[str, int]] | None = p.get("stock_holdings")
     # Портфель неизвестен целиком — не выдумываем его из одной купленной позиции.
     if portfolio is not None:
         p.snap("stock_holdings", {**portfolio.value, e.company: e.shares})
+
+
+_on(StockBought)(_stock_trade)
+_on(StockSold)(_stock_trade)
 
 
 @_on(Dividends)
