@@ -1,5 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
+import uuid
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Protocol
+
+log = logging.getLogger(__name__)
+
 
 class TgAuthError(Exception):
     pass
@@ -23,3 +34,167 @@ class InvalidPassword(TgAuthError):
 
 class SignUpRequired(TgAuthError):
     pass
+
+
+class AttemptMismatch(TgAuthError):
+    pass
+
+
+class TgState(StrEnum):
+    UNAUTHORIZED = "unauthorized"
+    AWAITING_CODE = "awaiting_code"
+    AWAITING_PASSWORD = "awaiting_password"
+    ONLINE = "online"
+    ERROR = "error"
+
+
+@dataclass(frozen=True, slots=True)
+class TgStatus:
+    state: TgState
+    user_id: int | None = None
+    attempt_id: str | None = None
+    error: str | None = None
+
+
+class TgAuthBackend(Protocol):
+    async def connect(self) -> bool: ...
+    async def send_code(self, phone: str) -> str: ...
+    async def sign_in(self, phone: str, code_hash: str, code: str) -> int: ...
+    async def check_password(self, password: str) -> int: ...
+    async def identify(self) -> int: ...
+    async def go_online(self) -> None: ...
+    async def log_out(self) -> None: ...
+
+
+@dataclass
+class _Attempt:
+    id: str
+    owner: str
+    phone: str
+    code_hash: str
+    expires: float
+
+
+class TgAuthManager:
+    def __init__(
+        self, backend: TgAuthBackend, *, expected_user_id: int, attempt_ttl_s: float = 600.0
+    ) -> None:
+        self._backend = backend
+        self._expected = expected_user_id
+        self._ttl = attempt_ttl_s
+        self._lock = asyncio.Lock()
+        self._state = TgState.UNAUTHORIZED
+        self._user_id: int | None = None
+        self._error: str | None = None
+        self._attempt: _Attempt | None = None
+        self._callbacks: list[Callable[[], Awaitable[None]]] = []
+
+    def status(self) -> TgStatus:
+        attempt_id = self._attempt.id if self._attempt else None
+        return TgStatus(self._state, self._user_id, attempt_id, self._error)
+
+    def on_online(self, cb: Callable[[], Awaitable[None]]) -> None:
+        self._callbacks.append(cb)
+
+    async def boot(self) -> TgStatus:
+        async with self._lock:
+            try:
+                authorized = await self._backend.connect()
+                if authorized:
+                    await self._accept(await self._backend.identify())
+                else:
+                    self._set(TgState.UNAUTHORIZED)
+            except Exception:
+                log.exception("telegram boot failed")
+                self._set(TgState.ERROR, error="connect_failed")
+            return self.status()
+
+    async def start(self, phone: str, owner: str) -> TgStatus:
+        async with self._lock:
+            if self._state is TgState.ONLINE:
+                raise AttemptMismatch("already online")
+            active = self._attempt
+            if active is not None and active.owner != owner and active.expires > time.monotonic():
+                raise AttemptMismatch("another login in progress")
+            await self._backend.connect()
+            code_hash = await self._backend.send_code(phone)
+            self._attempt = _Attempt(
+                uuid.uuid4().hex, owner, phone, code_hash, time.monotonic() + self._ttl
+            )
+            self._set(TgState.AWAITING_CODE)
+            return self.status()
+
+    async def submit_code(self, attempt_id: str, owner: str, code: str) -> TgStatus:
+        async with self._lock:
+            attempt = self._check(attempt_id, owner, TgState.AWAITING_CODE)
+            try:
+                user_id = await self._backend.sign_in(attempt.phone, attempt.code_hash, code)
+            except PasswordRequired:
+                self._set(TgState.AWAITING_PASSWORD)
+                return self.status()
+            except InvalidCode:
+                self._error = "invalid_code"
+                return self.status()
+            except CodeExpired:
+                self._attempt = None
+                self._set(TgState.UNAUTHORIZED, error="code_expired")
+                return self.status()
+            except SignUpRequired:
+                self._attempt = None
+                self._set(TgState.ERROR, error="signup_required")
+                return self.status()
+            self._attempt = None
+            await self._accept(user_id)
+            return self.status()
+
+    async def submit_password(self, attempt_id: str, owner: str, password: str) -> TgStatus:
+        async with self._lock:
+            self._check(attempt_id, owner, TgState.AWAITING_PASSWORD)
+            try:
+                user_id = await self._backend.check_password(password)
+            except InvalidPassword:
+                self._error = "invalid_password"
+                return self.status()
+            self._attempt = None
+            await self._accept(user_id)
+            return self.status()
+
+    async def logout(self) -> TgStatus:
+        async with self._lock:
+            await self._backend.log_out()
+            self._attempt = None
+            self._user_id = None
+            self._set(TgState.UNAUTHORIZED)
+            return self.status()
+
+    async def mark_lost(self) -> None:
+        async with self._lock:
+            self._user_id = None
+            self._set(TgState.UNAUTHORIZED, error="session_revoked")
+
+    def _check(self, attempt_id: str, owner: str, state: TgState) -> _Attempt:
+        attempt = self._attempt
+        if attempt is None or attempt.id != attempt_id or attempt.owner != owner:
+            raise AttemptMismatch("unknown attempt")
+        if self._state is not state:
+            raise AttemptMismatch(f"state is {self._state}")
+        return attempt
+
+    async def _accept(self, user_id: int) -> None:
+        if user_id != self._expected:
+            await self._backend.log_out()
+            self._user_id = None
+            self._set(TgState.ERROR, error="unexpected_user")
+            return
+        await self._backend.go_online()
+        self._user_id = user_id
+        self._set(TgState.ONLINE)
+        for cb in self._callbacks:
+            try:
+                await cb()
+            except Exception:
+                log.exception("online callback failed")
+
+    def _set(self, state: TgState, *, error: str | None = None) -> None:
+        self._state = state
+        self._error = error

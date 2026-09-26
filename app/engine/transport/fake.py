@@ -6,6 +6,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
+from app.engine.tg_auth import InvalidCode, InvalidPassword, PasswordRequired
+
 
 @dataclass(frozen=True, slots=True)
 class Sent:
@@ -47,3 +49,53 @@ class FakeTransport:
     ) -> str | None:
         self._deliver(Sent("click", chat_id, data, message_id, time.monotonic()))
         return self.toast
+
+
+class FakeTgBackend:
+    def __init__(
+        self,
+        *,
+        authorized: bool = False,
+        user_id: int = 267519921,
+        password: str | None = None,
+        code: str = "12345",
+    ) -> None:
+        self.authorized = authorized
+        self.user_id = user_id
+        self.password = password
+        self.code = code
+        self.logged_out = False
+        self.online = False
+        self._code_ok = False
+
+    async def connect(self) -> bool:
+        return self.authorized
+
+    async def send_code(self, phone: str) -> str:
+        return "hash"
+
+    async def sign_in(self, phone: str, code_hash: str, code: str) -> int:
+        if code != self.code:
+            raise InvalidCode
+        self._code_ok = True
+        if self.password is not None:
+            raise PasswordRequired
+        self.authorized = True
+        return self.user_id
+
+    async def check_password(self, password: str) -> int:
+        if not self._code_ok or password != self.password:
+            raise InvalidPassword
+        self.authorized = True
+        return self.user_id
+
+    async def identify(self) -> int:
+        return self.user_id
+
+    async def go_online(self) -> None:
+        self.online = True
+
+    async def log_out(self) -> None:
+        self.logged_out = True
+        self.authorized = False
+        self.online = False
