@@ -60,6 +60,19 @@ async def test_state_version_bumps_only_on_change() -> None:
     assert journal.snapshot == ({"events": 1}, 1)
 
 
+async def test_load_restores_state_and_version() -> None:
+    journal = MemoryJournal()
+    journal.snapshot = ({"events": 3}, 7)
+    pipe, _, journal = _pipeline(CountingReducer(), journal=journal)
+    await pipe.load()
+    assert pipe.state == {"events": 3}
+    assert pipe.version == 7
+    await pipe.process(make_msg("Ты шлёшь запросы к боту слишком часто.", msg_id=1))
+    assert pipe.version == 8
+    assert pipe.state == {"events": 4}
+    assert journal.snapshot == ({"events": 4}, 8)
+
+
 async def test_journal_ids_increase() -> None:
     pipe, seen, _ = _pipeline()
     await pipe.process(make_msg("a", msg_id=1))
