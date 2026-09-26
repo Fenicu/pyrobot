@@ -19,6 +19,7 @@ class EngineSection(BaseModel):
     recovered_react_max_age_min: int = Field(default=10, ge=0)
     refresh_min_interval_s: float = Field(default=120.0, gt=0)
     state_stale_after_min: int = Field(default=15, ge=1)
+    paused: bool = False
     urgent_while_paused: bool = True
     manual_while_paused: bool = True
 
@@ -37,10 +38,73 @@ class ChatsSection(BaseModel):
     bulls_invite_chat_id: int | None = None
 
 
+class FeaturesSection(BaseModel):
+    """Включённые механики: планировщик их выбирает, шлюз пропускает их команды не вручную."""
+
+    deeds: bool = True
+    books: bool = True
+    fastfood: bool = True
+    cards_containers: bool = True
+    gorbushka: bool = True
+    sleep: bool = True
+    levelup: bool = True
+    metro: bool = True
+    factory: bool = True
+    bulls: bool = True
+    stocks_dump: bool = True
+    smoothie: bool = True
+    tangerine: bool = True
+    lottery: bool = False
+    casino: bool = False
+    arena: bool = False
+    pet_feast: bool = False
+    daily_tasks: bool = False
+    paid_info: bool = False
+    seasonal: bool = False
+
+
+Deed = Literal["harvest", "job", "learn", "dconv", "walk", "confa", "rob"]
+
+
+class StrategySection(BaseModel):
+    weight_xp: float = Field(default=1.0, ge=0)
+    weight_money: float = Field(default=1.0, ge=0)
+    weight_resources: float = Field(default=0.5, ge=0)
+    weight_team: float = Field(default=0.5, ge=0)
+    # Масштабы «типичного дохода на 1🔥» — приводят разные единицы к сравнимому виду.
+    exp_scale: float = Field(default=200.0, gt=0)
+    money_scale: float = Field(default=30.0, gt=0)
+    resource_scale: float = Field(default=10.0, gt=0)
+    deeds: tuple[Deed, ...] = ("harvest", "job", "learn", "dconv")
+
+
+Food = Literal["hotdog", "pizza", "burger", "banana"]
+
+
+class FoodSection(BaseModel):
+    order: tuple[Food, ...] = ("hotdog", "pizza", "burger")
+    banana_reserve: int = Field(default=50, ge=0)
+
+
+class SleepSection(BaseModel):
+    duration_h: int = Field(default=7, ge=7, le=12)
+    lead_min: int = Field(default=120, ge=10)
+    hotel_if_cash_after_reserve_ge: int | None = None
+
+
+class LevelupSection(BaseModel):
+    policy: Literal["balanced"] = "balanced"
+
+
 class Settings(BaseModel):
     engine: EngineSection = Field(default_factory=EngineSection)
     telegram: TelegramSection = Field(default_factory=TelegramSection)
     chats: ChatsSection = Field(default_factory=ChatsSection)
+    features: FeaturesSection = Field(default_factory=FeaturesSection)
+    strategy: StrategySection = Field(default_factory=StrategySection)
+    food: FoodSection = Field(default_factory=FoodSection)
+    sleep: SleepSection = Field(default_factory=SleepSection)
+    levelup: LevelupSection = Field(default_factory=LevelupSection)
 
 
 class SettingsConflict(Exception):

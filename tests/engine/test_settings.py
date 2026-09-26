@@ -28,3 +28,19 @@ def test_click_answer_timeout_bounded() -> None:
     assert EngineSection(click_answer_timeout_s=30).click_answer_timeout_s == 30
     with pytest.raises(ValidationError):
         EngineSection(click_answer_timeout_s=30.5)
+
+
+def test_strategy_defaults_follow_spec() -> None:
+    s = Settings()
+    assert (s.strategy.weight_xp, s.strategy.weight_money) == (1.0, 1.0)
+    assert (s.strategy.weight_resources, s.strategy.weight_team) == (0.5, 0.5)
+    assert s.features.books and s.features.gorbushka and not s.features.lottery
+    assert not s.features.casino and not s.features.pet_feast and not s.features.daily_tasks
+    assert s.food.order == ("hotdog", "pizza", "burger") and s.food.banana_reserve == 50
+    assert (s.sleep.duration_h, s.sleep.hotel_if_cash_after_reserve_ge) == (7, None)
+    assert s.levelup.policy == "balanced" and not s.engine.paused
+
+
+def test_sleep_duration_bounds() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"sleep": {"duration_h": 13}})
