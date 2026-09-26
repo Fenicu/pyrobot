@@ -9,12 +9,12 @@ from app.engine.parsing.common import DURATION, NUM, dur, num
 from app.engine.types import IncomingMessage
 
 _INVENTORY = "Гаджеты при тебе: (снять)"
-_BOOKS = re.compile(r"^📒Книга опыта: (?P<n>\d+)", re.M)
-_CARDS = re.compile(r"^💳Подарочная карта: (?P<n>\d+)", re.M)
+_BOOKS = re.compile(r"^📒Книга опыта: (?P<n>\d+)(?: \((?P<t>" + DURATION + r")\))?", re.M)
+_CARDS = re.compile(r"^💳Подарочная карта: (?P<n>\d+)(?: \((?P<t>" + DURATION + r")\))?", re.M)
 _PRIZEBOX = re.compile(
     r"^🎁[\xa0 ]?Призовая коробка /unbox(?: \((?P<t>" + DURATION + r")\))?$", re.M
 )
-_SLOTS = re.compile(r"Занято (?P<used>\d+) из (?P<cap>\d+)")
+_SLOTS = re.compile(r"^Занято (?P<used>\d+) из (?P<cap>\d+)$", re.M)
 _BOOK = re.compile(
     r"\AТы прочёл 📒Книгу и получил:\n💡Опыт: \+(?P<exp>\d+)\n\n"
     r"Следующую книгу можно прочесть через (?P<t>[^\n]+)"
@@ -36,7 +36,9 @@ _MONEY_AFTER = re.compile(r"Стало: \$(?P<money>" + NUM + r")")
 class Inventory(Event):
     kind: ClassVar[str] = "inventory"
     books: int
+    books_in_s: int | None
     cards: int
+    cards_in_s: int | None
     prizebox: bool
     prizebox_in_s: int | None
     bag: int
@@ -81,16 +83,26 @@ class PrizeboxOpened(Event):
     money_after: int | None
 
 
+def _count(m: re.Match[str] | None) -> tuple[int, int | None]:
+    if m is None:
+        return 0, None
+    return int(m["n"]), dur(m["t"]) if m["t"] else None
+
+
 def _inventory(text: str) -> list[Event]:
-    slots, books, cards = _SLOTS.search(text), _BOOKS.search(text), _CARDS.search(text)
-    # Без строк книг и карт экран считается неразобранным, а не «ноль книг».
-    if slots is None or books is None or cards is None:
+    # Строк 📒 и 💳 при нуле нет: целостность экрана определяют заголовок и «Занято N из M».
+    slots = _SLOTS.search(text)
+    if slots is None:
         return []
+    books, books_in_s = _count(_BOOKS.search(text))
+    cards, cards_in_s = _count(_CARDS.search(text))
     box = _PRIZEBOX.search(text)
     return [
         Inventory(
-            books=int(books["n"]),
-            cards=int(cards["n"]),
+            books=books,
+            books_in_s=books_in_s,
+            cards=cards,
+            cards_in_s=cards_in_s,
             prizebox=box is not None,
             prizebox_in_s=dur(box["t"]) if box and box["t"] else None,
             bag=int(slots["used"]),

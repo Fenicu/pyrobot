@@ -45,10 +45,8 @@ _FINISHES: tuple[tuple[str, str], ...] = (
 )
 _FAILED = "Ничего не удалось обнаружить"
 _LOGISTIC_REFUND = "Сработал 🗳Сет Логистик и ты восстановил 1 🔥"
-_CANCEL_OK = re.compile(
-    r"\A👍Задание отменено\.\n\nТебе вернулось:\n"
-    r"(?:🔥Мотивация: (?P<mot>\d+)|💵Деньги: \$(?P<money>\d+))"
-)
+_CANCEL_OK = "👍Задание отменено.\n\nТебе вернулось:\n"
+_CANCEL_REFUND = re.compile(r"^(?:🔥Мотивация: (?P<mot>\d+)|💵Деньги: \$(?P<money>\d+))$", re.M)
 _CANCEL_LATE = "❌Задание можно отменить только в первые"
 _CANCEL_NONE = "❌Задания уже нет. Нечего отменять."
 _MOT_FULL = "Поздравляю! Твоя 🔥Мотивация полностью восстановлена"
@@ -215,10 +213,15 @@ def recognize_finish(msg: IncomingMessage) -> list[Event]:
 
 def recognize_cancel(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
-    if m := _CANCEL_OK.match(text):
+    if text.startswith(_CANCEL_OK):
+        refunds = list(_CANCEL_REFUND.finditer(text, len(_CANCEL_OK)))
+        if not refunds:
+            return []
         return [
             ActivityCancelled(
-                result="ok", motivation=int(m["mot"] or 0), money=int(m["money"] or 0)
+                result="ok",
+                motivation=sum(int(m["mot"] or 0) for m in refunds),
+                money=sum(int(m["money"] or 0) for m in refunds),
             )
         ]
     if text.startswith(_CANCEL_LATE):

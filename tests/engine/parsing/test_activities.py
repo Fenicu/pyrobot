@@ -70,6 +70,7 @@ def test_logistic_refund() -> None:
 def test_cancel_variants() -> None:
     assert _events(3517963) == [ActivityCancelled(result="ok", motivation=1)]
     assert _events(3522301) == [ActivityCancelled(result="ok", money=5)]
+    assert _events(3618769) == [ActivityCancelled(result="ok", money=30, motivation=1)]
     assert _events(3517930) == [ActivityCancelled(result="too_late")]
     assert _events(3529038) == [ActivityCancelled(result="nothing")]
 
