@@ -9,6 +9,8 @@ from app.engine.facade import EngineFacade
 from app.engine.state.model import load_state, stale_fields
 
 router = APIRouter(prefix="/api/v1", tags=["state"])
+# Служебные поля редьюсера в ответ не входят.
+_INTERNAL = frozenset({"applied"})
 
 
 @router.get("/state")
@@ -22,6 +24,6 @@ async def get_state(
     return {
         "version": version,
         "now": now.isoformat(),
-        "state": snapshot,
+        "state": {k: v for k, v in snapshot.items() if k not in _INTERNAL},
         "stale": stale_fields(load_state(snapshot), now, max_age),
     }

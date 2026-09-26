@@ -189,13 +189,14 @@ HTTP, и MTProto-клиент, и очередь действий в одном 
 собирает `Runtime`, порядок старта: настройки → админ (`ensure_admin`, если задан
 `PYROBOT_ADMIN_PASSWORD`) → единственный экземпляр (`app/db/lock.py`, `SingleInstanceLock` —
 Postgres advisory lock) → если лок не взят, движок не стартует, уведомление `second_instance`,
-`/readyz` навсегда 503 для этого процесса → если остались незавершённые действия с прошлого запуска
-(`mark_unfinished_unknown`), шлюз сразу блокирует траты (`block_spending("reconcile_required")`) и
-уведомление `actions_outcome_unknown` — блок снимает сам сверщик (`Reconciler`, см. «Шлюз действий»),
-как только обновит все затронутые экраны, либо администратор явным `POST
-/api/v1/engine/reconciled` → шина, конвейер (снимок состояния восстанавливается из журнала, редьюсер
-— `StateReducer`, при изменении состояния метрики (`StateReducer.metrics`) пишутся в ту же
-транзакцию, что и журнал) → транспорт (`PYROBOT_TRANSPORT=kurigram|fake`) → шлюз действий,
+`/readyz` навсегда 503 для этого процесса → если в БД есть незакрытые обязательства сверки
+(`ActionStore.unreconciled()`: строки `outcome_unknown` класса не `nav` без `reconciled_at`, в том
+числе переведённые так `mark_unfinished_unknown()` после рестарта), шлюз сразу блокирует траты
+(`block_spending("reconcile_required")`) и шлёт уведомление `actions_outcome_unknown` — блок снимает
+сам сверщик (`Reconciler`, см. «Шлюз действий»), как только обновит все затронутые экраны, либо
+администратор явным `POST /api/v1/engine/reconciled` → шина, конвейер (снимок состояния
+восстанавливается из журнала, редьюсер — `StateReducer`, при изменении состояния метрики
+(`StateReducer.metrics`) пишутся в ту же транзакцию, что и журнал) → транспорт (`PYROBOT_TRANSPORT=kurigram|fake`) → шлюз действий,
 подписанный на шину → `TgAuthManager`
 → сверщик (`Reconciler`) → фасад → супервизор (`app/engine/supervisor.py`, `Supervisor`) поднимает и
 перезапускает с экспоненциальным backoff фоновые задачи конвейера, шлюза, сверки состояния
@@ -415,10 +416,11 @@ code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (�
 
 `GET /api/v1/state` (сессия, CSRF не нужен) отдаёт снимок состояния персонажа: `{"version": int,
 "now": ISO-UTC, "state": {...}, "stale": [...]}`. `version` и `state` — из `EngineFacade.state()`
-(`Pipeline.version`/`Pipeline.state`); `stale` — список полей, устаревших по политике свежести
+(`Pipeline.version`/`Pipeline.state`), служебное поле редьюсера `applied` (ключи применённых итогов)
+в ответ не входит; `stale` — список полей, устаревших по политике свежести
 (`stale_fields`, `app/engine/state/model.py`): для «летучих» полей (`money`, `stamina`,
 `motivation`, `busy`, `exp`, `knowledge`, `raw`, `details`) — старше `engine.state_stale_after_min`
 минут (по умолчанию 15), для «медленных» — старше 6 часов, для таймеров — только если значение
 `doubtful`, для цен — старше 7 дней (`prices.<ключ>`). Поле, которое ещё не встречалось на экране
-(например `books` до `/inv`), в `state` отсутствует и в `stale` не попадает — это не устаревшее
-значение, а ненаблюдавшееся. Без запущенного движка — 503, как `/api/v1/engine/status`.
+(например `books` до `/inv`), есть в `state` со значением `null` и в `stale` не попадает — это не
+устаревшее значение, а ненаблюдавшееся. Без запущенного движка — 503, как `/api/v1/engine/status`.

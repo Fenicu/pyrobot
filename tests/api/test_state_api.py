@@ -54,6 +54,8 @@ async def test_fresh_state(with_state: Container, api_client: AsyncClient) -> No
     assert body["state"]["money"]["value"] == 867
     assert "money" not in body["stale"]
     assert "books" not in body["stale"]
+    assert body["state"]["books"] is None
+    assert "applied" not in body["state"]
 
 
 async def test_stale_fields_listed(with_state: Container, api_client: AsyncClient) -> None:
