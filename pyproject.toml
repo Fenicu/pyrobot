@@ -57,3 +57,8 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["app.db.migrations.*"]
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+# kurigram помечен py.typed, но его пакет raw не реэкспортирует символы через __all__
+module = ["pyrogram.*"]
+implicit_reexport = true
