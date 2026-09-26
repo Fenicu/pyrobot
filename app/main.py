@@ -81,7 +81,7 @@ class Runtime:
         react_age = self.settings.current.engine.recovered_react_max_age_min
         self.pipeline = Pipeline(
             journal=DbJournal(self.db, self.config.account_id),
-            parser=default_parser(),
+            parser=default_parser(self.settings.current.chats),
             reducer=NullReducer(),
             bus=bus,
             react_max_age=timedelta(minutes=react_age),
