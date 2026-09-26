@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 from dataclasses import replace
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -84,6 +85,16 @@ async def test_second_runtime_does_not_start_engine(clean_db: Database) -> None:
             assert (await client.get("/readyz")).status_code == 503
 
 
+async def _notified(runtime: Any, code: str, timeout: float = 5.0) -> int:  # noqa: ASYNC109
+    # Уведомление пишется в БД после kill: ждём первую запись, а не фиксированную паузу.
+    deadline = asyncio.get_running_loop().time() + timeout
+    while True:
+        count = sum(row.code == code for row in await runtime.notifier.recent())
+        if count or asyncio.get_running_loop().time() > deadline:
+            return count
+        await asyncio.sleep(0.01)
+
+
 async def test_lock_lost_notifies_once_and_parks_watch(clean_db: Database) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
@@ -109,10 +120,9 @@ async def test_lock_lost_notifies_once_and_parks_watch(clean_db: Database) -> No
             await runtime.lock._conn.invalidate()
             await until(lambda: runtime.gateway.kill_reason == "lock_lost")
             assert (await client.get("/readyz")).status_code == 503
+            assert await _notified(runtime, "lock_lost") == 1
             await asyncio.sleep(0.2)
-            rows = await runtime.notifier.recent()
-            lock_lost = [row for row in rows if row.code == "lock_lost"]
-            assert len(lock_lost) == 1
+            assert await _notified(runtime, "lock_lost") == 1
 
 
 async def test_unkill_after_lock_lost_is_conflict(clean_db: Database) -> None:
