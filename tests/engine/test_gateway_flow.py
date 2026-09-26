@@ -193,3 +193,29 @@ async def test_spending_block(rig: Rig) -> None:
     rig.reply_with("Ты отправился работать")
     res = await rig.gw.submit(send("/job", expect=expect_text("работать")))
     assert res.status is ActionStatus.CONFIRMED
+
+
+async def test_cancelled_keyed_submit_is_not_withdrawn() -> None:
+    r = Rig()
+    task = asyncio.create_task(r.gw.submit(send("/full", idempotency_key="kc")))
+    await until(lambda: r.gw.queue_size == 1)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert r.gw.queue_size == 1
+    r.start()
+    try:
+        res = await r.gw.submit(send("/full", idempotency_key="kc"))
+        assert res.status is ActionStatus.CONFIRMED
+        assert [s.payload for s in r.transport.sent] == ["/full"]
+    finally:
+        await r.stop()
+
+
+async def test_key_lookup_failure_does_not_block_nav(rig: Rig) -> None:
+    async def broken(*args: object, **kwargs: object) -> None:
+        raise ConnectionError("db down")
+
+    rig.store.get_by_key = broken  # type: ignore[method-assign]
+    res = await rig.gw.submit(send("😎Я", idempotency_key="k-down"))
+    assert res.status is ActionStatus.CONFIRMED
+    assert len(rig.transport.sent) == 1
