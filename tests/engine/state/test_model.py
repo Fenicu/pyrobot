@@ -33,6 +33,10 @@ def test_empty_and_incompatible_snapshots() -> None:
     assert load_state({}) == CharacterState()
     assert load_state({"events": 3}) == CharacterState()
     assert load_state({"schema_version": SCHEMA_VERSION, "money": "oops"}) == CharacterState()
+    # Снимок до фазы 5: сообщение забега метро хранилось числом, а не ссылкой на забег.
+    old_metro = {"value": 3625352, "at": "2026-09-26T17:05:00Z", "src": "screen"}
+    snapshot = {"schema_version": SCHEMA_VERSION, "metro_message": old_metro}
+    assert load_state(snapshot) == CharacterState()
 
 
 def test_freshness() -> None:
