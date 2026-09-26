@@ -91,6 +91,11 @@ def command_class(req: ActionRequest) -> CommandClass:
     return classify_callback(req.data or "")
 
 
+def _answer_chat(req: ActionRequest) -> int:
+    expect = req.expect
+    return expect.chat_id if expect is not None and expect.chat_id is not None else req.chat_id
+
+
 def command_feature(req: ActionRequest) -> str | None:
     if req.kind is ActionKind.SEND:
         return feature_of_text(req.text or "")
@@ -277,7 +282,7 @@ class ActionGateway:
     async def on_delivery(self, delivery: Delivery) -> None:
         inflight = self._inflight
         msg = delivery.msg
-        if inflight is None or msg.outgoing or msg.chat_id != inflight.req.chat_id:
+        if inflight is None or msg.outgoing or msg.chat_id != _answer_chat(inflight.req):
             return
         if delivery.journal_id <= inflight.boundary or msg.date < inflight.sent_at - DATE_SKEW:
             return

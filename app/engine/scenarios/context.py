@@ -63,8 +63,8 @@ def expect_events(
             if isinstance(event, confirm) and accept(event):
                 return Match(Verdict.CONFIRMED, event.kind)
             if isinstance(event, refuse):
-                detail = event.reason if isinstance(event, Refused) else event.kind
-                return Match(Verdict.REFUSED, detail)
+                detail = getattr(event, "reason", None) or event.kind
+                return Match(Verdict.REFUSED, str(detail))
         return None
 
     return predicate
@@ -122,8 +122,17 @@ class ScenarioContext:
         if self._paused():
             raise ScenarioStopped("paused")
 
-    async def send(self, text: str, expect: Predicate) -> StepResult:
-        return await self._submit(ActionKind.SEND, expect, text=text)
+    async def send(
+        self,
+        text: str,
+        expect: Predicate,
+        *,
+        chat_id: int | None = None,
+        reply_to: int | None = None,
+    ) -> StepResult:
+        return await self._submit(
+            ActionKind.SEND, expect, text=text, chat_id=chat_id, reply_to=reply_to
+        )
 
     async def click(
         self, message_id: int, data: str, expect: Predicate, revision: int | None = None
@@ -141,6 +150,8 @@ class ScenarioContext:
         message_id: int | None = None,
         data: str | None = None,
         expect_revision: int | None = None,
+        chat_id: int | None = None,
+        reply_to: int | None = None,
     ) -> StepResult:
         matched: list[Delivery] = []
 
@@ -155,13 +166,15 @@ class ScenarioContext:
         result = await self._gateway.submit(
             ActionRequest(
                 kind=kind,
-                chat_id=self._game,
+                chat_id=chat_id if chat_id is not None else self._game,
                 text=text,
                 message_id=message_id,
                 data=data,
+                reply_to=reply_to,
                 expect_revision=expect_revision,
                 source=Source.SCENARIO,
-                expect=Expectation(capture, self._timeout_s),
+                # Ответы на шаги сценариев всегда приходят от игры, в её чат.
+                expect=Expectation(capture, self._timeout_s, chat_id=self._game),
                 ttl_s=self._timeout_s * 3,
                 lease_token=self._lease.token if self._lease else None,
                 simulate=self.simulate,

@@ -96,6 +96,26 @@ class LevelupSection(BaseModel):
     policy: Literal["balanced"] = "balanced"
 
 
+Target = Literal["📯Pied Piper", "🤖Hooli", "⚡️Stark Ind.", "☂️Umbrella", "🎩Wayne Ent.", "🛡Защита"]
+
+
+class BattleSection(BaseModel):
+    target: Target = "📯Pied Piper"
+    # Цель на конкретную битву: час битвы по Москве → цель.
+    overrides: dict[int, Target] = Field(default_factory=dict)
+
+
+class StocksSection(BaseModel):
+    cash_floor: int = Field(default=150, ge=0)
+    min_dump: int = Field(default=200, ge=1)
+    sell_cap_margin: int = Field(default=5, ge=0)
+    dump_lead_min: int = Field(default=5, ge=1)
+
+
+class TangerineSection(BaseModel):
+    interval_h: int = Field(default=20, ge=20)
+
+
 class Settings(BaseModel):
     engine: EngineSection = Field(default_factory=EngineSection)
     telegram: TelegramSection = Field(default_factory=TelegramSection)
@@ -105,6 +125,9 @@ class Settings(BaseModel):
     food: FoodSection = Field(default_factory=FoodSection)
     sleep: SleepSection = Field(default_factory=SleepSection)
     levelup: LevelupSection = Field(default_factory=LevelupSection)
+    battle: BattleSection = Field(default_factory=BattleSection)
+    stocks: StocksSection = Field(default_factory=StocksSection)
+    tangerine: TangerineSection = Field(default_factory=TangerineSection)
 
 
 class SettingsConflict(Exception):

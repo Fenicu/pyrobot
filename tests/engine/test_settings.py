@@ -44,3 +44,23 @@ def test_strategy_defaults_follow_spec() -> None:
 def test_sleep_duration_bounds() -> None:
     with pytest.raises(ValidationError):
         Settings.model_validate({"sleep": {"duration_h": 13}})
+
+
+def test_phase4_defaults_follow_spec() -> None:
+    s = Settings()
+    assert (s.battle.target, s.battle.overrides) == ("📯Pied Piper", {})
+    stocks = s.stocks
+    assert (stocks.cash_floor, stocks.min_dump, stocks.sell_cap_margin, stocks.dump_lead_min) == (
+        150,
+        200,
+        5,
+        5,
+    )
+    assert s.tangerine.interval_h == 20
+
+
+def test_battle_target_must_be_known() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"battle": {"target": "☣️Black Mesa"}})
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"tangerine": {"interval_h": 10}})

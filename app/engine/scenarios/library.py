@@ -64,11 +64,11 @@ _STATUS: dict[Step, Status] = {
 }
 
 
-def _finish(step: StepResult) -> ScenarioResult:
+def finish(step: StepResult) -> ScenarioResult:
     return ScenarioResult(_STATUS[step.step], step.reason)
 
 
-def _require(step: StepResult) -> StepResult:
+def require(step: StepResult) -> StepResult:
     if step.step is not Step.OK:
         raise ScenarioStopped(step.reason, step)
     return step
@@ -83,7 +83,7 @@ async def deed(ctx: ScenarioContext, state: CharacterState, params: Params) -> S
             accept=lambda e: isinstance(e, ActivityStarted) and e.activity == activity,
         ),
     )
-    return _finish(step)
+    return finish(step)
 
 
 _SIMPLE = {
@@ -97,23 +97,23 @@ _SIMPLE = {
 
 async def free_item(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
     command, event = _SIMPLE[str(params["item"])]
-    return _finish(await ctx.send(command, expect_events(event)))
+    return finish(await ctx.send(command, expect_events(event)))
 
 
 async def refresh(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
     source = REFRESH[str(params["source"])]
-    return _finish(await ctx.send(source.command, expect_events(source.event)))
+    return finish(await ctx.send(source.command, expect_events(source.event)))
 
 
 async def fastfood(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
     # Кнопки еды — из меню 🍴, поэтому сначала открываем меню (nav).
     async with ctx.lease("fastfood"):
-        menu = _require(await ctx.send("/to_eat", expect_events(FoodMenu))).first(FoodMenu)
+        menu = require(await ctx.send("/to_eat", expect_events(FoodMenu))).first(FoodMenu)
         # Кулдаун виден в самом меню: кнопка дала бы только отказ.
         if menu is not None and (menu.fastfood_in_s or 0) > 0:
             return ScenarioResult("nothing", "fastfood_cooldown")
         await ctx.safe_point()
-        return _finish(
+        return finish(
             await ctx.send(FOOD_BUTTONS[str(params["food"])], expect_events(FastfoodEaten))
         )
 
@@ -136,15 +136,15 @@ async def levelup(ctx: ScenarioContext, state: CharacterState, params: Params) -
         )
 
     async with ctx.lease("levelup"):
-        _require(await ctx.send("/levelup", step("menu")))
+        require(await ctx.send("/levelup", step("menu")))
         await ctx.safe_point()
-        _require(await ctx.send(main, step("main_skill")))
+        require(await ctx.send(main, step("main_skill")))
         await ctx.safe_point()
-        return _finish(await ctx.send(extra, step("done")))
+        return finish(await ctx.send(extra, step("done")))
 
 
 def _gorbushka_screen(step: StepResult) -> tuple[GorbushkaScreen, IncomingMessage]:
-    screen = _require(step).first(GorbushkaScreen)
+    screen = require(step).first(GorbushkaScreen)
     if screen is None or step.delivery is None:
         raise ScenarioStopped("unexpected_screen", step)
     return screen, step.delivery.msg
@@ -184,7 +184,7 @@ async def gorbushka(ctx: ScenarioContext, state: CharacterState, params: Params)
             if not _affordable(screen):
                 return ScenarioResult("nothing", "cant_afford")
             await ctx.safe_point()
-            _require(
+            require(
                 await ctx.click(
                     message.msg_id, "gorbushka_new", expect_button("gorbushka_new_accept")
                 )
@@ -200,18 +200,18 @@ async def gorbushka(ctx: ScenarioContext, state: CharacterState, params: Params)
         if screen.state != "meeting":
             return ScenarioResult("nothing", screen.state)
         await ctx.safe_point()
-        return _finish(await ctx.click(message.msg_id, "gorbushka_fight", _fight_outcome()))
+        return finish(await ctx.click(message.msg_id, "gorbushka_fight", _fight_outcome()))
 
 
 async def sleep(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
     hours = int(params["hours"])
     async with ctx.lease("sleep"):
-        menu = _require(await ctx.send("🛌Спать", expect_events(SleepMenu)))
+        menu = require(await ctx.send("🛌Спать", expect_events(SleepMenu)))
         if menu.delivery is None:
             raise ScenarioStopped("unexpected_screen", menu)
         await ctx.safe_point()
         # Шаг выбора «отель/мост» (params["hotel"]) живьём не снят — сценарий не сертифицирован.
-        return _finish(
+        return finish(
             await ctx.click(menu.delivery.msg.msg_id, f"sleep_{hours}", expect_events(FellAsleep))
         )
 

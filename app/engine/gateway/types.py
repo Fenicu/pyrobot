@@ -47,6 +47,8 @@ Predicate = Callable[[Delivery], Match | None]
 class Expectation:
     predicate: Predicate
     timeout_s: float | None = None
+    # Чат ответа, если он другой: /gt уходит в чат Tangerine, ошибка приходит от игры.
+    chat_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

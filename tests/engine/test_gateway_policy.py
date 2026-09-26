@@ -2,9 +2,11 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from app.engine.gateway.types import ActionStatus, Source
+from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Expectation, Source
 from app.engine.settings import Settings
+from app.engine.transport.fake import Sent
 from tests.engine.gateway_rig import LIVE, Rig, expect_text, running_rig, send
+from tests.engine.helpers import GAME, make_msg
 
 
 @pytest.fixture
@@ -85,3 +87,23 @@ async def test_dry_run_reason_wins_over_simulate() -> None:
     async for r in running_rig(dry):
         res = await r.gw.submit(send("/job", simulate=True, expect=expect_text("x")))
         assert res.status is ActionStatus.SUPPRESSED and res.reason == "dry_run"
+
+
+async def test_answer_expected_in_other_chat(rig: Rig) -> None:
+    tangerine = -1001377961602
+
+    async def refuse(rec: Sent) -> None:
+        await rig.deliver(make_msg("❌Увы, Настя пока не играет в StartupWars.", msg_id=901))
+
+    rig.transport.responder = refuse
+    req = ActionRequest(
+        kind=ActionKind.SEND,
+        chat_id=tangerine,
+        text="/gt",
+        reply_to=927136,
+        expect=Expectation(expect_text("не играет").predicate, 0.3, chat_id=GAME),
+    )
+    res = await rig.gw.submit(req)
+    assert res.status is ActionStatus.CONFIRMED
+    [sent] = rig.transport.sent
+    assert (sent.chat_id, sent.payload) == (tangerine, "/gt")
