@@ -379,3 +379,25 @@ async def test_submit_closed_between_check_and_enqueue_not_sent() -> None:
         assert res.status is ActionStatus.SUPPRESSED and res.reason == "shutdown"
         assert r.transport.sent == []
         assert r.gw.queue_size == 0
+
+
+async def test_can_send_blocks_at_enqueue(rig: Rig) -> None:
+    rig.block = "tg_offline"
+    res = await rig.gw.submit(send("😎Я"))
+    assert res.status is ActionStatus.REJECTED and res.reason == "tg_offline"
+    assert rig.transport.sent == []
+    rig.block = None
+    assert (await rig.gw.submit(send("😎Я"))).status is ActionStatus.CONFIRMED
+
+
+async def test_can_send_rechecked_before_attempt() -> None:
+    cfg = Settings(engine=LIVE.engine.model_copy(update={"min_request_interval_s": 0.2}))
+    async for r in running_rig(cfg):
+        t1 = asyncio.create_task(r.gw.submit(send("😎Я")))
+        t2 = asyncio.create_task(r.gw.submit(send("😎Я")))
+        await until(lambda sent=r.transport.sent: len(sent) == 1)
+        r.block = "lock_lost"
+        assert (await t1).status is ActionStatus.CONFIRMED
+        res2 = await t2
+        assert res2.status is ActionStatus.REJECTED and res2.reason == "lock_lost"
+        assert len(r.transport.sent) == 1

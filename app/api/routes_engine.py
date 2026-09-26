@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
-from app.engine.facade import EngineFacade
+from app.engine.facade import EngineFacade, LockLostError
 from app.engine.tg_auth import AttemptMismatch, TgStatus
 
 router = APIRouter(prefix="/api/v1", tags=["engine"])
@@ -71,7 +71,10 @@ async def engine_unkill(
     f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
 ) -> None:
-    await f.unkill(by=ctx.login)
+    try:
+        await f.unkill(by=ctx.login)
+    except LockLostError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "lock_lost") from exc
 
 
 @router.post("/engine/reconciled", status_code=status.HTTP_204_NO_CONTENT)

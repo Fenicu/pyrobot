@@ -37,6 +37,7 @@ log = logging.getLogger(__name__)
 
 LatestLookup = Callable[[int, int], IncomingMessage | None]
 Boundary = Callable[[], int]
+CanSend = Callable[[], str | None]
 Blocked = tuple[ActionStatus, str]
 DATE_SKEW = timedelta(seconds=2)
 MAX_FLOODWAIT_S = 300.0
@@ -70,6 +71,10 @@ class Lease:
         self.safe = False
 
 
+def _always_can_send() -> str | None:
+    return None
+
+
 def command_class(req: ActionRequest) -> CommandClass:
     if req.kind is ActionKind.SEND:
         return classify_text(req.text or "")
@@ -86,8 +91,10 @@ class ActionGateway:
         latest: LatestLookup,
         boundary: Boundary,
         clock: Clock,
+        can_send: CanSend = _always_can_send,
     ) -> None:
         self._transport = transport
+        self._can_send = can_send
         self._store = store
         self._settings = settings
         self._latest = latest
@@ -299,6 +306,9 @@ class ActionGateway:
             return ActionStatus.REJECTED, "expectation_required"
         if self._kill_reason is not None or eng.killed:
             return ActionStatus.SUPPRESSED, "kill_switch"
+        cannot = self._can_send()
+        if cannot is not None:
+            return ActionStatus.REJECTED, cannot
         if eng.mode == "dry_run" and cls is not CommandClass.NAV:
             return ActionStatus.SUPPRESSED, "dry_run"
         if self._spend_block is not None and cls is not CommandClass.NAV:

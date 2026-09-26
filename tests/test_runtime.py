@@ -6,10 +6,11 @@ from pydantic import SecretStr
 
 from app.config import AppConfig
 from app.db.base import Database
+from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
 from app.engine.supervisor import Supervisor
 from app.main import create_application
 from tests.conftest import TEST_DB_URL
-from tests.engine.helpers import until
+from tests.engine.helpers import GAME, until
 
 pytestmark = pytest.mark.db
 
@@ -23,6 +24,21 @@ def _cfg() -> AppConfig:
         admin_login="admin",
         admin_password=SecretStr("correct horse battery"),
     )
+
+
+async def _login_tg(client: AsyncClient) -> dict[str, str]:
+    r = await client.post(
+        "/api/v1/auth/login", json={"login": "admin", "password": "correct horse battery"}
+    )
+    h = {"X-CSRF-Token": r.json()["csrf_token"]}
+    st = await client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    code = await client.post(
+        "/api/v1/tg/login/code",
+        headers=h,
+        json={"attempt_id": st.json()["attempt_id"], "code": "12345"},
+    )
+    assert code.json()["state"] == "online"
+    return h
 
 
 async def test_fake_runtime_login_to_ready(clean_db: Database) -> None:
@@ -85,3 +101,35 @@ async def test_lock_lost_notifies_once_and_parks_watch(clean_db: Database) -> No
             rows = await runtime.notifier.recent()
             lock_lost = [row for row in rows if row.code == "lock_lost"]
             assert len(lock_lost) == 1
+
+
+async def test_unkill_after_lock_lost_is_conflict(clean_db: Database) -> None:
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    runtime.lock_check_s = 0.01
+    runtime.supervisor = Supervisor(runtime.notifier, base_s=0.01, max_s=0.02)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            h = await _login_tg(client)
+            await runtime.lock._conn.invalidate()
+            await until(lambda: runtime.gateway.kill_reason == "lock_lost")
+            r = await client.post("/api/v1/engine/unkill", headers=h)
+            assert r.status_code == 409 and r.json() == {"detail": "lock_lost"}
+            assert runtime.gateway.kill_reason == "lock_lost"
+            status = (await client.get("/api/v1/engine/status")).json()
+            assert status["killed"] is True
+
+
+async def test_gateway_rejects_when_tg_offline(clean_db: Database) -> None:
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    nav = ActionRequest(kind=ActionKind.SEND, chat_id=GAME, text="😎Я")
+    async with app.router.lifespan_context(app):
+        res = await runtime.gateway.submit(nav)
+        assert res.status is ActionStatus.REJECTED and res.reason == "tg_offline"
+        assert runtime.transport.sent == []
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            await _login_tg(client)
+        ok = await runtime.gateway.submit(nav)
+        assert ok.status is ActionStatus.CONFIRMED
+        assert [s.payload for s in runtime.transport.sent] == ["😎Я"]

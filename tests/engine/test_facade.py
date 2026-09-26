@@ -1,10 +1,11 @@
 import asyncio
+from collections.abc import Callable
 
 import pytest
 
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
-from app.engine.facade import EngineFacade
+from app.engine.facade import EngineFacade, LockLostError
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
 from app.engine.lag import LoopLagMonitor
@@ -17,7 +18,11 @@ from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from tests.engine.helpers import until
 
 
-def build(authorized: bool = True, settings: StaticSettings | None = None) -> EngineFacade:
+def build(
+    authorized: bool = True,
+    settings: StaticSettings | None = None,
+    lock_ok: Callable[[], bool] = lambda: True,
+) -> EngineFacade:
     settings = settings or StaticSettings()
     pipeline = Pipeline(
         journal=MemoryJournal(), parser=default_parser(), reducer=NullReducer(), bus=Bus()
@@ -32,7 +37,12 @@ def build(authorized: bool = True, settings: StaticSettings | None = None) -> En
     )
     tg = TgAuthManager(FakeTgBackend(authorized=authorized), expected_user_id=267519921)
     return EngineFacade(
-        settings=settings, gateway=gateway, pipeline=pipeline, tg_auth=tg, lag=LoopLagMonitor()
+        settings=settings,
+        gateway=gateway,
+        pipeline=pipeline,
+        tg_auth=tg,
+        lag=LoopLagMonitor(),
+        lock_ok=lock_ok,
     )
 
 
@@ -85,3 +95,15 @@ async def test_unkill_restores() -> None:
     await f.kill("test", by="admin")
     await f.unkill(by="admin")
     assert not f.status().killed and f.ready()
+
+
+async def test_unkill_refused_after_lock_lost() -> None:
+    held = [True]
+    f = build(lock_ok=lambda: held[0])
+    await f.tg.boot()
+    await f.gateway.kill("lock_lost")
+    held[0] = False
+    with pytest.raises(LockLostError):
+        await f.unkill(by="admin")
+    assert f.gateway.kill_reason == "lock_lost"
+    assert f.settings.current.engine.killed is False

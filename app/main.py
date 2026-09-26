@@ -25,7 +25,7 @@ from app.engine.lag import LoopLagMonitor
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
 from app.engine.supervisor import Supervisor
-from app.engine.tg_auth import TgAuthBackend, TgAuthManager
+from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from app.engine.transport.kurigram import ChatFilter, KurigramTransport
@@ -92,6 +92,7 @@ class Runtime:
             latest=pipeline.latest,
             boundary=lambda: pipeline.last_journal_id,
             clock=SystemClock(),
+            can_send=self._can_send,
         )
         if unknown:
             self.gateway.block_spending("reconcile_required")
@@ -123,6 +124,13 @@ class Runtime:
         self.supervisor.start("lag", lag.run)
         self.supervisor.start("lock-watch", self._watch_lock)
         await self.tg.boot()
+
+    def _can_send(self) -> str | None:
+        if not self.lock.held:
+            return "lock_lost"
+        if self.tg is None or self.tg.status().state is not TgState.ONLINE:
+            return "tg_offline"
+        return None
 
     def _make_transport(self, pipeline: Pipeline) -> tuple[Transport, TgAuthBackend]:
         if self.config.transport == "fake":

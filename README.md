@@ -88,7 +88,9 @@ advisory lock) → если лок не взят, движок не старту
 потере — `kill("lock_lost")` (latch, без сохранения в настройки) и ровно одно уведомление
 `lock_lost`, после чего проверка лока не повторяется (задача не завершается и не перезапускается
 супервизором — она паркуется, чтобы не слать `lock_lost` повторно на каждом цикле backoff);
-`/readyz` уходит в 503. Автоматического восстановления нет, нужен рестарт процесса.
+`/readyz` уходит в 503. Автоматического восстановления нет, нужен рестарт процесса: `POST
+/api/v1/engine/unkill` без лока отвечает 409 `{"detail": "lock_lost"}` и latch не снимает, а шлюз
+независимо от latch отклоняет любую отправку, пока лок не держится (предикат `can_send`, см. ниже).
 
 Остановка (`Runtime.stop`) идёт по независимым шагам: закрыть шлюз → остановить супервизор →
 остановить транспорт → освободить lock → закрыть пул БД — сбой одного шага не мешает остальным.
@@ -142,7 +144,9 @@ advisory lock) → если лок не взят, движок не старту
 после отправки (`CONFIRMED "sent"`). Kill switch (ручной `kill()` или `settings.engine.killed`)
 подавляет всё (`SUPPRESSED "kill_switch"`), `dry_run` подавляет всё, кроме `nav`
 (`SUPPRESSED "dry_run"`), блок трат (`block_spending`) отклоняет всё, кроме `nav`
-(`REJECTED "blocked:<reason>"`). Истёкший TTL — `REJECTED "expired"`, клик по кнопке вне последней
+(`REJECTED "blocked:<reason>"`). Предикат `can_send` (из `Runtime`) проверяется там же, где kill
+switch и `dry_run`, и отклоняет любую команду, включая `nav`: без single-instance лока — `REJECTED
+"lock_lost"`, если Telegram не в состоянии `ONLINE` — `REJECTED "tg_offline"`. Истёкший TTL — `REJECTED "expired"`, клик по кнопке вне последней
 ревизии сообщения — `REJECTED "stale_button"`, несовпадение `expect_revision` — `REJECTED
 "stale_revision"`.
 
@@ -181,7 +185,8 @@ cookie; мутирующие запросы (`POST /api/v1/auth/logout`, `POST /
 (CSRF) сперва латчит `ActionGateway` и обрывает очередь, затем сохраняет настройку — если сохранение
 не удалось, latch остаётся активным. `POST /api/v1/engine/unkill` (CSRF) — в обратном порядке:
 сначала сохраняет настройку, затем снимает latch; если сохранение падает, шлюз остаётся выключенным
-и исключение уходит наверх. `POST /api/v1/engine/reconciled` (CSRF) снимает блок трат после сверки.
+и исключение уходит наверх; если single-instance лок потерян — 409 `{"detail": "lock_lost"}`, ни
+настройка, ни latch не меняются. `POST /api/v1/engine/reconciled` (CSRF) снимает блок трат после сверки.
 `GET /api/v1/tg/status` (сессия) и `POST /api/v1/tg/login/start {phone}`, `.../login/code
 {attempt_id, code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (все —
 CSRF) проксируют `TgAuthManager`; несовпадение попытки входа (`AttemptMismatch`) отдаёт 409.

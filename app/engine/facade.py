@@ -17,6 +17,10 @@ def _always() -> bool:
     return True
 
 
+class LockLostError(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class EngineStatus:
     mode: str
@@ -98,6 +102,11 @@ class EngineFacade:
             log.exception("kill switch not persisted; latch stays active")
 
     async def unkill(self, *, by: str) -> None:
+        # Без блокировки единственного экземпляра latch не снимается: иначе на
+        # одном аккаунте могут оказаться два отправителя.
+        if not self._lock_ok():
+            raise LockLostError("single-instance lock lost")
+
         def change(s: Settings) -> Settings:
             engine = s.engine.model_copy(update={"killed": False, "kill_reason": None})
             return s.model_copy(update={"engine": engine})
