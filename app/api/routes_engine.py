@@ -78,6 +78,22 @@ async def engine_unkill(
         raise HTTPException(status.HTTP_409_CONFLICT, "lock_lost") from exc
 
 
+@router.post("/engine/pause", status_code=status.HTTP_204_NO_CONTENT)
+async def engine_pause(
+    f: Annotated[EngineFacade, Depends(facade)],
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+) -> None:
+    await f.pause(by=ctx.login)
+
+
+@router.post("/engine/resume", status_code=status.HTTP_204_NO_CONTENT)
+async def engine_resume(
+    f: Annotated[EngineFacade, Depends(facade)],
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+) -> None:
+    await f.resume(by=ctx.login)
+
+
 @router.post("/engine/reconciled", status_code=status.HTTP_204_NO_CONTENT)
 async def engine_reconciled(
     f: Annotated[EngineFacade, Depends(facade)],

@@ -139,3 +139,16 @@ async def test_audit_notifications_name_actor() -> None:
     with pytest.raises(LockLostError):
         await f.unkill(by="bob")
     assert len(rec.items) == 3
+
+
+async def test_pause_resume_persist_and_audit() -> None:
+    rec = _Recorder()
+    f = build(notifier=rec)
+    await f.pause(by="alice")
+    st = f.status()
+    assert st.paused and st.scenario is None and st.next_wake is None
+    assert f.settings.current.engine.paused
+    await f.resume(by="alice")
+    assert not f.status().paused
+    assert [code for _, code, _ in rec.items] == ["engine_paused", "engine_resumed"]
+    assert "alice" in rec.items[0][2]

@@ -16,6 +16,7 @@ from app.db.base import Database
 from app.db.journal import DbJournal
 from app.db.lock import SingleInstanceLock
 from app.db.notifications import DbNotifier
+from app.db.planner import DbPlannerStore
 from app.db.settings_store import DbSettingsStore
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
@@ -24,7 +25,9 @@ from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.lag import LoopLagMonitor
 from app.engine.parsing import default_parser
 from app.engine.pipeline import Pipeline
+from app.engine.planner.loop import PlannerLoop
 from app.engine.reconcile import Reconciler
+from app.engine.state.model import load_state
 from app.engine.state.reducer import StateReducer
 from app.engine.supervisor import Supervisor
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
@@ -39,6 +42,7 @@ TG_PROBE_S = 60.0
 PIPELINE_DRAIN_S = 10.0
 SESSION_PURGE_S = 3600.0
 RECONCILE_POLL_S = 5.0
+PLANNER_POLL_S = 5.0
 
 
 class Runtime:
@@ -55,10 +59,12 @@ class Runtime:
         self.tg_probe_s = TG_PROBE_S
         self.session_purge_s = SESSION_PURGE_S
         self.reconcile_poll_s = RECONCILE_POLL_S
+        self.planner_poll_s = PLANNER_POLL_S
         self.pipeline: Pipeline | None = None
         self.gateway: ActionGateway | None = None
         self.tg: TgAuthManager | None = None
         self.facade: EngineFacade | None = None
+        self.planner: PlannerLoop | None = None
         self.transport: Transport | None = None
         self._kurigram: KurigramTransport | None = None
 
@@ -141,6 +147,17 @@ class Runtime:
             poll_s=self.reconcile_poll_s,
         )
         gateway.on_uncertain = reconciler.note
+        self.planner = PlannerLoop(
+            gateway=gateway,
+            state=lambda: load_state(pipeline.state),
+            settings=settings,
+            clock=SystemClock(),
+            store=DbPlannerStore(self.db, self.config.account_id),
+            notifier=self.notifier,
+            ready=self._planner_ready,
+            poll_s=self.planner_poll_s,
+        )
+        bus.subscribe(self.planner.on_delivery, priority=90)
         lag = LoopLagMonitor()
         lock = self.lock
         self.facade = EngineFacade(
@@ -153,11 +170,14 @@ class Runtime:
             workers_ok=self.supervisor.healthy,
             notifier=self.notifier,
             reconciler=reconciler,
+            planner=self.planner,
         )
         self.container.facade = self.facade
         self.supervisor.start("pipeline", pipeline.run)
         self.supervisor.start("gateway", self.gateway.run)
         self.supervisor.start("reconcile", reconciler.run)
+        if self.config.planner:
+            self.supervisor.start("planner", self.planner.run)
         self.supervisor.start("lag", lag.run)
         self.supervisor.start("lock-watch", self._watch_lock)
         self.supervisor.start("session-purge", self._purge_sessions)
@@ -171,6 +191,17 @@ class Runtime:
         if self.tg is None or self.tg.status().state is not TgState.ONLINE:
             return "tg_offline"
         return None
+
+    def _planner_ready(self) -> str | None:
+        engine = self.settings.current.engine
+        if engine.paused:
+            return "paused"
+        gateway = self.gateway
+        if engine.killed or (gateway is not None and gateway.kill_reason is not None):
+            return "killed"
+        if gateway is not None and gateway.spending_blocked is not None:
+            return "spending_blocked"
+        return self._can_send()
 
     def _make_transport(self, pipeline: Pipeline) -> tuple[Transport, TgAuthBackend]:
         if self.config.transport == "fake":

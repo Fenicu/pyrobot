@@ -23,6 +23,7 @@ class AppConfig(DbConfig):
     transport: Literal["kurigram", "fake"] = "kurigram"
     log_level: str = "INFO"
     account_id: int = 1
+    planner: bool = True
 
     @model_validator(mode="after")
     def _kurigram_credentials(self) -> Self:

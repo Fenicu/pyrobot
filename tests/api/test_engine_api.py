@@ -31,6 +31,11 @@ async def test_engine_status_kill_unkill(with_facade: Container, api_client: Asy
     assert (await api_client.get("/api/v1/engine/status")).json()["killed"] is True
     assert (await api_client.post("/api/v1/engine/unkill", headers=h)).status_code == 204
     assert (await api_client.post("/api/v1/engine/reconciled", headers=h)).status_code == 204
+    assert (await api_client.post("/api/v1/engine/pause")).status_code == 403
+    assert (await api_client.post("/api/v1/engine/pause", headers=h)).status_code == 204
+    assert (await api_client.get("/api/v1/engine/status")).json()["paused"] is True
+    assert (await api_client.post("/api/v1/engine/resume", headers=h)).status_code == 204
+    assert (await api_client.get("/api/v1/engine/status")).json()["paused"] is False
     empty = await api_client.post("/api/v1/engine/kill", headers=h, json={"reason": ""})
     assert empty.status_code == 422
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from app.engine.gateway.gateway import ActionGateway
@@ -13,6 +14,7 @@ from app.engine.settings import Settings, SettingsProvider
 from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
 
 if TYPE_CHECKING:
+    from app.engine.planner.loop import PlannerLoop
     from app.engine.reconcile import Reconciler
 
 log = logging.getLogger(__name__)
@@ -29,6 +31,9 @@ class LockLostError(Exception):
 @dataclass(frozen=True)
 class EngineStatus:
     mode: str
+    paused: bool
+    scenario: str | None
+    next_wake: datetime | None
     killed: bool
     kill_reason: str | None
     spending_blocked: str | None
@@ -55,6 +60,7 @@ class EngineFacade:
         workers_ok: Callable[[], bool] = _always,
         notifier: NotifierPort | None = None,
         reconciler: Reconciler | None = None,
+        planner: PlannerLoop | None = None,
     ) -> None:
         self.settings = settings
         self.gateway = gateway
@@ -65,6 +71,7 @@ class EngineFacade:
         self._workers_ok = workers_ok
         self._notifier = notifier
         self._reconciler = reconciler
+        self._planner = planner
 
     def state(self) -> tuple[int, dict[str, Any]]:
         return self.pipeline.version, self.pipeline.state
@@ -75,8 +82,12 @@ class EngineFacade:
         label = (inflight.text or inflight.data) if inflight else None
         latch = self.gateway.kill_reason
         kill_reason = latch if latch is not None else (eng.kill_reason if eng.killed else None)
+        planner = self._planner
         return EngineStatus(
             mode=eng.mode,
+            paused=eng.paused,
+            scenario=planner.current if planner is not None else None,
+            next_wake=planner.next_wake if planner is not None else None,
             killed=latch is not None or eng.killed,
             kill_reason=kill_reason,
             spending_blocked=self.gateway.spending_blocked,
@@ -127,6 +138,23 @@ class EngineFacade:
         await self.settings.update(change, changed_by=by)
         await self.gateway.unkill()
         await self._audit("engine_unkilled", f"kill switch off by {by}")
+
+    async def pause(self, *, by: str) -> None:
+        await self._set_paused(True, by)
+        await self._audit("engine_paused", f"planner paused by {by}")
+
+    async def resume(self, *, by: str) -> None:
+        await self._set_paused(False, by)
+        await self._audit("engine_resumed", f"planner resumed by {by}")
+
+    async def _set_paused(self, paused: bool, by: str) -> None:
+        def change(s: Settings) -> Settings:
+            engine = s.engine.model_copy(update={"paused": paused})
+            return s.model_copy(update={"engine": engine})
+
+        await self.settings.update(change, changed_by=by)
+        if self._planner is not None:
+            self._planner.wake()
 
     async def reconciled(self, *, by: str) -> None:
         log.info("spending unblocked by %s", by)

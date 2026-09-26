@@ -33,6 +33,7 @@ uv run mypy
 | `PYROBOT_HTTP_HOST` | IP для привязки HTTP сервера. |
 | `PYROBOT_HTTP_PORT` | Порт для HTTP API. |
 | `PYROBOT_ACCOUNT_ID` | Внутренний `accounts.id` в базе pyrobot (по умолчанию 1), не ID игрока в игре. |
+| `PYROBOT_PLANNER` | Запускать планировщик (по умолчанию `true`); `false` — движок только принимает сообщения и выполняет ручные команды. |
 
 ## База данных
 
@@ -290,9 +291,9 @@ Postgres advisory lock) → если лок не взят, движок не с�
 восстанавливается из журнала, редьюсер — `StateReducer`, при изменении состояния метрики
 (`StateReducer.metrics`) пишутся в ту же транзакцию, что и журнал) → транспорт (`PYROBOT_TRANSPORT=kurigram|fake`) → шлюз действий,
 подписанный на шину → `TgAuthManager`
-→ сверщик (`Reconciler`) → фасад → супервизор (`app/engine/supervisor.py`, `Supervisor`) поднимает и
+→ сверщик (`Reconciler`) → планировщик (`PlannerLoop`, подписан на шину) → фасад → супервизор (`app/engine/supervisor.py`, `Supervisor`) поднимает и
 перезапускает с экспоненциальным backoff фоновые задачи конвейера, шлюза, сверки состояния
-`reconcile`, монитора лага event loop, наблюдателя за локом, чистки истёкших сессий админки
+`reconcile`, планировщика `planner` (если `PYROBOT_PLANNER` не выключен), монитора лага event loop, наблюдателя за локом, чистки истёкших сессий админки
 `session-purge` и (для kurigram) пробы сессии Telegram `tg-probe`, уведомляя `task_failed:<имя>` при
 падении → `tg.boot()` пытается восстановить существующую сессию Telegram.
 
@@ -484,7 +485,10 @@ backoff с 429 и `Retry-After`. Истёкшие `auth_sessions` удаляет
 бэклог и здоровье конвейера, `lock_ok`/`workers_ok` и лаг event loop (`LoopLagMonitor`,
 `app/engine/lag.py`, максимум лага за скользящее окно 60с); `ready()` — истина, когда лок и воркеры
 в порядке, Telegram в состоянии `ONLINE`, нет kill switch, нет блока трат и конвейер здоров. `GET
-/api/v1/engine/status` (сессия) отдаёт этот статус целиком. Успешные `kill`, `unkill` и `reconciled`
+/api/v1/engine/status` (сессия) отдаёт этот статус целиком, включая паузу `paused`, текущий
+сценарий планировщика `scenario` и момент его следующего пробуждения `next_wake`. `POST
+/api/v1/engine/pause` и `POST /api/v1/engine/resume` (CSRF) сохраняют `engine.paused`, будят
+планировщик и пишут аудит `engine_paused`/`engine_resumed` с логином. Успешные `kill`, `unkill` и `reconciled`
 пишут аудит-уведомление уровня `info` (`engine_killed`, `engine_unkilled`, `engine_reconciled`) с
 логином того, кто это сделал. `POST /api/v1/engine/kill {reason}` (CSRF) сперва латчит
 `ActionGateway` и обрывает очередь, затем сохраняет настройку — если сохранение не удалось, latch

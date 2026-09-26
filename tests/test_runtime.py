@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from app.config import AppConfig
 from app.db.actions import DbActionStore
 from app.db.base import Database
-from app.db.models import MessageRow
+from app.db.models import DecisionRow, MessageRow, ScenarioRunRow
 from app.engine.commands import CommandClass
 from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
@@ -32,6 +32,7 @@ def _cfg() -> AppConfig:
         cookie_secure=False,
         admin_login="admin",
         admin_password=SecretStr("correct horse battery"),
+        planner=False,
     )
 
 
@@ -191,3 +192,41 @@ async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database
             await until(lambda: runtime.gateway.spending_blocked is None)
             assert await DbActionStore(clean_db, 1).unreconciled() == []
             assert (await client.get("/readyz")).status_code == 200
+
+
+async def test_planner_refreshes_state_in_dry_run(clean_db: Database) -> None:
+    app = create_application(_cfg().model_copy(update={"planner": True}))
+    runtime = app.state.runtime
+    runtime.planner_poll_s = 0.05
+    ids = itertools.count(6_000_000)
+
+    async def respond(rec: Sent) -> None:
+        if rec.payload != "😎Я":
+            return
+        moment = now()
+        msg = replace(
+            game_msg("profile", 3624478),
+            msg_id=next(ids),
+            date=moment,
+            created_at=moment,
+            received_at=moment,
+        )
+        assert runtime.pipeline is not None
+        await runtime.pipeline.submit(msg)
+
+    async with app.router.lifespan_context(app):
+        assert runtime.transport is not None
+        runtime.transport.responder = respond
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            h = await _login_tg(client)
+            # Второй запрос уходит после паузы шлюза между запросами (1.6 с).
+            await until(lambda: "/inv" in [s.payload for s in runtime.transport.sent], 5.0)
+            assert [s.payload for s in runtime.transport.sent][:2] == ["😎Я", "/inv"]
+            await client.post("/api/v1/engine/pause", headers=h)
+            status = (await client.get("/api/v1/engine/status")).json()
+            assert status["paused"] is True
+    async with clean_db.sessions() as s:
+        decided = await s.scalar(select(func.count()).select_from(DecisionRow))
+        runs = (await s.scalars(select(ScenarioRunRow.scenario))).all()
+    assert decided is not None and decided >= 2
+    assert list(runs[:1]) == ["refresh"]
