@@ -15,6 +15,7 @@ from app.db.auth_repo import AuthRepo
 from app.db.base import Database
 from app.db.journal import DbJournal
 from app.db.lock import SingleInstanceLock
+from app.db.metro import DbMetroRunStore
 from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
 from app.db.settings_store import DbSettingsStore
@@ -160,6 +161,7 @@ class Runtime:
             notifier=self.notifier,
             ready=self._planner_ready,
             poll_s=self.planner_poll_s,
+            metro_store=DbMetroRunStore(self.db, self.config.account_id),
         )
         bus.subscribe(self.planner.on_delivery, priority=90)
         lag = LoopLagMonitor()

@@ -187,3 +187,27 @@ class ScenarioRunRow(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(12))
     reason: Mapped[str] = mapped_column(String(200), default="")
+
+
+class MetroRunRow(Base):
+    __tablename__ = "metro_runs"
+    __table_args__ = (Index("ix_metro_runs_account_started", "account_id", "started_at"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    scenario_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("scenario_runs.id", ondelete="SET NULL")
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(12))
+    outcome: Mapped[str] = mapped_column(String(64))
+    steps: Mapped[int] = mapped_column(Integer)
+    duration_s: Mapped[float] = mapped_column(Float)
+    step_s: Mapped[float | None] = mapped_column(Float)
+    buffs: Mapped[list[Any]]
+    result: Mapped[dict[str, Any] | None]
+    grid: Mapped[dict[str, Any]]
+    path: Mapped[list[Any]]
+    events: Mapped[list[Any]]
+    vitals: Mapped[list[Any]]
+    summary: Mapped[dict[str, Any]]

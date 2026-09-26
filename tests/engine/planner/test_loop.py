@@ -1,15 +1,19 @@
 import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
+import app.engine.planner.loop as loop_module
+from app.engine.metro.store import MemoryMetroRunStore
 from app.engine.notify import Level
 from app.engine.planner.base import TIMER_MARGIN
 from app.engine.planner.loop import DEEDS, MAX_RETRY, NOTHING_RETRY, RETRY_AFTER, PlannerLoop
 from app.engine.planner.store import MemoryPlannerStore
 from app.engine.planner.types import Act, Decision
 from app.engine.scenarios.library import ScenarioResult
+from app.engine.scenarios.registry import ScenarioSpec
 from tests.engine.fakegame import LIVE, World, running_world
 
 
@@ -411,3 +415,27 @@ async def test_not_playing_recipient_notified(world: World) -> None:
         ("tangerine", "refused", "not_player")
     ]
     assert rig.notes.codes == ["tangerine_not_player"]
+
+
+async def test_metro_run_saved_and_durations_loaded(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = {"duration_s": 960.0, "steps": 162, "outcome": "finished"}
+
+    async def fake_metro(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        return ScenarioResult("done", "finished", {"metro": record})
+
+    monkeypatch.setitem(loop_module.SCENARIOS, "metro", ScenarioSpec("metro", fake_metro, True))
+    store = MemoryMetroRunStore()
+    await store.save(None, "done", {"duration_s": 1500.0})
+    rig = Rig(world)
+    rig.loop._metro_store = store
+    await rig.loop.step()
+    assert rig.loop._metro_durations == [1500.0]
+    decision = await rig.store.record(datetime.now(UTC), Act("metro", {}, "metro_ready"))
+    await rig.loop._execute(Act("metro", {}, "metro_ready"), decision)
+    assert store.runs[-1] == {**record, "scenario_run_id": len(rig.store.runs), "status": "done"}
+    assert rig.loop._metro_durations == [1500.0, 960.0]
+    for _ in range(25):
+        await rig.loop._execute(Act("metro", {}, "metro_ready"), decision)
+    assert rig.loop._metro_durations == [960.0] * 20

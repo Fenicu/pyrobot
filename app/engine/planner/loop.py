@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
 from app.engine.gateway.gateway import ActionGateway
+from app.engine.metro.store import METRO_HISTORY, MetroRunStore
 from app.engine.notify import NotifierPort
 from app.engine.planner.decide import decide
 from app.engine.planner.store import DecisionRecord, PlannerStore
@@ -60,6 +61,7 @@ class PlannerLoop:
         poll_s: float = 5.0,
         max_idle_s: float = 1800.0,
         step_timeout_s: float = 20.0,
+        metro_store: MetroRunStore | None = None,
     ) -> None:
         self._gateway = gateway
         self._state = state
@@ -80,6 +82,9 @@ class PlannerLoop:
         self._failures: dict[str, int] = {}
         # Последний успешный запуск каждого сценария (кулдауны мандарина и т. п. после рестарта).
         self._last_done: dict[str, datetime] | None = None
+        self._metro_store = metro_store
+        # Длительности прошлых забегов метро (бюджет по p90): из хранилища при первом решении.
+        self._metro_durations: list[float] | None = None
         self._last_wait: DecisionRecord | None = None
         self.current: str | None = None
         self.next_wake: datetime | None = None
@@ -112,6 +117,8 @@ class PlannerLoop:
         settings = self._settings.current
         if self._last_done is None:
             self._last_done = await self._store.last_done()
+        if self._metro_durations is None:
+            self._metro_durations = await self._load_metro_durations()
         if settings.engine.mode != self._mode:
             self._held.clear()
             self._mode = settings.engine.mode
@@ -123,6 +130,7 @@ class PlannerLoop:
             last_refresh=self._last_refresh,
             cooldowns=self._blocked(),
             last_done=self._last_done,
+            metro_durations=self._metro_durations,
         )
         if isinstance(decision, Wait):
             return await self._wait(now, decision)
@@ -179,6 +187,31 @@ class PlannerLoop:
         # Кулдаун — до записи в журнал: сбой БД не должен оставить сценарий без него.
         await self._after(act, result, started, finished)
         await self._store.run_finished(run_id, result.status, result.reason, finished)
+        if result.details is not None and "metro" in result.details:
+            await self._save_metro(run_id, result)
+
+    async def _load_metro_durations(self) -> list[float]:
+        if self._metro_store is None:
+            return []
+        try:
+            return await self._metro_store.durations()
+        except Exception:
+            log.exception("metro durations not loaded")
+            return []
+
+    async def _save_metro(self, run_id: int, result: ScenarioResult) -> None:
+        assert result.details is not None
+        record = result.details["metro"]
+        if result.status == "done" and self._metro_durations is not None:
+            self._metro_durations.append(float(record.get("duration_s", 0.0)))
+            # Как и при загрузке — только последние забеги, иначе p90 зависит от аптайма.
+            del self._metro_durations[:-METRO_HISTORY]
+        if self._metro_store is None:
+            return
+        try:
+            await self._metro_store.save(run_id, result.status, record)
+        except Exception:
+            log.exception("metro run not saved")
 
     async def _after(
         self, act: Act, result: ScenarioResult, started: datetime, finished: datetime
