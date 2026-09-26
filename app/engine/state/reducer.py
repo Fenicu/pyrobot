@@ -32,6 +32,7 @@ from app.engine.parsing.items import (
 )
 from app.engine.parsing.levelup import LevelUpStep
 from app.engine.parsing.metro import (
+    METRO_COOLDOWN,
     MetroBuffs,
     MetroChest,
     MetroChestOpened,
@@ -106,8 +107,6 @@ FASTFOOD_COOLDOWN = timedelta(minutes=30)
 GORBUSHKA_FIGHT_GAP = timedelta(hours=1)
 # Бой с биржевиками: итог приходит через ~5 мин после присоединения (медиана 292 с).
 BULLS_FIGHT = timedelta(minutes=5)
-# Спуститься в метро снова можно через 16 ч после выхода (экран входа).
-METRO_COOLDOWN = timedelta(hours=16)
 FOOD_KINDS = ("hotdog", "pizza", "burger", "banana")
 METRIC_FIELDS = (
     "level",

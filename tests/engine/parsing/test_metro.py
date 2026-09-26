@@ -100,7 +100,6 @@ def test_buffs_screens() -> None:
             tokens=10053,
             coins=0,
             token_price=20,
-            can_start=True,
         ),
         MetroEntered(cost=2),
     ]
@@ -110,7 +109,6 @@ def test_buffs_screens() -> None:
         tokens=9993,
         coins=0,
         token_price=20,
-        can_start=True,
     )
 
 

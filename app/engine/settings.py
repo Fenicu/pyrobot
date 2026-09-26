@@ -136,6 +136,11 @@ class MetroSection(BaseModel):
     # Без аптечек с NPC не драться при 🔋 ниже этого: на экране NPC лечиться нельзя.
     npc_min_stamina: int = Field(default=30, ge=0)
 
+    @property
+    def margin_min(self) -> int:
+        """Запас до битвы на забег: выброс игрой и свой."""
+        return self.battle_margin_min + self.extra_margin_min
+
 
 class Settings(BaseModel):
     engine: EngineSection = Field(default_factory=EngineSection)

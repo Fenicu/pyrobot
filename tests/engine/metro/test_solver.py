@@ -6,7 +6,7 @@ import pytest
 
 from app.engine.events import Event
 from app.engine.metro.budget import Budget
-from app.engine.metro.solver import Click, Done, Halt, MetroSolver, Policy
+from app.engine.metro.solver import Click, Done, Halt, MetroSolver, Policy, policy_of
 from app.engine.parsing.metro import (
     MetroBuffs,
     MetroChest,
@@ -21,7 +21,16 @@ from app.engine.parsing.metro import (
     MetroNpc,
     recognize_metro,
 )
-from tests.engine.metro.helpers import T0, budget, grid_of, map_frame, window_at
+from app.engine.settings import MetroSection
+from tests.engine.metro.helpers import (
+    POLICY,
+    T0,
+    budget,
+    grid_of,
+    map_frame,
+    policy_with,
+    window_at,
+)
 from tests.fixtures import game_versions
 
 RUN1 = Path(__file__).parents[2] / "fixtures" / "metro" / "run1.json"
@@ -41,7 +50,7 @@ TREE = [
 
 
 def solver(**policy: object) -> MetroSolver:
-    return MetroSolver(Policy(**policy), budget(), pos=(1, 1))  # type: ignore[arg-type]
+    return MetroSolver(policy_with(**policy), budget(), pos=(1, 1))
 
 
 def at(pos: tuple[int, int], footer: str = "entry", **kw: object) -> MetroMap:
@@ -51,7 +60,7 @@ def at(pos: tuple[int, int], footer: str = "entry", **kw: object) -> MetroMap:
 
 def test_replay_of_recorded_run_rebuilds_its_map_and_path() -> None:
     run = json.loads(RUN1.read_text())
-    s = MetroSolver(Policy(), budget())
+    s = MetroSolver(POLICY, budget())
     started = False
     for msg in game_versions("metro", 3624441):
         for event in recognize_metro(msg):
@@ -183,7 +192,7 @@ def test_exit_declined_while_cells_remain() -> None:
 
 
 def test_deadline_sends_to_known_exit() -> None:
-    s = MetroSolver(Policy(), budget(minutes=40, margin_min=25), pos=(1, 1))
+    s = MetroSolver(POLICY, budget(minutes=40, margin_min=25), pos=(1, 1))
     s.next(at((1, 1)), T0)
     s.exit_at = (4, 5)
     s.grid = grid_of(TREE)
@@ -195,7 +204,7 @@ def test_deadline_sends_to_known_exit() -> None:
 
 
 def test_unknown_exit_frontier_and_late_risk() -> None:
-    s = MetroSolver(Policy(), budget(minutes=125, margin_min=25), pos=(1, 1))
+    s = MetroSolver(POLICY, budget(minutes=125, margin_min=25), pos=(1, 1))
     s.next(at((1, 1)), T0)
     s.next(at((1, 1), "waiting"), T0 + timedelta(minutes=61))
     assert s.mode == "frontier" and s.alerts == []
@@ -266,7 +275,7 @@ def test_replay_of_second_run_matches_its_snapshot() -> None:
     """Второй живой забег (решатель прототипа): отказы от NPC и сундука, стена, досрочный
     выход с отказом — те же 182 шага, 95 клеток, выход (14, −2) и итог, что и в снимке."""
     run = json.loads(RUN2.read_text())
-    s = MetroSolver(Policy(), budget())
+    s = MetroSolver(POLICY, budget())
     started = False
     for msg in game_versions("metro", 3625352):
         for event in recognize_metro(msg):
@@ -315,7 +324,7 @@ def test_lost_fight_halts_without_continue() -> None:
 
 
 def _near_kick(minutes_to_battle: float) -> tuple[MetroSolver, datetime]:
-    s = MetroSolver(Policy(), budget(minutes=40, margin_min=25), pos=(1, 1))
+    s = MetroSolver(POLICY, budget(minutes=40, margin_min=25), pos=(1, 1))
     s.next(at((1, 1)), T0)
     return s, T0 + timedelta(minutes=40 - minutes_to_battle)
 
@@ -368,7 +377,7 @@ def test_downtime_does_not_inflate_step_time() -> None:
     обычный выход, а не 🚪: время шага меряется по ходам, простой в него не входит."""
     kick = T0 + timedelta(minutes=10, hours=1, seconds=30)
     b = Budget(T0, kick + timedelta(minutes=15), timedelta(minutes=25), 5.0)
-    s = MetroSolver(Policy(), b, pos=(2, 1))
+    s = MetroSolver(POLICY, b, pos=(2, 1))
     now = T0
     s.next(map_frame(window_at(CORRIDOR, (2, 1)), "entry"), now)
     for col in range(2, 102):
@@ -387,7 +396,7 @@ def test_early_intent_dropped_when_exit_comes_close() -> None:
     known[2] = "#" + "v" * 97 + ".."
     kick = T0 + timedelta(minutes=10)
     b = Budget(T0, kick + timedelta(minutes=15), timedelta(minutes=25), 5.0)
-    s = MetroSolver(Policy(), b, pos=(2, 97))
+    s = MetroSolver(POLICY, b, pos=(2, 97))
     s.grid = grid_of(known)
     now = kick - timedelta(seconds=40)
     assert s.next(map_frame(window_at(short, (2, 97)), "waiting"), now) == Click(
@@ -404,10 +413,10 @@ def test_early_intent_dropped_when_exit_comes_close() -> None:
 def test_no_heal_when_it_would_miss_the_kick() -> None:
     kick = T0 + timedelta(minutes=10)
     b = Budget(T0, kick + timedelta(minutes=15), timedelta(minutes=25), 5.0)
-    s = MetroSolver(Policy(), b, pos=(1, 1))
+    s = MetroSolver(POLICY, b, pos=(1, 1))
     frame = at((1, 1), "waiting", stamina=60, packs=3)
     assert s.next(frame, kick - timedelta(seconds=30)) == Click("maze_first_aid", "heal")
-    rushed = MetroSolver(Policy(), b, pos=(1, 1))
+    rushed = MetroSolver(POLICY, b, pos=(1, 1))
     assert rushed.next(frame, kick - timedelta(seconds=5)) == Click("maze_exit", "early_exit")
 
 
@@ -416,7 +425,7 @@ def test_exit_screen_without_awaited_move_steps_onto_the_known_exit() -> None:
     единственная известная соседняя клетка, персонаж на ней; второго выхода нет, «Остался» —
     там же."""
     events = [recognize_metro(m)[0] for m in game_versions("metro", 3624441)]
-    s = MetroSolver(Policy(), budget())
+    s = MetroSolver(POLICY, budget())
     for event in events[5:278]:
         s.observe(event)
     exit_at = s.exit_at
@@ -457,15 +466,15 @@ def test_heal_before_early_exit_counts_clicks_without_toast() -> None:
     kick = T0 + timedelta(minutes=10)
     b = Budget(T0, kick + timedelta(minutes=15), timedelta(minutes=25), 5.0)
     frame = at((1, 1), "waiting", stamina=60, packs=3)
-    rushed = MetroSolver(Policy(), b, pos=(1, 1))
+    rushed = MetroSolver(POLICY, b, pos=(1, 1))
     assert rushed.next(frame, kick - timedelta(seconds=8)) == Click("maze_exit", "early_exit")
-    healed = MetroSolver(Policy(), b, pos=(1, 1))
+    healed = MetroSolver(POLICY, b, pos=(1, 1))
     assert healed.next(frame, kick - timedelta(seconds=16)) == Click("maze_first_aid", "heal")
 
 
-def _on_exit_by_deadline(packs: int, policy: Policy | None = None) -> MetroSolver:
+def _on_exit_by_deadline(packs: int, policy: Policy = POLICY) -> MetroSolver:
     """Обход у выхода (ветка вправо не пройдена), ход на выход; битва через 40 минут."""
-    s = MetroSolver(policy or Policy(), budget(minutes=40, margin_min=25), pos=(4, 4))
+    s = MetroSolver(policy, budget(minutes=40, margin_min=25), pos=(4, 4))
     s.grid = grid_of(TREE)
     s.grid.visited = {(4, 4)}
     s.exit_at, s.stamina, s.packs = (4, 5), 60, packs
@@ -504,7 +513,7 @@ def test_deadline_on_exit_screen_heals_before_leaving() -> None:
 def test_deadline_on_exit_screen_leaves_at_once(
     packs: int, heal_before_exit: bool, minutes: float
 ) -> None:
-    s = _on_exit_by_deadline(packs, Policy(heal_before_exit=heal_before_exit))
+    s = _on_exit_by_deadline(packs, policy_with(heal_before_exit=heal_before_exit))
     now = T0 + timedelta(minutes=minutes)
     assert s.next(MetroExit(found={}), now) == Click("maze_exit_accept", "deadline")
 
@@ -519,7 +528,7 @@ def test_replay_keeps_leaving_decided_before_restart() -> None:
     now = start + timedelta(seconds=10)
 
     def known() -> MetroSolver:
-        s = MetroSolver(Policy(), budget(minutes=40, margin_min=25), pos=(1, 1))
+        s = MetroSolver(POLICY, budget(minutes=40, margin_min=25), pos=(1, 1))
         s.grid = grid_of(TREE)
         s.grid.visited = {(1, 1)}
         s.exit_at = (4, 5)
@@ -545,3 +554,15 @@ def test_unknown_cell_symbol_alerts_once() -> None:
     assert s.alerts == ["unknown_cell"] and s.events[-1]["kind"] == "unknown_cell"
     s.next(map_frame(("#####", "#####", "#?@..", "##.##", "##.##"), "waiting"), T0)
     assert s.alerts == ["unknown_cell"]
+
+
+def test_policy_comes_from_metro_settings() -> None:
+    cfg = MetroSection(heal_at=40, npc_low_enabled=False, npc_high_enabled=True, chest_min_packs=3)
+    assert policy_of(cfg) == Policy(
+        heal_at=40,
+        heal_before_exit=True,
+        chest_min_packs=3,
+        npc_low=False,
+        npc_high=True,
+        npc_min_stamina=30,
+    )

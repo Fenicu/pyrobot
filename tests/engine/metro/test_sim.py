@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from app.engine.metro.solver import Done, Halt, Policy
+from app.engine.metro.solver import Done, Halt
 from app.engine.parsing.metro import MetroLoot, MetroMap, recognize_metro
-from tests.engine.metro.helpers import T0
+from tests.engine.metro.helpers import T0, policy_with
 from tests.engine.metro.sim import (
     Drive,
     Maze,
@@ -162,7 +162,7 @@ def test_strong_npc_policy() -> None:
     maze.npcs = dict.fromkeys(maze.npcs, "high")
     run = drive(maze)
     assert not [e for e in run.solver.events if e["kind"] == "metro_fight"]
-    fought = drive(_with_strong(_maze("tree", 6, 5, 2)), policy=Policy(npc_high=True))
+    fought = drive(_with_strong(_maze("tree", 6, 5, 2)), policy=policy_with(npc_high=True))
     assert [e for e in fought.solver.events if e["kind"] == "metro_fight"]
 
 

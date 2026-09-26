@@ -1,10 +1,20 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.engine.metro.budget import Budget
 from app.engine.metro.grid import Grid, Pos
+from app.engine.metro.solver import Policy, policy_of
 from app.engine.parsing.metro import MetroMap
+from app.engine.settings import MetroSection
 
 T0 = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
+POLICY = policy_of(MetroSection())
+
+
+def policy_with(**over: Any) -> Policy:
+    """Политики по умолчанию (настройки `metro`) с заменой отдельных."""
+    return replace(POLICY, **over)
 
 
 def grid_of(rows: list[str], visited: str = "v") -> Grid:

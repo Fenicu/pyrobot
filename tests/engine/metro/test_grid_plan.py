@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from app.engine.metro.budget import MEASURED_AFTER, Budget, prior_step_s
-from app.engine.metro.grid import Grid, direction_between, step
+from app.engine.metro.grid import Grid, step
 from app.engine.metro.plan import exit_route, explore_step, reach, targets
 from tests.engine.metro.helpers import T0, budget, grid_of, window_at
 
@@ -77,7 +77,6 @@ def test_grid_json() -> None:
 
 def test_steps_and_directions() -> None:
     assert step((0, 0), "down") == (1, 0)
-    assert direction_between((1, 1), (1, 0)) == "left"
 
 
 BRANCHES = [

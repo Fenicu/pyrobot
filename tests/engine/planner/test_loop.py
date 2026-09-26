@@ -456,3 +456,20 @@ async def test_metro_run_saved_and_durations_loaded(
     for _ in range(25):
         await rig.loop._execute(Act("metro", {}, "metro_ready"), decision)
     assert rig.loop._metro_durations == [960.0] * 20
+
+
+async def test_paused_metro_run_is_saved(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Приостановленный забег продолжится позже, но его запись (карта, путь) нужна и сейчас.
+    record = {"duration_s": 300.0, "steps": 40, "outcome": "paused"}
+
+    async def fake_metro(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        return ScenarioResult("stopped", "paused", {"metro": record})
+
+    monkeypatch.setitem(loop_module.SCENARIOS, "metro", ScenarioSpec("metro", fake_metro, True))
+    store = MemoryMetroRunStore()
+    rig = Rig(world)
+    rig.loop._metro_store = store
+    decision = await rig.store.record(datetime.now(UTC), Act("metro", {}, "metro_ready"))
+    await rig.loop._execute(Act("metro", {}, "metro_ready"), decision)
+    assert [(r.status, r.reason) for r in rig.store.runs] == [("stopped", "paused")]
+    assert store.runs == [{**record, "scenario_run_id": 1, "status": "stopped"}]

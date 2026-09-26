@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import ClassVar, Literal
 
 from app.engine.events import Event
@@ -17,6 +18,8 @@ VS16 = "\ufe0f"
 DIRECTIONS = {"Вверх": "up", "Вниз": "down", "Влево": "left", "Вправо": "right"}
 # Вход стоит 2🔥 (экран входа); бафы экрана входа не показывают цену входа.
 ENTRY_COST = 2
+# Спуститься в метро снова можно через 16 ч после выхода (экран входа).
+METRO_COOLDOWN = timedelta(hours=16)
 BUFFS = {"🏃Быстрый шаг": "fastMove", "💪Страшная сила": "strong", "❤️Аптечки": "firstAid"}
 # Ключи — без вариационного селектора U+FE0F: игра ставит его непостоянно.
 ITEMS = {
@@ -129,7 +132,6 @@ class MetroBuffs(Event):
     tokens: int
     coins: int
     token_price: int | None = None
-    can_start: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -332,7 +334,6 @@ def _buffs(msg: IncomingMessage, text: str) -> list[Event]:
         tokens=num(m["tokens"]),
         coins=num(m["coins"]),
         token_price=int(price["n"]) if price else None,
-        can_start=msg.button("maze_start") is not None,
     )
     return [screen, MetroEntered()]
 

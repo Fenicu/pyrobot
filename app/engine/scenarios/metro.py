@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import fields, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -8,7 +9,7 @@ from app.engine.bus import Delivery
 from app.engine.events import Event, Unrecognized
 from app.engine.gateway.types import Match, Predicate, Verdict
 from app.engine.metro.budget import Budget, prior_step_s
-from app.engine.metro.solver import Click, Done, MetroSolver, Policy
+from app.engine.metro.solver import Click, Done, MetroSolver, Policy, policy_of
 from app.engine.parsing.metro import (
     ENTRY_COST,
     MetroBuffs,
@@ -35,11 +36,12 @@ from app.engine.scenarios.context import (
     expect_events,
 )
 from app.engine.scenarios.library import Params, ScenarioResult, finish, require, stopped
+from app.engine.settings import MetroSection
 from app.engine.state.model import CharacterState
 from app.engine.types import IncomingMessage
 
-# Бафы за 🕳 по умолчанию — все три; за 🌐 (`maze_buf_coins_*`) — никогда, это донат.
-BUFFS = ("fastMove", "strong", "firstAid")
+# Параметры, не заданные запуском, — из настроек `metro` по умолчанию.
+DEFAULTS = MetroSection()
 SCREENS = (
     MetroMap,
     MetroLoot,
@@ -88,14 +90,13 @@ def metro_screen(msg: IncomingMessage) -> Event | None:
 
 
 def _policy(params: Params) -> Policy:
-    return Policy(
-        heal_at=int(params.get("heal_at", 50)),
-        heal_before_exit=bool(params.get("heal_before_exit", True)),
-        chest_min_packs=int(params.get("chest_min_packs", 2)),
-        npc_low=bool(params.get("npc_low", True)),
-        npc_high=bool(params.get("npc_high", False)),
-        npc_min_stamina=int(params.get("npc_min_stamina", 30)),
-    )
+    base = policy_of(DEFAULTS)
+    given = {
+        f.name: type(getattr(base, f.name))(params[f.name])
+        for f in fields(Policy)
+        if f.name in params
+    }
+    return replace(base, **given)
 
 
 def _is_office(event: Event) -> bool:
@@ -113,7 +114,8 @@ class Halted(Exception):
 async def _halt(
     ctx: ScenarioContext, reason: str, details: dict[str, Any] | None = None
 ) -> ScenarioResult:
-    await ctx.notify("warn", "metro_halted", f"metro: {reason}, run paused")
+    text = f"metro: stopped ({reason}); the planner will try to resume the run"
+    await ctx.notify("warn", "metro_halted", text)
     return ScenarioResult("stopped", reason, details)
 
 
@@ -219,7 +221,7 @@ async def _buy_and_start(
 ) -> ScenarioResult:
     message = shown.msg_id
     try:
-        for name in (str(b) for b in params.get("buffs", BUFFS)):
+        for name in (str(b) for b in params.get("buffs", DEFAULTS.buffs)):
             if name not in buffs.offers:
                 continue
             if buffs.token_price is not None and buffs.tokens < buffs.token_price:
@@ -237,7 +239,9 @@ async def _buy_and_start(
     except Halted as halted:
         return await _halt(ctx, halted.reason)
     assert first.delivery is not None
-    return await _explore(ctx, params, message, first.delivery.msg, buffs, None, ctx.clock.now())
+    started = ctx.clock.now()
+    solver = MetroSolver(_policy(params), _budget(params, started, buffs))
+    return await _explore(ctx, message, first.delivery.msg, buffs, solver, started)
 
 
 def _wait_s(ctx: ScenarioContext, buffs: MetroBuffs) -> float:
@@ -250,7 +254,7 @@ def _budget(params: Params, started: datetime, buffs: MetroBuffs) -> Budget:
     return Budget(
         started=started,
         battle_at=datetime.fromisoformat(str(battle)) if battle else None,
-        margin=timedelta(minutes=float(params.get("margin_min", 25))),
+        margin=timedelta(minutes=float(params.get("margin_min", DEFAULTS.margin_min))),
         # Время шага — по фактически купленному бафу.
         step_prior_s=prior_step_s("fastMove" in buffs.bought),
     )
@@ -299,7 +303,7 @@ async def _resume(ctx: ScenarioContext, params: Params, message: int) -> Scenari
             solver.replay(event, msg.date)
     solver.update_mode(ctx.clock.now())
     solver.resync()
-    return await _explore(ctx, params, message, current, buffs, solver, started)
+    return await _explore(ctx, message, current, buffs, solver, started)
 
 
 def _moving(msg: IncomingMessage) -> bool:
@@ -309,15 +313,12 @@ def _moving(msg: IncomingMessage) -> bool:
 
 async def _explore(
     ctx: ScenarioContext,
-    params: Params,
     message: int,
     current: IncomingMessage,
     buffs: MetroBuffs,
-    solver: MetroSolver | None,
+    solver: MetroSolver,
     started: datetime,
 ) -> ScenarioResult:
-    budget = _budget(params, started, buffs)
-    solver = solver or MetroSolver(_policy(params), budget)
     wait_s = _wait_s(ctx, buffs)
     notified: set[str] = set(solver.alerts)
 

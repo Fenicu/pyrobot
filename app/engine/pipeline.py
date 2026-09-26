@@ -92,7 +92,8 @@ class Pipeline:
         return self._latest.get((chat_id, msg_id))
 
     def prime(self, msg: IncomingMessage) -> None:
-        """Последняя ревизия из журнала после рестарта: по ней шлюз проверяет кнопки."""
+        """Текущая версия сообщения, прочитанная из Telegram (продолжение после рестарта), —
+        последняя ревизия: по ней шлюз проверяет кнопки, а кэш ревизий после рестарта пуст."""
         self._remember(msg)
 
     async def submit(self, msg: IncomingMessage) -> None:

@@ -25,7 +25,7 @@ from app.engine.parsing.metro import (
     recognize_metro,
 )
 from app.engine.types import Button, IncomingMessage
-from tests.engine.metro.helpers import T0
+from tests.engine.metro.helpers import POLICY, T0
 
 EMOJI = {"#": "⬛️", ".": "⬜️", "@": "\U0001f60e", "E": "\U0001f6aa"}
 PAD = " " * 15
@@ -556,7 +556,7 @@ def drive(
 ) -> Drive:
     sim = MazeGame(maze, **game)
     battle = T0 + battle_in if battle_in is not None else None
-    policy = policy or Policy()
+    policy = policy or POLICY
     solver = MetroSolver(policy, Budget(T0, battle, margin, 5.0), pos=maze.start)
     event: Event = sim.start()
     misses = 0

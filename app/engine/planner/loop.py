@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta
 
 from app.engine.bus import Delivery
@@ -190,7 +191,7 @@ class PlannerLoop:
         finally:
             self.current = None
         if result.reason == "paused":
-            result = ScenarioResult("stopped", "paused")
+            result = replace(result, status="stopped")
         finished = self._clock.now()
         # Кулдаун — до записи в журнал: сбой БД не должен оставить сценарий без него.
         await self._after(act, result, started, finished)

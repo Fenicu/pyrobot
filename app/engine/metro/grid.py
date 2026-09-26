@@ -18,11 +18,6 @@ def step(pos: Pos, direction: str) -> Pos:
     return pos[0] + dr, pos[1] + dc
 
 
-def direction_between(a: Pos, b: Pos) -> str:
-    delta = (b[0] - a[0], b[1] - a[1])
-    return next(d for d, v in DIRS.items() if v == delta)
-
-
 def window_cells(window: Sequence[str], at: Pos) -> Iterator[tuple[Pos, str]]:
     """Клетки окна в координатах карты; игрок и незнакомые символы не отдаются."""
     for i, row in enumerate(window):

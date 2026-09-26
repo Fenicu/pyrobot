@@ -9,6 +9,7 @@ import pytest
 import app.engine.scenarios.metro as metro_module
 from app.engine.events import Event
 from app.engine.memory import MemoryJournal
+from app.engine.metro.solver import policy_of
 from app.engine.parsing.metro import (
     MetroChest,
     MetroChestOpened,
@@ -24,6 +25,7 @@ from app.engine.parsing.metro import (
 from app.engine.scenarios.context import ScenarioContext
 from app.engine.scenarios.library import ScenarioResult, run_scenario
 from app.engine.scenarios.metro import metro
+from app.engine.settings import MetroSection
 from app.engine.state.model import CharacterState
 from app.engine.types import IncomingMessage
 from tests.engine.fakegame import GAME, World, running_world
@@ -689,3 +691,11 @@ async def test_long_run_on_simulator(maze_world: World) -> None:
     assert len(record["grid"]["visited"]) == len(game.sim.maze.floor())
     assert record["result"] == game.sim.bank
     assert maze_world.state.money is None
+
+
+def test_policy_params_default_to_metro_settings() -> None:
+    defaults = policy_of(MetroSection())
+    assert metro_module._policy({}) == defaults
+    assert metro_module._policy({"npc_low": False, "heal_at": "40"}) == replace(
+        defaults, npc_low=False, heal_at=40
+    )

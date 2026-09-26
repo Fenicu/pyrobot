@@ -24,6 +24,7 @@ from app.engine.parsing.metro import (
     MetroMap,
     MetroNpc,
 )
+from app.engine.settings import MetroSection
 
 FULL = 100
 # Аптечка за 🕳 даёт +50% 🔋 (не выше 100).
@@ -41,15 +42,25 @@ SILENT_CLICK_S = 6.0
 
 @dataclass(frozen=True, slots=True)
 class Policy:
-    """Политики событий (настройки `metro`)."""
+    """Политики событий; значения — из настроек `metro` (`policy_of`)."""
 
-    heal_at: int = 50
-    heal_before_exit: bool = True
-    chest_min_packs: int = 2
-    npc_low: bool = True
-    npc_high: bool = False
-    # Без аптечек не драться при 🔋 ниже этого: лечиться на экране NPC нельзя.
-    npc_min_stamina: int = 30
+    heal_at: int
+    heal_before_exit: bool
+    chest_min_packs: int
+    npc_low: bool
+    npc_high: bool
+    npc_min_stamina: int
+
+
+def policy_of(cfg: MetroSection) -> Policy:
+    return Policy(
+        heal_at=cfg.heal_at,
+        heal_before_exit=cfg.heal_before_exit,
+        chest_min_packs=cfg.chest_min_packs,
+        npc_low=cfg.npc_low_enabled,
+        npc_high=cfg.npc_high_enabled,
+        npc_min_stamina=cfg.npc_min_stamina,
+    )
 
 
 @dataclass(frozen=True, slots=True)
