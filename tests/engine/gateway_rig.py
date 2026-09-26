@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncIterator
 
 from app.engine.bus import Delivery
-from app.engine.clock import SystemClock
+from app.engine.clock import Clock, SystemClock
 from app.engine.events import Event
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import (
@@ -30,7 +30,7 @@ LIVE = Settings(
 
 
 class Rig:
-    def __init__(self, settings: Settings = LIVE) -> None:
+    def __init__(self, settings: Settings = LIVE, clock: Clock | None = None) -> None:
         self.transport = FakeTransport()
         self.store = MemoryActionStore()
         self.settings = StaticSettings(settings.model_copy(deep=True))
@@ -43,7 +43,7 @@ class Rig:
             settings=self.settings,
             latest=lambda c, m: self.latest.get((c, m)),
             boundary=lambda: self.jid,
-            clock=SystemClock(),
+            clock=clock or SystemClock(),
             can_send=lambda: self.block,
         )
         self.task: asyncio.Task[None] | None = None

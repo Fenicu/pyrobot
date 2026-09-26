@@ -1,12 +1,12 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
 from app.db.models import ActionRow
 from app.engine.commands import CommandClass
-from app.engine.gateway.store import DuplicateKey, StoredAction
+from app.engine.gateway.store import CANCELLED, DuplicateKey, StoredAction
 from app.engine.gateway.types import ActionRequest, ActionStatus
 
 _FINAL = {
@@ -97,7 +97,13 @@ class DbActionStore:
                 update(ActionRow)
                 .where(
                     ActionRow.account_id == self._account_id,
-                    ActionRow.status.in_([ActionStatus.INTENT.value, ActionStatus.SENT.value]),
+                    or_(
+                        ActionRow.status.in_([ActionStatus.INTENT.value, ActionStatus.SENT.value]),
+                        and_(
+                            ActionRow.status == ActionStatus.OUTCOME_UNKNOWN.value,
+                            ActionRow.reason == CANCELLED,
+                        ),
+                    ),
                 )
                 .values(
                     status=ActionStatus.OUTCOME_UNKNOWN.value,

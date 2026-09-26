@@ -25,6 +25,11 @@ class StoredAction:
         return ActionResult(self.status, self.id, self.reason, match, self.answer)
 
 
+# Причина outcome_unknown для действия, прерванного остановкой шлюза посреди отправки;
+# такие строки при следующем старте сверяются так же, как незавершённые.
+CANCELLED = "cancelled"
+
+
 class DuplicateKey(Exception):
     def __init__(self, existing: StoredAction) -> None:
         super().__init__(f"idempotency key already used by action {existing.id}")

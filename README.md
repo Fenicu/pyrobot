@@ -187,7 +187,11 @@ switch и `dry_run`, и отклоняет любую команду, включ
 (`app/engine/memory.py`) — реализация для тестов; `DbActionStore` (`app/db/actions.py`) — Postgres, с
 уникальным `(account_id, idempotency_key)` для дедупликации повторных отправок и
 `mark_unfinished_unknown()` для восстановления после рестарта (незавершённые
-`INTENT`/`SENT` переводятся в `OUTCOME_UNKNOWN "restart"`).
+`INTENT`/`SENT` переводятся в `OUTCOME_UNKNOWN "restart"`). Если выполнение действия прервано
+внутренней ошибкой или остановкой шлюза, строка, уже дошедшая до `INTENT`/`SENT`, сразу закрывается
+как `OUTCOME_UNKNOWN` с причиной `internal_error` или `cancelled`; строки `cancelled` при следующем
+старте считаются незавершёнными наравне с `INTENT`/`SENT` и так же требуют сверки. TTL, темп
+отправки и паузы шлюз считает по инжектированным часам (`Clock.monotonic()`, `SystemClock`).
 
 ## API
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
-import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -14,7 +13,7 @@ from app.engine.bus import Delivery
 from app.engine.clock import Clock
 from app.engine.commands import CommandClass, classify_callback, classify_text
 from app.engine.events import AntiFlood
-from app.engine.gateway.store import ActionStore, DuplicateKey
+from app.engine.gateway.store import CANCELLED, ActionStore, DuplicateKey
 from app.engine.gateway.types import (
     ActionKind,
     ActionRequest,
@@ -43,6 +42,7 @@ DATE_SKEW = timedelta(seconds=2)
 MAX_FLOODWAIT_S = 300.0
 MAX_KEY_LEN = 100
 _NEXT_ERROR_PAUSE_S = 0.05
+_ABANDON_WRITE_S = 5.0
 
 
 @dataclass(eq=False)
@@ -53,6 +53,8 @@ class _Pending:
     enqueued: float
     ttl: float
     future: asyncio.Future[ActionResult]
+    action_id: int | None = None
+    finished: bool = False
 
 
 @dataclass(eq=False)
@@ -155,7 +157,7 @@ class ActionGateway:
             req=req,
             cls=cls,
             seq=next(self._seq),
-            enqueued=time.monotonic(),
+            enqueued=self._clock.monotonic(),
             ttl=req.ttl_s if req.ttl_s is not None else eng.action_ttl_s,
             future=asyncio.get_running_loop().create_future(),
         )
@@ -245,7 +247,8 @@ class ActionGateway:
             dropped, self._queue = self._queue, []
         try:
             for p in dropped:
-                self._resolve(p, await self._record(p, ActionStatus.SUPPRESSED, reason))
+                if not p.future.done():
+                    self._resolve(p, await self._record(p, ActionStatus.SUPPRESSED, reason))
         finally:
             for p in dropped:
                 self._resolve(p, ActionResult(ActionStatus.SUPPRESSED, reason=reason))
@@ -285,14 +288,25 @@ class ActionGateway:
             try:
                 result = await self._execute(pending)
             except asyncio.CancelledError:
-                self._resolve(
-                    pending, ActionResult(ActionStatus.OUTCOME_UNKNOWN, reason="cancelled")
-                )
+                self._resolve(pending, await self._abandon(pending, CANCELLED))
                 raise
             except Exception:
                 log.exception("gateway failed to execute action")
-                result = ActionResult(ActionStatus.OUTCOME_UNKNOWN, reason="internal_error")
+                result = await self._abandon(pending, "internal_error")
             self._resolve(pending, result)
+
+    async def _abandon(self, p: _Pending, reason: str) -> ActionResult:
+        # Строка, уже дошедшая до INTENT/SENT, закрывается как outcome_unknown сразу, а не
+        # при следующем старте; CANCELLED при старте всё равно требует сверки.
+        if p.action_id is not None and not p.finished:
+            try:
+                async with asyncio.timeout(_ABANDON_WRITE_S):
+                    await self._store.update(
+                        p.action_id, status=ActionStatus.OUTCOME_UNKNOWN, reason=reason
+                    )
+            except Exception:
+                log.exception("abandoned action %s not persisted", p.action_id)
+        return ActionResult(ActionStatus.OUTCOME_UNKNOWN, action_id=p.action_id, reason=reason)
 
     def _static_checks(self, req: ActionRequest, cls: CommandClass) -> Blocked | None:
         eng = self._settings.current.engine
@@ -329,7 +343,7 @@ class ActionGateway:
             blocked = self._static_checks(p.req, p.cls)
             if blocked is not None:
                 return blocked
-            if time.monotonic() - p.enqueued >= p.ttl:
+            if self._clock.monotonic() - p.enqueued >= p.ttl:
                 return ActionStatus.REJECTED, "expired"
             if p.req.kind is ActionKind.CLICK:
                 latest = self._latest(p.req.chat_id, p.req.message_id or 0)
@@ -350,7 +364,7 @@ class ActionGateway:
     def _nearest_deadline(self) -> float | None:
         if not self._queue:
             return None
-        now = time.monotonic()
+        now = self._clock.monotonic()
         return max(0.005, min(p.enqueued + p.ttl - now for p in self._queue))
 
     async def _next(self) -> _Pending:
@@ -362,7 +376,7 @@ class ActionGateway:
                 if not terminal:
                     # Во время паузы (FloodWait/антифлуд) действие не выбирается и INTENT не
                     # пишется, но TTL стоящих в очереди продолжает истекать.
-                    paused = self._paused_until - time.monotonic()
+                    paused = self._paused_until - self._clock.monotonic()
                     ready = [] if paused > 0 else [p for p in self._queue if self._eligible(p)]
                     if ready:
                         chosen = min(ready, key=lambda p: (p.req.source, p.seq))
@@ -400,17 +414,15 @@ class ActionGateway:
         blocked = self._check(p)
         if blocked is not None:
             return await self._record(p, *blocked)
-        action_id: int | None
         try:
-            action_id = await self._store.create(p.req, p.cls, ActionStatus.INTENT)
+            p.action_id = await self._store.create(p.req, p.cls, ActionStatus.INTENT)
         except DuplicateKey as dup:
             return dup.existing.to_result()
         except Exception:
             log.exception("intent not persisted")
             if p.cls is not CommandClass.NAV:
                 return ActionResult(ActionStatus.REJECTED, reason="db_unavailable")
-            action_id = None
-        return await self._attempts(p, action_id)
+        return await self._attempts(p)
 
     async def _record(self, p: _Pending, status: ActionStatus, reason: str) -> ActionResult:
         # Действие не дошло до INTENT — ключ идемпотентности не расходуется,
@@ -418,14 +430,12 @@ class ActionGateway:
         req_for_store = replace(p.req, idempotency_key=None)
         try:
             action_id: int | None = await self._store.create(req_for_store, p.cls, status, reason)
-        except DuplicateKey as dup:
-            return dup.existing.to_result()
         except Exception:
             log.exception("action record not persisted")
             action_id = None
         return ActionResult(status, action_id=action_id, reason=reason)
 
-    async def _attempts(self, p: _Pending, action_id: int | None) -> ActionResult:
+    async def _attempts(self, p: _Pending) -> ActionResult:
         req = p.req
         attempts = 0
         antiflood_tries = 0
@@ -434,7 +444,7 @@ class ActionGateway:
             await self._pace()
             blocked = self._check(p)
             if blocked is not None:
-                return await self._finish(action_id, *blocked)
+                return await self._finish(p, *blocked)
             eng = self._settings.current.engine
             inflight = _InFlight(
                 req=req,
@@ -448,27 +458,26 @@ class ActionGateway:
                 try:
                     answer = await self._transmit(req, eng.click_answer_timeout_s)
                 except FloodWait as fw:
-                    self._paused_until = max(self._paused_until, time.monotonic() + fw.seconds)
-                    left = p.ttl - (time.monotonic() - p.enqueued)
+                    now = self._clock.monotonic()
+                    self._paused_until = max(self._paused_until, now + fw.seconds)
+                    left = p.ttl - (now - p.enqueued)
                     if fw.seconds > MAX_FLOODWAIT_S or fw.seconds >= left:
                         return await self._finish(
-                            action_id, ActionStatus.REFUSED, f"flood_wait:{fw.seconds:.0f}"
+                            p, ActionStatus.REFUSED, f"flood_wait:{fw.seconds:.0f}"
                         )
                     self._inflight = None
                     continue
                 except TransportAuthLost:
-                    return await self._finish(action_id, ActionStatus.REFUSED, "auth_lost")
+                    return await self._finish(p, ActionStatus.REFUSED, "auth_lost")
                 except TransportRejected as exc:
-                    return await self._finish(action_id, ActionStatus.REFUSED, f"rejected:{exc}")
+                    return await self._finish(p, ActionStatus.REFUSED, f"rejected:{exc}")
                 except Exception as exc:
                     return await self._finish(
-                        action_id, ActionStatus.OUTCOME_UNKNOWN, f"send_error:{type(exc).__name__}"
+                        p, ActionStatus.OUTCOME_UNKNOWN, f"send_error:{type(exc).__name__}"
                     )
-                await self._mark_sent(action_id, attempts, answer)
+                await self._mark_sent(p.action_id, attempts, answer)
                 if req.expect is None:
-                    return await self._finish(
-                        action_id, ActionStatus.CONFIRMED, "sent", answer=answer
-                    )
+                    return await self._finish(p, ActionStatus.CONFIRMED, "sent", answer=answer)
                 timeout_s = (
                     req.expect.timeout_s
                     if req.expect.timeout_s is not None
@@ -481,27 +490,24 @@ class ActionGateway:
                 antiflood_tries += 1
                 # Пауза ставится независимо от исхода ниже — и на повтор, и на отказ,
                 # антифлуд от игры должен придержать весь шлюз, а не только эту заявку.
-                self._paused_until = max(
-                    self._paused_until, time.monotonic() + eng.antiflood_pause_s
-                )
-                within_ttl = time.monotonic() - p.enqueued < p.ttl
+                now = self._clock.monotonic()
+                self._paused_until = max(self._paused_until, now + eng.antiflood_pause_s)
+                within_ttl = now - p.enqueued < p.ttl
                 if antiflood_tries <= eng.antiflood_retry_max and within_ttl:
                     continue
                 return await self._finish(
-                    action_id, ActionStatus.OUTCOME_UNKNOWN, "antiflood", answer=answer
+                    p, ActionStatus.OUTCOME_UNKNOWN, "antiflood", answer=answer
                 )
             if outcome is None:
                 return await self._finish(
-                    action_id, ActionStatus.OUTCOME_UNKNOWN, "timeout", answer=answer
+                    p, ActionStatus.OUTCOME_UNKNOWN, "timeout", answer=answer
                 )
             status = (
                 ActionStatus.CONFIRMED
                 if outcome.verdict is Verdict.CONFIRMED
                 else ActionStatus.REFUSED
             )
-            return await self._finish(
-                action_id, status, outcome.detail, answer=answer, match=outcome
-            )
+            return await self._finish(p, status, outcome.detail, answer=answer, match=outcome)
 
     async def _transmit(self, req: ActionRequest, click_timeout: float) -> str | None:
         if req.kind is ActionKind.SEND:
@@ -531,10 +537,10 @@ class ActionGateway:
     async def _pace(self) -> None:
         interval = self._settings.current.engine.min_request_interval_s
         target = max(self._last_send + interval, self._paused_until)
-        wait = target - time.monotonic()
+        wait = target - self._clock.monotonic()
         if wait > 0:
             await asyncio.sleep(wait)
-        self._last_send = time.monotonic()
+        self._last_send = self._clock.monotonic()
 
     async def _mark_sent(self, action_id: int | None, attempts: int, answer: str | None) -> None:
         if action_id is None:
@@ -548,13 +554,15 @@ class ActionGateway:
 
     async def _finish(
         self,
-        action_id: int | None,
+        p: _Pending,
         status: ActionStatus,
         reason: str,
         *,
         answer: str | None = None,
         match: Match | None = None,
     ) -> ActionResult:
+        p.finished = True
+        action_id = p.action_id
         if action_id is not None:
             try:
                 await self._store.update(

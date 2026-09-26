@@ -1,7 +1,7 @@
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -12,6 +12,7 @@ from app.engine.gateway.store import StoredAction
 from app.engine.gateway.types import (
     ActionKind,
     ActionRequest,
+    ActionResult,
     ActionStatus,
     Expectation,
     Match,
@@ -443,3 +444,69 @@ async def test_chat_not_allowed(rig: Rig) -> None:
     )
     assert (await rig.gw.submit(bulls)).status is ActionStatus.CONFIRMED
     assert [s.chat_id for s in rig.transport.sent] == [tangerine, -100500]
+
+
+async def test_cancel_queued_skips_already_resolved() -> None:
+    r = Rig()
+    task = asyncio.create_task(r.gw.submit(send("😎Я")))
+    await until(lambda: r.gw.queue_size == 1)
+    done = ActionResult(ActionStatus.CONFIRMED, reason="elsewhere")
+    r.gw._queue[0].future.set_result(done)  # type: ignore[attr-defined]
+    assert await r.gw.cancel_queued("x") == 1
+    assert await task == done
+    assert r.store.rows == {}
+
+
+async def test_internal_error_marks_row_outcome_unknown(rig: Rig) -> None:
+    def broken_boundary() -> int:
+        raise ZeroDivisionError
+
+    rig.gw._boundary = broken_boundary  # type: ignore[attr-defined]
+    res = await rig.gw.submit(send("😎Я"))
+    assert res.status is ActionStatus.OUTCOME_UNKNOWN and res.reason == "internal_error"
+    row = rig.store.rows[res.action_id or 0]
+    assert row.status is ActionStatus.OUTCOME_UNKNOWN and row.reason == "internal_error"
+
+
+async def test_cancel_marks_sent_row_and_restart_still_reconciles() -> None:
+    r = Rig()
+    r.start()
+    task = asyncio.create_task(r.gw.submit(send("/job", expect=expect_text("zzz", timeout=5))))
+    await until(lambda: r.store.rows.get(1) is not None and r.store.rows[1].sent)
+    await r.stop()
+    res = await task
+    assert res.status is ActionStatus.OUTCOME_UNKNOWN and res.reason == "cancelled"
+    row = r.store.rows[1]
+    assert row.status is ActionStatus.OUTCOME_UNKNOWN and row.reason == "cancelled"
+    assert await r.store.mark_unfinished_unknown() == [1]
+    assert r.store.rows[1].reason == "restart"
+
+
+class ManualClock:
+    def __init__(self) -> None:
+        self.t = 1000.0
+
+    def now(self) -> datetime:
+        return datetime.now(UTC)
+
+    def monotonic(self) -> float:
+        return self.t
+
+
+async def test_ttl_uses_injected_clock() -> None:
+    clock = ManualClock()
+    r = Rig(clock=clock)
+    r.gw._paused_until = clock.t + 1000  # type: ignore[attr-defined]
+    r.start()
+    try:
+        task = asyncio.create_task(r.gw.submit(send("😎Я", ttl_s=10)))
+        await until(lambda: r.gw.queue_size == 1)
+        await asyncio.sleep(0.02)
+        assert not task.done()
+        clock.t += 11
+        await r.gw.wake()
+        res = await asyncio.wait_for(task, 1)
+        assert res.status is ActionStatus.REJECTED and res.reason == "expired"
+        assert r.transport.sent == []
+    finally:
+        await r.stop()

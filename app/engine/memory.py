@@ -6,7 +6,7 @@ from typing import Any
 
 from app.engine.commands import CommandClass
 from app.engine.events import Event
-from app.engine.gateway.store import DuplicateKey, StoredAction
+from app.engine.gateway.store import CANCELLED, DuplicateKey, StoredAction
 from app.engine.gateway.types import ActionRequest, ActionStatus
 from app.engine.types import IncomingMessage
 
@@ -100,7 +100,12 @@ class MemoryActionStore:
         return self._stored(action_id) if action_id is not None else None
 
     async def mark_unfinished_unknown(self) -> list[int]:
-        ids = [i for i, r in self.rows.items() if r.status in _UNFINISHED]
+        ids = [
+            i
+            for i, r in self.rows.items()
+            if r.status in _UNFINISHED
+            or (r.status is ActionStatus.OUTCOME_UNKNOWN and r.reason == CANCELLED)
+        ]
         for i in ids:
             await self.update(i, status=ActionStatus.OUTCOME_UNKNOWN, reason="restart")
         return ids
