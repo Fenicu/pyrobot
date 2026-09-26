@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.engine.notify import Level
+from app.engine.planner.decide import TIMER_MARGIN
 from app.engine.planner.loop import PlannerLoop
 from app.engine.planner.store import MemoryPlannerStore
 from app.engine.planner.types import Decision
@@ -106,7 +107,8 @@ async def test_from_empty_state_to_first_deed(world: World) -> None:
     last = rig.store.decisions[-1][1]
     assert (last.kind, last.reason) == ("wait", "gorbushka_next")
     gorbushka = world.state.gorbushka
-    assert gorbushka is not None and rig.loop.next_wake == gorbushka.value.next_fight_at
+    assert gorbushka is not None and gorbushka.value.next_fight_at is not None
+    assert rig.loop.next_wake == gorbushka.value.next_fight_at + TIMER_MARGIN
 
 
 async def test_repeated_wait_recorded_once(world: World) -> None:

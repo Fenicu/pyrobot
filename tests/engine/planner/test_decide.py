@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from app.engine.planner.decide import decide
+from app.engine.planner.decide import TIMER_MARGIN, decide
 from app.engine.planner.types import Act, Candidate, Decision, Wait
 from app.engine.settings import Settings
 from app.engine.state.model import (
@@ -21,6 +21,14 @@ NOW = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
 
 def m(minutes: float) -> datetime:
     return NOW + timedelta(minutes=minutes)
+
+
+def w(minutes: float) -> datetime:
+    """Пробуждение по таймеру: с запасом на секундную точность игровых таймеров."""
+    return m(minutes) + TIMER_MARGIN
+
+
+SECOND = timedelta(seconds=1)
 
 
 def obs(value: Any, age_min: float = 0) -> Obs[Any]:
@@ -109,12 +117,17 @@ def test_team_task_boosts_matching_resource() -> None:
 def test_busy_waits_until_free() -> None:
     state = awake(busy=BusyState(activity="job", until=m(2)))
     decision = decide(state, Settings(), NOW)
-    assert decision == Wait(m(2), "busy", ())
+    assert decision == Wait(w(2), "busy", ())
+
+
+def test_deed_is_busy_within_timer_margin() -> None:
+    state = awake(busy=obs(BusyState(activity="job", until=NOW - SECOND), age_min=3))
+    assert decide(state, Settings(), NOW) == Wait(NOW + 2 * SECOND, "busy", ())
 
 
 def test_sleeping_waits_without_candidates() -> None:
     state = awake(busy=BusyState(activity="sleep_hotel", until=m(300)), levelup_pending=True)
-    assert decide(state, Settings(), NOW) == Wait(m(300), "busy", ())
+    assert decide(state, Settings(), NOW) == Wait(w(300), "busy", ())
 
 
 def test_expired_busy_counts_as_free() -> None:
@@ -127,18 +140,31 @@ def test_levelup_first() -> None:
     assert act(decide(state, Settings(), NOW)) == ("levelup", {})
 
 
+def test_levelup_not_during_deed() -> None:
+    state = awake(levelup_pending=True, busy=BusyState(activity="harvest", until=m(4)))
+    decision = decide(state, Settings(), NOW)
+    assert isinstance(decision, Wait) and decision.until == w(4)
+    assert verdicts(decision)["levelup"] == "busy"
+
+
 def test_book_before_deeds_and_waits_for_cooldown() -> None:
     assert act(decide(awake(books=3), Settings(), NOW)) == ("book", {})
     state = awake(books=3, book_ready_at=m(20), motivation=0)
     assert decide(state, Settings(), NOW) == Wait(
-        m(20), "book_ready", decide(state, Settings(), NOW).candidates
+        w(20), "book_ready", decide(state, Settings(), NOW).candidates
     )
+
+
+def test_book_not_ready_within_timer_margin() -> None:
+    state = awake(books=3, book_ready_at=obs(NOW - SECOND, age_min=50), motivation=0)
+    decision = decide(state, Settings(), NOW)
+    assert decision == Wait(NOW + 2 * SECOND, "book_ready", decision.candidates)
 
 
 def test_book_not_while_busy() -> None:
     state = awake(books=3, busy=BusyState(activity="harvest", until=m(4)))
     decision = decide(state, Settings(), NOW)
-    assert isinstance(decision, Wait) and decision.until == m(4)
+    assert isinstance(decision, Wait) and decision.until == w(4)
     assert verdicts(decision)["book"] == "busy"
 
 
@@ -173,18 +199,18 @@ def test_fastfood_during_deed_but_not_while_eating() -> None:
 def test_fastfood_cooldown_wakes() -> None:
     state = awake(stamina=10, fastfood_ready_at=m(12), motivation=0)
     decision = decide(state, Settings(), NOW)
-    assert isinstance(decision, Wait) and decision.until == m(12)
+    assert isinstance(decision, Wait) and decision.until == w(12)
 
 
 def test_containers_and_prizebox_during_deed() -> None:
     busy = BusyState(activity="harvest", until=m(4))
-    assert act(decide(awake(containers_small=2, busy=busy), Settings(), NOW)) == (
-        "container_small",
-        {},
-    )
+    assert act(decide(awake(containers_small=2), Settings(), NOW)) == ("container_small", {})
+    during = decide(awake(containers_small=2, busy=busy), Settings(), NOW)
+    assert during == Wait(w(4), "busy", during.candidates)
+    assert verdicts(during)["container_small"] == "busy"
     assert act(decide(awake(prizebox=True, busy=busy), Settings(), NOW)) == ("prizebox", {})
     locked = awake(prizebox=True, prizebox_ready_at=m(90), busy=busy)
-    assert decide(locked, Settings(), NOW).until == m(4)  # type: ignore[union-attr]
+    assert decide(locked, Settings(), NOW).until == w(4)  # type: ignore[union-attr]
 
 
 def test_uncertified_candidate_is_skipped() -> None:
@@ -210,6 +236,16 @@ def test_gorbushka_buys_ticket_when_affordable() -> None:
     assert act(decide(state, Settings(), NOW)) == ("gorbushka", {"buy": True})
 
 
+def test_gorbushka_ticket_leaves_hotel_reserve() -> None:
+    settings = Settings.model_validate({"sleep": {"hotel_if_cash_after_reserve_ge": 50}})
+    g = GorbushkaState(state="need_ticket")
+    near = awake(money=200, gorbushka=g, sleep_deadline=m(4 * 60))
+    decision = decide(near, settings, NOW)
+    assert verdicts(decision)["gorbushka"] == "cant_afford"
+    far = awake(money=200, gorbushka=g)
+    assert act(decide(far, settings, NOW)) == ("gorbushka", {"buy": True})
+
+
 def test_gorbushka_ticket_reserve_blocks_harvest() -> None:
     state = awake(money=140, knowledge=10, gorbushka=GorbushkaState(state="need_ticket"))
     settings = Settings.model_validate(
@@ -227,7 +263,7 @@ def test_gorbushka_ticket_reserve_blocks_harvest() -> None:
 def test_gorbushka_waiting_reserves_motivation() -> None:
     g = GorbushkaState(state="waiting", won=1, total=4, next_fight_at=m(30), fight_cost=1)
     decision = decide(awake(motivation=1, gorbushka=g), Settings(), NOW)
-    assert isinstance(decision, Wait) and decision.until == m(30)
+    assert isinstance(decision, Wait) and decision.until == w(30)
     assert verdicts(decision)["deed:job"] == "no_motivation"
     later = GorbushkaState(state="waiting", won=1, total=4, next_fight_at=m(90), fight_cost=1)
     assert act(decide(awake(motivation=1, gorbushka=later), Settings(), NOW)) == ("deed:job", {})
@@ -250,7 +286,16 @@ def test_stale_motivation_requests_profile() -> None:
 def test_refresh_is_rate_limited() -> None:
     state = awake(motivation=obs(40, age_min=20))
     decision = decide(state, Settings(), NOW, last_refresh={"profile": m(-1)})
-    assert decision == Wait(m(1), "refresh:profile", decision.candidates)
+    assert decision == Wait(w(1), "refresh:profile", decision.candidates)
+
+
+def test_refresh_cooldown_is_per_source() -> None:
+    state = awake(motivation=obs(40, age_min=20))
+    held = decide(state, Settings(), NOW, cooldowns={"refresh:profile": m(5)})
+    assert held == Wait(w(5), "cooldown:refresh:profile", held.candidates)
+    assert verdicts(held)["refresh"] == "cooldown"
+    other = decide(state, Settings(), NOW, cooldowns={"refresh:inventory": m(5)})
+    assert act(other) == ("refresh", {"source": "profile"})
 
 
 def test_unknown_busy_requests_profile_first() -> None:
@@ -267,14 +312,14 @@ def test_battle_window(battle_in: float, chosen: str | None) -> None:
     )
     decision = decide(awake(battle_at=m(battle_in)), settings, NOW)
     if chosen is None:
-        assert decision == Wait(m(battle_in + 1), "battle", decision.candidates)
+        assert decision == Wait(w(battle_in + 1), "battle", decision.candidates)
     else:
         assert act(decision) == (chosen, {})
 
 
 def test_no_motivation_waits_for_regen() -> None:
     decision = decide(awake(motivation=0), Settings(), NOW)
-    assert decision == Wait(m(30), "motivation", decision.candidates)
+    assert decision == Wait(w(30), "motivation", decision.candidates)
 
 
 def test_cooldown_skips_scenario() -> None:
@@ -301,7 +346,7 @@ def test_sleep_not_yet_allowed() -> None:
     state = awake(sleep_deadline=m(60), sleep_allowed_at=m(10), motivation=0)
     decision = decide(state, Settings(), NOW)
     assert verdicts(decision)["sleep"] == "sleep_not_allowed"
-    assert isinstance(decision, Wait) and decision.until == m(10)
+    assert isinstance(decision, Wait) and decision.until == w(10)
 
 
 def test_uncertified_sleep_leaves_deeds_but_not_past_deadline() -> None:
@@ -315,7 +360,7 @@ def test_uncertified_sleep_leaves_deeds_but_not_past_deadline() -> None:
 
 def test_wait_for_nearest_timer() -> None:
     settings = Settings.model_validate({"features": {"deeds": False}})
-    assert decide(awake(), settings, NOW) == Wait(m(300), "gorbushka_comeback", ())
+    assert decide(awake(), settings, NOW) == Wait(w(300), "gorbushka_comeback", ())
     settings = Settings.model_validate(
         {"features": {"deeds": False, "gorbushka": False, "sleep": False}}
     )
@@ -331,7 +376,7 @@ def test_candidate_scores_recorded() -> None:
 def test_long_sleep_is_trusted_without_refresh() -> None:
     sleeping = obs(BusyState(activity="sleep_bridge", until=m(300)), age_min=180)
     decision = decide(awake(busy=sleeping), Settings(), NOW)
-    assert decision == Wait(m(300), "busy", ())
+    assert decision == Wait(w(300), "busy", ())
 
 
 def test_doubtful_busy_requests_profile() -> None:
@@ -344,6 +389,9 @@ def test_regen_tick_makes_motivation_stale() -> None:
     decision = decide(state, Settings(), NOW)
     assert act(decision) == ("refresh", {"source": "profile"})
     assert verdicts(decision)["deeds"] == "stale:motivation"
+    just = awake(motivation=obs(0, age_min=5), motivation_next_at=NOW - SECOND)
+    decision = decide(just, Settings(), NOW)
+    assert decision == Wait(NOW + 2 * SECOND, "motivation", decision.candidates)
 
 
 def test_past_battle_requests_profile_before_deeds() -> None:

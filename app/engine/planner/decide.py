@@ -26,6 +26,8 @@ GORBUSHKA_AHEAD = timedelta(hours=1)
 HOTEL_RESERVE_AHEAD = timedelta(hours=3)
 GORBUSHKA_TICKET = PriceState(money=120, knowledge=20)
 UNKNOWN_DEED_MINUTES = 10
+# Таймеры выведены из даты сообщения (точность — секунда): итог приходит в `until` + 0–1 с.
+TIMER_MARGIN = timedelta(seconds=3)
 
 _PROFILE = (
     "level",
@@ -89,7 +91,7 @@ class _Planner:
         regen = state.motivation_next_at
         seen = state.motivation
         if seen is not None and regen is not None and regen.value is not None:
-            if seen.at < regen.value <= now:
+            if seen.at < regen.value and regen.value + TIMER_MARGIN <= now:
                 stale.add("motivation")
         # Прошедшая битва: время следующей известно только из свежего профиля.
         battle = state.battle_at
@@ -106,9 +108,13 @@ class _Planner:
         obs = getattr(self.s, name)
         return None if obs is None else obs.value
 
+    def due(self, at: datetime, seen: datetime | None = None) -> bool:
+        """Таймер истёк с запасом; истёкший уже на момент наблюдения `seen` — без запаса."""
+        return (seen is not None and at <= seen) or at + TIMER_MARGIN <= self.now
+
     def wake(self, at: datetime | None, reason: str) -> None:
-        if at is not None and at > self.now:
-            self.wakeups.append((at, reason))
+        if at is not None and at + TIMER_MARGIN > self.now:
+            self.wakeups.append((at + TIMER_MARGIN, reason))
 
     def reject(self, scenario: str, params: Mapping[str, Any], verdict: str) -> None:
         self.candidates.append(Candidate(scenario, dict(params), None, verdict))
@@ -117,12 +123,14 @@ class _Planner:
         feature = "deeds" if scenario.startswith("deed:") else FEATURE.get(scenario)
         return feature is None or bool(getattr(self.cfg.features, feature))
 
-    def gate(self, scenario: str) -> str | None:
+    def gate(self, scenario: str, key: str | None = None) -> str | None:
+        """Сертификация — по имени сценария, кулдаун — по ключу (у рефреша он свой на источник)."""
         if self.certified is not None and scenario not in self.certified:
             return "uncertified"
-        until = self.cooldowns.get(scenario)
+        key = key or scenario
+        until = self.cooldowns.get(key)
         if until is not None and until > self.now:
-            self.wake(until, f"cooldown:{scenario}")
+            self.wake(until, f"cooldown:{key}")
             return "cooldown"
         return None
 
@@ -133,12 +141,12 @@ class _Planner:
         return None
 
     def act(
-        self, scenario: str, params: Mapping[str, Any], reason: str, score: float | None = None
+        self, scenario: str, params: Mapping[str, Any], reason: str, key: str | None = None
     ) -> Act | None:
-        if (why := self.gate(scenario)) is not None:
+        if (why := self.gate(scenario, key)) is not None:
             self.reject(scenario, params, why)
             return None
-        self.candidates.append(Candidate(scenario, dict(params), score, "chosen"))
+        self.candidates.append(Candidate(scenario, dict(params), None, "chosen"))
         return Act(scenario, dict(params), reason, tuple(self.candidates))
 
     def refresh(self, scenario: str, field: str) -> Act | None:
@@ -149,7 +157,9 @@ class _Planner:
         if last is not None and self.now - last < self.refresh_every:
             self.wake(last + self.refresh_every, f"refresh:{source}")
             return None
-        return self.act("refresh", {"source": source}, f"{scenario} needs {field}")
+        return self.act(
+            "refresh", {"source": source}, f"{scenario} needs {field}", f"refresh:{source}"
+        )
 
     def wait(self) -> Wait:
         if not self.wakeups:
@@ -188,10 +198,21 @@ class _Planner:
         obs = self.s.busy
         if obs is None or obs.src == "doubtful" or obs.value is None:
             return None
-        return obs.value if obs.value.until > self.now else None
+        return None if self.due(obs.value.until, obs.at) else obs.value
+
+    def timer(self, name: str) -> datetime | None:
+        """Момент готовности по таймеру-полю; None — уже готово (с учётом запаса)."""
+        obs = getattr(self.s, name)
+        if obs is None or obs.value is None or self.due(obs.value, obs.at):
+            return None
+        at: datetime = obs.value
+        return at
 
     def levelup(self, busy: BusyState | None) -> Decision | None:
         if not self.feature_on("levelup") or self.value("levelup_pending") is not True:
+            return None
+        if busy is not None:
+            self.reject("levelup", {}, "busy")
             return None
         return self.act("levelup", {}, "levelup_pending")
 
@@ -207,8 +228,7 @@ class _Planner:
         if self.now < start:
             self.wake(start, "sleep_window")
             return None
-        allowed: datetime | None = self.value("sleep_allowed_at")
-        if allowed is not None and self.now < allowed:
+        if (allowed := self.timer("sleep_allowed_at")) is not None:
             self.reject("sleep", {}, "sleep_not_allowed")
             self.wake(allowed, "sleep_allowed")
             return None
@@ -250,8 +270,7 @@ class _Planner:
             return self.refresh(name, field)
         if self.value(count) <= 0:
             return None
-        ready: datetime = self.value(ready_at)
-        if ready > self.now:
+        if (ready := self.timer(ready_at)) is not None:
             self.wake(ready, f"{name}_ready")
             return None
         if busy is not None:
@@ -267,8 +286,7 @@ class _Planner:
         food = self.pick_food()
         if food is None:
             return None
-        ready: datetime = self.value("fastfood_ready_at")
-        if ready > self.now:
+        if (ready := self.timer("fastfood_ready_at")) is not None:
             self.wake(ready, "fastfood_ready")
             return None
         if busy is not None and busy.activity == "eat":
@@ -293,7 +311,13 @@ class _Planner:
                 return None
             if (field := self.stale_of(f"containers_{size}")) is not None:
                 return self.refresh(name, field)
-            if self.value(f"containers_{size}") > 0 and (act := self.act(name, {}, "have")):
+            if self.value(f"containers_{size}") <= 0:
+                continue
+            # Контейнеры во время дела игра не открывает («занят»), в отличие от коробки.
+            if busy is not None:
+                self.reject(name, {}, "busy")
+                return None
+            if act := self.act(name, {}, "have"):
                 return act
         return None
 
@@ -304,8 +328,7 @@ class _Planner:
             return self.refresh("prizebox", field)
         if self.value("prizebox") is not True:
             return None
-        ready: datetime | None = self.value("prizebox_ready_at")
-        if ready is not None and ready > self.now:
+        if (ready := self.timer("prizebox_ready_at")) is not None:
             self.wake(ready, "prizebox_ready")
             return None
         return self.act("prizebox", {}, "prizebox_ready")
@@ -317,6 +340,12 @@ class _Planner:
             return None
         state: GorbushkaState = self.value("gorbushka")
         return state
+
+    def gorbushka_timer(self, at: datetime | None) -> datetime | None:
+        obs = self.s.gorbushka
+        if at is None or obs is None or self.due(at, obs.at):
+            return None
+        return at
 
     def ticket(self) -> PriceState:
         known = self.s.prices.get("gorbushka_ticket")
@@ -334,20 +363,20 @@ class _Planner:
             if (field := self.stale_of("money", "knowledge")) is not None:
                 return self.refresh(name, field)
             ticket = self.ticket()
-            if self.value("money") < ticket.money or self.value("knowledge") < ticket.knowledge:
+            money = self.value("money") - self.hotel_reserve()
+            if money < ticket.money or self.value("knowledge") < ticket.knowledge:
                 self.reject(name, {"buy": True}, "cant_afford")
                 return None
             buy, reason = True, "buy_ticket"
         elif g.state in ("meeting", "waiting"):
-            fight_at = g.next_fight_at or self.now
             expired = g.ticket_until is not None and g.ticket_until <= self.now
-            if not expired and fight_at > self.now:
+            if not expired and (fight_at := self.gorbushka_timer(g.next_fight_at)) is not None:
                 self.wake(fight_at, "gorbushka_next")
                 return None
             reason = "ticket_expired" if expired else "gorbushka_fight"
         elif g.state == "done":
-            if g.comeback_at is not None and g.comeback_at > self.now:
-                self.wake(g.comeback_at, "gorbushka_comeback")
+            if (comeback := self.gorbushka_timer(g.comeback_at)) is not None:
+                self.wake(comeback, "gorbushka_comeback")
                 return None
             reason = "gorbushka_comeback"
         else:
@@ -379,16 +408,15 @@ class _Planner:
         g = self.gorbushka_state() if self.feature_on("gorbushka") else None
         return self.ticket().money if g is not None and g.state == "need_ticket" else 0
 
-    def money_reserve(self) -> int:
-        reserve = self.ticket_reserve()
+    def hotel_reserve(self) -> int:
         deadline: datetime | None = self.value("sleep_deadline")
         if not self.feature_on("sleep") or deadline is None:
-            return reserve
+            return 0
         window = deadline - timedelta(minutes=self.cfg.sleep.lead_min) - HOTEL_RESERVE_AHEAD
         cost = self.hotel_cost()
         if self.now >= window and cost is not None and self.hotel():
-            reserve += cost
-        return reserve
+            return cost
+        return 0
 
     def price(self, activity: str) -> PriceState:
         known = self.s.prices.get(activity)
@@ -437,7 +465,7 @@ class _Planner:
         battle: datetime = self.value("battle_at")
         deadline: datetime | None = self.value("sleep_deadline")
         motivation = self.value("motivation") - self.motivation_reserve()
-        money = self.value("money") - self.money_reserve()
+        money = self.value("money") - self.ticket_reserve() - self.hotel_reserve()
         details: int = self.value("details")
         ok: list[Candidate] = []
         for activity in self.cfg.strategy.deeds:
