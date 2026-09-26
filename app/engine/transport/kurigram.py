@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -9,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.settings import ChatsSection
 from app.engine.tg_auth import (
     CodeExpired,
@@ -24,7 +24,6 @@ from app.engine.types import Button, IncomingMessage, MessageKind
 
 log = logging.getLogger(__name__)
 Sink = Callable[[IncomingMessage], Awaitable[None]]
-JOIN_FIGHT = re.compile(r"join_fight_\w{11}\Z")
 DIALOGS_WARMUP = 200
 
 
@@ -55,7 +54,9 @@ def _buttons(markup: Any) -> tuple[tuple[Button, ...], tuple[tuple[str, ...], ..
 
 def has_join_fight(m: Any) -> bool:
     inline, _ = _buttons(m.reply_markup)
-    return any(JOIN_FIGHT.match(b.switch or "") or JOIN_FIGHT.match(b.data or "") for b in inline)
+    return any(
+        INVITE_CODE.match(b.switch or "") or INVITE_CODE.match(b.data or "") for b in inline
+    )
 
 
 def to_incoming(

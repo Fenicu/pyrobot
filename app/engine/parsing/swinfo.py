@@ -13,7 +13,7 @@ _FACTORY_CALL = (
 )
 _FACTORY_RESULT = "Битва за контроль над Фабрикой"
 # «🏅Победила команда ☣️ST (1)»: эмодзи компании, затем тег команды.
-_FACTORY_WINNER = re.compile(r"^🏅Победила команда \S*?(?P<tag>[0-9A-Za-zА-Яа-яЁё]+) \(", re.M)
+_FACTORY_WINNER = re.compile(r"^🏅Победила команда (?:📯|🤖|⚡️|☂️|🎩|☣️)(?P<tag>\S+) \(", re.M)
 _BATTLE_HEAD = re.compile(r"\A(?:🛡|⚔)[^\n]*(?P<co>" + COMPANY + r")")
 _BLOCK_COMPANY = re.compile(r"(?P<co>" + COMPANY + r")")
 _PRICE = re.compile(r"^(?:📈|📉)Акции компании[^\n$]*\$(?P<price>" + NUM + r")", re.M)
