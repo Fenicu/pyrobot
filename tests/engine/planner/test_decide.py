@@ -125,6 +125,11 @@ def test_deed_is_busy_within_timer_margin() -> None:
     assert decide(state, Settings(), NOW) == Wait(NOW + 2 * SECOND, "busy", ())
 
 
+def test_zero_left_busy_still_waits_margin() -> None:
+    state = awake(busy=Obs(value=BusyState(activity="job", until=NOW - SECOND), at=NOW - SECOND))
+    assert decide(state, Settings(), NOW) == Wait(NOW + 2 * SECOND, "busy", ())
+
+
 def test_sleeping_waits_without_candidates() -> None:
     state = awake(busy=BusyState(activity="sleep_hotel", until=m(300)), levelup_pending=True)
     assert decide(state, Settings(), NOW) == Wait(w(300), "busy", ())

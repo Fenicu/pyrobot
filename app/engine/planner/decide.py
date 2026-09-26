@@ -198,7 +198,7 @@ class _Planner:
         obs = self.s.busy
         if obs is None or obs.src == "doubtful" or obs.value is None:
             return None
-        return None if self.due(obs.value.until, obs.at) else obs.value
+        return None if self.due(obs.value.until) else obs.value
 
     def timer(self, name: str) -> datetime | None:
         """Момент готовности по таймеру-полю; None — уже готово (с учётом запаса)."""
