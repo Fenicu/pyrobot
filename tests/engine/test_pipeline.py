@@ -133,6 +133,25 @@ async def test_reducer_error_keeps_message() -> None:
     assert len(journal.rows) == 1 and pipe.version == 0 and len(seen) == 1
 
 
+async def test_metrics_error_keeps_message() -> None:
+    def broken_metrics(old: dict[str, Any], new: dict[str, Any]) -> dict[str, float]:
+        raise RuntimeError("bug")
+
+    journal = MemoryJournal()
+    pipe = Pipeline(
+        journal=journal,
+        parser=default_parser(),
+        reducer=CountingReducer(),
+        bus=Bus(),
+        metrics=broken_metrics,
+    )
+    delivery = await pipe.process(make_msg("Ты шлёшь запросы к боту слишком часто.", msg_id=1))
+    assert delivery is not None
+    assert len(journal.rows) == 1
+    assert journal.snapshot == ({"events": 1}, 1)
+    assert journal.metrics == []
+
+
 async def test_journal_failure_retried_in_order() -> None:
     class Flaky(MemoryJournal):
         def __init__(self) -> None:

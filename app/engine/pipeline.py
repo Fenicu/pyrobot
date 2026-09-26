@@ -129,7 +129,13 @@ class Pipeline:
             new_state = self._state
         changed = new_state != self._state
         version = self._version + 1 if changed else self._version
-        metrics = self._metrics(self._state, new_state) if changed and self._metrics else None
+        metrics = None
+        if changed and self._metrics:
+            try:
+                metrics = self._metrics(self._state, new_state)
+            except Exception:
+                log.exception("metrics failed on %s/%s", msg.chat_id, msg.msg_id)
+                metrics = None
         journal_id = await self._append(
             msg, events, new_state if changed else None, version, metrics
         )
