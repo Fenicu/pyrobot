@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 import logging
 import re
 from collections.abc import Awaitable, Callable
@@ -168,6 +167,31 @@ class KurigramTransport:
             except Exception:
                 log.exception("auth lost callback failed")
 
+    async def _reset_client(self, client: Any) -> bool:
+        # Подмена до остановки: параллельный 401 старого клиента не сбросит сессию
+        # повторно; новый клиент не открывает файл сессии до connect().
+        if self._client is not client:
+            return False
+        self._client = self._make_client()
+        try:
+            if client.is_initialized:
+                await client.stop()
+            elif client.is_connected:
+                await client.disconnect()
+        except Exception:
+            log.exception("telegram client stop failed during reset")
+        try:
+            await client.storage.delete()
+        except FileNotFoundError:
+            pass
+        except Exception:
+            log.exception("telegram session storage not deleted")
+        return True
+
+    async def _lose_auth(self, client: Any) -> None:
+        if await self._reset_client(client):
+            await self._auth_lost()
+
     async def connect(self) -> bool:
         if not self._client.is_connected:
             return bool(await self._client.connect())
@@ -225,18 +249,28 @@ class KurigramTransport:
         from pyrogram import errors, raw
 
         client = self._client
+        failure: Exception | None = None
+        if client.is_connected:
+            try:
+                await client.invoke(raw.functions.auth.LogOut())
+            except errors.Unauthorized:
+                log.info("session already revoked, logging out locally")
+            except Exception as exc:
+                failure = exc
+        await self._reset_client(client)
+        if failure is not None:
+            raise failure
+
+    async def probe(self) -> None:
+        from pyrogram import errors, raw
+
+        client = self._client
         try:
-            if client.is_initialized:
-                await client.log_out()
-            else:
-                if client.is_connected:
-                    with contextlib.suppress(errors.RPCError, OSError, ConnectionError):
-                        await client.invoke(raw.functions.auth.LogOut())
-                    await client.disconnect()
-                with contextlib.suppress(FileNotFoundError):
-                    await client.storage.delete()
-        finally:
-            self._client = self._make_client()
+            await client.invoke(raw.functions.updates.GetState(), retries=1, sleep_threshold=0)
+        except errors.Unauthorized:
+            await self._lose_auth(client)
+        except Exception as exc:
+            log.warning("telegram probe failed: %s", exc)
 
     async def stop(self) -> None:
         if self._client.is_initialized:
@@ -247,14 +281,15 @@ class KurigramTransport:
     async def send_text(self, chat_id: int, text: str, reply_to: int | None = None) -> int:
         from pyrogram import errors, raw
 
+        client = self._client
         try:
-            peer = await self._client.resolve_peer(chat_id)
+            peer = await client.resolve_peer(chat_id)
             reply = raw.types.InputReplyToMessage(reply_to_msg_id=reply_to) if reply_to else None
-            await self._client.invoke(
+            await client.invoke(
                 raw.functions.messages.SendMessage(
                     peer=peer,
                     message=text,
-                    random_id=self._client.rnd_id(),
+                    random_id=client.rnd_id(),
                     reply_to=reply,
                     no_webpage=True,
                 ),
@@ -264,7 +299,7 @@ class KurigramTransport:
         except errors.FloodWait as exc:
             raise FloodWait(float(exc.seconds or 0)) from exc
         except errors.Unauthorized as exc:
-            await self._auth_lost()
+            await self._lose_auth(client)
             raise TransportAuthLost(str(exc)) from exc
         return 0
 
@@ -273,9 +308,10 @@ class KurigramTransport:
     ) -> str | None:
         from pyrogram import errors, raw
 
+        client = self._client
         try:
-            peer = await self._client.resolve_peer(chat_id)
-            answer = await self._client.invoke(
+            peer = await client.resolve_peer(chat_id)
+            answer = await client.invoke(
                 raw.functions.messages.GetBotCallbackAnswer(
                     peer=peer, msg_id=message_id, data=data.encode()
                 ),
@@ -288,7 +324,7 @@ class KurigramTransport:
         except errors.FloodWait as exc:
             raise FloodWait(float(exc.seconds or 0)) from exc
         except errors.Unauthorized as exc:
-            await self._auth_lost()
+            await self._lose_auth(client)
             raise TransportAuthLost(str(exc)) from exc
         except errors.BadRequest as exc:
             raise TransportRejected(str(exc.ID or exc)) from exc

@@ -1,0 +1,39 @@
+import asyncio
+from typing import Any
+
+from app.config import AppConfig
+from app.engine.tg_auth import TgAuthManager, TgState
+from app.engine.transport.fake import FakeTgBackend
+from app.main import Runtime
+from tests.engine.helpers import until
+
+
+class _Probe:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def probe(self) -> None:
+        self.calls += 1
+
+
+async def test_tg_probe_runs_only_while_online() -> None:
+    runtime = Runtime(AppConfig(_env_file=None, transport="fake"))
+    probe = _Probe()
+    runtime._kurigram = probe  # type: ignore[assignment]
+    runtime.tg = TgAuthManager(FakeTgBackend(authorized=True), expected_user_id=267519921)
+    runtime.tg_probe_s = 0.01
+    task: asyncio.Task[Any] = asyncio.create_task(runtime._probe_tg())
+    try:
+        await asyncio.sleep(0.05)
+        assert probe.calls == 0
+        assert (await runtime.tg.boot()).state is TgState.ONLINE
+        await until(lambda: probe.calls >= 2)
+        await runtime.tg.mark_lost()
+        await asyncio.sleep(0.02)
+        seen = probe.calls
+        await asyncio.sleep(0.05)
+        assert probe.calls == seen
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await runtime.db.dispose()

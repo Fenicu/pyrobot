@@ -32,6 +32,7 @@ from app.engine.transport.kurigram import ChatFilter, KurigramTransport
 
 log = logging.getLogger("pyrobot")
 LOCK_CHECK_S = 10.0
+TG_PROBE_S = 60.0
 
 
 class Runtime:
@@ -45,6 +46,7 @@ class Runtime:
         self.container = Container(config=config, auth=self.auth, limiter=LoginRateLimiter())
         self.supervisor = Supervisor(self.notifier)
         self.lock_check_s = LOCK_CHECK_S
+        self.tg_probe_s = TG_PROBE_S
         self.pipeline: Pipeline | None = None
         self.gateway: ActionGateway | None = None
         self.tg: TgAuthManager | None = None
@@ -103,7 +105,9 @@ class Runtime:
             )
         bus.subscribe(self.gateway.on_delivery, priority=0)
         self.tg = TgAuthManager(
-            backend, expected_user_id=self.settings.current.telegram.expected_user_id
+            backend,
+            expected_user_id=self.settings.current.telegram.expected_user_id,
+            notifier=self.notifier,
         )
         if self._kurigram is not None:
             self._kurigram.on_auth_lost = self.tg.mark_lost
@@ -123,6 +127,8 @@ class Runtime:
         self.supervisor.start("gateway", self.gateway.run)
         self.supervisor.start("lag", lag.run)
         self.supervisor.start("lock-watch", self._watch_lock)
+        if self._kurigram is not None:
+            self.supervisor.start("tg-probe", self._probe_tg)
         await self.tg.boot()
 
     def _can_send(self) -> str | None:
@@ -158,6 +164,13 @@ class Runtime:
                     "error", "lock_lost", "single-instance lock lost; sending stopped"
                 )
         await asyncio.Event().wait()
+
+    async def _probe_tg(self) -> None:
+        while True:
+            await asyncio.sleep(self.tg_probe_s)
+            kurigram, tg = self._kurigram, self.tg
+            if kurigram is not None and tg is not None and tg.status().state is TgState.ONLINE:
+                await kurigram.probe()
 
     async def stop(self) -> None:
         if self.gateway is not None:

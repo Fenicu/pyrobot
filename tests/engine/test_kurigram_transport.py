@@ -1,0 +1,112 @@
+from pathlib import Path
+
+import pytest
+
+from app.engine.notify import Level
+from app.engine.tg_auth import TgAuthManager, TgState
+from app.engine.transport.base import TransportAuthLost
+from tests.engine.helpers import GAME
+from tests.engine.kurigram_fakes import EXPECTED, FakeKurigram, rpc_error
+
+
+class Recorder:
+    def __init__(self) -> None:
+        self.items: list[tuple[Level, str]] = []
+
+    async def notify(self, level: Level, code: str, text: str) -> None:
+        self.items.append((level, code))
+
+
+async def _online(t: FakeKurigram) -> list[int]:
+    lost: list[int] = []
+
+    async def on_lost() -> None:
+        lost.append(1)
+
+    t.on_auth_lost = on_lost
+    assert await t.connect()
+    await t.go_online()
+    assert t.client.is_initialized
+    return lost
+
+
+def _assert_reset(t: FakeKurigram) -> None:
+    old, new = t.clients
+    assert old.storage.deleted and not old.is_initialized and not old.is_connected
+    assert t._client is new and not new.is_connected
+
+
+async def test_probe_unauthorized_resets_client_and_reports(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    lost = await _online(t)
+    t.client.errors["GetState"] = rpc_error("SessionRevoked")
+    await t.probe()
+    assert t.clients[0].invoked[-1] == ("GetState", {"retries": 1, "sleep_threshold": 0})
+    _assert_reset(t)
+    assert lost == [1]
+
+
+async def test_probe_other_error_only_logged(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    lost = await _online(t)
+    t.client.errors["GetState"] = OSError("network down")
+    await t.probe()
+    assert len(t.clients) == 1 and t.client.is_initialized and lost == []
+
+
+@pytest.mark.parametrize("op", ["send", "click"])
+async def test_send_click_unauthorized_resets_client(tmp_path: Path, op: str) -> None:
+    t = FakeKurigram(tmp_path)
+    lost = await _online(t)
+    name = "SendMessage" if op == "send" else "GetBotCallbackAnswer"
+    t.client.errors[name] = rpc_error("AuthKeyUnregistered")
+    with pytest.raises(TransportAuthLost):
+        if op == "send":
+            await t.send_text(GAME, "😎Я")
+        else:
+            await t.click(GAME, 1, "maze_up", 1.0)
+    _assert_reset(t)
+    assert lost == [1]
+
+
+async def test_reset_survives_stop_failure(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    lost = await _online(t)
+    t.client.stop_error = RuntimeError("stop failed")
+    t.client.errors["GetState"] = rpc_error("SessionRevoked")
+    await t.probe()
+    assert t.clients[0].storage.deleted and t._client is t.clients[1] and lost == [1]
+
+
+async def test_failed_log_out_still_resets_client(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    lost = await _online(t)
+    t.client.errors["LogOut"] = ConnectionError("network down")
+    with pytest.raises(ConnectionError):
+        await t.log_out()
+    _assert_reset(t)
+    assert lost == []
+
+
+async def test_log_out_of_revoked_session_is_success(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    t.client.errors["LogOut"] = rpc_error("SessionRevoked")
+    await t.log_out()
+    _assert_reset(t)
+
+
+async def test_relogin_after_loss_reaches_online(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    rec = Recorder()
+    mgr = TgAuthManager(t, expected_user_id=EXPECTED, notifier=rec)
+    t.on_auth_lost = mgr.mark_lost
+    assert (await mgr.boot()).state is TgState.ONLINE
+    t.client.errors["GetState"] = rpc_error("SessionRevoked")
+    await t.probe()
+    assert mgr.status().state is TgState.UNAUTHORIZED
+    assert rec.items == [("error", "tg_auth_lost")]
+    st = await mgr.start("+888", owner="s1")
+    st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    assert st.state is TgState.ONLINE and t._client is t.clients[1]
+    assert t.clients[1].is_initialized

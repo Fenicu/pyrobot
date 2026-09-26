@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
+from app.engine.notify import NotifierPort
+
 log = logging.getLogger(__name__)
 
 
@@ -77,9 +79,15 @@ class _Attempt:
 
 class TgAuthManager:
     def __init__(
-        self, backend: TgAuthBackend, *, expected_user_id: int, attempt_ttl_s: float = 600.0
+        self,
+        backend: TgAuthBackend,
+        *,
+        expected_user_id: int,
+        attempt_ttl_s: float = 600.0,
+        notifier: NotifierPort | None = None,
     ) -> None:
         self._backend = backend
+        self._notifier = notifier
         self._expected = expected_user_id
         self._ttl = attempt_ttl_s
         self._lock = asyncio.Lock()
@@ -174,8 +182,13 @@ class TgAuthManager:
 
     async def mark_lost(self) -> None:
         async with self._lock:
+            was_online = self._state is TgState.ONLINE
             self._user_id = None
             self._set(TgState.UNAUTHORIZED, error="session_revoked")
+        if was_online and self._notifier is not None:
+            await self._notifier.notify(
+                "error", "tg_auth_lost", "telegram session revoked; login again in admin"
+            )
 
     def _check(self, attempt_id: str, owner: str, state: TgState) -> _Attempt:
         attempt = self._attempt

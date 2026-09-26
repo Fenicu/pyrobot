@@ -120,3 +120,25 @@ async def test_logout_failure_reports_logout_failed_without_raising() -> None:
     await mgr.boot()
     st = await mgr.logout()
     assert st.state is TgState.ERROR and st.error == "logout_failed"
+
+
+class _Recorder:
+    def __init__(self) -> None:
+        self.items: list[tuple[str, str]] = []
+
+    async def notify(self, level: str, code: str, text: str) -> None:
+        self.items.append((level, code))
+
+
+async def test_mark_lost_notifies_once_per_online_session() -> None:
+    rec = _Recorder()
+    mgr = TgAuthManager(FakeTgBackend(authorized=True), expected_user_id=EXPECTED, notifier=rec)
+    await mgr.mark_lost()
+    assert rec.items == []
+    await mgr.boot()
+    await mgr.mark_lost()
+    await mgr.mark_lost()
+    assert rec.items == [("error", "tg_auth_lost")]
+    await mgr.boot()
+    await mgr.mark_lost()
+    assert rec.items == [("error", "tg_auth_lost")] * 2
