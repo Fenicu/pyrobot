@@ -6,12 +6,14 @@ from datetime import datetime, time, timedelta
 from app.engine.gametime import MSK, to_msk
 from app.engine.market import pick_stock
 from app.engine.parsing.smoothie import INGREDIENTS
-from app.engine.planner.base import PlannerBase, battle_hour
+from app.engine.planner.base import BATTLE_BEFORE, PlannerBase, battle_hour
 from app.engine.planner.types import Decision
 from app.engine.state.model import BusyState, StockLimits, TargetSet
 
 # Деньги на отель дела не тратят за столько до начала сна.
 HOTEL_RESERVE_AHEAD = timedelta(hours=3)
+# Сон ждёт конца записи на фабрику, только если после неё до дедлайна остаётся запас.
+AFTER_FACTORY_MARGIN = timedelta(minutes=15)
 TARGET_LAST_CALL = timedelta(minutes=1)
 STAMINA_AHEAD = timedelta(minutes=30)
 FASTFOOD_BEFORE = timedelta(minutes=2)
@@ -85,24 +87,26 @@ class Obligations(PlannerBase):
             return None
         if busy is not None and busy.activity == "eat":
             return None
-        if (food := self.battle_food()) is not None:
-            ready = self.timer("fastfood_ready_at")
-            if ready is None:
-                return self.act("fastfood", {"food": food}, "battle_stamina")
-            if ready < battle - FASTFOOD_BEFORE:
-                self.wake(ready, "fastfood_ready")
-                return None
-        if busy is not None or self.stale_of("money") is not None or self.value("money") < 5:
+        # Фастфуд — по тем же правилам, что и обычно (порядок видов, запас бананов); неизвестные
+        # запасы сначала обновляются, а не заменяются платной едой.
+        if self.feature_on("fastfood"):
+            if (field := self.stale_of("food_stock", "fastfood_ready_at")) is not None:
+                return self.refresh("battle_stamina", field)
+            if (food := self.pick_food()) is not None:
+                ready = self.timer("fastfood_ready_at")
+                if ready is None:
+                    return self.act("fastfood", {"food": food}, "battle_stamina")
+                if ready < battle - FASTFOOD_BEFORE:
+                    self.wake(ready, "fastfood_ready")
+                    return None
+        if not self.feature_on("deed:eat") or busy is not None:
+            return None
+        price = self.price("eat")
+        if self.now + self.duration("eat", price) > battle - BATTLE_BEFORE:
+            return None
+        if self.stale_of("money") is not None or self.value("money") < price.money:
             return None
         return self.act("deed:eat", {}, "battle_stamina")
-
-    def battle_food(self) -> str | None:
-        """Фастфуд по тем же правилам, что и обычно (порядок видов, запас бананов)."""
-        if not self.feature_on("fastfood"):
-            return None
-        if self.stale_of("food_stock", "fastfood_ready_at") is not None:
-            return None
-        return self.pick_food()
 
     def stocks_dump(self, busy: BusyState | None) -> Decision | None:
         if not self.feature_on("stocks_dump"):
@@ -125,7 +129,9 @@ class Obligations(PlannerBase):
         if (field := self.stale_of("money")) is not None:
             return self.refresh("stocks_dump", field)
         keep = self.cfg.stocks.cash_floor + self.ticket_reserve() + self.night_hotel()
-        if self.value("money") - keep < self.cfg.stocks.min_dump:
+        # После покупки игра оставляет не меньше неснижаемого остатка биржи.
+        floor = max(keep, limits.reserve) if limits is not None else keep
+        if self.value("money") - floor < self.cfg.stocks.min_dump:
             return None
         # Котировки меняются после каждой битвы: предпроверка — по увиденным в окне слива.
         quotes = self.s.stock_quotes
@@ -245,7 +251,7 @@ class Obligations(PlannerBase):
         duration = timedelta(hours=self.cfg.sleep.duration_h)
         if not self.factory_pending() or start >= closes or start + duration <= opens:
             return start
-        return closes if closes <= deadline else start
+        return closes if closes + AFTER_FACTORY_MARGIN <= deadline else start
 
     def night_slot(self, earliest: datetime) -> datetime:
         duration = timedelta(hours=self.cfg.sleep.duration_h)
@@ -270,9 +276,15 @@ class Obligations(PlannerBase):
         won: datetime | None = self.value("bulls_won_at")
         return won is None or won < night_start(self.now)
 
+    def sleep_runs(self) -> bool:
+        """Сон будет исполнен: механика включена, а в `live` сценарий ещё и сертифицирован."""
+        if not self.feature_on("sleep"):
+            return False
+        return self.certified is None or "sleep" in self.certified
+
     def night_hotel(self) -> int:
         """Деньги на отель в ближайший сон, если спать в отеле: после слива выбор не меняется."""
-        if not self.feature_on("sleep") or self.value("sleep_deadline") is None:
+        if not self.sleep_runs() or self.value("sleep_deadline") is None:
             return 0
         if not self.hotel():
             return 0
@@ -280,7 +292,7 @@ class Obligations(PlannerBase):
 
     def hotel_reserve(self) -> int:
         deadline: datetime | None = self.value("sleep_deadline")
-        if not self.feature_on("sleep") or deadline is None:
+        if not self.sleep_runs() or deadline is None:
             return 0
         cost = self.hotel_cost()
         window = self.sleep_start(deadline) - HOTEL_RESERVE_AHEAD

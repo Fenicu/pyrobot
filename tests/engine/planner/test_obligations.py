@@ -197,6 +197,36 @@ def test_battle_stamina_uses_fastfood_rules() -> None:
     assert isinstance(decision, Wait) and decision.reason == "fastfood_ready"
 
 
+def test_battle_stamina_refreshes_stale_food_before_paid_eat() -> None:
+    now = msk(12, 40)
+    old_food = Obs(value=FOOD, at=now - timedelta(hours=7))
+    hungry = state(now, stamina=0, battle_at=msk(13), food_stock=old_food)
+    decision = decide(hungry, only(), now)
+    assert act(decision) == ("refresh", {"source": "food"})
+    assert verdicts(decision)["battle_stamina"] == "stale:food_stock"
+
+
+def test_battle_stamina_eat_only_if_done_before_battle() -> None:
+    no_fastfood = Settings.model_validate(
+        {"features": {**{name: False for name in PHASE4}, "fastfood": False}}
+    )
+    late = msk(12, 50)
+    decision = decide(state(late, stamina=0, battle_at=msk(13)), no_fastfood, late)
+    assert "deed:eat" not in verdicts(decision)
+    in_time = msk(13) - timedelta(minutes=11)
+    decision = decide(state(in_time, stamina=0, battle_at=msk(13)), no_fastfood, in_time)
+    assert act(decision) == ("deed:eat", {})
+
+
+def test_battle_stamina_no_eat_when_deeds_off() -> None:
+    cfg = Settings.model_validate(
+        {"features": {**{name: False for name in PHASE4}, "fastfood": False, "deeds": False}}
+    )
+    now = msk(12, 40)
+    decision = decide(state(now, stamina=0, battle_at=msk(13)), cfg, now)
+    assert "deed:eat" not in verdicts(decision)
+
+
 # --- слив налички в акции
 
 DUMP_BATTLE = msk(13)
@@ -256,6 +286,27 @@ def test_dump_keeps_tonights_hotel_only_when_sleeping_in_hotel() -> None:
     rich_hotel = only("stocks_dump", sleep={"hotel_if_cash_after_reserve_ge": 500})
     decision = decide(dumping(now), rich_hotel, now)
     assert act(decision) == ("stocks_dump", {"keep": 150 + 500, "margin": 5})
+
+
+def test_no_hotel_reserve_while_sleep_uncertified() -> None:
+    now = msk(12, 50)
+    rich_hotel = only("stocks_dump", sleep={"hotel_if_cash_after_reserve_ge": 500})
+    certified = frozenset({"stocks_dump", "refresh"})
+    decision = decide(dumping(now), rich_hotel, now, certified=certified)
+    assert act(decision) == ("stocks_dump", {"keep": 150, "margin": 5})
+
+
+def test_dump_checks_against_market_reserve() -> None:
+    now = msk(12, 50)
+    cfg = only(
+        "stocks_dump",
+        stocks={"cash_floor": 50},
+        sleep={"hotel_if_cash_after_reserve_ge": 5000},
+    )
+    decision = decide(dumping(now, money=280), cfg, now)
+    assert "stocks_dump" not in verdicts(decision)
+    decision = decide(dumping(now, money=300), cfg, now)
+    assert act(decision) == ("stocks_dump", {"keep": 50, "margin": 5})
 
 
 def test_dump_not_when_market_closed() -> None:
@@ -419,7 +470,7 @@ def test_sleep_waits_for_factory_signup_if_deadline_allows() -> None:
         )[0]
         == "sleep"
     )
-    tight = state(now, sleep_deadline=msk(18, 10), battle_at=msk(22))
+    tight = state(now, sleep_deadline=msk(18, 20), battle_at=msk(22))
     assert act(decide(tight, only("factory"), now))[0] == "sleep"
 
 

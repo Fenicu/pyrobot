@@ -447,6 +447,10 @@ def test_hotel_money_reserved_before_sleep_window() -> None:
     assert verdicts(near)["deed:harvest"] == "no_money"
     far = decide(awake(money=230), settings, NOW)
     assert act(far) == ("deed:harvest", {})
+    # Несертифицированный сон в live не исполнится — деньги на отель не держим.
+    certified = frozenset({"deed:harvest", "deed:job", "refresh"})
+    live = decide(awake(money=230, sleep_deadline=m(4 * 60)), settings, NOW, certified=certified)
+    assert act(live) == ("deed:harvest", {})
 
 
 def test_screen_cooldown_waits_extra_minute_but_ready_screen_does_not() -> None:

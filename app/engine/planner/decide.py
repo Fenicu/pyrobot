@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, Step
 from app.engine.planner.obligations import Obligations
@@ -9,7 +9,6 @@ from app.engine.planner.types import Act, Candidate, Decision
 from app.engine.settings import Settings
 from app.engine.state.model import (
     DEED_PRIORS,
-    DEFAULT_PRICES,
     ActivityStat,
     BusyState,
     CharacterState,
@@ -17,7 +16,6 @@ from app.engine.state.model import (
     TeamTask,
 )
 
-UNKNOWN_DEED_MINUTES = 10
 TEAM_RESOURCE = {"💡": "exp", "💵": "money", "📚": "knowledge", "⚙️": "details", "🔩": "raw"}
 
 
@@ -204,24 +202,6 @@ class _Planner(Obligations):
             self.wake(self.value("motivation_next_at"), "motivation")
             return None
         return self.act(name, {"buy": buy}, reason)
-
-    def price(self, activity: str) -> PriceState:
-        known = self.s.prices.get(activity)
-        default = DEFAULT_PRICES.get(activity, PriceState(motivation=1))
-        if known is None:
-            return default
-        if f"prices.{activity}" not in self.stale:
-            return known.value
-        # Устаревшая цена могла вырасти: берём большее из запомненного и умолчания.
-        worst = {
-            f: max(getattr(known.value, f), getattr(default, f)) for f in PriceState.model_fields
-        }
-        return PriceState(**worst)
-
-    def duration(self, activity: str, price: PriceState) -> timedelta:
-        default = DEFAULT_PRICES.get(activity)
-        minutes = price.minutes or (default.minutes if default else 0) or UNKNOWN_DEED_MINUTES
-        return timedelta(minutes=minutes)
 
     def team(self) -> TeamTask | None:
         task: TeamTask | None = self.value("team_task")

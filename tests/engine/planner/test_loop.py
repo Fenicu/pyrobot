@@ -6,7 +6,7 @@ import pytest
 
 from app.engine.notify import Level
 from app.engine.planner.base import TIMER_MARGIN
-from app.engine.planner.loop import DEEDS, MAX_RETRY, RETRY_AFTER, PlannerLoop
+from app.engine.planner.loop import DEEDS, MAX_RETRY, NOTHING_RETRY, RETRY_AFTER, PlannerLoop
 from app.engine.planner.store import MemoryPlannerStore
 from app.engine.planner.types import Act, Decision
 from app.engine.scenarios.library import ScenarioResult
@@ -237,6 +237,16 @@ async def test_refusal_cooldowns(world: World) -> None:
     await rig.loop._after(job, ScenarioResult("refused", "no_money"), at, at)
     assert rig.loop._cooldowns == {"deed:job": at + RETRY_AFTER}
     assert rig.notes.codes == []
+
+
+async def test_closed_market_holds_dump_longer(world: World) -> None:
+    rig = Rig(world)
+    at = moment()
+    dump = Act("stocks_dump", {"keep": 150, "margin": 5}, "battle_soon")
+    await rig.loop._after(dump, ScenarioResult("nothing", "market_closed"), at, at)
+    assert rig.loop._cooldowns == {"stocks_dump": at + timedelta(minutes=30)}
+    await rig.loop._after(dump, ScenarioResult("nothing", "no_stock"), at, at)
+    assert rig.loop._cooldowns == {"stocks_dump": at + NOTHING_RETRY}
 
 
 async def test_battle_refusal_holds_all_deeds(world: World) -> None:

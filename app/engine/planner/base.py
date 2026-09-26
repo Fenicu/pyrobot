@@ -7,6 +7,7 @@ from typing import Any
 from app.engine.planner.types import Act, Candidate, Decision, Wait
 from app.engine.settings import Settings
 from app.engine.state.model import (
+    DEFAULT_PRICES,
     BusyState,
     CharacterState,
     GorbushkaState,
@@ -25,6 +26,7 @@ GORBUSHKA_TICKET = PriceState(money=120, knowledge=20)
 TIMER_MARGIN = timedelta(seconds=3)
 # Кулдауны на экранах — с точностью до минуты, округлены вниз: готовность до 59 с позже.
 READY_SLACK = timedelta(minutes=1)
+UNKNOWN_DEED_MINUTES = 10
 
 _PROFILE = (
     "level",
@@ -199,6 +201,24 @@ class PlannerBase:
             if item is not None and item.count > reserve and stamina < item.low:
                 return kind
         return None
+
+    def price(self, activity: str) -> PriceState:
+        known = self.s.prices.get(activity)
+        default = DEFAULT_PRICES.get(activity, PriceState(motivation=1))
+        if known is None:
+            return default
+        if f"prices.{activity}" not in self.stale:
+            return known.value
+        # Устаревшая цена могла вырасти: берём большее из запомненного и умолчания.
+        worst = {
+            f: max(getattr(known.value, f), getattr(default, f)) for f in PriceState.model_fields
+        }
+        return PriceState(**worst)
+
+    def duration(self, activity: str, price: PriceState) -> timedelta:
+        default = DEFAULT_PRICES.get(activity)
+        minutes = price.minutes or (default.minutes if default else 0) or UNKNOWN_DEED_MINUTES
+        return timedelta(minutes=minutes)
 
     def battle_time(self) -> datetime | None:
         """Время битвы по наблюдению, приведённое к началу часа; свежесть не проверяется."""

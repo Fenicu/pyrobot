@@ -24,6 +24,10 @@ RETRY_AFTER = timedelta(minutes=5)
 MAX_RETRY = timedelta(hours=2)
 # «Нечего делать» и «занят» уже обновили состояние; короткая пауза страхует от зацикливания.
 NOTHING_RETRY = timedelta(minutes=1)
+# «Нечего делать», которое за минуту не изменится: биржа не откроется до конца окна слива.
+NOTHING_HOLD: dict[tuple[str, str], timedelta] = {
+    ("stocks_dump", "market_closed"): timedelta(minutes=30),
+}
 # Подавленное действие (dry_run) состояние не меняет: сценарий откладывается, решаются остальные.
 SUPPRESSED_HOLD = timedelta(minutes=10)
 # Подавление остановкой движка к сценарию не относится.
@@ -204,7 +208,8 @@ class PlannerLoop:
             await self._failed(key, result, finished)
             return
         if result.status == "nothing" or result.reason == "busy":
-            self._cooldowns[key] = finished + NOTHING_RETRY
+            hold = NOTHING_HOLD.get((name, result.reason), NOTHING_RETRY)
+            self._cooldowns[key] = finished + hold
             return
         shared = is_deed and result.reason in SHARED_REFUSALS
         for target in DEEDS if shared else (key,):
