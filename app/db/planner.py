@@ -55,3 +55,16 @@ class DbPlannerStore:
                 .where(ScenarioRunRow.id == run_id)
                 .values(status=status, reason=reason[:200], finished_at=at)
             )
+
+    async def close_running(self, at: datetime) -> int:
+        async with self._db.sessions() as session, session.begin():
+            closed = await session.scalars(
+                update(ScenarioRunRow)
+                .where(
+                    ScenarioRunRow.account_id == self._account_id,
+                    ScenarioRunRow.status == "running",
+                )
+                .values(status="interrupted", reason="restart", finished_at=at)
+                .returning(ScenarioRunRow.id)
+            )
+            return len(closed.all())

@@ -333,3 +333,16 @@ async def test_uncertified_step_stays_suppressed_after_switch_to_live(dry_world:
         ("sleep", "suppressed", "uncertified")
     ]
     assert dry_world.game.payloads() == ["🛌Спать"]
+
+
+async def test_memory_store_closes_running_runs() -> None:
+    store = MemoryPlannerStore()
+    at = moment()
+    await store.run_started(1, "book", {}, at)
+    done = await store.run_started(1, "card", {}, at)
+    await store.run_finished(done, "done", "card_used", at)
+    assert await store.close_running(at + timedelta(minutes=1)) == 1
+    assert [(r.status, r.reason) for r in store.runs] == [
+        ("interrupted", "restart"),
+        ("done", "card_used"),
+    ]

@@ -147,12 +147,16 @@ class Runtime:
             poll_s=self.reconcile_poll_s,
         )
         gateway.on_uncertain = reconciler.note
+        planner_store = DbPlannerStore(self.db, self.config.account_id)
+        interrupted = await planner_store.close_running(SystemClock().now())
+        if interrupted:
+            log.info("marked %d unfinished scenario runs as interrupted", interrupted)
         self.planner = PlannerLoop(
             gateway=gateway,
             state=lambda: load_state(pipeline.state),
             settings=settings,
             clock=SystemClock(),
-            store=DbPlannerStore(self.db, self.config.account_id),
+            store=planner_store,
             notifier=self.notifier,
             ready=self._planner_ready,
             poll_s=self.planner_poll_s,
@@ -201,6 +205,8 @@ class Runtime:
             return "killed"
         if gateway is not None and gateway.spending_blocked is not None:
             return "spending_blocked"
+        if self.pipeline is not None and not self.pipeline.healthy:
+            return "pipeline_unhealthy"
         return self._can_send()
 
     def _make_transport(self, pipeline: Pipeline) -> tuple[Transport, TgAuthBackend]:
@@ -249,6 +255,9 @@ class Runtime:
                 log.info("purged %d expired admin sessions", purged)
 
     async def stop(self) -> None:
+        # Планировщик — первым: новый шаг сценария не должен уйти в закрывающийся шлюз.
+        with contextlib.suppress(Exception):
+            await self.supervisor.cancel("planner")
         if self.gateway is not None:
             with contextlib.suppress(Exception):
                 await self.gateway.shutdown()

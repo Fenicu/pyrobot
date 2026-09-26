@@ -1,10 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 
 from app.db.base import Database
-from app.db.models import DecisionRow, ScenarioRunRow
+from app.db.models import Account, DecisionRow, ScenarioRunRow
 from app.db.planner import DbPlannerStore
 from app.engine.planner.types import Act, Candidate, Wait
 
@@ -38,3 +39,25 @@ async def test_decisions_and_runs_round_trip(clean_db: Database) -> None:
         "activity_started",
         AT,
     )
+
+
+async def test_close_running_interrupts_own_unfinished_runs(clean_db: Database) -> None:
+    async with clean_db.engine.begin() as conn:
+        await conn.execute(insert(Account).values(id=2).on_conflict_do_nothing())
+    mine = DbPlannerStore(clean_db, account_id=1)
+    theirs = DbPlannerStore(clean_db, account_id=2)
+    decided = await mine.record(AT, Act("book", {}, "book_ready"))
+    running = await mine.run_started(decided, "book", {"item": "book"}, AT)
+    finished = await mine.run_started(decided, "card", {"item": "card"}, AT)
+    await mine.run_finished(finished, "done", "card_used", AT)
+    foreign = await theirs.run_started(await theirs.record(AT, Wait(None, "x")), "book", {}, AT)
+    later = AT + timedelta(minutes=3)
+    assert await mine.close_running(later) == 1
+    async with clean_db.sessions() as session:
+        rows = await session.scalars(select(ScenarioRunRow))
+        runs = {r.id: (r.status, r.reason, r.finished_at) for r in rows}
+    assert runs == {
+        running: ("interrupted", "restart", later),
+        finished: ("done", "card_used", AT),
+        foreign: ("running", "", None),
+    }

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 
 from app.config import AppConfig
@@ -62,4 +63,35 @@ async def test_session_purge_runs_periodically_and_survives_errors() -> None:
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+        await runtime.db.dispose()
+
+
+async def test_stop_cancels_planner_before_closing_gateway() -> None:
+    runtime = Runtime(AppConfig(_env_file=None, transport="fake"))
+    events: list[str] = []
+
+    async def planner() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            events.append("planner")
+            raise
+
+    class _Gateway:
+        async def shutdown(self) -> None:
+            events.append("gateway")
+
+    runtime.gateway = _Gateway()  # type: ignore[assignment]
+    runtime.supervisor.start("planner", planner)
+    await asyncio.sleep(0)
+    await runtime.stop()
+    assert events == ["planner", "gateway"]
+
+
+async def test_planner_not_ready_while_pipeline_unhealthy() -> None:
+    runtime = Runtime(AppConfig(_env_file=None, transport="fake"))
+    runtime.pipeline = SimpleNamespace(healthy=False)  # type: ignore[assignment]
+    try:
+        assert runtime._planner_ready() == "pipeline_unhealthy"
+    finally:
         await runtime.db.dispose()

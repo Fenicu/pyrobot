@@ -11,9 +11,11 @@ from app.config import AppConfig
 from app.db.actions import DbActionStore
 from app.db.base import Database
 from app.db.models import DecisionRow, MessageRow, ScenarioRunRow
+from app.db.planner import DbPlannerStore
 from app.engine.commands import CommandClass
 from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
+from app.engine.planner.types import Act
 from app.engine.supervisor import Supervisor
 from app.engine.transport.fake import Sent
 from app.main import create_application
@@ -230,3 +232,18 @@ async def test_planner_refreshes_state_in_dry_run(clean_db: Database) -> None:
         runs = (await s.scalars(select(ScenarioRunRow.scenario))).all()
     assert decided is not None and decided >= 2
     assert list(runs[:1]) == ["refresh"]
+
+
+async def test_start_interrupts_runs_left_by_previous_process(clean_db: Database) -> None:
+    store = DbPlannerStore(clean_db, 1)
+    moment = now()
+    left = await store.run_started(
+        await store.record(moment, Act("book", {}, "book_ready")), "book", {}, moment
+    )
+    app = create_application(_cfg())
+    async with app.router.lifespan_context(app):
+        pass
+    async with clean_db.sessions() as s:
+        run = await s.get(ScenarioRunRow, left)
+    assert run is not None and (run.status, run.reason) == ("interrupted", "restart")
+    assert run.finished_at is not None and run.finished_at >= moment

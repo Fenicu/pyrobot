@@ -36,6 +36,10 @@ class PlannerStore(Protocol):
 
     async def run_finished(self, run_id: int, status: str, reason: str, at: datetime) -> None: ...
 
+    async def close_running(self, at: datetime) -> int:
+        """Незавершённые запуски прошлого процесса → `interrupted`; возвращает их число."""
+        ...
+
 
 @dataclass
 class MemoryRun:
@@ -66,3 +70,9 @@ class MemoryPlannerStore:
     async def run_finished(self, run_id: int, status: str, reason: str, at: datetime) -> None:
         run = self.runs[run_id - 1]
         run.status, run.reason, run.finished_at = status, reason, at
+
+    async def close_running(self, at: datetime) -> int:
+        running = [run for run in self.runs if run.status == "running"]
+        for run in running:
+            run.status, run.reason, run.finished_at = "interrupted", "restart", at
+        return len(running)

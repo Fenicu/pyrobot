@@ -31,6 +31,16 @@ class Supervisor:
             and all(not t.done() for t in self._tasks.values())
         )
 
+    async def cancel(self, name: str) -> None:
+        """Отменить одну задачу и дождаться её; неизвестное имя — ничего."""
+        task = self._tasks.pop(name, None)
+        if task is None:
+            return
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        self._backoff.discard(name)
+
     async def stop(self) -> None:
         tasks = list(self._tasks.values())
         for task in tasks:
