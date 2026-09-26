@@ -28,7 +28,9 @@ def _records(base: Path) -> Iterator[dict[str, Any]]:
     if screens.exists():
         with screens.open(encoding="utf-8") as fh:
             for line in fh:
-                yield from json.loads(line).get("resp", [])
+                for rec in json.loads(line).get("resp", []):
+                    if rec.get("id"):
+                        yield rec
 
 
 def find(ids: set[int]) -> dict[int, dict[str, Any]]:

@@ -63,8 +63,8 @@ uv run alembic upgrade head
 ## Фикстуры
 
 Тесты парсеров игровых сообщений используют реальные записи из `~/pyrobot-research` (выгрузка истории
-игровой переписки, собранная прототипами парсеров). Загрузчик фикстур (`tests/fixtures.game()`,
-`tests/fixtures.game_msg()`) читает из `tests/fixtures/game/*.jsonl` — JSONL-файлы по семействам
+игровой переписки, собранная прототипами парсеров). Загрузчик фикстур (`tests.fixtures.game()`,
+`tests.fixtures.game_msg()`) читает из `tests/fixtures/game/*.jsonl` — JSONL-файлы по семействам
 сообщений (profile, battle, activities, и т.д.). Переменная окружения `PYROBOT_RESEARCH` переопределяет
 путь к выгрузке (по умолчанию `~/pyrobot-research`).
 
