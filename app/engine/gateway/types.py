@@ -64,6 +64,8 @@ class ActionRequest:
     lease_token: str | None = None
     risky_confirmed: bool = False
     expect_revision: int | None = None
+    # Шаг несертифицированного сценария: не-nav подавляется как в dry_run даже в live.
+    simulate: bool = False
 
     def payload(self) -> dict[str, object]:
         return {

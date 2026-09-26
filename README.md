@@ -191,6 +191,15 @@ uv run python tools/fixtures.py <семейство> <id> [<id> ...]
 (`hotel_if_cash_after_reserve_ge`, по умолчанию — цена отеля); `levelup.policy` — `balanced`;
 `engine.paused` — пауза планировщика.
 
+**Политика шлюза.** Каждая не-`nav` команда относится к механике (`feature_of_text`/
+`feature_of_callback` в `app/engine/commands.py`); если механика выключена в `features`, шлюз
+отклоняет команду (`REJECTED "feature_off:<механика>"`) для всех источников, кроме ручного. Пауза
+(`engine.paused`) отклоняет не-`nav` команды планировщика и сценариев (`REJECTED "paused"`) — в том
+числе очередной шаг сценария, начатого до паузы; срочные и ручные — по флагам
+`urgent_while_paused`/`manual_while_paused`. Шаг несертифицированного сценария
+(`ActionRequest.simulate`) подавляется в любом режиме (`SUPPRESSED "uncertified"`, в `dry_run` —
+`"dry_run"`), `nav` уходит.
+
 ## Запуск
 
 ```bash
@@ -316,7 +325,9 @@ identity (`get_me`) проверяется до запуска апдейтов,
 ожидания подтверждается сразу после отправки (`CONFIRMED "sent"`). Kill switch (ручной `kill()` или
 `settings.engine.killed`) подавляет всё (`SUPPRESSED "kill_switch"`), `dry_run` подавляет всё, кроме
 `nav` (`SUPPRESSED "dry_run"`), блок трат (`block_spending`) отклоняет всё, кроме `nav` (`REJECTED
-"blocked:<reason>"`). Предикат `can_send` (из `Runtime`) проверяется там же, где kill switch и
+"blocked:<reason>"`); выключенная механика и пауза отклоняют команду по правилам раздела «Планировщик
+и сценарии», шаг несертифицированного сценария подавляется (`SUPPRESSED "uncertified"`). Предикат
+`can_send` (из `Runtime`) проверяется там же, где kill switch и
 `dry_run`, и отклоняет любую команду, включая `nav`: без single-instance лока — `REJECTED
 "lock_lost"`, если Telegram не в состоянии `ONLINE` — `REJECTED "tg_offline"`. Истёкший TTL —
 `REJECTED "expired"`, клик по кнопке вне последней ревизии сообщения — `REJECTED "stale_button"`,

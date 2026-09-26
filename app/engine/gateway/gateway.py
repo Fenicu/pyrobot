@@ -11,7 +11,13 @@ from typing import Any, Literal
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
-from app.engine.commands import CommandClass, classify_callback, classify_text
+from app.engine.commands import (
+    CommandClass,
+    classify_callback,
+    classify_text,
+    feature_of_callback,
+    feature_of_text,
+)
 from app.engine.events import AntiFlood
 from app.engine.gateway.store import CANCELLED, ActionStore, DuplicateKey
 from app.engine.gateway.types import (
@@ -83,6 +89,12 @@ def command_class(req: ActionRequest) -> CommandClass:
     if req.kind is ActionKind.SEND:
         return classify_text(req.text or "")
     return classify_callback(req.data or "")
+
+
+def command_feature(req: ActionRequest) -> str | None:
+    if req.kind is ActionKind.SEND:
+        return feature_of_text(req.text or "")
+    return feature_of_callback(req.data or "")
 
 
 class ActionGateway:
@@ -342,10 +354,36 @@ class ActionGateway:
         cannot = self._can_send()
         if cannot is not None:
             return ActionStatus.REJECTED, cannot
+        if cls is not CommandClass.NAV:
+            blocked = self._policy_checks(req)
+            if blocked is not None:
+                return blocked
         if eng.mode == "dry_run" and cls is not CommandClass.NAV:
             return ActionStatus.SUPPRESSED, "dry_run"
+        if req.simulate and cls is not CommandClass.NAV:
+            return ActionStatus.SUPPRESSED, "uncertified"
         if self._spend_block is not None and cls is not CommandClass.NAV:
             return ActionStatus.REJECTED, f"blocked:{self._spend_block}"
+        return None
+
+    def _policy_checks(self, req: ActionRequest) -> Blocked | None:
+        current = self._settings.current
+        eng = current.engine
+        if eng.paused:
+            # Планировщик и сценарии стоят (шаг сценария, начатого до паузы, тоже не уходит).
+            allowed = {
+                Source.URGENT: eng.urgent_while_paused,
+                Source.MANUAL: eng.manual_while_paused,
+            }.get(req.source, False)
+            if not allowed:
+                return ActionStatus.REJECTED, "paused"
+        feature = command_feature(req)
+        if (
+            feature is not None
+            and req.source is not Source.MANUAL
+            and not getattr(current.features, feature, False)
+        ):
+            return ActionStatus.REJECTED, f"feature_off:{feature}"
         return None
 
     def _allowed_chats(self) -> set[int]:
