@@ -2,7 +2,8 @@ import pytest
 from httpx import AsyncClient
 
 from app.api.container import Container
-from app.engine.tg_auth import InvalidPhone
+from app.engine.tg_auth import InvalidPhone, SendCodeRejected
+from app.engine.transport.base import FloodWait
 from app.engine.transport.fake import FakeTgBackend
 from tests.api.conftest import login
 from tests.engine.test_facade import build
@@ -76,3 +77,34 @@ async def test_tg_classified_error_is_400(container: Container, api_client: Asyn
     h = {"X-CSRF-Token": await login(api_client)}
     r = await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
     assert r.status_code == 400 and r.json() == {"detail": "invalid_phone"}
+
+
+class _FloodWaitOnSendCode(FakeTgBackend):
+    async def send_code(self, phone: str) -> str:
+        raise FloodWait(30)
+
+
+class _RejectedOnSendCode(FakeTgBackend):
+    async def send_code(self, phone: str) -> str:
+        raise SendCodeRejected("phone_number_banned")
+
+
+async def test_tg_send_code_flood_wait_is_429(
+    container: Container, api_client: AsyncClient
+) -> None:
+    container.facade = build(authorized=False, backend=_FloodWaitOnSendCode())
+    h = {"X-CSRF-Token": await login(api_client)}
+    r = await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    assert r.status_code == 429 and r.json() == {"detail": "flood_wait"}
+    assert r.headers["retry-after"] == "31"
+    st = (await api_client.get("/api/v1/tg/status")).json()
+    assert st["state"] == "error" and st["error"] == "flood_wait"
+
+
+async def test_tg_send_code_rejected_is_400_with_rpc_code(
+    container: Container, api_client: AsyncClient
+) -> None:
+    container.facade = build(authorized=False, backend=_RejectedOnSendCode())
+    h = {"X-CSRF-Token": await login(api_client)}
+    r = await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    assert r.status_code == 400 and r.json() == {"detail": "phone_number_banned"}

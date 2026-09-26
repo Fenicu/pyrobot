@@ -1,3 +1,5 @@
+import asyncio
+
 from app.api.security import LoginRateLimiter, hash_password, token_hash, verify_password
 
 
@@ -55,3 +57,21 @@ def test_rate_limiter_sweeps_stale_entries_over_capacity() -> None:
     rl.lock_for("d")
     rl.failure("d")
     assert rl.tracked == 1
+
+
+async def test_sweep_keeps_lock_with_pending_waiter() -> None:
+    # release() снимает _locked ДО того, как разбуженный waiter успевает пробежать по
+    # циклу событий и убрать себя из _waiters — в этом окне lock.locked() уже False,
+    # но лок нельзя удалять: следующий lock_for(key) создаст другой объект Lock, и
+    # ожидающий вызов больше не сериализуется с новыми запросами по тому же ключу.
+    rl = LoginRateLimiter()
+    lock = rl.lock_for("k")
+    await lock.acquire()
+    waiter = asyncio.ensure_future(lock.acquire())
+    await asyncio.sleep(0)
+    lock.release()
+    assert not lock.locked()
+    rl._sweep()
+    assert "k" in rl._locks
+    await waiter
+    lock.release()

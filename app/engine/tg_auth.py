@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from app.engine.notify import NotifierPort
+from app.engine.transport.base import FloodWait, TransportAuthLost
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,12 @@ class SignUpRequired(TgAuthError):
 
 class InvalidPhone(TgAuthError):
     code = "invalid_phone"
+
+
+class SendCodeRejected(TgAuthError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
 
 
 class AttemptMismatch(TgAuthError):
@@ -115,6 +122,10 @@ class TgAuthManager:
         self._callbacks.append(cb)
 
     async def boot(self) -> TgStatus:
+        # TransportAuthLost обрабатываем сами, а не через on_auth_lost/mark_lost: тот
+        # захватывает этот же self._lock, а мы уже держим его здесь — реентерабельности
+        # у asyncio.Lock нет, повторный захват — дедлок.
+        auth_lost = False
         async with self._lock:
             try:
                 authorized = await self._backend.connect()
@@ -122,10 +133,20 @@ class TgAuthManager:
                     await self._accept(await self._backend.identify())
                 else:
                     self._set(TgState.UNAUTHORIZED)
+            except TransportAuthLost:
+                auth_lost = True
+                self._user_id = None
+                self._set(TgState.UNAUTHORIZED, error="session_revoked")
             except Exception:
                 log.exception("telegram boot failed")
                 self._set(TgState.ERROR, error="connect_failed")
-            return self.status()
+        if auth_lost and self._notifier is not None:
+            await self._notifier.notify(
+                "error",
+                "tg_auth_lost",
+                "telegram session was revoked while pyrobot was stopped; login again in admin",
+            )
+        return self.status()
 
     async def start(self, phone: str, owner: str) -> TgStatus:
         async with self._lock:
@@ -140,6 +161,10 @@ class TgAuthManager:
             except TgAuthError as exc:
                 self._attempt = None
                 self._set(TgState.ERROR, error=exc.code)
+                raise
+            except FloodWait:
+                self._attempt = None
+                self._set(TgState.ERROR, error="flood_wait")
                 raise
             except Exception as exc:
                 log.exception("telegram send_code failed")

@@ -9,6 +9,7 @@ from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
 from app.engine.facade import EngineFacade, LockLostError
 from app.engine.tg_auth import AttemptMismatch, TgAuthError, TgBackendError, TgStatus
+from app.engine.transport.base import FloodWait
 
 router = APIRouter(prefix="/api/v1", tags=["engine"])
 
@@ -98,6 +99,13 @@ async def _guard(coro: Awaitable[TgStatus]) -> dict[str, Any]:
         return _tg(await coro)
     except AttemptMismatch as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except FloodWait as exc:
+        retry_after = max(1, int(exc.seconds) + 1)
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "flood_wait",
+            headers={"Retry-After": str(retry_after)},
+        ) from exc
     except TgBackendError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, exc.code) from exc
     except TgAuthError as exc:

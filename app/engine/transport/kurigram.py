@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,7 @@ from app.engine.tg_auth import (
     InvalidPassword,
     InvalidPhone,
     PasswordRequired,
+    SendCodeRejected,
     SignUpRequired,
 )
 from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
@@ -113,6 +115,28 @@ class ChatFilter:
         return False
 
 
+async def _force_close(client: Any) -> None:
+    # watchdog обновлений kurigram, умерший на отозванной сессии, перевыбрасывает
+    # Unauthorized внутри terminate() ДО is_initialized=False — stop() пропускает
+    # disconnect(), и утекают MTProto-сессия и sqlite-соединение storage. Форсируем
+    # закрытие каждым шагом отдельно, чтобы ни один ресурс не остался открытым.
+    try:
+        if client.is_initialized:
+            await client.stop()
+        elif client.is_connected:
+            await client.disconnect()
+        return
+    except Exception:
+        log.warning("telegram client stop failed, forcing disconnect", exc_info=True)
+    with suppress(Exception):
+        client.is_initialized = False
+    with suppress(Exception):
+        if client.is_connected:
+            await client.disconnect()
+    with suppress(Exception):
+        await client.storage.close()
+
+
 class KurigramTransport:
     def __init__(
         self, *, api_id: int, api_hash: str, workdir: Path, chat_filter: ChatFilter, sink: Sink
@@ -176,13 +200,7 @@ class KurigramTransport:
             return False
         self._me = None
         self._client = self._make_client()
-        try:
-            if client.is_initialized:
-                await client.stop()
-            elif client.is_connected:
-                await client.disconnect()
-        except Exception:
-            log.exception("telegram client stop failed during reset")
+        await _force_close(client)
         try:
             await client.storage.delete()
         except FileNotFoundError:
@@ -196,9 +214,16 @@ class KurigramTransport:
             await self._auth_lost()
 
     async def connect(self) -> bool:
-        if not self._client.is_connected:
-            return bool(await self._client.connect())
-        return (await self._client.storage.user_id()) is not None
+        from pyrogram import errors
+
+        client = self._client
+        try:
+            if not client.is_connected:
+                return bool(await client.connect())
+            return (await client.storage.user_id()) is not None
+        except errors.Unauthorized as exc:
+            await self._reset_client(client)
+            raise TransportAuthLost(str(exc)) from exc
 
     async def send_code(self, phone: str) -> str:
         from pyrogram import errors
@@ -208,6 +233,10 @@ class KurigramTransport:
             sent = await self._client.send_phone_number_code(phone)
         except errors.PhoneNumberInvalid as exc:
             raise InvalidPhone from exc
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.BadRequest as exc:
+            raise SendCodeRejected(str(exc.ID or exc).lower()) from exc
         return str(sent.phone_code_hash)
 
     async def sign_in(self, phone: str, code_hash: str, code: str) -> int:
@@ -235,7 +264,17 @@ class KurigramTransport:
         return int(user.id)
 
     async def identify(self) -> int:
-        self._me = await self._client.get_me()
+        from pyrogram import errors
+
+        client = self._client
+        try:
+            self._me = await client.get_me()
+        except errors.Unauthorized as exc:
+            # Сброс, а не _lose_auth: identify() зовётся из TgAuthManager.boot() под его
+            # локом, а on_auth_lost обычно привязан к mark_lost(), который тот же лок
+            # захватывает повторно — дедлок. boot() сам решает, что делать с потерей.
+            await self._reset_client(client)
+            raise TransportAuthLost(str(exc)) from exc
         return int(self._me.id)
 
     async def go_online(self) -> None:
@@ -262,7 +301,9 @@ class KurigramTransport:
         failure: Exception | None = None
         if client.is_connected:
             try:
-                await client.invoke(raw.functions.auth.LogOut())
+                await client.invoke(
+                    raw.functions.auth.LogOut(), retries=1, sleep_threshold=0, retry_delay=0
+                )
             except errors.Unauthorized:
                 log.info("session already revoked, logging out locally")
             except Exception as exc:
@@ -276,17 +317,16 @@ class KurigramTransport:
 
         client = self._client
         try:
-            await client.invoke(raw.functions.updates.GetState(), retries=1, sleep_threshold=0)
+            await client.invoke(
+                raw.functions.updates.GetState(), retries=1, sleep_threshold=0, retry_delay=0
+            )
         except errors.Unauthorized:
             await self._lose_auth(client)
         except Exception as exc:
             log.warning("telegram probe failed: %s", exc)
 
     async def stop(self) -> None:
-        if self._client.is_initialized:
-            await self._client.stop()
-        elif self._client.is_connected:
-            await self._client.disconnect()
+        await _force_close(self._client)
 
     async def send_text(self, chat_id: int, text: str, reply_to: int | None = None) -> int:
         from pyrogram import errors, raw
@@ -305,6 +345,7 @@ class KurigramTransport:
                 ),
                 retries=1,
                 sleep_threshold=0,
+                retry_delay=0,
             )
         except errors.FloodWait as exc:
             raise FloodWait(float(exc.seconds or 0)) from exc
@@ -328,6 +369,7 @@ class KurigramTransport:
                 retries=1,
                 timeout=timeout_s,
                 sleep_threshold=0,
+                retry_delay=0,
             )
         except TimeoutError:
             return None

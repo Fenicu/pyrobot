@@ -108,6 +108,14 @@ class LoginRateLimiter:
         now = self._clock()
         for key in [k for k in self._failures if self._stale(k, now)]:
             self._forget(key)
-        for key in [k for k, lock in self._locks.items() if not lock.locked()]:
+        # release() снимает _locked до того, как разбуженный waiter уходит из _waiters;
+        # удалить лок в этом окне значит завести новый Lock под тем же ключом и потерять
+        # сериализацию с уже ожидающим вызовом.
+        idle = [
+            k
+            for k, lock in self._locks.items()
+            if not lock.locked() and not getattr(lock, "_waiters", None)
+        ]
+        for key in idle:
             if key not in self._failures:
                 del self._locks[key]

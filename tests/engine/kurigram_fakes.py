@@ -27,7 +27,11 @@ def rpc_error(name: str) -> Exception:
 class FakeStorage:
     def __init__(self) -> None:
         self.deleted = False
+        self.closed = False
         self.states: list[Any] = []
+
+    async def close(self) -> None:
+        self.closed = True
 
     async def delete(self) -> None:
         if self.deleted:
@@ -72,6 +76,7 @@ class FakeClient:
             raise ConnectionError("Client is already disconnected")
         if self.is_initialized:
             raise ConnectionError("Can't disconnect an initialized client")
+        await self.storage.close()
         self.is_connected = False
 
     async def initialize(self) -> None:
@@ -107,6 +112,9 @@ class FakeClient:
 
     async def get_me(self) -> Any:
         self.get_me_calls += 1
+        err = self.errors.pop("GetMe", None)
+        if err is not None:
+            raise err
         return _user()
 
     async def get_dialogs(self, limit: int = 0) -> AsyncIterator[Any]:

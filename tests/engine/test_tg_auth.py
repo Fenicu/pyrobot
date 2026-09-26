@@ -9,6 +9,7 @@ from app.engine.tg_auth import (
     TgBackendError,
     TgState,
 )
+from app.engine.transport.base import TransportAuthLost
 from app.engine.transport.fake import FakeTgBackend
 
 EXPECTED = 267519921
@@ -82,6 +83,19 @@ async def test_unexpected_user_after_code_logged_out() -> None:
     st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
     assert st.state is TgState.ERROR and st.error == "unexpected_user"
     assert backend.logged_out and not backend.online
+
+
+class _RevokedAtBoot(FakeTgBackend):
+    async def identify(self) -> int:
+        raise TransportAuthLost("session revoked")
+
+
+async def test_boot_session_revoked_while_stopped_reports_and_unauthorized() -> None:
+    rec = _Recorder()
+    mgr = TgAuthManager(_RevokedAtBoot(authorized=True), expected_user_id=EXPECTED, notifier=rec)
+    st = await mgr.boot()
+    assert st.state is TgState.UNAUTHORIZED and st.error == "session_revoked"
+    assert rec.items == [("error", "tg_auth_lost")]
 
 
 async def test_mark_lost() -> None:

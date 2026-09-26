@@ -136,8 +136,13 @@ identity (`get_me`) проверяется до запуска апдейтов,
 
 Вход в Telegram (`app/engine/tg_auth.py`, `TgAuthManager`) сериализует все шаги логина одним
 `asyncio.Lock`. `boot()` при уже авторизованной сессии проверяет identity **до** запуска апдейтов:
-чужой аккаунт получает `log_out()` и состояние `ERROR "unexpected_user"`, апдейты не стартуют.
-Попытка входа (`start`/`submit_code`/`submit_password`) привязана к `owner` и `attempt_id` с TTL
+чужой аккаунт получает `log_out()` и состояние `ERROR "unexpected_user"`, апдейты не стартуют. Если
+сессию отозвали, пока процесс был остановлен, `connect()`/`identify()` при старте получают 401
+(`TransportAuthLost`): клиент сбрасывается так же, как при потере на лету, `boot()` сам переводит
+менеджер в `UNAUTHORIZED "session_revoked"` и шлёт уведомление `tg_auth_lost` — не через
+`mark_lost()`/`on_auth_lost`, потому что `boot()` в этот момент уже держит свой `asyncio.Lock`, а
+`mark_lost()` тот же лок захватывает повторно. Попытка входа
+(`start`/`submit_code`/`submit_password`) привязана к `owner` и `attempt_id` с TTL
 (`attempt_ttl_s`, по умолчанию 600 с): активную непросроченную попытку другого владельца отклоняет
 `AttemptMismatch`, тот же владелец может начать заново, после истечения TTL попытку может подхватить
 кто угодно. Коды и пароли никогда не попадают в текст ошибок и логи. `mark_lost()` (колбэк
@@ -238,7 +243,10 @@ code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (�
 истёкший код и неверный пароль 2FA — это 200 с полем `error` (`invalid_code`, `code_expired`,
 `invalid_password`). Прочие ошибки входа — наследники `TgAuthError` с кодом: распознанные (например,
 `invalid_phone`) — 400 `{"detail": "<код>"}`, сбой Telegram или сети (`TgBackendError`:
-`send_code_failed`, `sign_in_failed`, `check_password_failed`) — 502. Сбой `send_code` переводит
-статус Telegram в `ERROR` с тем же кодом, сбой `sign_in`/`check_password` оставляет попытку, чтобы
-код можно было отправить повторно. `GET /readyz` (без авторизации) — 200 `{"status":"ready"}`, если
-движок поднят и `ready()` истинна, иначе 503 `{"status":"not_ready"}`.
+`send_code_failed`, `sign_in_failed`, `check_password_failed`) — 502. Отдельно для `send_code`:
+`FloodWait` от Telegram — 429 `{"detail": "flood_wait"}` с заголовком `Retry-After`, прочий
+`BadRequest` (кроме `invalid_phone`) — 400 с кодом в нижнем регистре из RPC ID Telegram (например
+`phone_number_banned`). Сбой `send_code` переводит статус Telegram в `ERROR` с тем же кодом, сбой
+`sign_in`/`check_password` оставляет попытку, чтобы код можно было отправить повторно. `GET
+/readyz` (без авторизации) — 200 `{"status":"ready"}`, если движок поднят и `ready()` истинна, иначе
+503 `{"status":"not_ready"}`.

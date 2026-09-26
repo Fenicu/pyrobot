@@ -4,8 +4,8 @@ from types import SimpleNamespace as NS
 import pytest
 
 from app.engine.notify import Level
-from app.engine.tg_auth import InvalidPhone, TgAuthManager, TgState
-from app.engine.transport.base import TransportAuthLost, TransportRejected
+from app.engine.tg_auth import InvalidPhone, SendCodeRejected, TgAuthManager, TgState
+from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
 from tests.engine.helpers import GAME
 from tests.engine.kurigram_fakes import EXPECTED, FakeKurigram, rpc_error
 
@@ -42,7 +42,10 @@ async def test_probe_unauthorized_resets_client_and_reports(tmp_path: Path) -> N
     lost = await _online(t)
     t.client.errors["GetState"] = rpc_error("SessionRevoked")
     await t.probe()
-    assert t.clients[0].invoked[-1] == ("GetState", {"retries": 1, "sleep_threshold": 0})
+    assert t.clients[0].invoked[-1] == (
+        "GetState",
+        {"retries": 1, "sleep_threshold": 0, "retry_delay": 0},
+    )
     _assert_reset(t)
     assert lost == [1]
 
@@ -68,6 +71,7 @@ async def test_send_click_unauthorized_resets_client(tmp_path: Path, op: str) ->
             await t.click(GAME, 1, "maze_up", 1.0)
     _assert_reset(t)
     assert lost == [1]
+    assert t.clients[0].invoked[-1][1]["retry_delay"] == 0
 
 
 async def test_reset_survives_stop_failure(tmp_path: Path) -> None:
@@ -76,7 +80,22 @@ async def test_reset_survives_stop_failure(tmp_path: Path) -> None:
     t.client.stop_error = RuntimeError("stop failed")
     t.client.errors["GetState"] = rpc_error("SessionRevoked")
     await t.probe()
-    assert t.clients[0].storage.deleted and t._client is t.clients[1] and lost == [1]
+    old = t.clients[0]
+    assert old.storage.deleted and t._client is t.clients[1] and lost == [1]
+    # stop() бросил после частичной остановки (watchdog умер до is_initialized=False) —
+    # клиент должен быть форсированно отключён и storage закрыт, иначе течёт MTProto-сессия.
+    assert not old.is_initialized and not old.is_connected
+    assert old.storage.closed
+
+
+async def test_stop_forces_disconnect_on_failure(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    client = t.client
+    client.stop_error = RuntimeError("stop failed")
+    await t.stop()
+    assert not client.is_initialized and not client.is_connected
+    assert client.storage.closed
 
 
 async def test_failed_log_out_still_resets_client(tmp_path: Path) -> None:
@@ -87,6 +106,10 @@ async def test_failed_log_out_still_resets_client(tmp_path: Path) -> None:
         await t.log_out()
     _assert_reset(t)
     assert lost == []
+    assert t.clients[0].invoked[-1] == (
+        "LogOut",
+        {"retries": 1, "sleep_threshold": 0, "retry_delay": 0},
+    )
 
 
 async def test_log_out_of_revoked_session_is_success(tmp_path: Path) -> None:
@@ -156,6 +179,56 @@ async def test_send_code_invalid_phone_classified(tmp_path: Path) -> None:
     t.client.errors["SendCode"] = rpc_error("PhoneNumberInvalid")
     with pytest.raises(InvalidPhone):
         await t.send_code("+1")
+
+
+async def test_send_code_flood_wait_mapped(tmp_path: Path) -> None:
+    from pyrogram import errors
+
+    t = FakeKurigram(tmp_path, authorized=False)
+    await t.connect()
+    t.client.errors["SendCode"] = errors.FloodWait(30)
+    with pytest.raises(FloodWait) as info:
+        await t.send_code("+1")
+    assert info.value.seconds == 30
+
+
+async def test_send_code_other_bad_request_rejected(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path, authorized=False)
+    await t.connect()
+    t.client.errors["SendCode"] = rpc_error("PhoneNumberBanned")
+    with pytest.raises(SendCodeRejected) as info:
+        await t.send_code("+1")
+    assert info.value.code == "phone_number_banned"
+
+
+async def test_identify_unauthorized_resets_client_without_callback(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    lost: list[int] = []
+
+    async def on_lost() -> None:
+        lost.append(1)
+
+    t.on_auth_lost = on_lost
+    assert await t.connect()
+    t.client.errors["GetMe"] = rpc_error("SessionRevoked")
+    with pytest.raises(TransportAuthLost):
+        await t.identify()
+    _assert_reset(t)
+    # identify() не должен звать on_auth_lost сам: TgAuthManager.boot() держит свой
+    # lock во время identify(), а on_auth_lost обычно привязан к mark_lost(), который
+    # тот же lock захватывает повторно — это дедлок (не re-entrant asyncio.Lock).
+    assert lost == []
+
+
+async def test_boot_revoked_session_reports_and_resets_without_deadlock(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    rec = Recorder()
+    mgr = TgAuthManager(t, expected_user_id=EXPECTED, notifier=rec)
+    t.on_auth_lost = mgr.mark_lost
+    t.client.errors["GetMe"] = rpc_error("SessionRevoked")
+    st = await mgr.boot()
+    assert st.state is TgState.UNAUTHORIZED and st.error == "session_revoked"
+    assert rec.items == [("error", "tg_auth_lost")]
 
 
 async def test_boot_calls_get_me_once(tmp_path: Path) -> None:
