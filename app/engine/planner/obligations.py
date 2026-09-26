@@ -6,14 +6,12 @@ from datetime import datetime, time, timedelta
 from app.engine.gametime import MSK, to_msk
 from app.engine.market import pick_stock
 from app.engine.parsing.smoothie import INGREDIENTS
-from app.engine.planner.base import PlannerBase
+from app.engine.planner.base import PlannerBase, battle_hour
 from app.engine.planner.types import Decision
 from app.engine.state.model import BusyState, StockLimits, TargetSet
 
 # Деньги на отель дела не тратят за столько до начала сна.
 HOTEL_RESERVE_AHEAD = timedelta(hours=3)
-# Цель считается выставленной на битву, если «Следующая Битва через …» указала на неё.
-TARGET_MATCH = timedelta(minutes=15)
 TARGET_LAST_CALL = timedelta(minutes=1)
 STAMINA_AHEAD = timedelta(minutes=30)
 FASTFOOD_BEFORE = timedelta(minutes=2)
@@ -77,7 +75,7 @@ class Obligations(PlannerBase):
         done: TargetSet | None = self.value("battle_target_set")
         if done is None or done.target != desired:
             return False
-        return abs(done.battle_at - battle) <= TARGET_MATCH
+        return battle_hour(done.battle_at) == battle
 
     def battle_stamina(self, busy: BusyState | None) -> Decision | None:
         battle = self.upcoming_battle()

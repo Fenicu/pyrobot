@@ -249,7 +249,7 @@ class _Planner(Obligations):
             return None
         if (field := self.stale_of("motivation", "money", "details", "battle_at")) is not None:
             return self.refresh("deeds", field)
-        battle: datetime = self.value("battle_at")
+        battle = self.battle_time()
         deadline: datetime | None = self.value("sleep_deadline")
         motivation = self.value("motivation") - self.motivation_reserve()
         money = self.value("money") - self.ticket_reserve() - self.hotel_reserve()
@@ -261,7 +261,11 @@ class _Planner(Obligations):
             end = self.now + self.duration(activity, price)
             score = self.score(activity, price)
             verdict = None
-            if self.now < battle + BATTLE_AFTER and end > battle - BATTLE_BEFORE:
+            if (
+                battle is not None
+                and self.now < battle + BATTLE_AFTER
+                and end > battle - BATTLE_BEFORE
+            ):
                 verdict = "battle_window"
                 self.wake(battle + BATTLE_AFTER, "battle")
             elif deadline is not None and end > deadline:

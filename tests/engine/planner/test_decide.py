@@ -64,7 +64,12 @@ FOOD = {
 }
 
 
-def awake(**over: Any) -> CharacterState:
+def awake(at: datetime = NOW, **over: Any) -> CharacterState:
+    """Состояние, снятое в `at` (по умолчанию — в `NOW`)."""
+
+    def t(minutes: float) -> datetime:
+        return at + timedelta(minutes=minutes)
+
     fields: dict[str, Any] = {
         "level": 70,
         "money": 500,
@@ -73,27 +78,29 @@ def awake(**over: Any) -> CharacterState:
         "raw": 0,
         "details": 1000,
         "motivation": 40,
-        "motivation_next_at": m(30),
+        "motivation_next_at": t(30),
         "busy": None,
-        "battle_at": m(180),
+        "battle_at": t(180),
         "battle_target": "📯Pied Piper",
-        "sleep_deadline": m(40 * 60),
-        "sleep_allowed_at": m(-60),
+        "sleep_deadline": t(40 * 60),
+        "sleep_allowed_at": t(-60),
         "levelup_pending": False,
         "books": 0,
-        "book_ready_at": m(0),
+        "book_ready_at": t(0),
         "cards": 0,
-        "card_ready_at": m(0),
+        "card_ready_at": t(0),
         "prizebox": False,
         "prizebox_ready_at": None,
         "food_stock": FOOD,
-        "fastfood_ready_at": m(0),
+        "fastfood_ready_at": t(0),
         "containers_small": 0,
         "containers_medium": 0,
-        "gorbushka": GorbushkaState(state="done", comeback_at=m(300)),
+        "gorbushka": GorbushkaState(state="done", comeback_at=t(300)),
     }
     fields.update(over)
-    return CharacterState(**{k: v if isinstance(v, Obs) else obs(v) for k, v in fields.items()})
+    return CharacterState(
+        **{k: v if isinstance(v, Obs) else Obs(value=v, at=at) for k, v in fields.items()}
+    )
 
 
 def verdicts(decision: Decision) -> dict[str, str]:
@@ -333,9 +340,11 @@ def test_unknown_busy_requests_profile_first() -> None:
 )
 def test_battle_window(battle_in: float, chosen: str | None) -> None:
     settings = config({"strategy": {"weight_money": 0, "deeds": ["harvest", "job"]}})
-    decision = decide(awake(battle_at=m(battle_in)), settings, NOW)
+    battle = m(60)
+    now = battle - timedelta(minutes=battle_in)
+    decision = decide(awake(now, battle_at=battle), settings, now)
     if chosen is None:
-        assert decision == Wait(w(battle_in + 1), "battle", decision.candidates)
+        assert decision == Wait(w(61), "battle", decision.candidates)
     else:
         assert act(decision) == (chosen, {})
 
@@ -416,7 +425,8 @@ def test_regen_tick_makes_motivation_stale() -> None:
 
 
 def test_past_battle_requests_profile() -> None:
-    decision = decide(awake(battle_at=m(-5)), BASE, NOW)
+    now = m(5)
+    decision = decide(awake(now, battle_at=NOW), BASE, now)
     assert act(decision) == ("refresh", {"source": "profile"})
     assert verdicts(decision)["battle_target"] == "stale:battle_at"
 

@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 
 from app.engine.gametime import MSK
-from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
+from app.engine.planner.base import READY_SLACK, TIMER_MARGIN, battle_hour
 from app.engine.planner.decide import decide
 from app.engine.planner.types import Act, Decision, Wait
 from app.engine.settings import Settings
@@ -132,32 +132,68 @@ def test_target_set_while_sleeping() -> None:
 
 
 def test_no_target_in_last_minute() -> None:
-    soon = state(NOON, battle_at=NOON + timedelta(seconds=50), battle_target=None)
-    decision = decide(soon, only(), NOON)
+    now = msk(13) - timedelta(seconds=50)
+    soon = state(now, battle_at=msk(13), battle_target=None)
+    decision = decide(soon, only(), now)
+    assert "battle_target" not in verdicts(decision)
+
+
+@pytest.mark.parametrize(
+    "seen",
+    [
+        datetime(2026, 9, 26, 12, 59, 6, tzinfo=MSK),
+        datetime(2026, 9, 26, 13, 0, 0, 400000, tzinfo=MSK),
+        msk(12, 5),
+        msk(13),
+    ],
+)
+def test_battle_is_on_the_hour(seen: datetime) -> None:
+    assert battle_hour(seen) == msk(13)
+
+
+def test_override_by_hour_of_rounded_down_countdown() -> None:
+    # Профиль в 12:00:06 показал «Битва через 59 мин.»: битва — в 13:00, а не в 12-м часу.
+    now = datetime(2026, 9, 26, 12, 0, 6, tzinfo=MSK)
+    seen = datetime(2026, 9, 26, 12, 59, 6, tzinfo=MSK)
+    cfg = only(battle={"overrides": {13: "🛡Защита"}})
+    decision = decide(state(now, battle_at=seen, battle_target=None), cfg, now)
+    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
+
+
+def test_holiday_target_matches_battle_of_other_precision() -> None:
+    # В каникулы профиль округляет отсчёт до часа, ответ на выбор цели — точнее.
+    now = msk(10, 5)
+    cfg = only(battle={"target": "🛡Защита"})
+    defense = TargetSet(target="🛡Защита", battle_at=msk(10, 47) + timedelta(days=9))
+    holiday = state(
+        now, battle_at=now + timedelta(days=9), battle_target=None, battle_target_set=defense
+    )
+    decision = decide(holiday, cfg, now)
     assert "battle_target" not in verdicts(decision)
 
 
 def test_zero_stamina_before_battle_eats_when_no_fastfood() -> None:
+    now = msk(12, 40)
     cfg = Settings.model_validate(
         {"features": {**{name: False for name in PHASE4}, "fastfood": False}}
     )
-    hungry = state(NOON, stamina=0, battle_at=NOON + timedelta(minutes=20))
-    assert act(decide(hungry, cfg, NOON)) == ("deed:eat", {})
-    with_food = state(NOON, stamina=0, battle_at=NOON + timedelta(minutes=20))
-    decision = decide(with_food, only(), NOON)
+    hungry = state(now, stamina=0, battle_at=msk(13))
+    assert act(decide(hungry, cfg, now)) == ("deed:eat", {})
+    with_food = state(now, stamina=0, battle_at=msk(13))
+    decision = decide(with_food, only(), now)
     assert act(decision) == ("fastfood", {"food": "hotdog"})
     assert isinstance(decision, Act) and decision.reason == "battle_stamina"
 
 
 def test_battle_stamina_uses_fastfood_rules() -> None:
-    battle = NOON + timedelta(minutes=20)
+    now, battle = msk(12, 40), msk(13)
     bananas = {"banana": FoodStockState(count=10, low=150, high=275)}
-    only_bananas = state(NOON, stamina=0, battle_at=battle, food_stock=bananas)
-    assert act(decide(only_bananas, only(), NOON)) == ("deed:eat", {})
-    late = state(NOON, stamina=0, battle_at=battle, fastfood_ready_at=battle)
-    assert act(decide(late, only(), NOON)) == ("deed:eat", {})
-    soon = state(NOON, stamina=0, battle_at=battle, fastfood_ready_at=NOON + timedelta(minutes=5))
-    decision = decide(soon, only(), NOON)
+    only_bananas = state(now, stamina=0, battle_at=battle, food_stock=bananas)
+    assert act(decide(only_bananas, only(), now)) == ("deed:eat", {})
+    late = state(now, stamina=0, battle_at=battle, fastfood_ready_at=battle)
+    assert act(decide(late, only(), now)) == ("deed:eat", {})
+    soon = state(now, stamina=0, battle_at=battle, fastfood_ready_at=now + timedelta(minutes=5))
+    decision = decide(soon, only(), now)
     assert isinstance(decision, Wait) and decision.reason == "fastfood_ready"
 
 
