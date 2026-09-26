@@ -92,5 +92,27 @@ async def test_secure_cookie_over_https(clean_db: Database) -> None:
         assert (await client.get("/api/v1/auth/me")).status_code == 200
 
 
+async def test_login_calls_verify_password_for_unknown_login(
+    api_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+
+    async def fake_verify(password_hash: str, password: str) -> bool:
+        nonlocal calls
+        calls += 1
+        return False
+
+    monkeypatch.setattr("app.api.routes_auth.verify_password", fake_verify)
+    resp = await api_client.post("/api/v1/auth/login", json={"login": "nobody", "password": "x"})
+    assert resp.status_code == 401
+    assert calls == 1
+
+
+async def test_csrf_empty_header_rejected(api_client: AsyncClient) -> None:
+    await login(api_client)
+    resp = await api_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": ""})
+    assert resp.status_code == 403
+
+
 async def test_healthz(api_client: AsyncClient) -> None:
     assert (await api_client.get("/healthz")).json() == {"status": "ok"}

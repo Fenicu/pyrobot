@@ -8,6 +8,8 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 _hasher = PasswordHasher()
+_dummy_hash: str | None = None
+_dummy_hash_lock = asyncio.Lock()
 
 
 async def hash_password(password: str) -> str:
@@ -19,6 +21,16 @@ async def verify_password(password_hash: str, password: str) -> bool:
         return await asyncio.to_thread(_hasher.verify, password_hash, password)
     except (VerifyMismatchError, VerificationError, InvalidHashError):
         return False
+
+
+async def dummy_hash() -> str:
+    """Хэш для неизвестного логина — уравнивает время verify_password с известным."""
+    global _dummy_hash
+    if _dummy_hash is None:
+        async with _dummy_hash_lock:
+            if _dummy_hash is None:
+                _dummy_hash = await hash_password(secrets.token_urlsafe(32))
+    return _dummy_hash
 
 
 def new_token() -> str:

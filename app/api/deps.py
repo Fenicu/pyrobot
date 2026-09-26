@@ -1,3 +1,4 @@
+import secrets
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -50,6 +51,6 @@ async def require_csrf(
     ctx: Annotated[SessionContext, Depends(current_session)],
     x_csrf_token: Annotated[str | None, Header()] = None,
 ) -> SessionContext:
-    if x_csrf_token != ctx.csrf_token:
+    if not secrets.compare_digest(x_csrf_token or "", ctx.csrf_token):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "csrf token mismatch")
     return ctx

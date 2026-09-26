@@ -12,7 +12,7 @@ from app.api.deps import (
     require_csrf,
     set_session_cookie,
 )
-from app.api.security import hash_password, verify_password
+from app.api.security import dummy_hash, hash_password, verify_password
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -50,7 +50,9 @@ async def login(
             )
         admin = await c.auth.get_admin(body.login)
         async with c.limiter.slots:
-            valid = admin is not None and await verify_password(admin.password_hash, body.password)
+            valid = await verify_password(
+                admin.password_hash if admin else await dummy_hash(), body.password
+            )
         if admin is None or not valid:
             c.limiter.failure(key)
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
@@ -83,7 +85,9 @@ async def change_password(
     c: Annotated[Container, Depends(container)],
 ) -> None:
     admin = await c.auth.get_admin(ctx.login)
-    if admin is None or not await verify_password(admin.password_hash, body.current):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid current password")
-    await c.auth.change_password(admin.id, await hash_password(body.new))
+    async with c.limiter.slots:
+        if admin is None or not await verify_password(admin.password_hash, body.current):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid current password")
+        new_hash = await hash_password(body.new)
+    await c.auth.change_password(admin.id, new_hash)
     response.delete_cookie(COOKIE, path="/")
