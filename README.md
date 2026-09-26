@@ -67,3 +67,29 @@ uv run alembic upgrade head
 переупорядочивания сообщений; ошибка редьюсера не теряет сообщение. Догнанные старые сообщения
 (`recovered`) старше `react_max_age` помечаются `reactable=False` — только журнал и снимки, без реакций.
 Подписчики шины не должны ждать результатов действий — только быстро перекладывать доставку дальше.
+
+Шлюз действий (`app/engine/gateway`) — единственный путь отправки: любой текст или клик по кнопке
+проходит через `ActionGateway`. Команды разбиты на классы (`app/engine/commands.py`): `nav`
+(навигация), `action` (игровые действия), `risky` (необратимые), `forbidden`/`donate` (не
+отправляются никогда). Правила проверяются при постановке в очередь, при выборе и перед каждой
+попыткой отправки: `risky` уходит только при `source=MANUAL` и подтверждённом `risky_confirmed`,
+иначе `REJECTED "risky_requires_confirm"`; `action`/`risky` без `Expectation` отклоняются
+(`REJECTED "expectation_required"`) — успешный вызов API сам по себе не подтверждает результат в
+игре, подтверждает только ответ игры по предикату; только `nav` без ожидания подтверждается сразу
+после отправки (`CONFIRMED "sent"`). Kill switch (ручной `kill()` или `settings.engine.killed`)
+подавляет всё (`SUPPRESSED "kill_switch"`), `dry_run` подавляет всё, кроме `nav`
+(`SUPPRESSED "dry_run"`), блок трат (`block_spending`) отклоняет всё, кроме `nav`
+(`REJECTED "blocked:<reason>"`). Истёкший TTL — `REJECTED "expired"`, клик по кнопке вне последней
+ревизии сообщения — `REJECTED "stale_button"`, несовпадение `expect_revision` — `REJECTED
+"stale_revision"`.
+
+Действие в хранилище (`ActionStore`) проходит `INTENT` (пишется до отправки) → `SENT` → терминальный
+статус (`CONFIRMED`/`REFUSED`/`SUPPRESSED`/`OUTCOME_UNKNOWN`/`REJECTED`). Ожидание ответа
+регистрируется до отправки вместе с границей журнала (`boundary()` — номер последней записи
+журнала на момент отправки): засчитываются только доставки с `journal_id` больше этой границы, с
+датой не раньше момента отправки минус 2 секунды, не исходящие и из того же чата. Тайм-аут ожидания
+даёт `OUTCOME_UNKNOWN "timeout"` без автоматического повтора. `MemoryActionStore`
+(`app/engine/memory.py`) — реализация для тестов; `DbActionStore` (`app/db/actions.py`) — Postgres, с
+уникальным `(account_id, idempotency_key)` для дедупликации повторных отправок и
+`mark_unfinished_unknown()` для восстановления после рестарта (незавершённые
+`INTENT`/`SENT` переводятся в `OUTCOME_UNKNOWN "restart"`).
