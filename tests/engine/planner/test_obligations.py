@@ -151,6 +151,19 @@ def test_battle_is_on_the_hour(seen: datetime) -> None:
     assert battle_hour(seen) == msk(13)
 
 
+def test_hourly_countdown_seen_early_in_the_hour() -> None:
+    # Профиль 3549074: в 10:01:49 «Битва через 1д. 23ч.» — битва через двое суток в 10:00.
+    seen = datetime(2026, 3, 22, 10, 1, 49, tzinfo=MSK)
+    battle = datetime(2026, 3, 24, 10, 0, tzinfo=MSK)
+    assert battle_hour(seen + timedelta(hours=47), seen) == battle
+    # Отсчёт с минутами может указать на секунду позже начала часа.
+    shown = datetime(2026, 9, 26, 12, 51, 31, tzinfo=MSK)
+    assert battle_hour(msk(13) + timedelta(seconds=1), shown) == msk(13)
+    cfg = only(battle={"overrides": {10: "🛡Защита"}})
+    holiday = state(seen, battle_at=seen + timedelta(hours=47), battle_target=None)
+    assert act(decide(holiday, cfg, seen)) == ("battle_target", {"target": "🛡Защита"})
+
+
 def test_override_by_hour_of_rounded_down_countdown() -> None:
     # Профиль в 12:00:06 показал «Битва через 59 мин.»: битва — в 13:00, а не в 12-м часу.
     now = datetime(2026, 9, 26, 12, 0, 6, tzinfo=MSK)
@@ -170,6 +183,16 @@ def test_holiday_target_matches_battle_of_other_precision() -> None:
     )
     decision = decide(holiday, cfg, now)
     assert "battle_target" not in verdicts(decision)
+    # Ответ на выбор цели, полученный в первые минуты часа, — тоже о битве в 11:00.
+    early = datetime(2026, 9, 26, 10, 1, 30, tzinfo=MSK)
+    answer = TargetSet(target="🛡Защита", battle_at=early + timedelta(days=9))
+    holiday = state(
+        now,
+        battle_at=now + timedelta(days=9),
+        battle_target=None,
+        battle_target_set=Obs(value=answer, at=early),
+    )
+    assert "battle_target" not in verdicts(decide(holiday, cfg, now))
 
 
 def test_zero_stamina_before_battle_eats_when_no_fastfood() -> None:

@@ -20,6 +20,10 @@ BATTLE_BEFORE = timedelta(minutes=6)
 BATTLE_AFTER = timedelta(minutes=1)
 # Отсчёт до битвы с секундами может указать чуть позже начала часа (HH:00:00.4).
 BATTLE_SKEW = timedelta(minutes=2)
+# Отсчёт от суток игра показывает с точностью до часа: двухминутный запас увёл бы отсчёт, снятый в
+# первые минуты часа, на час раньше, поэтому запас — только на задержку отправки.
+HOURLY_COUNTDOWN = timedelta(days=1)
+HOURLY_SKEW = timedelta(seconds=2)
 GORBUSHKA_AHEAD = timedelta(hours=1)
 GORBUSHKA_TICKET = PriceState(money=120, knowledge=20)
 # Таймеры выведены из даты сообщения (точность — секунда): итог приходит в `until` + 0–1 с.
@@ -74,9 +78,13 @@ FEATURE = {
 Step = Callable[[BusyState | None], Decision | None]
 
 
-def battle_hour(at: datetime) -> datetime:
-    """Битва — ровно в начале часа, отсчёт до неё округлён вниз: ближайший час не раньше."""
-    shifted = at - BATTLE_SKEW
+def battle_hour(at: datetime, seen: datetime | None = None) -> datetime:
+    """Битва — ровно в начале часа, отсчёт до неё округлён вниз: ближайший час не раньше.
+
+    `seen` — момент, когда отсчёт показан: по его длине видна точность.
+    """
+    hourly = seen is not None and at - seen >= HOURLY_COUNTDOWN
+    shifted = at - (HOURLY_SKEW if hourly else BATTLE_SKEW)
     hour = shifted.replace(minute=0, second=0, microsecond=0)
     return hour if hour == shifted else hour + timedelta(hours=1)
 
@@ -223,8 +231,8 @@ class PlannerBase:
 
     def battle_time(self) -> datetime | None:
         """Время битвы по наблюдению, приведённое к началу часа; свежесть не проверяется."""
-        at: datetime | None = self.value("battle_at")
-        return None if at is None else battle_hour(at)
+        obs = self.s.battle_at
+        return None if obs is None else battle_hour(obs.value, obs.at)
 
     def upcoming_battle(self) -> datetime | None:
         if self.stale_of("battle_at") is not None:

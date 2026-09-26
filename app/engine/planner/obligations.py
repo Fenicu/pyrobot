@@ -7,7 +7,7 @@ from app.engine.market import pick_stock
 from app.engine.parsing.smoothie import recipe_need
 from app.engine.planner.base import BATTLE_BEFORE, READY_SLACK, PlannerBase, battle_hour
 from app.engine.planner.types import Decision
-from app.engine.state.model import BusyState, StockLimits, TargetSet
+from app.engine.state.model import BusyState, StockLimits
 
 # Деньги на отель дела не тратят за столько до начала сна.
 HOTEL_RESERVE_AHEAD = timedelta(hours=3)
@@ -75,10 +75,10 @@ class Obligations(PlannerBase):
             if seen.value is not None:
                 return bool(seen.value == desired)
         # Защиту профиль не показывает — опора на то, какая цель и на какую битву выставлена.
-        done: TargetSet | None = self.value("battle_target_set")
-        if done is None or done.target != desired:
+        done = self.s.battle_target_set
+        if done is None or done.value.target != desired:
             return False
-        return battle_hour(done.battle_at) == battle
+        return battle_hour(done.value.battle_at, done.at) == battle
 
     def battle_stamina(self, busy: BusyState | None) -> Decision | None:
         if not self.feature_on("battle_stamina"):
