@@ -101,12 +101,18 @@ _ETHER = re.compile(
     r"\A💧Покупка Эфира(?: за 💵)?\n.*?^💵Деньги: \$(?P<money>" + NUM + r")$", re.S | re.M
 )
 _INSTANT = re.compile(r"\A🧭Отлично! Ты завершил задачу мгновенно за \d+🌐")
+# Деньги на экранах гаджетов: баланс после покупки улучшений, баланс после продажи гаджета.
+_GADGET_UPGRADE_MONEY = re.compile(r"^Деньги: \$(?P<money>" + NUM + r")💵$", re.M)
+_GADGET_SALE_MONEY = re.compile(
+    r"^Теперь у тебя \$(?P<money>" + NUM + r")[\xa0 ]💵 на счету\.$", re.M
+)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class InfoScreen(Event):
     kind: ClassVar[str] = "info_screen"
     name: str
+    money: int | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -228,8 +234,16 @@ def recognize_screens(msg: IncomingMessage) -> list[Event]:
         return [DeedFinishedInstantly()]
     for name, pattern in _INFO:
         if pattern.match(text):
-            return [InfoScreen(name=name)]
+            money = _gadget_money(text) if name == "gadgets" else None
+            return [InfoScreen(name=name, money=money)]
     return []
+
+
+def _gadget_money(text: str) -> int | None:
+    for pattern in (_GADGET_UPGRADE_MONEY, _GADGET_SALE_MONEY):
+        if m := pattern.search(text):
+            return num(m["money"])
+    return None
 
 
 RECOGNIZERS = (recognize_screens,)

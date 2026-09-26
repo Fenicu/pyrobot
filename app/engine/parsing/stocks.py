@@ -32,6 +32,8 @@ _BOUGHT = re.compile(
 _DIVIDENDS = re.compile(
     r"\AТы получаешь дивиденды на все акции своей компании в размере: \$(?P<amount>" + NUM + r")"
 )
+_QUOTES_HEADER = "Текущие котировки"
+_HOLDINGS_HEADER = "Акции у тебя"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -71,12 +73,27 @@ def _optional(pattern: re.Pattern[str], text: str) -> int | None:
     return int(m["n"]) if m else None
 
 
-def _screen(screen: str, text: str) -> StockScreen:
+def _holdings_valid(text: str) -> bool:
+    # Нераспознанная строка портфеля молча потеряла бы позицию в снимке.
+    for block in text.split("\n\n"):
+        if block.startswith(_HOLDINGS_HEADER):
+            lines = [line for line in block.split("\n")[1:] if line]
+            return all(_HOLDING.match(line) for line in lines)
+    return True
+
+
+def _screen(screen: str, text: str) -> StockScreen | None:
     hours = _HOURS.search(text)
     money = _MONEY.search(text)
+    quotes = {COMPANIES[m["co"]]: int(m["price"]) for m in _QUOTE.finditer(text)}
+    # Экран только целиком: если котировки заявлены, должны быть разобраны все компании и 💵.
+    if _QUOTES_HEADER in text and (len(quotes) != len(COMPANIES) or money is None):
+        return None
+    if not _holdings_valid(text):
+        return None
     return StockScreen(
         screen=screen,
-        quotes={COMPANIES[m["co"]]: int(m["price"]) for m in _QUOTE.finditer(text)},
+        quotes=quotes,
         holdings={COMPANIES[m["co"]]: num(m["qty"]) for m in _HOLDING.finditer(text)},
         money=num(money["money"]) if money else None,
         open_hour=int(hours["open"]) if hours else None,
@@ -92,7 +109,8 @@ def recognize_stocks(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     for screen, prefix in _SCREENS:
         if text.startswith(prefix):
-            return [_screen(screen, text)]
+            parsed = _screen(screen, text)
+            return [parsed] if parsed is not None else []
     if m := _BOUGHT.match(text):
         return [
             StockBought(

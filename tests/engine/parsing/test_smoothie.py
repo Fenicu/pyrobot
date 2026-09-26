@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from app.engine.parsing import default_parser
 from app.engine.parsing.smoothie import (
     SmoothieCooked,
@@ -22,6 +24,13 @@ def test_screen_with_and_without_current_bonus() -> None:
             bonus=FOOD_BONUS,
         )
     ]
+
+
+def test_screen_needs_all_five_ingredients() -> None:
+    msg = game_msg("smoothie", 3581573)
+    assert msg.text is not None
+    broken = replace(msg, text=msg.text.replace("🍇Виноград - 4 шт.\n", ""))
+    assert recognize_smoothie(broken) == []
 
 
 def test_cooked() -> None:

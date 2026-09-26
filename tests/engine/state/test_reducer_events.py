@@ -137,8 +137,21 @@ def test_smoothie() -> None:
     assert value(state, "smoothie_ingredients")["tomato"] == 4
     state = feed(reducer, state, "smoothie", 3581575, 2)
     assert value(state, "smoothie_bonus").startswith("🍴На еде")
+    # Рецепт "🍇🥕🥕🍋🍅" — 1 виноград, 2 моркови, 1 лимон, 1 томат, яблоко не тронуто.
+    ingredients = value(state, "smoothie_ingredients")
+    assert (ingredients["grape"], ingredients["carrot"], ingredients["lemon"]) == (3, 2, 3)
+    assert (ingredients["tomato"], ingredients["apple"]) == (3, 4)
     state = feed(reducer, state, "smoothie", 2344, 3)
     assert value(state, "smoothie_recipe")["recipe"] == "🍇🥕🥕🍋🍅"
+
+
+def test_smoothie_cooked_ingredients_decrease_once() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "smoothie", 3581573, 1)
+    state = feed(reducer, state, "smoothie", 3581575, 2)
+    once = value(state, "smoothie_ingredients")
+    again = feed(reducer, state, "smoothie", 3581575, 3, created=2)
+    assert value(again, "smoothie_ingredients") == once
 
 
 def test_tangerine_refusals() -> None:
@@ -203,3 +216,11 @@ def test_instant_finish_frees_character() -> None:
     assert value(state, "busy") is not None
     state = feed(reducer, state, "screens", 3603799, 2)
     assert value(state, "busy") is None
+
+
+def test_gadgets_screens_update_money() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "screens", 3568823, 1)
+    assert value(state, "money") == 445
+    state = feed(reducer, state, "screens", 3525610, 2)
+    assert value(state, "money") == 3250

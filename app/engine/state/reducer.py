@@ -37,12 +37,13 @@ from app.engine.parsing.screens import (
     BattleMenu,
     DeedFinishedInstantly,
     EtherScreen,
+    InfoScreen,
     LotterySkillsExpired,
     LotteryWin,
     ResourcesChanged,
 )
 from app.engine.parsing.sleep import FellAsleep, RobberyFight, SleepMenu, SleepWarning, WokeUp
-from app.engine.parsing.smoothie import SmoothieCooked, SmoothieRecipe, SmoothieScreen
+from app.engine.parsing.smoothie import INGREDIENTS, SmoothieCooked, SmoothieRecipe, SmoothieScreen
 from app.engine.parsing.stocks import Dividends, StockBought, StockScreen
 from app.engine.parsing.swinfo import BattleSummary, FactoryCall, FactoryResult
 from app.engine.parsing.tangerine import TangerineRefused
@@ -658,6 +659,12 @@ def _smoothie_screen(p: _Patch, e: SmoothieScreen) -> None:
 @_on(SmoothieCooked)
 def _smoothie_cooked(p: _Patch, e: SmoothieCooked) -> None:
     p.snap("smoothie_bonus", e.bonus)
+    used = Counter(INGREDIENTS[ch] for ch in e.recipe)
+
+    def spent(ingredients: dict[str, int]) -> dict[str, int]:
+        return {k: v - used.get(k, 0) for k, v in ingredients.items()}
+
+    p.change("smoothie_ingredients", spent)
 
 
 @_on(SmoothieRecipe)
@@ -701,6 +708,12 @@ def _ether(p: _Patch, e: EtherScreen) -> None:
 @_on(DeedFinishedInstantly)
 def _instant(p: _Patch, e: DeedFinishedInstantly) -> None:
     p.snap("busy", None)
+
+
+@_on(InfoScreen)
+def _info_screen(p: _Patch, e: InfoScreen) -> None:
+    if e.money is not None:
+        p.snap("money", e.money)
 
 
 class StateReducer:

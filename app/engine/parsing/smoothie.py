@@ -45,12 +45,13 @@ class SmoothieRecipe(Event):
 def recognize_smoothie(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     if text.startswith(_SCREEN):
+        ingredients = {INGREDIENTS[m["emo"]]: int(m["n"]) for m in _STOCK.finditer(text)}
+        # Экран только целиком: частично разобранные остатки не должны затирать известные.
+        if len(ingredients) != len(INGREDIENTS):
+            return []
         current = _CURRENT.search(text)
         return [
-            SmoothieScreen(
-                ingredients={INGREDIENTS[m["emo"]]: int(m["n"]) for m in _STOCK.finditer(text)},
-                bonus=current["bonus"] if current else None,
-            )
+            SmoothieScreen(ingredients=ingredients, bonus=current["bonus"] if current else None)
         ]
     if m := _COOKED.match(text):
         got = _GOT.search(text)

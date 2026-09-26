@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from app.engine.events import Event
@@ -38,13 +40,26 @@ from tests.fixtures import game_msg
         (3621873, InfoScreen(name="help")),
         (3606025, InfoScreen(name="casino")),
         (3607774, InfoScreen(name="bonuses")),
-        (3525610, InfoScreen(name="gadgets")),
+        (3525610, InfoScreen(name="gadgets", money=3250)),
+        (3568823, InfoScreen(name="gadgets", money=445)),
         (3541473, InfoScreen(name="account")),
         (3569098, InfoScreen(name="full_profile")),
     ],
 )
 def test_screens(msg_id: int, expected: Event) -> None:
     assert recognize_screens(game_msg("screens", msg_id)) == [expected]
+
+
+def test_gadgets_screen_without_sale_line_has_no_money() -> None:
+    msg = game_msg("screens", 3525610)
+    assert msg.text is not None
+    tail = (
+        "\n\n👍Ты продал б/у Простой ноут (+10🎓, +10🐿) и получил $2\xa0400\xa0💵"
+        " от нового счастливого обладателя.\nТеперь у тебя $3\xa0250\xa0💵 на счету."
+    )
+    assert msg.text.endswith(tail)
+    no_sale = replace(msg, text=msg.text.removesuffix(tail))
+    assert recognize_screens(no_sale) == [InfoScreen(name="gadgets", money=None)]
 
 
 @pytest.mark.parametrize(
