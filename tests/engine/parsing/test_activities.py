@@ -62,6 +62,11 @@ def test_other_results() -> None:
     assert (dconv.activity, dconv.rewards.exp, dconv.rewards.raw) == ("dconv", 253, 5)
 
 
+def test_logistic_refund() -> None:
+    finished = _finished(3623797)
+    assert (finished.activity, finished.motivation_refund, finished.rewards.exp) == ("job", 1, 0)
+
+
 def test_cancel_variants() -> None:
     assert _events(3517963) == [ActivityCancelled(result="ok", motivation=1)]
     assert _events(3522301) == [ActivityCancelled(result="ok", money=5)]
