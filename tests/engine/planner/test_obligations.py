@@ -7,6 +7,7 @@ from app.engine.gametime import MSK
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN, battle_hour
 from app.engine.planner.decide import decide
 from app.engine.planner.types import Act, Decision, Wait
+from app.engine.scenarios.registry import CERTIFIED
 from app.engine.settings import Settings
 from app.engine.state.model import (
     BusyState,
@@ -331,6 +332,14 @@ def test_no_hotel_reserve_while_sleep_uncertified() -> None:
     certified = frozenset({"stocks_dump", "refresh"})
     decision = decide(dumping(now), rich_hotel, now, certified=certified)
     assert act(decision) == ("stocks_dump", {"keep": 150, "margin": 5})
+
+
+def test_hotel_reserve_with_certified_sleep_in_live() -> None:
+    # Сон сертифицирован: в live он исполнится, поэтому слив держит деньги на отель.
+    now = msk(12, 50)
+    rich_hotel = only("stocks_dump", sleep={"hotel_if_cash_after_reserve_ge": 500})
+    decision = decide(dumping(now), rich_hotel, now, certified=CERTIFIED)
+    assert act(decision) == ("stocks_dump", {"keep": 150 + 500, "margin": 5})
 
 
 def test_dump_checks_against_market_reserve() -> None:

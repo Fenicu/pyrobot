@@ -57,7 +57,14 @@ from app.engine.parsing.screens import (
     LotteryWin,
     ResourcesChanged,
 )
-from app.engine.parsing.sleep import FellAsleep, RobberyFight, SleepMenu, SleepWarning, WokeUp
+from app.engine.parsing.sleep import (
+    FellAsleep,
+    RobberyFight,
+    SleepMenu,
+    SleepPlace,
+    SleepWarning,
+    WokeUp,
+)
 from app.engine.parsing.smoothie import (
     SmoothieCooked,
     SmoothieRecipe,
@@ -365,6 +372,11 @@ def _fell_asleep(p: _Patch, e: FellAsleep) -> None:
 
 @_on(SleepMenu)
 def _sleep_menu(p: _Patch, e: SleepMenu) -> None:
+    p.price("hotel", PriceState(money=e.hotel_cost))
+
+
+@_on(SleepPlace)
+def _sleep_place(p: _Patch, e: SleepPlace) -> None:
     p.price("hotel", PriceState(money=e.hotel_cost))
 
 

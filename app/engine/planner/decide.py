@@ -84,7 +84,12 @@ class _Planner(Obligations):
             return None
         if (field := self.stale_of("money")) is not None:
             return self.refresh("sleep", field)
-        params = {"hours": self.cfg.sleep.duration_h, "hotel": self.hotel()}
+        # Место выбирает сценарий по цене с экрана выбора; порог не задан — только цена.
+        params = {
+            "hours": self.cfg.sleep.duration_h,
+            "hotel_threshold": self.cfg.sleep.hotel_if_cash_after_reserve_ge,
+            "ticket_reserve": self.ticket_reserve(),
+        }
         return self.act("sleep", params, "sleep_deadline")
 
     def book(self, busy: BusyState | None) -> Decision | None:

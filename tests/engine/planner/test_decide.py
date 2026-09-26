@@ -6,6 +6,7 @@ import pytest
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
 from app.engine.planner.decide import decide
 from app.engine.planner.types import Act, Candidate, Decision, Wait
+from app.engine.scenarios.registry import CERTIFIED
 from app.engine.settings import Settings
 from app.engine.state.model import (
     BusyState,
@@ -368,11 +369,14 @@ def test_deed_prices_from_screen() -> None:
     assert act(decide(state, BASE, NOW)) == ("deed:dconv", {})
 
 
-def test_sleep_near_deadline_with_hotel() -> None:
+def test_sleep_near_deadline_passes_threshold_and_reserve() -> None:
+    """Место выбирает сценарий по цене с экрана; планировщик отдаёт порог и резерв билета."""
     decision = decide(awake(sleep_deadline=m(60)), BASE, NOW)
-    assert act(decision) == ("sleep", {"hours": 7, "hotel": True})
-    poor = decide(awake(sleep_deadline=m(60), money=100), BASE, NOW)
-    assert act(poor) == ("sleep", {"hours": 7, "hotel": False})
+    params = {"hours": 7, "hotel_threshold": None, "ticket_reserve": 0}
+    assert act(decision) == ("sleep", params)
+    settings = config({"sleep": {"hotel_if_cash_after_reserve_ge": 50}})
+    configured = decide(awake(sleep_deadline=m(60)), settings, NOW)
+    assert act(configured) == ("sleep", {**params, "hotel_threshold": 50})
 
 
 def test_sleep_not_yet_allowed() -> None:
@@ -452,6 +456,9 @@ def test_hotel_money_reserved_before_sleep_window() -> None:
     certified = frozenset({"deed:harvest", "deed:job", "refresh"})
     live = decide(awake(money=230, sleep_deadline=m(4 * 60)), settings, NOW, certified=certified)
     assert act(live) == ("deed:harvest", {})
+    # Сертифицированный сон в live исполнится — деньги на отель держатся, как в dry_run.
+    held = decide(awake(money=230, sleep_deadline=m(4 * 60)), settings, NOW, certified=CERTIFIED)
+    assert act(held) == ("deed:job", {})
 
 
 def test_screen_cooldown_waits_extra_minute_but_ready_screen_does_not() -> None:

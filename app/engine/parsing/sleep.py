@@ -15,6 +15,11 @@ _FORCED = re.compile(
 _MENU = "Все мы рано или поздно нуждаемся во сне"
 _MENU_HOTEL = re.compile(r"Сон в отеле - (?P<cost>\d+) 💵")
 _MENU_SHORT = re.compile(r"❌Тебе не хватает ещё (?P<need>\d+) 💵")
+# Второй шаг — правка меню после выбора часов: место (мост или отель).
+_PLACE = re.compile(
+    r"\n\nТы проспишь: (?P<h>\d+) час\w*\.\n\nПосле выбора места ты не сможешь отменить сон\. "
+    r"Где собираешься спать\?\Z"
+)
 _HOTEL = re.compile(
     r"\AТы отправился спать красиво в отель на (?P<h>\d+) час\w* за (?P<cost>\d+) 💵"
 )
@@ -55,6 +60,15 @@ class SleepMenu(Event):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class SleepPlace(Event):
+    """Выбор места сна после выбора часов (`sleep_Bridge` / `sleep_Hotel`)."""
+
+    kind: ClassVar[str] = "sleep_place"
+    hours: int
+    hotel_cost: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class WokeUp(Event):
     kind: ClassVar[str] = "woke_up"
     outcome: ClassVar[bool] = True
@@ -85,6 +99,8 @@ def recognize_sleep(msg: IncomingMessage) -> list[Event]:
     if m := _FORCED.match(text):
         return [FellAsleep(where="bridge", hours=int(m["h"]), forced=True)]
     if text.startswith(_MENU) and (hotel := _MENU_HOTEL.search(text)):
+        if place := _PLACE.search(text):
+            return [SleepPlace(hours=int(place["h"]), hotel_cost=int(hotel["cost"]))]
         short = _MENU_SHORT.search(text)
         return [
             SleepMenu(

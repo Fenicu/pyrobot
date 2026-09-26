@@ -11,7 +11,7 @@ from app.engine.parsing.food import FastfoodEaten, FoodMenu
 from app.engine.parsing.gorbushka import GorbushkaFight, GorbushkaNotice, GorbushkaScreen
 from app.engine.parsing.items import BookRead, CardUsed, ContainerOpened, PrizeboxOpened
 from app.engine.parsing.levelup import LevelUpStep
-from app.engine.parsing.sleep import FellAsleep, SleepMenu
+from app.engine.parsing.sleep import FellAsleep, SleepMenu, SleepPlace
 from app.engine.reconcile import FOOD, GIFTS, GORBUSHKA, INVENTORY, PROFILE
 from app.engine.scenarios.context import (
     Predicate,
@@ -205,17 +205,60 @@ async def gorbushka(ctx: ScenarioContext, state: CharacterState, params: Params)
         return finish(await ctx.click(message.msg_id, "gorbushka_fight", _fight_outcome()))
 
 
+def _asleep(where: str, hours: int) -> Predicate:
+    """Итог сна сверяется с выбором: место, часы, не принудительный. Меню с «❌Тебе не хватает
+    ещё N 💵» вместо сна — отказ по деньгам."""
+
+    def predicate(delivery: Delivery) -> Match | None:
+        for event in delivery.events:
+            if isinstance(event, SleepMenu) and event.short_of is not None:
+                return Match(Verdict.REFUSED, "no_money")
+            if isinstance(event, FellAsleep):
+                if (event.where, event.hours, event.forced) != (where, hours, False):
+                    return Match(Verdict.REFUSED, "place_mismatch")
+                return Match(Verdict.CONFIRMED, event.kind)
+        return None
+
+    return predicate
+
+
+def _prefer_hotel(state: CharacterState, params: Params, place: SleepPlace) -> bool:
+    """Место — по цене отеля с экрана выбора и деньгам: отель, если после резерва билета
+    Горбушки денег не меньше max(цена, порог); `params.hotel` — явное указание."""
+    if (explicit := params.get("hotel")) is not None:
+        return bool(explicit)
+    money = state.money.value if state.money is not None else None
+    if money is None:
+        return False
+    threshold = params.get("hotel_threshold")
+    need = max(place.hotel_cost, int(threshold)) if threshold is not None else place.hotel_cost
+    return money - int(params.get("ticket_reserve", 0)) >= need
+
+
 async def sleep(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
+    """`🛌Спать` → часы (`sleep_N`) → место (`sleep_Hotel` / `sleep_Bridge`) → засыпание."""
     hours = int(params["hours"])
     async with ctx.lease("sleep"):
         menu = require(await ctx.send("🛌Спать", expect_events(SleepMenu)))
         if menu.delivery is None:
             raise ScenarioStopped("unexpected_screen", menu)
+        message = menu.delivery.msg.msg_id
         await ctx.safe_point()
-        # Шаг выбора «отель/мост» (params["hotel"]) живьём не снят — сценарий не сертифицирован.
-        return finish(
-            await ctx.click(menu.delivery.msg.msg_id, f"sleep_{hours}", expect_events(FellAsleep))
+        chosen = expect_events(
+            SleepPlace, accept=lambda e: isinstance(e, SleepPlace) and e.hours == hours
         )
+        place = require(await ctx.click(message, f"sleep_{hours}", chosen)).first(SleepPlace)
+        if place is None:
+            raise ScenarioStopped("unexpected_screen")
+        where = "hotel" if _prefer_hotel(state, params, place) else "bridge"
+        await ctx.safe_point()
+        step = await ctx.click(message, f"sleep_{where.capitalize()}", _asleep(where, hours))
+        got = step.first(FellAsleep)
+        if step.step is Step.REFUSED and step.reason == "place_mismatch" and got is not None:
+            forced = " forced" if got.forced else ""
+            text = f"sleep: asked {where} {hours}h, got {got.where} {got.hours}h{forced}"
+            await ctx.notify("warn", "sleep_place_mismatch", text)
+        return finish(step)
 
 
 def stopped(stop: ScenarioStopped, details: dict[str, Any] | None = None) -> ScenarioResult:

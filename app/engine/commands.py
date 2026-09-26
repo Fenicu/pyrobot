@@ -314,7 +314,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"|chest_accept|chest_decline|npc_low_accept|npc_low_decline|npc_high_accept"
         r"|npc_high_decline|buf_tokens_(fastMove|strong|firstAid))\Z",
         r"gorbushka_(new|new_accept|fight)\Z",
-        r"sleep_(7|8|9|10|11|12)\Z",
+        r"sleep_(7|8|9|10|11|12|Bridge|Hotel)\Z",
         r"sm_drop_[1-5]\Z",
         r"smoothie_accept\Z",
         rf"buys_{_COMPANIES}\Z",
@@ -372,7 +372,7 @@ _FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(
     (re.compile(p), f)
     for p, f in (
         (r"gorbushka_(new|new_accept|fight)\Z", "gorbushka"),
-        (r"sleep_\d+\Z", "sleep"),
+        (r"sleep_(\d+|Bridge|Hotel)\Z", "sleep"),
         (r"maze_", "metro"),
         (r"(sm_drop_[1-5]|smoothie_accept)\Z", "smoothie"),
         (rf"buys_{_COMPANIES}\Z", "stocks_dump"),

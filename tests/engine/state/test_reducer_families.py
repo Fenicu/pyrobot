@@ -1,5 +1,8 @@
+from dataclasses import replace
+
 from app.engine.state.reducer import StateReducer
-from tests.engine.state.helpers import feed, value
+from tests.engine.state.helpers import PARSER, at, feed, fixture_at, value
+from tests.fixtures import game_versions
 
 PROFILE = 3624478
 
@@ -28,6 +31,25 @@ def test_hotel_sleep_costs_money_and_price_known() -> None:
     state = feed(reducer, state, "sleep", 3525189, 2)
     assert value(state, "money") == 867 - 210
     assert value(state, "busy")["activity"] == "sleep_hotel"
+
+
+def test_live_hotel_sleep_charged_once() -> None:
+    """Отель списывает итог «Ты отправился спать…»; отдельное «Ты потратился на отель…» (оно
+    пришло раньше правки) деньги не трогает."""
+    reducer = StateReducer()
+    state = _profiled(reducer)
+    for n, minute in ((0, 1), (1, 1.1)):
+        msg = replace(game_versions("sleep", 3625590)[n], date=at(minute), created_at=at(1))
+        state = reducer.apply(state, msg, PARSER.parse(msg))
+    assert state["prices"]["hotel"]["value"]["money"] == 213
+    ack = fixture_at("sleep", 3625591, 1.3)
+    state = reducer.apply(state, ack, PARSER.parse(ack))
+    assert value(state, "money") == 867
+    asleep = replace(game_versions("sleep", 3625590)[2], date=at(1.3), created_at=at(1))
+    state = reducer.apply(state, asleep, PARSER.parse(asleep))
+    again = reducer.apply(state, asleep, PARSER.parse(asleep))
+    assert value(again, "money") == 867 - 213
+    assert value(again, "busy")["activity"] == "sleep_hotel"
 
 
 def test_robbery_fight_wakes_up() -> None:

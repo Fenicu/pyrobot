@@ -25,7 +25,7 @@ def _specs() -> dict[str, ScenarioSpec]:
         ScenarioSpec("fastfood", library.fastfood, True),
         ScenarioSpec("levelup", library.levelup, True),
         ScenarioSpec("gorbushka", library.gorbushka, True),
-        ScenarioSpec("sleep", library.sleep, False),
+        ScenarioSpec("sleep", library.sleep, True),
         ScenarioSpec("battle_target", obligations.battle_target, True),
         ScenarioSpec("stocks_dump", obligations.stocks_dump, True),
         ScenarioSpec("factory_signup", obligations.factory_signup, True),

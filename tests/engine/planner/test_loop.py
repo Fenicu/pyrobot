@@ -346,7 +346,15 @@ async def test_pause_after_decision_stops_first_step(world: World) -> None:
     assert rig.notes.codes == []
 
 
-async def test_uncertified_step_stays_suppressed_after_switch_to_live(dry_world: World) -> None:
+async def test_uncertified_step_stays_suppressed_after_switch_to_live(
+    dry_world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Многошаговых несертифицированных сценариев не осталось: сон здесь — как несертифицированный.
+    from app.engine.scenarios import library
+
+    monkeypatch.setitem(
+        loop_module.SCENARIOS, "sleep", ScenarioSpec("sleep", library.sleep, False)
+    )
     # Сон здесь по дедлайну (через 58 мин.), от часов не зависит.
     await dry_world.settings.update(
         lambda s: s.model_copy(update={"features": s.features.model_copy(update={"sleep": True})}),

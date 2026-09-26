@@ -6,11 +6,12 @@ from app.engine.parsing.sleep import (
     FellAsleep,
     RobberyFight,
     SleepMenu,
+    SleepPlace,
     SleepWarning,
     WokeUp,
     recognize_sleep,
 )
-from tests.fixtures import game_msg
+from tests.fixtures import game_msg, game_versions
 
 
 def _events(msg_id: int) -> list[Event]:
@@ -56,3 +57,14 @@ def test_robbery_fight() -> None:
         41,
         259,
     )
+
+
+def test_live_sleep_with_place_step() -> None:
+    """Живой сон 26.09: меню → правка с выбором места → правка «в отель» + отдельный ответ."""
+    menu, place, asleep = (recognize_sleep(m) for m in game_versions("sleep", 3625590))
+    assert menu == [SleepMenu(hotel_cost=213, short_of=None)]
+    assert place == [SleepPlace(hours=7, hotel_cost=213)]
+    assert asleep == [FellAsleep(where="hotel", hours=7, cost=213)]
+    choice = game_versions("sleep", 3625590)[1]
+    assert choice.button("sleep_Bridge") is not None and choice.button("sleep_Hotel") is not None
+    assert _events(3625591) == [Acknowledged(topic="hotel_ack")]
