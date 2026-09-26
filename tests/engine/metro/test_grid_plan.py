@@ -81,18 +81,19 @@ BRANCHES = [
 def test_nearest_unvisited_continues_branch() -> None:
     grid = grid_of(BRANCHES)
     # Три ветки на равном расстоянии: порядок фиксирован (вверх, вниз, влево, вправо).
-    assert explore_step(grid, (1, 4), None, "explore") == "down"
+    assert explore_step(grid, (1, 4), None, "explore") == ("down", (2, 4))
     grid.visited.add((1, 3))
-    assert explore_step(grid, (1, 3), None, "explore", "left") == "left"
+    assert explore_step(grid, (1, 3), None, "explore", "left") == ("left", (1, 2))
 
 
 def test_exit_branch_deferred() -> None:
     with_exit = [row.replace("...#", "..E#") if i == 1 else row for i, row in enumerate(BRANCHES)]
     grid = grid_of(with_exit)
     # Налево и направо — по две клетки, но справа выход: сначала налево и вниз.
-    assert explore_step(grid, (1, 4), (1, 7), "explore") in ("left", "down")
+    first = explore_step(grid, (1, 4), (1, 7), "explore")
+    assert first is not None and first[0] in ("left", "down")
     grid.visited |= {(1, 1), (1, 2), (1, 3), (2, 4), (3, 4)}
-    assert explore_step(grid, (1, 4), (1, 7), "explore") == "right"
+    assert explore_step(grid, (1, 4), (1, 7), "explore") == ("right", (1, 5))
 
 
 def test_frontier_prefers_cells_that_reveal_unknown() -> None:
@@ -105,8 +106,8 @@ def test_frontier_prefers_cells_that_reveal_unknown() -> None:
     ]
     grid = grid_of(rows)
     # Слева тупик, известный целиком, справа коридор уходит в неизвестное.
-    assert explore_step(grid, (2, 3), None, "explore") == "left"
-    assert explore_step(grid, (2, 3), None, "frontier") == "right"
+    assert explore_step(grid, (2, 3), None, "explore") == ("left", (2, 2))
+    assert explore_step(grid, (2, 3), None, "frontier") == ("right", (2, 8))
 
 
 def test_route_avoids_passing_through_exit() -> None:
@@ -150,3 +151,11 @@ def test_budget_phases() -> None:
     assert b.kick_at() == T0 + timedelta(minutes=110)
     assert budget(minutes=None).kick_at() is None
     assert prior_step_s(True) < prior_step_s(False)
+
+
+def test_chosen_target_kept_until_reached() -> None:
+    grid = grid_of(BRANCHES)
+    # Вниз ближе, но уже выбранная цель слева держится.
+    assert explore_step(grid, (1, 4), None, "explore", keep=(1, 1)) == ("left", (1, 1))
+    grid.visited.add((1, 1))
+    assert explore_step(grid, (1, 4), None, "explore", keep=(1, 1)) == ("down", (2, 4))

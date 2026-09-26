@@ -102,6 +102,7 @@ class MetroSolver:
     _far: bool = False
     _move_sent_at: datetime | None = None
     _last: str | None = None
+    _target: Pos | None = None
     _screen: Event | None = None
 
     def __post_init__(self) -> None:
@@ -142,10 +143,11 @@ class MetroSolver:
         self._pending = None
 
     def cancel(self) -> None:
-        """Решённый ход не отправлен (экран сменился): не ждать его, решение — заново."""
+        """Решённый ход не отправлен (экран сменился): не ждать его, цель и решение — заново."""
         self._pending = None
         self._move_sent_at = None
         self._early = False
+        self._target = None
 
     def resync(self) -> None:
         """Следующий кадр — свежий после рестарта: позиция ищется по всей карте, пока окно не
@@ -169,6 +171,7 @@ class MetroSolver:
                 self._note_kind("lost", window=list(frame.window))
                 return
             self._note_kind("relocated", to=list(located))
+            self._target = None
             self.pos = located
             self.path.append(located)
         self.lost = False
@@ -299,19 +302,22 @@ class MetroSolver:
             self._heal = True
             return Click("maze_first_aid", "heal")
         if self.mode != "leave":
-            direction = explore_step(self.grid, self.pos, self.exit_at, self.mode, self._last)
-            if direction is not None:
-                return Click(f"maze_{direction}", self.mode)
+            planned = explore_step(
+                self.grid, self.pos, self.exit_at, self.mode, self._last, self._target
+            )
+            if planned is not None:
+                self._target = planned[1]
+                return Click(f"maze_{planned[0]}", self.mode)
             self._leave("explored")
             if self._needs_heal():
                 self._heal = True
                 return Click("maze_first_aid", "heal")
         if self.exit_at is None:
             return Halt("exit_not_found")
-        direction, _ = exit_route(self.grid, self.pos, self.exit_at)
-        if direction is None:
+        towards, _ = exit_route(self.grid, self.pos, self.exit_at)
+        if towards is None:
             return Halt("no_route_to_exit")
-        return Click(f"maze_{direction}", "leave")
+        return Click(f"maze_{towards}", "leave")
 
     def _needs_heal(self) -> bool:
         if not self.packs or self.stamina is None or self.stamina >= FULL:
