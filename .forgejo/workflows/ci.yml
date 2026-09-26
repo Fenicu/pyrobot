@@ -20,7 +20,7 @@ jobs:
       - name: Получить исходники
         run: |
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends git ca-certificates
+          apt-get install -y -qq --no-install-recommends git ca-certificates build-essential
           AUTH_URL="$(echo "${{ github.server_url }}/${{ github.repository }}.git" \
             | sed "s|https://|https://ci:${{ secrets.GITEA_TOKEN }}@|")"
           git init -q . && git remote add origin "$AUTH_URL"
@@ -55,7 +55,7 @@ jobs:
         run: |
           echo 'Acquire::http::Proxy "http://10.10.40.23:3142";' > /etc/apt/apt.conf.d/00proxy
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends git ca-certificates postgresql-client
+          apt-get install -y -qq --no-install-recommends git ca-certificates build-essential postgresql-client
           AUTH_URL="$(echo "${{ github.server_url }}/${{ github.repository }}.git" \
             | sed "s|https://|https://ci:${{ secrets.GITEA_TOKEN }}@|")"
           git init -q . && git remote add origin "$AUTH_URL"
