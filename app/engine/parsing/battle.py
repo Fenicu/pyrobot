@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from app.engine.events import Event
-from app.engine.parsing.common import DURATION, dur
+from app.engine.parsing.common import COMPANIES, DURATION, dur
 from app.engine.types import IncomingMessage
 
 _TARGET = re.compile(
@@ -26,11 +26,17 @@ class BattleTargetSet(Event):
     zero_stamina: bool
 
 
+def _company(name: str) -> str:
+    # Точка в конце названия («⚡️Stark Ind.») может слиться с точкой предложения.
+    return name + "." if name + "." in COMPANIES else name
+
+
 def recognize_battle_target(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     zero = _ZERO_STAMINA in text
     if m := _TARGET.match(text):
-        return [BattleTargetSet(target=m["target"], battle_in_s=dur(m["t"]), zero_stamina=zero)]
+        target = _company(m["target"])
+        return [BattleTargetSet(target=target, battle_in_s=dur(m["t"]), zero_stamina=zero)]
     if m := _DEFENSE.match(text):
         return [BattleTargetSet(target=DEFENSE, battle_in_s=dur(m["t"]), zero_stamina=zero)]
     return []

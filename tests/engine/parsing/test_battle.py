@@ -1,3 +1,7 @@
+from dataclasses import replace
+
+import pytest
+
 from app.engine.parsing.battle import BattleTargetSet, recognize_battle_target
 from tests.fixtures import game_msg
 
@@ -18,3 +22,14 @@ def test_defense() -> None:
     assert recognize_battle_target(game_msg("battle", 3569475)) == [
         BattleTargetSet(target="🛡Защита", battle_in_s=34560, zero_stamina=False)
     ]
+
+
+@pytest.mark.parametrize("company", ["⚡️Stark Ind.", "🎩Wayne Ent."])
+@pytest.mark.parametrize("dots", [".", ".."])
+def test_target_ending_with_dot(company: str, dots: str) -> None:
+    # В корпусе только Pied Piper и защита: неизвестно, сливает ли игра точку названия с точкой
+    # предложения.
+    msg = game_msg("battle", 3624402)
+    text = (msg.text or "").replace("📯Pied Piper.", company.removesuffix(".") + dots)
+    [event] = recognize_battle_target(replace(msg, text=text))
+    assert isinstance(event, BattleTargetSet) and event.target == company
