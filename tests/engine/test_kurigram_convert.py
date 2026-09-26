@@ -79,3 +79,12 @@ def test_chat_filter_and_join_fight() -> None:
     assert not f.accepts(malformed)
     assert not f.accepts(_m(chat=NS(id=-100500), from_user=NS(id=5), text="привет"))
     assert not f.accepts(_m(chat=NS(id=42)))
+
+
+def test_recovered_boundary_is_exactly_60s() -> None:
+    at_limit = to_incoming(_m(date=T0), kind="new", received_at=T0 + timedelta(seconds=60))
+    assert at_limit.recovered is False
+    over = to_incoming(
+        _m(date=T0), kind="new", received_at=T0 + timedelta(seconds=60, microseconds=1)
+    )
+    assert over.recovered is True

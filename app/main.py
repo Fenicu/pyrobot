@@ -34,6 +34,7 @@ log = logging.getLogger("pyrobot")
 LOCK_CHECK_S = 10.0
 TG_PROBE_S = 60.0
 PIPELINE_DRAIN_S = 10.0
+SESSION_PURGE_S = 3600.0
 
 
 class Runtime:
@@ -48,6 +49,7 @@ class Runtime:
         self.supervisor = Supervisor(self.notifier)
         self.lock_check_s = LOCK_CHECK_S
         self.tg_probe_s = TG_PROBE_S
+        self.session_purge_s = SESSION_PURGE_S
         self.pipeline: Pipeline | None = None
         self.gateway: ActionGateway | None = None
         self.tg: TgAuthManager | None = None
@@ -122,12 +124,14 @@ class Runtime:
             lag=lag,
             lock_ok=lambda: lock.held,
             workers_ok=self.supervisor.healthy,
+            notifier=self.notifier,
         )
         self.container.facade = self.facade
         self.supervisor.start("pipeline", pipeline.run)
         self.supervisor.start("gateway", self.gateway.run)
         self.supervisor.start("lag", lag.run)
         self.supervisor.start("lock-watch", self._watch_lock)
+        self.supervisor.start("session-purge", self._purge_sessions)
         if self._kurigram is not None:
             self.supervisor.start("tg-probe", self._probe_tg)
         await self.tg.boot()
@@ -172,6 +176,17 @@ class Runtime:
             kurigram, tg = self._kurigram, self.tg
             if kurigram is not None and tg is not None and tg.status().state is TgState.ONLINE:
                 await kurigram.probe()
+
+    async def _purge_sessions(self) -> None:
+        while True:
+            await asyncio.sleep(self.session_purge_s)
+            try:
+                purged = await self.auth.purge_expired()
+            except Exception:
+                log.exception("expired sessions not purged")
+                continue
+            if purged:
+                log.info("purged %d expired admin sessions", purged)
 
     async def stop(self) -> None:
         if self.gateway is not None:

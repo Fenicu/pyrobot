@@ -37,3 +37,29 @@ async def test_tg_probe_runs_only_while_online() -> None:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
         await runtime.db.dispose()
+
+
+class _Auth:
+    def __init__(self) -> None:
+        self.purges = 0
+
+    async def purge_expired(self) -> int:
+        self.purges += 1
+        if self.purges == 1:
+            raise ConnectionError("db down")
+        return 0
+
+
+async def test_session_purge_runs_periodically_and_survives_errors() -> None:
+    runtime = Runtime(AppConfig(_env_file=None, transport="fake"))
+    auth = _Auth()
+    runtime.auth = auth  # type: ignore[assignment]
+    runtime.session_purge_s = 0.01
+    task: asyncio.Task[Any] = asyncio.create_task(runtime._purge_sessions())
+    try:
+        await until(lambda: auth.purges >= 3)
+        assert not task.done()
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await runtime.db.dispose()

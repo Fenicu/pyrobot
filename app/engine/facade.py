@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.lag import LoopLagMonitor
+from app.engine.notify import NotifierPort
 from app.engine.pipeline import Pipeline
 from app.engine.settings import Settings, SettingsProvider
 from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
@@ -48,6 +49,7 @@ class EngineFacade:
         lag: LoopLagMonitor,
         lock_ok: Callable[[], bool] = _always,
         workers_ok: Callable[[], bool] = _always,
+        notifier: NotifierPort | None = None,
     ) -> None:
         self.settings = settings
         self.gateway = gateway
@@ -56,6 +58,7 @@ class EngineFacade:
         self.lag = lag
         self._lock_ok = lock_ok
         self._workers_ok = workers_ok
+        self._notifier = notifier
 
     def status(self) -> EngineStatus:
         eng = self.settings.current.engine
@@ -100,6 +103,7 @@ class EngineFacade:
             await self.settings.update(change, changed_by=by)
         except Exception:
             log.exception("kill switch not persisted; latch stays active")
+        await self._audit("engine_killed", f"kill switch on by {by}: {reason}")
 
     async def unkill(self, *, by: str) -> None:
         # Без блокировки единственного экземпляра latch не снимается: иначе на
@@ -113,7 +117,13 @@ class EngineFacade:
 
         await self.settings.update(change, changed_by=by)
         await self.gateway.unkill()
+        await self._audit("engine_unkilled", f"kill switch off by {by}")
 
     async def reconciled(self, *, by: str) -> None:
         log.info("spending unblocked by %s", by)
         await self.gateway.allow_spending()
+        await self._audit("engine_reconciled", f"spending unblocked by {by}")
+
+    async def _audit(self, code: str, text: str) -> None:
+        if self._notifier is not None:
+            await self._notifier.notify("info", code, text)

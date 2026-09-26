@@ -10,6 +10,7 @@ from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
 from app.engine.lag import LoopLagMonitor
 from app.engine.memory import MemoryActionStore, MemoryJournal
+from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
 from app.engine.settings import SettingsChange, StaticSettings
@@ -23,6 +24,7 @@ def build(
     settings: StaticSettings | None = None,
     lock_ok: Callable[[], bool] = lambda: True,
     backend: TgAuthBackend | None = None,
+    notifier: NotifierPort | None = None,
 ) -> EngineFacade:
     settings = settings or StaticSettings()
     pipeline = Pipeline(
@@ -44,6 +46,7 @@ def build(
         tg_auth=tg,
         lag=LoopLagMonitor(),
         lock_ok=lock_ok,
+        notifier=notifier,
     )
 
 
@@ -108,3 +111,31 @@ async def test_unkill_refused_after_lock_lost() -> None:
         await f.unkill(by="admin")
     assert f.gateway.kill_reason == "lock_lost"
     assert f.settings.current.engine.killed is False
+
+
+class _Recorder:
+    def __init__(self) -> None:
+        self.items: list[tuple[str, str, str]] = []
+
+    async def notify(self, level: str, code: str, text: str) -> None:
+        self.items.append((level, code, text))
+
+
+async def test_audit_notifications_name_actor() -> None:
+    rec = _Recorder()
+    held = [True]
+    f = build(lock_ok=lambda: held[0], notifier=rec)
+    await f.kill("maintenance", by="alice")
+    await f.unkill(by="bob")
+    await f.reconciled(by="carol")
+    assert [(lvl, code) for lvl, code, _ in rec.items] == [
+        ("info", "engine_killed"),
+        ("info", "engine_unkilled"),
+        ("info", "engine_reconciled"),
+    ]
+    assert "alice" in rec.items[0][2] and "maintenance" in rec.items[0][2]
+    assert "bob" in rec.items[1][2] and "carol" in rec.items[2][2]
+    held[0] = False
+    with pytest.raises(LockLostError):
+        await f.unkill(by="bob")
+    assert len(rec.items) == 3

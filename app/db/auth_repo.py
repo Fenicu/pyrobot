@@ -77,6 +77,15 @@ class AuthRepo:
                 row.expires_at = now + self._ttl
             return Resolved(row, admin, slid)
 
+    async def purge_expired(self) -> int:
+        async with self._db.sessions() as session, session.begin():
+            deleted = await session.scalars(
+                delete(AuthSession)
+                .where(AuthSession.expires_at <= datetime.now(UTC))
+                .returning(AuthSession.id)
+            )
+            return len(list(deleted))
+
     async def revoke(self, session_id: int) -> None:
         async with self._db.sessions() as session, session.begin():
             await session.execute(delete(AuthSession).where(AuthSession.id == session_id))

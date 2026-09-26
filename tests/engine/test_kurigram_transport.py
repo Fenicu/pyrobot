@@ -110,7 +110,7 @@ async def test_relogin_after_loss_reaches_online(tmp_path: Path) -> None:
     st = await mgr.start("+888", owner="s1")
     st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
     assert st.state is TgState.ONLINE and t._client is t.clients[1]
-    assert t.clients[1].is_initialized
+    assert t.clients[1].is_initialized and t.clients[1].get_me_calls == 1
 
 
 async def test_click_bot_response_timeout_is_no_toast(tmp_path: Path) -> None:
@@ -156,3 +156,11 @@ async def test_send_code_invalid_phone_classified(tmp_path: Path) -> None:
     t.client.errors["SendCode"] = rpc_error("PhoneNumberInvalid")
     with pytest.raises(InvalidPhone):
         await t.send_code("+1")
+
+
+async def test_boot_calls_get_me_once(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    mgr = TgAuthManager(t, expected_user_id=EXPECTED)
+    assert (await mgr.boot()).state is TgState.ONLINE
+    assert t.client.get_me_calls == 1
+    assert t.client.me is not None and t.client.me.id == EXPECTED

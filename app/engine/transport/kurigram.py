@@ -123,6 +123,7 @@ class KurigramTransport:
         self._filter = chat_filter
         self._sink = sink
         self.on_auth_lost: Callable[[], Awaitable[None]] | None = None
+        self._me: Any = None
         self._client = self._make_client()
 
     def _make_client(self) -> Any:
@@ -173,6 +174,7 @@ class KurigramTransport:
         # повторно; новый клиент не открывает файл сессии до connect().
         if self._client is not client:
             return False
+        self._me = None
         self._client = self._make_client()
         try:
             if client.is_initialized:
@@ -233,8 +235,8 @@ class KurigramTransport:
         return int(user.id)
 
     async def identify(self) -> int:
-        me = await self._client.get_me()
-        return int(me.id)
+        self._me = await self._client.get_me()
+        return int(self._me.id)
 
     async def go_online(self) -> None:
         from pyrogram import raw
@@ -246,7 +248,9 @@ class KurigramTransport:
                 UpdateState(0, state.pts, state.qts, state.date, state.seq)
             )
             await self._client.storage.save()
-        self._client.me = await self._client.get_me()
+        # identity из identify() (boot) переиспользуется, при входе по коду get_me — один раз.
+        me, self._me = self._me, None
+        self._client.me = me if me is not None else await self._client.get_me()
         async for _ in self._client.get_dialogs(limit=DIALOGS_WARMUP):
             pass
         await self._client.initialize()

@@ -49,29 +49,65 @@ class LoginRateLimiter:
         max_s: float = 900.0,
         clock: Callable[[], float] = time.monotonic,
         verify_slots: int = 2,
+        window_s: float = 3600.0,
+        max_entries: int = 10_000,
     ) -> None:
         self._free = free_attempts
         self._base = base_s
         self._max = max_s
         self._clock = clock
-        self._failures: dict[str, int] = {}
+        self._window = window_s
+        self._max_entries = max_entries
+        self._failures: dict[str, tuple[int, float]] = {}
         self._until: dict[str, float] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self.slots = asyncio.Semaphore(verify_slots)
 
+    @property
+    def tracked(self) -> int:
+        return len(self._failures.keys() | self._locks.keys())
+
     def lock_for(self, key: str) -> asyncio.Lock:
+        if len(self._locks) > self._max_entries:
+            self._sweep()
         return self._locks.setdefault(key, asyncio.Lock())
 
     def blocked_for(self, key: str) -> float:
-        return max(0.0, self._until.get(key, 0.0) - self._clock())
+        now = self._clock()
+        if self._stale(key, now):
+            self._forget(key)
+        return max(0.0, self._until.get(key, 0.0) - now)
 
     def failure(self, key: str) -> None:
-        count = self._failures.get(key, 0) + 1
-        self._failures[key] = count
+        now = self._clock()
+        if self._stale(key, now):
+            self._forget(key)
+        count = self._failures.get(key, (0, now))[0] + 1
+        self._failures[key] = (count, now)
         if count > self._free:
             delay = min(self._max, self._base * 2 ** (count - self._free - 1))
-            self._until[key] = self._clock() + delay
+            self._until[key] = now + delay
+        if len(self._failures) > self._max_entries:
+            self._sweep()
 
     def success(self, key: str) -> None:
         self._failures.pop(key, None)
         self._until.pop(key, None)
+
+    def _stale(self, key: str, now: float) -> bool:
+        entry = self._failures.get(key)
+        if entry is None:
+            return False
+        return now - entry[1] > self._window and self._until.get(key, 0.0) <= now
+
+    def _forget(self, key: str) -> None:
+        self._failures.pop(key, None)
+        self._until.pop(key, None)
+
+    def _sweep(self) -> None:
+        now = self._clock()
+        for key in [k for k in self._failures if self._stale(k, now)]:
+            self._forget(key)
+        for key in [k for k, lock in self._locks.items() if not lock.locked()]:
+            if key not in self._failures:
+                del self._locks[key]

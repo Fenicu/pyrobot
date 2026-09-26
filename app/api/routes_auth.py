@@ -32,6 +32,16 @@ class PasswordIn(BaseModel):
     new: str = Field(min_length=12, max_length=1024)
 
 
+def _raise_if_blocked(c: Container, key: str) -> None:
+    wait = c.limiter.blocked_for(key)
+    if wait > 0:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "too many attempts",
+            headers={"Retry-After": str(int(wait) + 1)},
+        )
+
+
 @router.post("/login", response_model=MeOut)
 async def login(
     body: LoginIn,
@@ -41,13 +51,7 @@ async def login(
 ) -> MeOut:
     key = request.client.host if request.client else "unknown"
     async with c.limiter.lock_for(key):
-        wait = c.limiter.blocked_for(key)
-        if wait > 0:
-            raise HTTPException(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                "too many attempts",
-                headers={"Retry-After": str(int(wait) + 1)},
-            )
+        _raise_if_blocked(c, key)
         admin = await c.auth.get_admin(body.login)
         async with c.limiter.slots:
             valid = await verify_password(
@@ -84,10 +88,15 @@ async def change_password(
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],
 ) -> None:
-    admin = await c.auth.get_admin(ctx.login)
-    async with c.limiter.slots:
-        if admin is None or not await verify_password(admin.password_hash, body.current):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid current password")
-        new_hash = await hash_password(body.new)
+    key = f"session:{ctx.session_id}"
+    async with c.limiter.lock_for(key):
+        _raise_if_blocked(c, key)
+        admin = await c.auth.get_admin(ctx.login)
+        async with c.limiter.slots:
+            if admin is None or not await verify_password(admin.password_hash, body.current):
+                c.limiter.failure(key)
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid current password")
+            new_hash = await hash_password(body.new)
+        c.limiter.success(key)
     await c.auth.change_password(admin.id, new_hash)
     response.delete_cookie(COOKIE, path="/")

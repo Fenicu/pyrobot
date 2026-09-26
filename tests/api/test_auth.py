@@ -137,3 +137,16 @@ async def test_password_change_field_limits(api_client: AsyncClient) -> None:
 @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
 async def test_api_docs_disabled(api_client: AsyncClient, path: str) -> None:
     assert (await api_client.get(path)).status_code == 404
+
+
+async def test_password_change_wrong_current_is_throttled(api_client: AsyncClient) -> None:
+    h = {"X-CSRF-Token": await login(api_client)}
+    bad = {"current": "wrong password", "new": "a much longer password"}
+    codes = [
+        (await api_client.post("/api/v1/auth/password", headers=h, json=bad)).status_code
+        for _ in range(7)
+    ]
+    assert codes == [403] * 6 + [429]
+    good = {"current": PASSWORD, "new": "a much longer password"}
+    r = await api_client.post("/api/v1/auth/password", headers=h, json=good)
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0

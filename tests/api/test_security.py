@@ -27,3 +27,31 @@ def test_rate_limiter_backoff() -> None:
     rl.success("ip")
     assert rl.blocked_for("ip") == 0
     assert rl.lock_for("ip") is rl.lock_for("ip")
+
+
+def test_rate_limiter_forgets_entries_older_than_window() -> None:
+    t = [0.0]
+    rl = LoginRateLimiter(free_attempts=1, base_s=10, max_s=40, window_s=100, clock=lambda: t[0])
+    rl.failure("ip")
+    rl.failure("ip")
+    assert rl.blocked_for("ip") == 10
+    t[0] = 50
+    rl.failure("ip")
+    assert rl.blocked_for("ip") == 20
+    t[0] = 50 + 20 + 101
+    assert rl.blocked_for("ip") == 0
+    assert rl.tracked == 0
+    rl.failure("ip")
+    assert rl.blocked_for("ip") == 0
+
+
+def test_rate_limiter_sweeps_stale_entries_over_capacity() -> None:
+    t = [0.0]
+    rl = LoginRateLimiter(window_s=100, max_entries=2, clock=lambda: t[0])
+    for key in ("a", "b", "c"):
+        rl.lock_for(key)
+        rl.failure(key)
+    t[0] = 200
+    rl.lock_for("d")
+    rl.failure("d")
+    assert rl.tracked == 1
