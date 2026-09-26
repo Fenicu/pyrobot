@@ -1,12 +1,12 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.base import Database
-from app.db.models import MessageRow, StateSnapshot
-from app.engine.events import Event
+from app.db.models import MessageRow, MetricRow, StateSnapshot, UnrecognizedRow
+from app.engine.events import Event, Unrecognized
 from app.engine.types import IncomingMessage
 
 
@@ -28,6 +28,7 @@ class DbJournal:
         events: Sequence[Event],
         new_state: dict[str, Any] | None,
         new_version: int,
+        metrics: Mapping[str, float] | None = None,
     ) -> int | None:
         async with self._db.sessions() as session, session.begin():
             stmt = (
@@ -66,4 +67,20 @@ class DbJournal:
                     )
                 )
                 await session.execute(snap)
+            if metrics:
+                session.add_all(
+                    MetricRow(account_id=self._account_id, ts=msg.date, key=key, value=value)
+                    for key, value in metrics.items()
+                )
+            session.add_all(
+                UnrecognizedRow(
+                    account_id=self._account_id,
+                    message_id=journal_id,
+                    chat_id=msg.chat_id,
+                    msg_id=msg.msg_id,
+                    first_line=event.first_line,
+                )
+                for event in events
+                if isinstance(event, Unrecognized)
+            )
             return int(journal_id)

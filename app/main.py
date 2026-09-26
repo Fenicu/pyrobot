@@ -23,7 +23,8 @@ from app.engine.facade import EngineFacade
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.lag import LoopLagMonitor
 from app.engine.parsing import default_parser
-from app.engine.pipeline import NullReducer, Pipeline
+from app.engine.pipeline import Pipeline
+from app.engine.state.reducer import StateReducer
 from app.engine.supervisor import Supervisor
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
@@ -79,10 +80,12 @@ class Runtime:
         unknown = await actions.mark_unfinished_unknown()
         bus = Bus()
         react_age = self.settings.current.engine.recovered_react_max_age_min
+        reducer = StateReducer()
         self.pipeline = Pipeline(
             journal=DbJournal(self.db, self.config.account_id),
             parser=default_parser(self.settings.current.chats),
-            reducer=NullReducer(),
+            reducer=reducer,
+            metrics=reducer.metrics,
             bus=bus,
             react_max_age=timedelta(minutes=react_age),
         )

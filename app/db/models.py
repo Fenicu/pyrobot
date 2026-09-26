@@ -5,6 +5,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -119,6 +120,31 @@ class ActionRow(Base):
     match_detail: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MetricRow(Base):
+    __tablename__ = "metrics"
+    __table_args__ = (Index("ix_metrics_account_key_ts", "account_id", "key", "ts"),)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    key: Mapped[str] = mapped_column(String(32))
+    value: Mapped[float] = mapped_column(Float)
+
+
+class UnrecognizedRow(Base):
+    __tablename__ = "unrecognized"
+    __table_args__ = (
+        Index("ix_unrecognized_account_acked_created", "account_id", "acked", "created_at"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    message_id: Mapped[int] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    msg_id: Mapped[int] = mapped_column(BigInteger)
+    first_line: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now_col()
+    acked: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class NotificationRow(Base):

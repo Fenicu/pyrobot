@@ -241,6 +241,29 @@ async def test_subscribe_during_publish_applies_to_next_delivery() -> None:
     assert calls == ["early:1", "early:2", "late:2"]
 
 
+async def test_metrics_and_unrecognized_reach_journal() -> None:
+    from app.engine.settings import ChatsSection
+    from app.engine.state.reducer import StateReducer
+    from tests.fixtures import game_msg
+
+    journal = MemoryJournal()
+    reducer = StateReducer()
+    pipe = Pipeline(
+        journal=journal,
+        parser=default_parser(ChatsSection()),
+        reducer=reducer,
+        bus=Bus(),
+        metrics=reducer.metrics,
+    )
+    profile = game_msg("profile", 3624478)
+    await pipe.process(profile)
+    assert (profile.date, "money", 867.0) in journal.metrics
+    count = len(journal.metrics)
+    await pipe.process(make_msg("совсем непонятное", msg_id=77))
+    assert len(journal.metrics) == count
+    assert journal.unrecognized == [(2, "совсем непонятное")]
+
+
 async def test_latest_evicted_over_capacity() -> None:
     pipe = Pipeline(
         journal=MemoryJournal(),

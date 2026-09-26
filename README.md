@@ -56,6 +56,12 @@ uv run alembic upgrade head
 Новую миграцию генерировать через `uv run alembic revision --autogenerate -m "..."`. Alembic читает
 только `PYROBOT_DATABASE_URL` (`DbConfig`), Telegram-параметры для миграций не нужны.
 
+Миграция `0002` добавляет таблицы `metrics` (временной ряд ключевых полей состояния — `money`,
+`level`, `stamina` и т.д., строка пишется только при изменении значения, момент — `msg.date`) и
+`unrecognized` (нераспознанные сообщения игрового чата, `first_line` для быстрого просмотра, флаг
+`acked` для разбора). Обе таблицы пишутся в той же транзакции, что и запись сообщения в журнал
+(`JournalStore.append`), поэтому не могут разойтись с журналом.
+
 Пул соединений (`app/db/base.py`) задаёт asyncpg `command_timeout=30` — ни один запрос не висит
 дольше 30 секунд; проверка single-instance лока (`SingleInstanceLock.check`) ограничена 5 секундами,
 таймаут считается потерей лока.
@@ -134,8 +140,10 @@ Postgres advisory lock) → если лок не взят, движок не с�
 `/readyz` навсегда 503 для этого процесса → если остались незавершённые действия с прошлого запуска
 (`mark_unfinished_unknown`), шлюз сразу блокирует траты (`block_spending("reconcile_required")`) и
 уведомление `actions_outcome_unknown` — сверить исход вручную и снять блок `POST
-/api/v1/engine/reconciled` → шина, конвейер (снимок состояния восстанавливается из журнала) →
-транспорт (`PYROBOT_TRANSPORT=kurigram|fake`) → шлюз действий, подписанный на шину → `TgAuthManager`
+/api/v1/engine/reconciled` → шина, конвейер (снимок состояния восстанавливается из журнала, редьюсер
+— `StateReducer`, при изменении состояния метрики (`StateReducer.metrics`) пишутся в ту же
+транзакцию, что и журнал) → транспорт (`PYROBOT_TRANSPORT=kurigram|fake`) → шлюз действий,
+подписанный на шину → `TgAuthManager`
 → фасад → супервизор (`app/engine/supervisor.py`, `Supervisor`) поднимает и перезапускает с
 экспоненциальным backoff фоновые задачи конвейера, шлюза, монитора лага event loop, наблюдателя за
 локом, чистки истёкших сессий админки `session-purge` и (для kurigram) пробы сессии Telegram

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import OrderedDict
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import timedelta
 from typing import Any, Protocol
 
@@ -34,6 +34,7 @@ class JournalStore(Protocol):
         events: Sequence[Event],
         new_state: State | None,
         new_version: int,
+        metrics: Mapping[str, float] | None = None,
     ) -> int | None: ...
 
 
@@ -45,6 +46,7 @@ class Pipeline:
         parser: Parser,
         reducer: Reducer,
         bus: Bus,
+        metrics: Callable[[State, State], Mapping[str, float]] | None = None,
         react_max_age: timedelta = timedelta(minutes=10),
         latest_capacity: int = 5000,
         retry_base_s: float = 0.5,
@@ -54,6 +56,7 @@ class Pipeline:
         self._parser = parser
         self._reducer = reducer
         self._bus = bus
+        self._metrics = metrics
         self._react_max_age = react_max_age
         self._queue: asyncio.Queue[IncomingMessage] = asyncio.Queue()
         self._latest: OrderedDict[tuple[int, int], IncomingMessage] = OrderedDict()
@@ -126,7 +129,10 @@ class Pipeline:
             new_state = self._state
         changed = new_state != self._state
         version = self._version + 1 if changed else self._version
-        journal_id = await self._append(msg, events, new_state if changed else None, version)
+        metrics = self._metrics(self._state, new_state) if changed and self._metrics else None
+        journal_id = await self._append(
+            msg, events, new_state if changed else None, version, metrics
+        )
         if journal_id is None:
             return None
         if changed:
@@ -150,11 +156,14 @@ class Pipeline:
         events: Sequence[Event],
         new_state: State | None,
         version: int,
+        metrics: Mapping[str, float] | None,
     ) -> int | None:
         delay = self._retry_base
         while True:
             try:
-                journal_id = await self._journal.append(msg, events, new_state, version)
+                journal_id = await self._journal.append(
+                    msg, events, new_state, version, metrics=metrics
+                )
             except Exception:
                 self._healthy = False
                 log.exception("journal append failed, retry in %.2fs", delay)
