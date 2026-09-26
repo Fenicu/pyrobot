@@ -20,7 +20,7 @@ from app.db.settings_store import DbSettingsStore
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade
-from app.engine.gateway.gateway import ActionGateway
+from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.lag import LoopLagMonitor
 from app.engine.parsing import default_parser
 from app.engine.pipeline import Pipeline
@@ -78,7 +78,7 @@ class Runtime:
             )
             return
         actions = DbActionStore(self.db, self.config.account_id)
-        unknown = await actions.mark_unfinished_unknown()
+        await actions.mark_unfinished_unknown()
         bus = Bus()
         react_age = self.settings.current.engine.recovered_react_max_age_min
         reducer = StateReducer()
@@ -103,12 +103,13 @@ class Runtime:
             clock=SystemClock(),
             can_send=self._can_send,
         )
-        if unknown:
-            self.gateway.block_spending("reconcile_required")
+        pending = await actions.unreconciled()
+        if pending:
+            self.gateway.block_spending(RECONCILE_REASON)
             await self.notifier.notify(
                 "warn",
                 "actions_outcome_unknown",
-                f"{len(unknown)} actions interrupted by restart",
+                f"{len(pending)} actions need state reconciliation",
             )
         bus.subscribe(self.gateway.on_delivery, priority=0)
         bus.subscribe(UnrecognizedWatch(self.notifier, SystemClock()).on_delivery, priority=50)

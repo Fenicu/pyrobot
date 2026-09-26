@@ -310,6 +310,15 @@ identity (`get_me`) проверяется до запуска апдейтов,
 незавершёнными наравне с `INTENT`/`SENT` и так же требуют сверки. TTL, темп отправки и паузы шлюз
 считает по инжектированным часам (`Clock.monotonic()`, `SystemClock`).
 
+Неизвестный исход траты (класс не `nav`) сразу блокирует новые траты (`spending_blocked =
+"reconcile_required"`) — синхронно, до выбора шлюзом следующего действия, и вызывает хук
+`on_uncertain(req, action_id)` шлюза (`ActionGateway(..., on_uncertain=...)`), если он назначен;
+исключение хука не мешает блокировке. Само обязательство сверки — строка `actions` со статусом
+`outcome_unknown`, классом не `nav` и `reconciled_at IS NULL` (`ActionStore.unreconciled()`); она
+хранится в БД и переживает любое число рестартов, пока её не закроет сверка (Task 15,
+`ActionStore.mark_reconciled()`) или пока блок трат не снимут вручную через
+`POST /api/v1/engine/reconciled`.
+
 ## API
 
 `app/api` (`create_api(container) -> FastAPI`) — HTTP API админки. Авторизация — сессионная cookie

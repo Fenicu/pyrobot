@@ -8,6 +8,7 @@ import pytest
 from app.engine.bus import Delivery
 from app.engine.commands import CommandClass
 from app.engine.events import AntiFlood
+from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.store import StoredAction
 from app.engine.gateway.types import (
     ActionKind,
@@ -510,3 +511,44 @@ async def test_ttl_uses_injected_clock() -> None:
         assert r.transport.sent == []
     finally:
         await r.stop()
+
+
+async def test_uncertain_spending_blocks_and_notifies(rig: Rig) -> None:
+    noted: list[tuple[str | None, int | None]] = []
+    rig.gw.on_uncertain = lambda req, action_id: noted.append((req.text, action_id))
+    res = await rig.gw.submit(send("/harvest", expect=Expectation(lambda d: None, 0.05)))
+    assert res.status is ActionStatus.OUTCOME_UNKNOWN
+    assert rig.gw.spending_blocked == RECONCILE_REASON
+    assert noted == [("/harvest", res.action_id)]
+    blocked = await rig.gw.submit(send("/job", expect=Expectation(lambda d: None, 0.05)))
+    assert (blocked.status, blocked.reason) == (
+        ActionStatus.REJECTED,
+        f"blocked:{RECONCILE_REASON}",
+    )
+    assert [o.action_id for o in await rig.store.unreconciled()] == [res.action_id]
+
+
+async def test_uncertain_nav_does_not_block(rig: Rig) -> None:
+    res = await rig.gw.submit(send("/inv", expect=Expectation(lambda d: None, 0.05)))
+    assert res.status is ActionStatus.OUTCOME_UNKNOWN
+    assert rig.gw.spending_blocked is None
+    assert await rig.store.unreconciled() == []
+
+
+async def test_failing_hook_still_blocks(rig: Rig) -> None:
+    def boom(req: ActionRequest, action_id: int | None) -> None:
+        raise RuntimeError("hook")
+
+    rig.gw.on_uncertain = boom
+    await rig.gw.submit(send("/harvest", expect=Expectation(lambda d: None, 0.05)))
+    assert rig.gw.spending_blocked == RECONCILE_REASON
+
+
+async def test_internal_error_on_spending_blocks(rig: Rig) -> None:
+    def broken_boundary() -> int:
+        raise ZeroDivisionError
+
+    rig.gw._boundary = broken_boundary  # type: ignore[attr-defined]
+    res = await rig.gw.submit(send("/harvest", expect=Expectation(lambda d: None, 0.05)))
+    assert res.status is ActionStatus.OUTCOME_UNKNOWN and res.reason == "internal_error"
+    assert rig.gw.spending_blocked == RECONCILE_REASON

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -23,6 +24,16 @@ class StoredAction:
         ):
             match = Match(Verdict(self.status.value), self.match_detail)
         return ActionResult(self.status, self.id, self.reason, match, self.answer)
+
+
+@dataclass(frozen=True, slots=True)
+class Obligation:
+    """Действие с неизвестным исходом, по которому ещё не сверено состояние."""
+
+    action_id: int | None
+    kind: str
+    text: str | None = None
+    data: str | None = None
 
 
 # Причина outcome_unknown для действия, прерванного остановкой шлюза посреди отправки;
@@ -56,3 +67,7 @@ class ActionStore(Protocol):
     async def get_by_key(self, key: str) -> StoredAction | None: ...
 
     async def mark_unfinished_unknown(self) -> list[int]: ...
+
+    async def unreconciled(self) -> list[Obligation]: ...
+
+    async def mark_reconciled(self, action_ids: Sequence[int]) -> None: ...

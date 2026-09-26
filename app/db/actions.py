@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, or_, select, update
@@ -6,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db.base import Database
 from app.db.models import ActionRow
 from app.engine.commands import CommandClass
-from app.engine.gateway.store import CANCELLED, DuplicateKey, StoredAction
+from app.engine.gateway.store import CANCELLED, DuplicateKey, Obligation, StoredAction
 from app.engine.gateway.types import ActionRequest, ActionStatus
 
 _FINAL = {
@@ -113,3 +114,30 @@ class DbActionStore:
                 .returning(ActionRow.id)
             )
             return [int(i) for i in rows]
+
+    async def unreconciled(self) -> list[Obligation]:
+        async with self._db.sessions() as session:
+            rows = await session.scalars(
+                select(ActionRow)
+                .where(
+                    ActionRow.account_id == self._account_id,
+                    ActionRow.status == ActionStatus.OUTCOME_UNKNOWN.value,
+                    ActionRow.command_class != CommandClass.NAV.value,
+                    ActionRow.reconciled_at.is_(None),
+                )
+                .order_by(ActionRow.id)
+            )
+            return [
+                Obligation(row.id, row.kind, row.payload.get("text"), row.payload.get("data"))
+                for row in rows
+            ]
+
+    async def mark_reconciled(self, action_ids: Sequence[int]) -> None:
+        if not action_ids:
+            return
+        async with self._db.sessions() as session, session.begin():
+            await session.execute(
+                update(ActionRow)
+                .where(ActionRow.account_id == self._account_id, ActionRow.id.in_(action_ids))
+                .values(reconciled_at=datetime.now(UTC))
+            )

@@ -3,7 +3,7 @@ import pytest
 from app.db.actions import DbActionStore
 from app.db.base import Database
 from app.engine.commands import CommandClass
-from app.engine.gateway.store import DuplicateKey
+from app.engine.gateway.store import DuplicateKey, Obligation
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 
 pytestmark = pytest.mark.db
@@ -47,3 +47,23 @@ async def test_mark_unfinished_includes_cancelled_unknown(clean_db: Database) ->
     await store.update(timeout, status=ActionStatus.OUTCOME_UNKNOWN, reason="timeout")
     assert await store.mark_unfinished_unknown() == [cancelled]
     assert await store.mark_unfinished_unknown() == []
+
+
+async def test_obligations_survive_restart_until_reconciled(clean_db: Database) -> None:
+    store = DbActionStore(clean_db, account_id=1)
+    spend = await store.create(
+        ActionRequest(kind=ActionKind.SEND, chat_id=1, text="/harvest"),
+        CommandClass.ACTION,
+        ActionStatus.SENT,
+    )
+    nav = await store.create(
+        ActionRequest(kind=ActionKind.SEND, chat_id=1, text="/inv"),
+        CommandClass.NAV,
+        ActionStatus.SENT,
+    )
+    assert sorted(await store.mark_unfinished_unknown()) == [spend, nav]
+    assert await store.unreconciled() == [Obligation(spend, "send", "/harvest", None)]
+    again = DbActionStore(clean_db, account_id=1)
+    assert [o.action_id for o in await again.unreconciled()] == [spend]
+    await again.mark_reconciled([spend])
+    assert await store.unreconciled() == []

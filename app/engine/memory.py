@@ -7,7 +7,7 @@ from typing import Any
 
 from app.engine.commands import CommandClass
 from app.engine.events import Event, Unrecognized
-from app.engine.gateway.store import CANCELLED, DuplicateKey, StoredAction
+from app.engine.gateway.store import CANCELLED, DuplicateKey, Obligation, StoredAction
 from app.engine.gateway.types import ActionRequest, ActionStatus
 from app.engine.types import IncomingMessage
 
@@ -58,6 +58,7 @@ class MemoryActionRow:
     answer: str | None = None
     match_detail: str | None = None
     sent: bool = False
+    reconciled: bool = False
     history: list[ActionStatus] = field(default_factory=list)
 
 
@@ -118,3 +119,17 @@ class MemoryActionStore:
         for i in ids:
             await self.update(i, status=ActionStatus.OUTCOME_UNKNOWN, reason="restart")
         return ids
+
+    async def unreconciled(self) -> list[Obligation]:
+        return [
+            Obligation(i, r.req.kind.value, r.req.text, r.req.data)
+            for i, r in self.rows.items()
+            if r.status is ActionStatus.OUTCOME_UNKNOWN
+            and r.cls is not CommandClass.NAV
+            and not r.reconciled
+        ]
+
+    async def mark_reconciled(self, action_ids: Sequence[int]) -> None:
+        for action_id in action_ids:
+            if action_id in self.rows:
+                self.rows[action_id].reconciled = True

@@ -38,11 +38,13 @@ LatestLookup = Callable[[int, int], IncomingMessage | None]
 Boundary = Callable[[], int]
 CanSend = Callable[[], str | None]
 Blocked = tuple[ActionStatus, str]
+UncertainHook = Callable[[ActionRequest, int | None], None]
 DATE_SKEW = timedelta(seconds=2)
 MAX_FLOODWAIT_S = 300.0
 MAX_KEY_LEN = 100
 _NEXT_ERROR_PAUSE_S = 0.05
 _ABANDON_WRITE_S = 5.0
+RECONCILE_REASON = "reconcile_required"
 
 
 @dataclass(eq=False)
@@ -94,6 +96,7 @@ class ActionGateway:
         boundary: Boundary,
         clock: Clock,
         can_send: CanSend = _always_can_send,
+        on_uncertain: UncertainHook | None = None,
     ) -> None:
         self._transport = transport
         self._can_send = can_send
@@ -102,6 +105,7 @@ class ActionGateway:
         self._latest = latest
         self._boundary = boundary
         self._clock = clock
+        self.on_uncertain = on_uncertain
         self._queue: list[_Pending] = []
         self._cond = asyncio.Condition()
         self._seq = itertools.count()
@@ -306,7 +310,20 @@ class ActionGateway:
                     )
             except Exception:
                 log.exception("abandoned action %s not persisted", p.action_id)
+        self._uncertain(p)
         return ActionResult(ActionStatus.OUTCOME_UNKNOWN, action_id=p.action_id, reason=reason)
+
+    def _uncertain(self, p: _Pending) -> None:
+        # Исход траты неизвестен: до сверки состояния новые траты запрещены. Блок ставится
+        # синхронно, до выбора следующего действия.
+        if p.cls is CommandClass.NAV:
+            return
+        self._spend_block = RECONCILE_REASON
+        if self.on_uncertain is not None:
+            try:
+                self.on_uncertain(p.req, p.action_id)
+            except Exception:
+                log.exception("uncertain hook failed")
 
     def _static_checks(self, req: ActionRequest, cls: CommandClass) -> Blocked | None:
         eng = self._settings.current.engine
@@ -562,6 +579,8 @@ class ActionGateway:
         match: Match | None = None,
     ) -> ActionResult:
         p.finished = True
+        if status is ActionStatus.OUTCOME_UNKNOWN:
+            self._uncertain(p)
         action_id = p.action_id
         if action_id is not None:
             try:
