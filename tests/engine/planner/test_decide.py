@@ -80,7 +80,7 @@ def awake(at: datetime = NOW, **over: Any) -> CharacterState:
         "motivation": 40,
         "motivation_next_at": t(30),
         "busy": None,
-        "battle_at": t(180),
+        "battle_at": at.replace(minute=0, second=0, microsecond=0) + timedelta(hours=3),
         "battle_target": "📯Pied Piper",
         "sleep_deadline": t(40 * 60),
         "sleep_allowed_at": t(-60),

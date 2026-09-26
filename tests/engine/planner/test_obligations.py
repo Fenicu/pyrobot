@@ -51,7 +51,8 @@ def state(now: datetime, **over: Any) -> CharacterState:
         "motivation": 0,
         "motivation_next_at": at(24 * 60),
         "busy": None,
-        "battle_at": at(9 * 60),
+        # Битвы — в начале часа.
+        "battle_at": now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=9),
         "battle_target": "📯Pied Piper",
         "sleep_deadline": at(40 * 60),
         "sleep_allowed_at": at(-60),
