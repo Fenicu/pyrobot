@@ -1,29 +1,55 @@
 [project]
 name = "pyrobot"
 version = "0.1.0"
-description = "Client telegram bot"
+description = "Userbot для автоматической игры в StartupWars"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
-    "aiohttp>=3.11.10",
-    "apscheduler>=3.11.0",
-    "pyrofork>=2.3.48",
-    "tgcrypto-pyrofork>=1.2.7",
-    "sentry-sdk>=2.0.0",
+    "kurigram>=2.2.26",
+    "tgcrypto>=1.2.5",
+    "fastapi>=0.141",
+    "uvicorn[standard]>=0.54",
+    "sqlalchemy[asyncio]>=2.1",
+    "asyncpg>=0.31",
+    "alembic>=1.20",
+    "pydantic>=2.13",
+    "pydantic-settings>=2.15",
+    "argon2-cffi>=25.1",
 ]
-
-[tool.ruff]
-target-version = "py312"
-line-length = 99
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I"]
-
-[tool.coverage.run]
-source = ["app"]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.15.4",
+    "pytest>=9.1",
+    "pytest-asyncio>=1.4",
+    "httpx>=0.28",
+    "ruff==0.16.9",
+    "mypy>=2.3",
 ]
 
+[[tool.uv.index]]
+url = "http://10.10.40.8:3141/root/pypi/+simple/"
+default = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 99
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+markers = [
+    "db: требует Postgres (docker compose -f compose.dev.yml up -d)",
+    "corpus: требует ~/pyrobot-research",
+]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+packages = ["app.engine"]
+ignore_missing_imports = true
