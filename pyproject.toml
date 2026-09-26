@@ -51,5 +51,9 @@ markers = [
 [tool.mypy]
 python_version = "3.13"
 strict = true
-packages = ["app.engine"]
+packages = ["app"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["app.db.migrations.*"]
+ignore_errors = true
