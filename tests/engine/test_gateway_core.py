@@ -7,6 +7,7 @@ import pytest
 
 from app.engine.bus import Delivery
 from app.engine.commands import CommandClass
+from app.engine.events import AntiFlood
 from app.engine.gateway.store import StoredAction
 from app.engine.gateway.types import (
     ActionKind,
@@ -300,3 +301,81 @@ async def test_expectation_default_timeout_from_settings(rig: Rig) -> None:
 
     res = await rig.gw.submit(send("/job", expect=Expectation(never_matches)))
     assert res.status is ActionStatus.OUTCOME_UNKNOWN and res.reason == "timeout"
+
+
+async def test_antiflood_giveup_pauses_whole_gateway() -> None:
+    cfg = Settings(
+        engine=LIVE.engine.model_copy(update={"antiflood_retry_max": 0, "antiflood_pause_s": 0.2})
+    )
+    async for r in running_rig(cfg):
+
+        async def responder(rec: Sent, rig: Rig = r) -> None:
+            await rig.deliver(make_msg("flood", msg_id=900), events=(AntiFlood(),))
+
+        r.transport.responder = responder
+        t0 = time.monotonic()
+        res = await r.gw.submit(send("/job", expect=expect_text("работать", timeout=0.3)))
+        assert res.status is ActionStatus.OUTCOME_UNKNOWN and res.reason == "antiflood"
+        res2 = await r.gw.submit(send("😎Я"))
+        assert res2.status is ActionStatus.CONFIRMED
+        assert r.transport.sent[-1].at - t0 >= 0.15
+
+
+async def test_antiflood_retry_waits_between_attempts() -> None:
+    cfg = Settings(
+        engine=LIVE.engine.model_copy(update={"antiflood_retry_max": 1, "antiflood_pause_s": 0.2})
+    )
+    async for r in running_rig(cfg):
+        calls = 0
+
+        async def responder(rec: Sent, rig: Rig = r) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                await rig.deliver(make_msg("flood", msg_id=900), events=(AntiFlood(),))
+            else:
+                await rig.deliver(make_msg("Ты отправился работать"))
+
+        r.transport.responder = responder
+        res = await r.gw.submit(send("/job", expect=expect_text("работать", timeout=0.5)))
+        assert res.status is ActionStatus.CONFIRMED
+        assert len(r.transport.sent) == 2
+        assert r.transport.sent[1].at - r.transport.sent[0].at >= 0.15
+
+
+async def test_check_failure_at_enqueue_time_is_rejected_not_raised() -> None:
+    async for r in running_rig():
+
+        def bad_static_checks(req: ActionRequest, cls: CommandClass) -> None:
+            raise RuntimeError("boom")
+
+        r.gw._static_checks = bad_static_checks  # type: ignore[method-assign]
+        res = await r.gw.submit(send("😎Я"))
+        assert res.status is ActionStatus.REJECTED and res.reason == "check_failed:RuntimeError"
+        assert r.transport.sent == []
+
+
+class _ClosingCond:
+    """Оборачивает реальный Condition: при входе в критическую секцию
+    выставляет _closed=True — симулирует shutdown() ровно между
+    enqueue-time проверкой и захватом блокировки в submit()."""
+
+    def __init__(self, cond: asyncio.Condition, gw: object) -> None:
+        self._cond = cond
+        self._gw = gw
+
+    async def __aenter__(self) -> None:
+        await self._cond.acquire()
+        self._gw._closed = True  # type: ignore[attr-defined]
+
+    async def __aexit__(self, *exc: object) -> None:
+        self._cond.release()
+
+
+async def test_submit_closed_between_check_and_enqueue_not_sent() -> None:
+    async for r in running_rig():
+        r.gw._cond = _ClosingCond(r.gw._cond, r.gw)  # type: ignore[attr-defined]
+        res = await r.gw.submit(send("😎Я"))
+        assert res.status is ActionStatus.SUPPRESSED and res.reason == "shutdown"
+        assert r.transport.sent == []
+        assert r.gw.queue_size == 0

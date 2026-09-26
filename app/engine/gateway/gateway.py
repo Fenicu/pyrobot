@@ -160,14 +160,18 @@ class ActionGateway:
                     self._keys.pop(key, None)
 
             pending.future.add_done_callback(forget)
-        blocked = self._static_checks(req, cls)
+        blocked = self._guarded(lambda: self._static_checks(req, cls))
         if blocked is not None:
-            result = await self._record(pending, *blocked)
-            self._resolve(pending, result)
-            return result
+            return await self._reject(pending, *blocked)
         async with self._cond:
-            self._queue.append(pending)
-            self._cond.notify_all()
+            if self._closed:
+                closed_now = True
+            else:
+                self._queue.append(pending)
+                self._cond.notify_all()
+                closed_now = False
+        if closed_now:
+            return await self._reject(pending, ActionStatus.SUPPRESSED, "shutdown")
         try:
             return await asyncio.shield(pending.future)
         except asyncio.CancelledError:
@@ -180,6 +184,18 @@ class ActionGateway:
         # уже отработавший future раньше, чем сработает его собственная очистка.
         shared = self._keys.get(key)
         return shared if shared is not None and not shared.done() else None
+
+    async def _reject(self, p: _Pending, status: ActionStatus, reason: str) -> ActionResult:
+        result = await self._record(p, status, reason)
+        self._resolve(p, result)
+        return result
+
+    def _guarded(self, fn: Callable[[], Blocked | None]) -> Blocked | None:
+        try:
+            return fn()
+        except Exception as exc:
+            log.exception("action check failed")
+            return ActionStatus.REJECTED, f"check_failed:{type(exc).__name__}"
 
     async def acquire_lease(self, owner: str) -> Lease:
         async with self._cond:
@@ -290,7 +306,7 @@ class ActionGateway:
         return None
 
     def _check(self, p: _Pending) -> Blocked | None:
-        try:
+        def full_check() -> Blocked | None:
             blocked = self._static_checks(p.req, p.cls)
             if blocked is not None:
                 return blocked
@@ -303,9 +319,8 @@ class ActionGateway:
                 if p.req.expect_revision is not None and latest.revision != p.req.expect_revision:
                     return ActionStatus.REJECTED, "stale_revision"
             return None
-        except Exception as exc:
-            log.exception("action check failed")
-            return ActionStatus.REJECTED, f"check_failed:{type(exc).__name__}"
+
+        return self._guarded(full_check)
 
     def _eligible(self, p: _Pending) -> bool:
         lease = self._lease
@@ -439,11 +454,13 @@ class ActionGateway:
                 self._inflight = None
             if outcome == "antiflood":
                 antiflood_tries += 1
+                # Пауза ставится независимо от исхода ниже — и на повтор, и на отказ,
+                # антифлуд от игры должен придержать весь шлюз, а не только эту заявку.
+                self._paused_until = max(
+                    self._paused_until, time.monotonic() + eng.antiflood_pause_s
+                )
                 within_ttl = time.monotonic() - p.enqueued < p.ttl
                 if antiflood_tries <= eng.antiflood_retry_max and within_ttl:
-                    self._paused_until = max(
-                        self._paused_until, time.monotonic() + eng.antiflood_pause_s
-                    )
                     continue
                 return await self._finish(
                     action_id, ActionStatus.OUTCOME_UNKNOWN, "antiflood", answer=answer
