@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from sqlalchemy import func, select
 
@@ -33,3 +35,12 @@ async def test_conflict_between_two_stores(clean_db: Database) -> None:
     await a.update(_to_live, changed_by="a")
     with pytest.raises(SettingsConflict):
         await b.update(_to_live, changed_by="b")
+
+
+async def test_load_waits_for_update_lock(clean_db: Database) -> None:
+    store = DbSettingsStore(clean_db, 1)
+    async with store._lock:
+        task = asyncio.create_task(store.load())
+        await asyncio.sleep(0.05)
+        assert not task.done()
+    await task

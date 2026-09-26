@@ -25,13 +25,14 @@ class DbSettingsStore:
         return self._version
 
     async def load(self) -> None:
-        async with self._db.sessions() as session:
-            row = await session.scalar(
-                select(SettingsRow).where(SettingsRow.account_id == self._account_id)
-            )
-        if row is not None:
-            self._settings = Settings.model_validate(row.data)
-            self._version = row.version
+        async with self._lock:
+            async with self._db.sessions() as session:
+                row = await session.scalar(
+                    select(SettingsRow).where(SettingsRow.account_id == self._account_id)
+                )
+            if row is not None:
+                self._settings = Settings.model_validate(row.data)
+                self._version = row.version
 
     async def update(
         self, change: SettingsChange, *, changed_by: str, expected_version: int | None = None

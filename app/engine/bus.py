@@ -35,7 +35,7 @@ class Bus:
         self._subs.sort(key=lambda item: (item[0], item[1]))
 
     async def publish(self, delivery: Delivery) -> None:
-        for _, _, fn in self._subs:
+        for _, _, fn in list(self._subs):
             name = getattr(fn, "__qualname__", repr(fn))
             try:
                 await asyncio.wait_for(fn(delivery), self._timeout)

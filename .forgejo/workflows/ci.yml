@@ -20,12 +20,14 @@ jobs:
       - name: Получить исходники
         run: |
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends git ca-certificates build-essential
+          apt-get install -y -qq --no-install-recommends git ca-certificates
           AUTH_URL="$(echo "${{ github.server_url }}/${{ github.repository }}.git" \
             | sed "s|https://|https://ci:${{ secrets.GITEA_TOKEN }}@|")"
           git init -q . && git remote add origin "$AUTH_URL"
           git fetch -q --depth 1 origin "${{ github.sha }}"
           git checkout -q FETCH_HEAD
+      - name: Компилятор для сборки tgcrypto
+        run: apt-get install -y -qq --no-install-recommends build-essential
       - name: ruff
         run: |
           uvx --from 'ruff==0.16.9' ruff check .
@@ -55,12 +57,14 @@ jobs:
         run: |
           echo 'Acquire::http::Proxy "http://10.10.40.23:3142";' > /etc/apt/apt.conf.d/00proxy
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends git ca-certificates build-essential postgresql-client
+          apt-get install -y -qq --no-install-recommends git ca-certificates postgresql-client
           AUTH_URL="$(echo "${{ github.server_url }}/${{ github.repository }}.git" \
             | sed "s|https://|https://ci:${{ secrets.GITEA_TOKEN }}@|")"
           git init -q . && git remote add origin "$AUTH_URL"
           git fetch -q --depth 1 origin "${{ github.sha }}"
           git checkout -q FETCH_HEAD
+      - name: Компилятор для сборки tgcrypto
+        run: apt-get install -y -qq --no-install-recommends build-essential
       - name: Дождаться PostgreSQL и создать базу миграций
         run: |
           for i in $(seq 1 30); do pg_isready -h postgres -U pyrobot && break; sleep 2; done

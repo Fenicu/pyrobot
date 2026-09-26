@@ -218,3 +218,41 @@ async def test_drain_times_out_on_hung_journal() -> None:
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_subscribe_during_publish_applies_to_next_delivery() -> None:
+    bus = Bus()
+    calls: list[str] = []
+
+    async def late(d: Delivery) -> None:
+        calls.append(f"late:{d.journal_id}")
+
+    async def early(d: Delivery) -> None:
+        calls.append(f"early:{d.journal_id}")
+        if d.journal_id == 1:
+            bus.subscribe(late, priority=200)
+
+    bus.subscribe(early, priority=0)
+    pipe = Pipeline(
+        journal=MemoryJournal(), parser=default_parser(), reducer=NullReducer(), bus=bus
+    )
+    await pipe.process(make_msg("a", msg_id=1))
+    await pipe.process(make_msg("b", msg_id=2))
+    assert calls == ["early:1", "early:2", "late:2"]
+
+
+async def test_latest_evicted_over_capacity() -> None:
+    pipe = Pipeline(
+        journal=MemoryJournal(),
+        parser=default_parser(),
+        reducer=NullReducer(),
+        bus=Bus(),
+        latest_capacity=2,
+    )
+    for i in (1, 2, 3):
+        await pipe.process(make_msg(f"m{i}", msg_id=i))
+    assert pipe.latest(GAME, 1) is None
+    assert pipe.latest(GAME, 2) is not None and pipe.latest(GAME, 3) is not None
+    await pipe.process(make_msg("m2 edit", msg_id=2, kind="edit", revision=5))
+    await pipe.process(make_msg("m4", msg_id=4))
+    assert pipe.latest(GAME, 3) is None and pipe.latest(GAME, 2) is not None
