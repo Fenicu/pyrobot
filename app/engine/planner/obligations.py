@@ -6,7 +6,7 @@ from datetime import datetime, time, timedelta
 from app.engine.gametime import MSK, to_msk
 from app.engine.market import pick_stock
 from app.engine.parsing.smoothie import INGREDIENTS
-from app.engine.planner.base import BATTLE_BEFORE, PlannerBase, battle_hour
+from app.engine.planner.base import BATTLE_BEFORE, READY_SLACK, PlannerBase, battle_hour
 from app.engine.planner.types import Decision
 from app.engine.state.model import BusyState, StockLimits, TargetSet
 
@@ -196,7 +196,8 @@ class Obligations(PlannerBase):
             return None
         last = self.last_done.get("tangerine")
         if last is not None:
-            ready = last + timedelta(hours=self.cfg.tangerine.interval_h)
+            # Запуск стартует раньше, чем /gt реально уходит, а кулдаун игра считает от отправки.
+            ready = last + timedelta(hours=self.cfg.tangerine.interval_h) + READY_SLACK
             if not self.due(ready):
                 self.wake(ready, "tangerine_ready")
                 return None
@@ -261,7 +262,7 @@ class Obligations(PlannerBase):
         for _ in range(2):
             wake_by = msk_at(evening, SLEEP_WAKE_BY, days=1)
             preferred = evening
-            if self.bulls_pending():
+            if self.bulls_pending(evening):
                 preferred = msk_at(evening, SLEEP_AFTER_BULLS, days=1)
             latest = wake_by - duration
             preferred = min(preferred, latest)
@@ -270,11 +271,12 @@ class Obligations(PlannerBase):
             evening += timedelta(days=1)
         return earliest
 
-    def bulls_pending(self) -> bool:
+    def bulls_pending(self, evening: datetime) -> bool:
+        """Инвайтов биржевиков стоит ждать в ночь, начинающуюся вечером `evening`."""
         if not self.feature_on("bulls_join") or self.cfg.chats.bulls_invite_chat_id is None:
             return False
         won: datetime | None = self.value("bulls_won_at")
-        return won is None or won < night_start(self.now)
+        return won is None or won < night_start(evening)
 
     def sleep_runs(self) -> bool:
         """Сон будет исполнен: механика включена, а в `live` сценарий ещё и сертифицирован."""

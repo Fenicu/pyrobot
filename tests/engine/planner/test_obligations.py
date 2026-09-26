@@ -411,7 +411,8 @@ def test_tangerine_first_send_and_interval() -> None:
     last = {"tangerine": NOON - timedelta(hours=10)}
     decision = decide(state(NOON), only("tangerine"), NOON, last_done=last)
     assert isinstance(decision, Wait)
-    assert decision.until == NOON + timedelta(hours=10) + TIMER_MARGIN
+    # Запуск стартует раньше, чем /gt реально уходит: минута запаса к кулдауну игры.
+    assert decision.until == NOON + timedelta(hours=10) + READY_SLACK + TIMER_MARGIN
 
 
 def test_tangerine_refusals() -> None:
@@ -483,6 +484,13 @@ def test_sleep_waits_for_night_window() -> None:
 def test_sleep_after_bulls_when_invites_come() -> None:
     cfg = only("bulls", chats={"bulls_invite_chat_id": -100500})
     decision = decide(state(NOON), cfg, NOON)
+    assert isinstance(decision, Wait)
+    assert decision.until == msk(0, 30, day=27) + TIMER_MARGIN
+
+
+def test_last_night_bulls_win_does_not_cancel_tonight() -> None:
+    cfg = only("bulls", chats={"bulls_invite_chat_id": -100500})
+    decision = decide(state(NOON, bulls_won_at=msk(1, 0)), cfg, NOON)
     assert isinstance(decision, Wait)
     assert decision.until == msk(0, 30, day=27) + TIMER_MARGIN
 
