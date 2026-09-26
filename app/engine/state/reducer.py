@@ -17,7 +17,7 @@ from app.engine.parsing.activities import (
     WorkshopScreen,
 )
 from app.engine.parsing.battle import BattleTargetSet
-from app.engine.parsing.bulls import BullsJoined, BullsRefused, BullsResult
+from app.engine.parsing.bulls import BullsInvite, BullsJoined, BullsRefused, BullsResult
 from app.engine.parsing.common import Rewards
 from app.engine.parsing.crew import CrewScreen, FactoryScreen, FactorySignup
 from app.engine.parsing.food import FastfoodEaten, FoodMenu
@@ -62,6 +62,7 @@ from app.engine.state.model import (
     SmoothieRecipeState,
     Src,
     StockLimits,
+    TargetSet,
     TeamTask,
     Upgrades,
     dump_state,
@@ -247,6 +248,12 @@ def _profile(p: _Patch, e: ProfileCompact) -> None:
 def _battle_target(p: _Patch, e: BattleTargetSet) -> None:
     p.snap("battle_target", e.target)
     p.snap("battle_at", p.later(e.battle_in_s))
+    # Цель сбрасывается после каждой битвы, а защиту профиль не показывает: запоминаем, какая
+    # цель выставлена и на какую битву.
+    p.snap(
+        "battle_target_set",
+        TargetSet(target=e.target, battle_at=p.at + timedelta(seconds=e.battle_in_s)),
+    )
     if e.zero_stamina:
         p.snap("stamina", 0)
 
@@ -575,6 +582,11 @@ def _factory_signup(p: _Patch, e: FactorySignup) -> None:
 @_on(FactoryCall)
 def _factory_call(p: _Patch, e: FactoryCall) -> None:
     p.snap("factory_call_at", p.at)
+
+
+@_on(BullsInvite)
+def _bulls_invite(p: _Patch, e: BullsInvite) -> None:
+    p.snap("bulls_invite", e.code)
 
 
 @_on(BullsJoined)

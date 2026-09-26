@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.engine.scenarios import library
+from app.engine.scenarios import library, obligations
 from app.engine.scenarios.library import ScenarioFn
 
 
@@ -26,6 +26,12 @@ def _specs() -> dict[str, ScenarioSpec]:
         ScenarioSpec("levelup", library.levelup, True),
         ScenarioSpec("gorbushka", library.gorbushka, True),
         ScenarioSpec("sleep", library.sleep, False),
+        ScenarioSpec("battle_target", obligations.battle_target, True),
+        ScenarioSpec("stocks_dump", obligations.stocks_dump, True),
+        ScenarioSpec("factory_signup", obligations.factory_signup, True),
+        ScenarioSpec("bulls_join", obligations.bulls_join, True),
+        ScenarioSpec("tangerine", obligations.tangerine, True),
+        ScenarioSpec("smoothie", obligations.smoothie, True),
     ]
     for item, certified in (
         ("book", True),

@@ -1,13 +1,18 @@
 from dataclasses import replace
 from datetime import timedelta
 
+from app.engine.parsing import default_parser
 from app.engine.parsing.common import Rewards
 from app.engine.parsing.crew import CrewScreen
 from app.engine.parsing.screens import LotterySkillsExpired
+from app.engine.settings import ChatsSection
 from app.engine.state.model import load_state, stale_fields
 from app.engine.state.reducer import StateReducer
 from tests.engine.state.helpers import PARSER, at, feed, fixture_at, value
 from tests.fixtures import game_versions
+
+INVITES = -1009999
+PARSER_WITH_INVITES = default_parser(ChatsSection(bulls_invite_chat_id=INVITES))
 
 
 def _profiled(reducer: StateReducer) -> dict:
@@ -235,6 +240,24 @@ def test_gadgets_screens_update_money() -> None:
     assert value(state, "money") == 445
     state = feed(reducer, state, "screens", 3525610, 2)
     assert value(state, "money") == 3250
+
+
+def test_bulls_invite_remembered() -> None:
+    reducer = StateReducer()
+    invite = fixture_at("bulls_invite", 3681068, 1)
+    state = reducer.apply({}, invite, PARSER_WITH_INVITES.parse(replace(invite, chat_id=INVITES)))
+    assert value(state, "bulls_invite") == "join_fight_AaBH89kYd2J"
+
+
+def test_target_remembers_what_and_for_which_battle() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "battle", 3624402, 1)
+    assert value(state, "battle_target") == "📯Pied Piper"
+    assert value(state, "battle_target_set") == {
+        "target": "📯Pied Piper",
+        "battle_at": value(state, "battle_at"),
+    }
+    assert value(state, "battle_at") == "2026-09-26T11:45:00Z"
 
 
 def test_cooking_screen_does_not_count_drops_twice() -> None:

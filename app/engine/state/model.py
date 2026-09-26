@@ -85,6 +85,11 @@ class StockLimits(_Frozen):
     close_hour: int
 
 
+class TargetSet(_Frozen):
+    target: str
+    battle_at: datetime
+
+
 class SmoothieRecipeState(_Frozen):
     recipe: str
     bonus: str
@@ -139,6 +144,7 @@ class CharacterState(_Frozen):
     skills: Obs[Skills] | None = None
     battle_at: Obs[datetime] | None = None
     battle_target: Obs[str | None] | None = None
+    battle_target_set: Obs[TargetSet] | None = None
     busy: Obs[BusyState | None] | None = None
     sleep_deadline: Obs[datetime | None] | None = None
     woke_at: Obs[datetime] | None = None
@@ -166,6 +172,7 @@ class CharacterState(_Frozen):
     factory_skip: Obs[bool] | None = None
     factory_call_at: Obs[datetime] | None = None
     bulls_won_at: Obs[datetime] | None = None
+    bulls_invite: Obs[str] | None = None
     stock_quotes: Obs[dict[str, int]] | None = None
     stock_holdings: Obs[dict[str, int]] | None = None
     stock_limits: Obs[StockLimits] | None = None
@@ -223,6 +230,8 @@ TIMERS = frozenset(
         "factory_skip",
         "factory_call_at",
         "bulls_won_at",
+        "bulls_invite",
+        "battle_target_set",
         "smoothie_bonus",
         "smoothie_recipe",
         "tangerine_ready_at",
