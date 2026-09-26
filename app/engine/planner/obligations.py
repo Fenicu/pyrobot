@@ -55,6 +55,8 @@ class Obligations(PlannerBase):
     # --- битва
 
     def battle_target(self, busy: BusyState | None) -> Decision | None:
+        if not self.feature_on("battle_target"):
+            return None
         # Цель можно менять и во время дела, и во сне.
         if (field := self.stale_of("battle_at")) is not None:
             return self.refresh("battle_target", field)
@@ -80,6 +82,8 @@ class Obligations(PlannerBase):
         return battle_hour(done.battle_at) == battle
 
     def battle_stamina(self, busy: BusyState | None) -> Decision | None:
+        if not self.feature_on("battle_stamina"):
+            return None
         battle = self.upcoming_battle()
         if battle is None or battle - self.now > STAMINA_AHEAD:
             return None

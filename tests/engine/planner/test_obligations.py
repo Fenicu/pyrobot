@@ -227,6 +227,19 @@ def test_battle_stamina_no_eat_when_deeds_off() -> None:
     assert "deed:eat" not in verdicts(decision)
 
 
+def test_battle_feature_off_skips_target_and_stamina() -> None:
+    now = msk(12, 40)
+    hungry = state(now, stamina=0, battle_at=msk(13), battle_target=None)
+    flags = {**{name: False for name in PHASE4}, "fastfood": False}
+    on = Settings.model_validate({"features": flags})
+    assert act(decide(hungry, on, now))[0] == "battle_target"
+    off = Settings.model_validate({"features": {**flags, "battle": False}})
+    decision = decide(hungry, off, now)
+    assert {"battle_target", "deed:eat", "refresh"}.isdisjoint(verdicts(decision))
+    past = state(now, battle_at=msk(12), battle_target=None)
+    assert "battle_target" not in verdicts(decide(past, off, now))
+
+
 # --- слив налички в акции
 
 DUMP_BATTLE = msk(13)

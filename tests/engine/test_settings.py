@@ -62,5 +62,14 @@ def test_phase4_defaults_follow_spec() -> None:
 def test_battle_target_must_be_known() -> None:
     with pytest.raises(ValidationError):
         Settings.model_validate({"battle": {"target": "☣️Black Mesa"}})
+    assert Settings().features.battle
     with pytest.raises(ValidationError):
         Settings.model_validate({"tangerine": {"interval_h": 10}})
+
+
+@pytest.mark.parametrize("hour", [-1, 24])
+def test_battle_override_hour_bounds(hour: int) -> None:
+    ok = Settings.model_validate({"battle": {"overrides": {0: "🛡Защита", 23: "🤖Hooli"}}})
+    assert set(ok.battle.overrides) == {0, 23}
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"battle": {"overrides": {hour: "🛡Защита"}}})

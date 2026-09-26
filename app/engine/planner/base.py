@@ -63,6 +63,8 @@ FEATURE = {
     "levelup": "levelup",
     "gorbushka": "gorbushka",
     "sleep": "sleep",
+    "battle_target": "battle",
+    "battle_stamina": "battle",
     "stocks_dump": "stocks_dump",
     "factory_signup": "factory",
     "bulls_join": "bulls",

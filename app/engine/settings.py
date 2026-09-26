@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Literal, Protocol
+from typing import Annotated, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -49,6 +49,7 @@ class FeaturesSection(BaseModel):
     sleep: bool = True
     levelup: bool = True
     metro: bool = True
+    battle: bool = True
     factory: bool = True
     bulls: bool = True
     stocks_dump: bool = True
@@ -102,7 +103,7 @@ Target = Literal["📯Pied Piper", "🤖Hooli", "⚡️Stark Ind.", "☂️Umbre
 class BattleSection(BaseModel):
     target: Target = "📯Pied Piper"
     # Цель на конкретную битву: час битвы по Москве → цель.
-    overrides: dict[int, Target] = Field(default_factory=dict)
+    overrides: dict[Annotated[int, Field(ge=0, le=23)], Target] = Field(default_factory=dict)
 
 
 class StocksSection(BaseModel):
