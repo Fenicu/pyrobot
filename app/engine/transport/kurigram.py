@@ -66,14 +66,14 @@ def to_incoming(
     recovered_after: timedelta = timedelta(seconds=60),
 ) -> IncomingMessage:
     inline, reply_kb = _buttons(m.reply_markup)
-    raw_date = m.edit_date if kind == "edit" and m.edit_date else m.date
-    date = _aware(raw_date)
+    # Догон истории отдаёт уже правленое сообщение как новое: время события — время правки.
+    date = _aware(m.edit_date or m.date)
     received = _aware(received_at)
     text = m.text or m.caption
     return IncomingMessage(
         chat_id=m.chat.id,
         msg_id=m.id,
-        revision=int(date.timestamp()) if kind == "edit" else 0,
+        revision=int(date.timestamp()) if m.edit_date or kind == "edit" else 0,
         kind=kind,
         date=date,
         received_at=received,

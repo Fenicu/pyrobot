@@ -96,3 +96,11 @@ def test_created_at_kept_for_edits() -> None:
     assert (msg.created_at, msg.date, msg.origin) == (T0, edited, T0)
     new = to_incoming(_m(), kind="new", received_at=T0)
     assert (new.created_at, new.origin) == (T0, T0)
+
+
+def test_new_message_already_edited_uses_edit_date() -> None:
+    # Догон истории отдаёт правленое сообщение как новое: время события — время правки.
+    edited = T0 + timedelta(seconds=30)
+    msg = to_incoming(_m(edit_date=edited), kind="new", received_at=edited)
+    assert (msg.date, msg.created_at, msg.origin) == (edited, T0, T0)
+    assert msg.revision == int(edited.timestamp())
