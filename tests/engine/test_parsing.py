@@ -21,7 +21,7 @@ def test_antiflood_recognized() -> None:
 
 
 def test_other_text_no_events_without_chats() -> None:
-    assert default_parser().parse(_msg("Офис ☣️Black Mesa")) == []
+    assert default_parser().parse(_msg("совсем непонятный текст")) == []
 
 
 def test_failing_recognizer_isolated() -> None:

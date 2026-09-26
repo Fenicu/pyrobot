@@ -12,6 +12,13 @@ FAMILIES = (
     "items",
     "gorbushka",
     "levelup",
+    "crew",
+    "bulls",
+    "stocks",
+    "smoothie",
+    "tangerine",
+    "screens",
+    "swinfo",
 )
 
 
@@ -37,3 +44,9 @@ def test_edit_and_inline_converted() -> None:
     button = msg.button("gorbushka_fight")
     assert button is not None and button.text == "⚔Сразиться"
     assert msg.origin == datetime(2026, 1, 3, 2, 12, 7, tzinfo=UTC)
+
+
+def test_sender_kept_for_other_chats() -> None:
+    post = game_msg("swinfo", 3817108)
+    assert (post.chat_id, post.from_id) == (-1001109615116, 376592453)
+    assert game_msg("profile", 3610633).from_id == 227859379

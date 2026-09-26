@@ -5,18 +5,13 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from app.engine.events import Event
+from app.engine.parsing.common import SKILL, SKILLS
 from app.engine.types import IncomingMessage
 
 _MENU = "Поздравляю с новым уровнем!"
-_SKILL = re.compile(r"\AТы увеличил навык (?P<skill>🔨Практика|🎓Теория|🐿Хитрость|🐢Мудрость)")
+_SKILL = re.compile(r"\AТы увеличил навык (?P<skill>" + SKILL + r")")
 _DONE = re.compile(r"За уровень ты получил:\n💵Деньги: \$(?P<money>\d+)")
 _MOTIVATION = "На радостях ты восстановил +1🔥"
-_SKILLS = {
-    "🔨Практика": "practice",
-    "🎓Теория": "theory",
-    "🐿Хитрость": "cunning",
-    "🐢Мудрость": "wisdom",
-}
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -34,7 +29,7 @@ def recognize_levelup(msg: IncomingMessage) -> list[Event]:
     if text.startswith(_MENU):
         return [LevelUpStep(step="menu")]
     if m := _SKILL.match(text):
-        skill = _SKILLS[m["skill"]]
+        skill = SKILLS[m["skill"]]
         if done := _DONE.search(text):
             return [
                 LevelUpStep(

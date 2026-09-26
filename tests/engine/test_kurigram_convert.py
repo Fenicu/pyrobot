@@ -81,6 +81,15 @@ def test_chat_filter_and_join_fight() -> None:
     assert not f.accepts(_m(chat=NS(id=42)))
 
 
+def test_invite_chat_may_be_swinfo_chat() -> None:
+    general = -1001109615116
+    f = ChatFilter.from_settings(ChatsSection(bulls_invite_chat_id=general))
+    kb = NS(inline_keyboard=[[_btn(text="Бой", switch_inline_query="join_fight_I16YW9RrvSq")]])
+    assert f.accepts(_m(chat=NS(id=general), from_user=NS(id=5), reply_markup=kb))
+    assert f.accepts(_m(chat=NS(id=general), from_user=NS(id=376592453)))
+    assert not f.accepts(_m(chat=NS(id=general), from_user=NS(id=5), text="привет"))
+
+
 def test_recovered_boundary_is_exactly_60s() -> None:
     at_limit = to_incoming(_m(date=T0), kind="new", received_at=T0 + timedelta(seconds=60))
     assert at_limit.recovered is False

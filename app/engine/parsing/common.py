@@ -18,6 +18,23 @@ _TEAM_TASK = re.compile(
     r"🔜Командное задание: (?P<cur>" + NUM + r") из (?P<goal>" + NUM + r")(?P<res>\S+?)\."
 )
 _REWARD_KEYS = {"💡": "exp", "💵": "money", "📚": "knowledge", "⚙️": "details", "🔩": "raw"}
+# Компании биржи и битв: название на экранах игры → код в командах (/buys_<код>_N).
+COMPANIES = {
+    "📯Pied Piper": "piper",
+    "🤖Hooli": "hooli",
+    "⚡️Stark Ind.": "stark",
+    "☂️Umbrella": "umbrl",
+    "🎩Wayne Ent.": "wayne",
+    "☣️Black Mesa": "bmesa",
+}
+COMPANY = "|".join(re.escape(name) for name in COMPANIES)
+SKILLS = {
+    "🔨Практика": "practice",
+    "🎓Теория": "theory",
+    "🐿Хитрость": "cunning",
+    "🐢Мудрость": "wisdom",
+}
+SKILL = "|".join(SKILLS)
 
 
 def num(text: str) -> int:

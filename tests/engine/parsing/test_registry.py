@@ -15,6 +15,13 @@ FAMILIES = (
     "items",
     "gorbushka",
     "levelup",
+    "crew",
+    "bulls",
+    "stocks",
+    "smoothie",
+    "tangerine",
+    "screens",
+    "swinfo",
 )
 
 

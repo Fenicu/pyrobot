@@ -9,7 +9,7 @@ from typing import Any, Protocol
 
 from app.engine.bus import Bus, Delivery
 from app.engine.events import Event
-from app.engine.parsing import Parser
+from app.engine.parsing import MessageParser
 from app.engine.types import IncomingMessage
 
 log = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class Pipeline:
         self,
         *,
         journal: JournalStore,
-        parser: Parser,
+        parser: MessageParser,
         reducer: Reducer,
         bus: Bus,
         metrics: Callable[[State, State], Mapping[str, float]] | None = None,

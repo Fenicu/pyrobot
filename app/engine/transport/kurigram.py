@@ -109,11 +109,10 @@ class ChatFilter:
         chat = m.chat.id
         if chat == self.game_chat_id or chat == self.smoothie_channel_id:
             return True
-        if chat == self.swinfo_chat_id:
-            return bool(m.from_user and m.from_user.id == self.swinfo_user_id)
-        if self.bulls_chat_id is not None and chat == self.bulls_chat_id:
-            return has_join_fight(m)
-        return False
+        # Чат инвайтов может совпадать с общим чатом SWINFO: правила проверяются независимо.
+        if chat == self.swinfo_chat_id and m.from_user and m.from_user.id == self.swinfo_user_id:
+            return True
+        return self.bulls_chat_id is not None and chat == self.bulls_chat_id and has_join_fight(m)
 
 
 async def _force_close(client: Any) -> None:

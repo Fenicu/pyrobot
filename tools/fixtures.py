@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 GAME_CHAT = 227859379
-FIELDS = ("id", "chat", "date", "edit_date", "text", "markup")
+FIELDS = ("id", "chat", "from", "date", "edit_date", "text", "markup")
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "tests" / "fixtures" / "game"
 
@@ -33,17 +33,30 @@ def _records(base: Path) -> Iterator[dict[str, Any]]:
                         yield rec
 
 
-def find(ids: set[int]) -> dict[int, dict[str, Any]]:
+def find(
+    ids: set[int], chat: int = GAME_CHAT, *, include_out: bool = False
+) -> dict[int, dict[str, Any]]:
     found: dict[int, dict[str, Any]] = {}
     for rec in _records(research_dir()):
-        if rec.get("chat") == GAME_CHAT and rec["id"] in ids and not rec.get("out"):
+        if rec.get("out") and not include_out:
+            continue
+        if rec.get("chat") == chat and rec["id"] in ids:
             found.setdefault(rec["id"], {k: rec.get(k) for k in FIELDS})
     return found
 
 
 def main(argv: list[str]) -> int:
+    chat, include_out = GAME_CHAT, False
+    while argv[:1] in (["--chat"], ["--include-out"]):
+        if argv[0] == "--include-out":
+            include_out, argv = True, argv[1:]
+        else:
+            chat, argv = int(argv[1]), argv[2:]
     if len(argv) < 2:
-        print("usage: tools/fixtures.py <family> <id> [<id> ...]", file=sys.stderr)
+        print(
+            "usage: tools/fixtures.py [--chat <id>] [--include-out] <family> <id> [<id> ...]",
+            file=sys.stderr,
+        )
         return 2
     family, ids = argv[0], {int(a) for a in argv[1:]}
     target = OUT / f"{family}.jsonl"
@@ -52,7 +65,7 @@ def main(argv: list[str]) -> int:
         for line in target.read_text(encoding="utf-8").splitlines():
             rec = json.loads(line)
             existing[rec["id"]] = rec
-    found = find(ids - existing.keys())
+    found = find(ids - existing.keys(), chat, include_out=include_out)
     missing = ids - existing.keys() - found.keys()
     if missing:
         print(f"not found: {sorted(missing)}", file=sys.stderr)

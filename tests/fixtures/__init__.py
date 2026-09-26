@@ -43,7 +43,7 @@ def record_message(rec: dict[str, Any]) -> IncomingMessage:
         text=rec.get("text"),
         inline=inline,
         reply_kb=reply,
-        from_id=rec["chat"],
+        from_id=rec.get("from") or rec["chat"],
         created_at=from_msk_naive(datetime.fromisoformat(rec["date"])),
     )
 
