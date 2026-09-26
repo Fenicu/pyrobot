@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
 from app.engine.events import Event
-from app.engine.metro.budget import FRONTIER_AT, LATE_AT, RECENT_MOVES, Budget
+from app.engine.metro.budget import FRONTIER_AT, LATE_AT, RECENT_MOVES, ROUTE_SAFETY, Budget
 from app.engine.metro.grid import DIRS, Grid, Pos, step
 from app.engine.metro.plan import Mode, exit_route, explore_step, reach, reachable_exit, targets
 from app.engine.parsing.metro import (
@@ -24,11 +25,17 @@ from app.engine.parsing.metro import (
 )
 
 FULL = 100
+# Аптечка за 🕳 даёт +50% 🔋 (не выше 100).
+PACK_HEAL = 50
 # Выход неизвестен или не успеть к нему до выброса игрой: за минуту до выброса выходим сами
 # кнопкой 🚪 — та же половина найденного, но экран досрочного выхода известен.
 EARLY_EXIT_LEAD = timedelta(minutes=1)
-# Один клик без хода: темп шлюза 1.6 с и ответ игры.
+# Клик с тостом (❤️, «Продолжить»): темп шлюза 1.6 с и ответ игры. Столько же — до того, как
+# последний клик цепочки дойдёт до игры: ожидание его тоста уже ничего не задерживает.
 CLICK_S = 2.0
+# Клик без тоста (🚪, «Выйти», «Остаться», согласие на аптечку): шлюз ждёт ответ на callback до
+# `click_answer_timeout_s` (4 с), и следующий клик уходит только после него и темпа 1.6 с.
+SILENT_CLICK_S = 6.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,10 +245,13 @@ class MetroSolver:
                 return Click("maze_chest_accept", "chest")
             return Click("maze_chest_decline", "chest_few_packs")
         if isinstance(screen, MetroExit):
-            self._update_mode(now)
-            if self.mode == "leave":
-                return Click("maze_exit_accept", self.leave_reason or "leave")
-            return Click("maze_exit_decline", "explore")
+            self.update_mode(now)
+            if self.mode != "leave":
+                return Click("maze_exit_decline", "explore")
+            if self._top_up() and self._top_up_fits(now):
+                # На экране выхода лечиться нельзя: остаться, долечиться, сойти и вернуться.
+                return Click("maze_exit_decline", "heal_before_exit")
+            return Click("maze_exit_accept", self.leave_reason or "leave")
         if isinstance(screen, MetroEarlyExit):
             # Необратимо: условие проверяется ещё раз по времени подтверждения.
             self._early = self._early_exit_due(now)
@@ -293,21 +303,40 @@ class MetroSolver:
         towards, route = exit_route(self.grid, self.pos, self.exit_at)
         if towards is None:
             return True
-        # Путь плюс подтверждение обычного выхода: «Выходишь?» → «Выйти».
+        # Путь плюс подтверждение обычного выхода: «Выходишь?» → «Выйти» (дойти до игры).
         need = route * self.budget.optimistic_step_s(self.move_times) + CLICK_S
         return now + timedelta(seconds=need) > kick
 
     def _heal_fits(self, now: datetime) -> bool:
-        """Перед досрочным выходом: ещё одна аптечка (два клика) и выход (два клика) успеют."""
+        """Перед досрочным выходом: ещё одна аптечка (❤️ и согласие) и 🚪 успевают, а «Выйти»
+        доходит до игры до выброса."""
         kick = self.budget.kick_at()
-        return kick is None or now + timedelta(seconds=4 * CLICK_S) <= kick
+        need = CLICK_S + SILENT_CLICK_S + SILENT_CLICK_S + CLICK_S
+        return kick is None or now + timedelta(seconds=need) <= kick
+
+    def _top_up(self) -> bool:
+        """Перед выходом долечиться до 100%: аптечки сгорают вместе со спуском, а 🔋 — общая."""
+        if not self.policy.heal_before_exit or not self.packs or self.stamina is None:
+            return False
+        return self.stamina < FULL
+
+    def _top_up_fits(self, now: datetime) -> bool:
+        """С экрана выхода: «Остаться», аптечки до 100%, шаг с клетки и обратно, «Выйти» —
+        до выброса игрой."""
+        kick = self.budget.kick_at()
+        if kick is None:
+            return True
+        packs = min(self.packs or 0, math.ceil((FULL - (self.stamina or 0)) / PACK_HEAL))
+        steps = 2 * self.step_s() * ROUTE_SAFETY
+        need = SILENT_CLICK_S + packs * (CLICK_S + SILENT_CLICK_S) + steps + CLICK_S
+        return now + timedelta(seconds=need) <= kick
 
     def _on_map_decision(self, now: datetime) -> Move:
         if self.lost:
             return Halt("lost")
         if self._surprise is not None:
             return Halt(self._surprise)
-        self._update_mode(now)
+        self.update_mode(now)
         # Намерение не залипает: пересчитывается по каждому кадру.
         self._early = self._early_exit_due(now)
         if self._early:
@@ -351,7 +380,16 @@ class MetroSolver:
             self.mode, self.leave_reason = "leave", reason
             self._note_kind("leave", reason=reason)
 
-    def _update_mode(self, now: datetime) -> None:
+    def replay(self, event: Event, at: datetime) -> None:
+        """Кадр из журнала после рестарта: как `observe`, а режим — как решатель пересчитал бы
+        его в момент кадра: уход к выходу необратим и после рестарта не сменяется обходом."""
+        self.observe(event)
+        on_map = isinstance(event, MetroMap) and event.footer != "going"
+        if (on_map or isinstance(event, MetroExit)) and not self.lost:
+            self.update_mode(at)
+
+    def update_mode(self, now: datetime) -> None:
+        """Режим на момент `now`: уход к выходу (дедлайн, всё обойдено), фронтир или обход."""
         if self.mode == "leave":
             return
         if self.exit_at is not None:

@@ -450,3 +450,89 @@ def test_wall_answer_to_move_into_open_cell_halts() -> None:
     manual = solver()
     manual.observe(at((1, 1)))
     assert isinstance(manual.next(at((1, 1), "wall"), T0), Click)
+
+
+def test_heal_before_early_exit_counts_clicks_without_toast() -> None:
+    # ❤️ (с тостом) и согласие, 🚪 и «Выйти» (без тоста): 2 + 6 + 6 + 2 = 16 с до выброса.
+    kick = T0 + timedelta(minutes=10)
+    b = Budget(T0, kick + timedelta(minutes=15), timedelta(minutes=25), 5.0)
+    frame = at((1, 1), "waiting", stamina=60, packs=3)
+    rushed = MetroSolver(Policy(), b, pos=(1, 1))
+    assert rushed.next(frame, kick - timedelta(seconds=8)) == Click("maze_exit", "early_exit")
+    healed = MetroSolver(Policy(), b, pos=(1, 1))
+    assert healed.next(frame, kick - timedelta(seconds=16)) == Click("maze_first_aid", "heal")
+
+
+def _on_exit_by_deadline(packs: int, policy: Policy | None = None) -> MetroSolver:
+    """Обход у выхода (ветка вправо не пройдена), ход на выход; битва через 40 минут."""
+    s = MetroSolver(policy or Policy(), budget(minutes=40, margin_min=25), pos=(4, 4))
+    s.grid = grid_of(TREE)
+    s.grid.visited = {(4, 4)}
+    s.exit_at, s.stamina, s.packs = (4, 5), 60, packs
+    s.observe(at((4, 4), "going", direction="right"))
+    return s
+
+
+def test_deadline_on_exit_screen_heals_before_leaving() -> None:
+    """Уход по дедлайну решён на самом экране «Выходишь?», а на нём лечиться нельзя: остаться,
+    долечиться, сойти с клетки и вернуться — и только тогда выйти."""
+    s = _on_exit_by_deadline(packs=2)
+    late = T0 + timedelta(minutes=15)
+    assert s.next(MetroExit(found={}), late) == Click("maze_exit_decline", "heal_before_exit")
+    assert (s.mode, s.leave_reason, s.pos) == ("leave", "deadline", (4, 5))
+    assert s.next(at((4, 5), "stayed", stamina=60, packs=2), late) == Click(
+        "maze_first_aid", "heal"
+    )
+    assert s.next(MetroFirstAid(packs=2, stamina=60, after=100), late) == Click(
+        "maze_first_aid_accept", "heal"
+    )
+    assert s.next(at((4, 5), "none", stamina=100, packs=1), late) == Click("maze_left", "leave")
+    move = s.next(at((4, 4), "arrived", direction="left", packs=1), late)
+    assert move == Click("maze_right", "leave")
+    assert s.next(MetroExit(found={}), late) == Click("maze_exit_accept", "deadline")
+
+
+@pytest.mark.parametrize(
+    ("packs", "heal_before_exit", "minutes"),
+    [
+        (0, True, 15),
+        (2, False, 15),
+        # Остаться, аптечка, два хода и «Выйти» — 31 с, а до выброса 30 с.
+        (2, True, 24.5),
+    ],
+)
+def test_deadline_on_exit_screen_leaves_at_once(
+    packs: int, heal_before_exit: bool, minutes: float
+) -> None:
+    s = _on_exit_by_deadline(packs, Policy(heal_before_exit=heal_before_exit))
+    now = T0 + timedelta(minutes=minutes)
+    assert s.next(MetroExit(found={}), now) == Click("maze_exit_accept", "deadline")
+
+
+def test_replay_keeps_leaving_decided_before_restart() -> None:
+    """До рестарта решатель ушёл к выходу по дедлайну. После рестарта путь до выхода короче, и
+    по текущему моменту уход не сработал бы, — но он необратим: журнал повторяется с моментами
+    кадров, и решатель по-прежнему идёт к выходу, а не возвращается к обходу."""
+    start = T0 + timedelta(minutes=14)
+    path = [(2, 1), (3, 1), (4, 1), (5, 1), (5, 2), (5, 3), (4, 3), (4, 4)]
+    moves = ["down", "down", "down", "down", "right", "right", "up", "right"]
+    now = start + timedelta(seconds=10)
+
+    def known() -> MetroSolver:
+        s = MetroSolver(Policy(), budget(minutes=40, margin_min=25), pos=(1, 1))
+        s.grid = grid_of(TREE)
+        s.grid.visited = {(1, 1)}
+        s.exit_at = (4, 5)
+        return s
+
+    s = known()
+    s.replay(at((1, 1), "waiting"), start)
+    assert (s.mode, s.leave_reason) == ("leave", "deadline")
+    for n, (pos, move) in enumerate(zip(path, moves, strict=True), 1):
+        s.replay(at(pos, "arrived", direction=move), start + timedelta(seconds=n))
+    s.update_mode(now)
+    s.resync()
+    assert s.next(at((4, 4), "waiting"), now) == Click("maze_right", "leave")
+    fresh = known()
+    fresh.pos = (4, 4)
+    assert fresh.next(at((4, 4), "waiting"), now).reason == "explore"  # type: ignore[union-attr]

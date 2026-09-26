@@ -253,9 +253,10 @@ async def _resume(ctx: ScenarioContext, params: Params, message: int) -> Scenari
     maze = [n for n, (_, e) in enumerate(frames) if isinstance(e, SCREENS)]
     started = frames[maze[0]][0].date if maze else current.date
     solver = MetroSolver(_policy(params), _budget(params, started, buffs))
-    for _, event in frames[maze[0] :] if maze else ():
+    for msg, event in frames[maze[0] :] if maze else ():
         if isinstance(event, SCREENS):
-            solver.observe(event)
+            solver.replay(event, msg.date)
+    solver.update_mode(ctx.clock.now())
     solver.resync()
     return await _explore(ctx, params, message, current, buffs, solver, started)
 
