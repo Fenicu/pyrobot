@@ -67,6 +67,18 @@ async def test_kill_latches_even_if_persist_fails() -> None:
     assert f.status().killed
 
 
+async def test_kill_empty_reason_still_latches() -> None:
+    class Failing(StaticSettings):
+        async def update(self, change: SettingsChange, **kw: object) -> object:  # type: ignore[override]
+            raise ConnectionError("db down")
+
+    f = build(settings=Failing())
+    await f.tg.boot()
+    await f.kill("", by="admin")
+    assert f.status().killed is True
+    assert f.ready() is False
+
+
 async def test_unkill_restores() -> None:
     f = build()
     await f.tg.boot()

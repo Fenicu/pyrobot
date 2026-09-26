@@ -3,7 +3,7 @@ from dataclasses import asdict
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
@@ -20,7 +20,7 @@ def facade(c: Annotated[Container, Depends(container)]) -> EngineFacade:
 
 
 class KillIn(BaseModel):
-    reason: str
+    reason: str = Field(min_length=1, max_length=200)
 
 
 class PhoneIn(BaseModel):

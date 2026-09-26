@@ -57,10 +57,11 @@ class EngineFacade:
         eng = self.settings.current.engine
         inflight = self.gateway.in_flight
         label = (inflight.text or inflight.data) if inflight else None
-        kill_reason = self.gateway.kill_reason or (eng.kill_reason if eng.killed else None)
+        latch = self.gateway.kill_reason
+        kill_reason = latch if latch is not None else (eng.kill_reason if eng.killed else None)
         return EngineStatus(
             mode=eng.mode,
-            killed=bool(self.gateway.kill_reason) or eng.killed,
+            killed=latch is not None or eng.killed,
             kill_reason=kill_reason,
             spending_blocked=self.gateway.spending_blocked,
             tg=self.tg.status(),

@@ -28,6 +28,8 @@ async def test_engine_status_kill_unkill(with_facade: Container, api_client: Asy
     assert (await api_client.get("/api/v1/engine/status")).json()["killed"] is True
     assert (await api_client.post("/api/v1/engine/unkill", headers=h)).status_code == 204
     assert (await api_client.post("/api/v1/engine/reconciled", headers=h)).status_code == 204
+    empty = await api_client.post("/api/v1/engine/kill", headers=h, json={"reason": ""})
+    assert empty.status_code == 422
 
 
 async def test_tg_login_flow_and_readyz(with_facade: Container, api_client: AsyncClient) -> None:
