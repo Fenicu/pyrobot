@@ -13,7 +13,9 @@ _REWARD = re.compile(
     r"(?P<v>\d[\d\xa0 ]*)%?",
     re.M,
 )
-_UPGRADE = re.compile(r"^(?P<tier>⚪️|🔵|🔴) Улучшения: \+(?P<n>\d+)", re.M)
+_UPGRADE = re.compile(
+    r"^(?P<tier>⚪️|🔵|🔴) ?(?:(?:Простые|Редкие|Уникальные) у|У)лучшения: \+(?P<n>\d+)", re.M
+)
 _TEAM_TASK = re.compile(
     r"🔜Командное задание: (?P<cur>" + NUM + r") из (?P<goal>" + NUM + r")(?P<res>\S+?)\."
 )

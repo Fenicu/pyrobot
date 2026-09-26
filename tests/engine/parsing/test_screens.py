@@ -50,8 +50,16 @@ def test_screens(msg_id: int, expected: Event) -> None:
 @pytest.mark.parametrize(
     ("msg_id", "expected"),
     [
-        (3540652, ResourcesChanged(source="symbol_exchange", rewards=Rewards(money=516))),
-        (3550799, ResourcesChanged(source="tangerine_gift", rewards=Rewards(money=73))),
+        (
+            3540652,
+            ResourcesChanged(
+                source="symbol_exchange", rewards=Rewards(money=516, upgrades_white=2)
+            ),
+        ),
+        (
+            3550799,
+            ResourcesChanged(source="tangerine_gift", rewards=Rewards(money=73, upgrades_white=2)),
+        ),
         (
             3528604,
             ResourcesChanged(

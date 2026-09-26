@@ -72,3 +72,15 @@ def test_rewards_negative_and_unsigned_money() -> None:
 
 def test_rewards_json_safe() -> None:
     json.dumps(asdict(_rewards("gorbushka", 3516744)))
+
+
+@pytest.mark.parametrize(
+    ("text", "tier", "n"),
+    [
+        ("⚪️ Улучшения: +2", "upgrades_white", 2),
+        ("⚪️ Простые улучшения: +2 шт.", "upgrades_white", 2),
+        ("🔵Редкие улучшения: +1 шт.", "upgrades_blue", 1),
+    ],
+)
+def test_rewards_upgrade_formats(text: str, tier: str, n: int) -> None:
+    assert getattr(parse_rewards(text), tier) == n
