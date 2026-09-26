@@ -15,6 +15,25 @@ uv run ruff check . && uv run ruff format --check .
 uv run mypy
 ```
 
+## Конфигурация
+
+Все параметры загружаются через переменные окружения с префиксом `PYROBOT_`. Пример: `cp .env.example .env && vi .env`.
+
+| Переменная | Назначение |
+|---|---|
+| `PYROBOT_DATABASE_URL` | Connection string к PostgreSQL (по умолчанию localhost:55432). |
+| `PYROBOT_DATA_DIR` | Путь к директории для хранения игровых данных. |
+| `PYROBOT_TG_API_ID` | Telegram API ID (из my.telegram.org, обязательно). |
+| `PYROBOT_TG_API_HASH` | Telegram API hash (из my.telegram.org, обязательно). |
+| `PYROBOT_ADMIN_LOGIN` | Логин для доступа в админку. |
+| `PYROBOT_ADMIN_PASSWORD` | Пароль для админки (если не задан, доступ отключён). |
+| `PYROBOT_COOKIE_SECURE` | Использовать флаг Secure для cookies (true в боевой, false в локальной разработке). |
+| `PYROBOT_TRANSPORT` | Транспорт Telegram: `kurigram` (боевой MTProto) или `fake` (для тестов). |
+| `PYROBOT_LOG_LEVEL` | Уровень логирования (DEBUG, INFO, WARNING, ERROR). |
+| `PYROBOT_HTTP_HOST` | IP для привязки HTTP сервера. |
+| `PYROBOT_HTTP_PORT` | Порт для HTTP API. |
+| `PYROBOT_ACCOUNT_ID` | ID аккаунта в игре (по умолчанию 1). |
+
 ## Структура
 
 - `app/engine` — движок: типы сообщений, парсеры, реестр команд, конвейер, шлюз действий, транспорт.
