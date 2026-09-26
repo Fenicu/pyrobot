@@ -34,7 +34,7 @@ _F, _D, _R, _N, _A = (
     CommandClass.NAV,
     CommandClass.ACTION,
 )
-_COMPANIES = r"(piper|hooli|stark|umbrl|wayne)"
+_COMPANIES = r"(?:piper|hooli|stark|umbrl|wayne)"
 
 TEXT_RULES: tuple[Rule, ...] = (
     *_re(
@@ -61,6 +61,7 @@ TEXT_RULES: tuple[Rule, ...] = (
         r"/main\Z",
         r"/class\Z",
         r"/dos\Z",
+        r"/keysbuy\Z",
     ),
     *_exact(_F, "🖥 Пилить", "🎯 Дартс", "🖲 📚=>🔩", "🖲 🔩=>📚"),
     *_re(
@@ -72,6 +73,7 @@ TEXT_RULES: tuple[Rule, ...] = (
         r"/donate\Z",
         r"/fcoins\Z",
         r"/co_\w+",
+        r"/sb\d+\Z",
     ),
     *_exact(
         _D,
@@ -277,9 +279,8 @@ TEXT_RULES: tuple[Rule, ...] = (
         r"/unbox(_\w+)?\Z",
         r"/t_\w+\Z",
         r"join_fight_\w{11}\Z",
-        r"/(open|open_all|spring|keysbuy|ch_all)\Z",
+        r"/(open|open_all|spring|ch_all)\Z",
         r"/ch\d+\Z",
-        r"/sb\d+\Z",
     ),
 )
 
@@ -295,7 +296,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"mether_buy_money\Z",
         r"pet_select_accept_",
     ),
-    *_re(_D, r"mether_buy_coins\Z"),
+    *_re(_D, r"mether_buy_coins\Z", r"maze_buf_coins_", r"spring_(roll_coins|regenerate)"),
     *_re(_R, r"crew_change_", r"buys_bmesa\Z", r"sells_\w+\Z"),
     *_re(
         _N,
@@ -308,14 +309,17 @@ CALLBACK_RULES: tuple[Rule, ...] = (
     ),
     *_re(
         _A,
-        r"maze_\w+\Z",
+        r"maze_(up|down|left|right|start|exit|exit_accept|exit_decline|enter_accept"
+        r"|enter_decline|continue|cancel_move|first_aid|first_aid_accept|first_aid_decline"
+        r"|chest_accept|chest_decline|npc_low_accept|npc_low_decline|npc_high_accept"
+        r"|npc_high_decline|buf_tokens_(fastMove|strong|firstAid))\Z",
         r"gorbushka_(new|new_accept|fight)\Z",
         r"sleep_(7|8|9|10|11|12)\Z",
         r"sm_drop_[1-5]\Z",
         r"smoothie_accept\Z",
         rf"buys_{_COMPANIES}\Z",
         r"pet_feast_accept_\w+\Z",
-        r"spring_\w+",
+        r"spring_roll_smiles\Z",
     ),
 )
 

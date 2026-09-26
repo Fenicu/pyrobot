@@ -95,3 +95,99 @@ def test_classify_text(text: str, expected: CommandClass) -> None:
 )
 def test_classify_callback(data: str, expected: CommandClass) -> None:
     assert classify_callback(data) is expected
+
+
+METRO_ACTIONS = [
+    *(
+        f"maze_{v}"
+        for v in (
+            "up",
+            "down",
+            "left",
+            "right",
+            "start",
+            "exit",
+            "exit_accept",
+            "exit_decline",
+            "enter_accept",
+            "enter_decline",
+            "continue",
+            "cancel_move",
+            "first_aid",
+            "first_aid_accept",
+            "first_aid_decline",
+            "chest_accept",
+            "chest_decline",
+            "npc_low_accept",
+            "npc_low_decline",
+            "npc_high_accept",
+            "npc_high_decline",
+        )
+    ),
+    "maze_buf_tokens_fastMove",
+    "maze_buf_tokens_strong",
+    "maze_buf_tokens_firstAid",
+]
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        "maze_buf_coins_fastMove",
+        "maze_buf_coins_strong",
+        "maze_buf_coins_firstAid",
+        "maze_buf_coins_somethingNew",
+        "spring_roll_coins",
+        "spring_roll_coins_x10",
+        "spring_regenerate",
+        "mether_buy_coins",
+    ],
+)
+def test_sw_coin_callbacks_are_donate(data: str) -> None:
+    assert classify_callback(data) is D
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "/sb1",
+        "/sb9",
+        "/finish",
+        "/dog_rest",
+        "/coins",
+        "/donations",
+        "/donate",
+        "/fcoins",
+        "/co_backer",
+        "/co_premium",
+        "/co_clan_blank",
+        "/co_art_grades",
+        "🌐Берёзка",
+        "🌐Берёзка другу",
+        "+🔵 редкие",
+        "+🔴 уникальные",
+        "+⚪️ за 🌐",
+        "💙Докупить",
+    ],
+)
+def test_sw_coin_texts_are_donate(text: str) -> None:
+    assert classify_text(text) is D
+
+
+@pytest.mark.parametrize("data", ["maze_state", "maze_foo", "spring_foo", "spring_roll_smiles2"])
+def test_unknown_metro_and_spring_callbacks_forbidden(data: str) -> None:
+    assert classify_callback(data) is F
+
+
+def test_keysbuy_forbidden() -> None:
+    assert classify_text("/keysbuy") is F
+
+
+@pytest.mark.parametrize("data", METRO_ACTIONS)
+def test_metro_whitelist_is_action(data: str) -> None:
+    assert classify_callback(data) is A
+
+
+def test_spring_smiles_action_and_maze_nothing_nav() -> None:
+    assert classify_callback("spring_roll_smiles") is A
+    assert classify_callback("maze_nothing") is N
