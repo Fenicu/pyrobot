@@ -106,6 +106,7 @@ class ActionRow(Base):
     __table_args__ = (
         UniqueConstraint("account_id", "idempotency_key"),
         Index("ix_actions_account_created", "account_id", "created_at"),
+        Index("ix_actions_scenario_run_id", "scenario_run_id"),
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
@@ -124,6 +125,10 @@ class ActionRow(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Запуск сценария, шагом которого было действие; ручные команды и реакции — NULL.
+    scenario_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("scenario_runs.id", ondelete="SET NULL")
+    )
 
 
 class MetricRow(Base):

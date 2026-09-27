@@ -153,6 +153,40 @@ class DbReads:
             )
             return row, metro
 
+    async def scenario_runs(
+        self, *, manual: bool | None, scenario: str | None, limit: int, before: int | None
+    ) -> list[ScenarioRunRow]:
+        """Запуски от новых к старым; `manual` — только ручные (с `requested_by`) или только
+        плановые."""
+        query = (
+            select(ScenarioRunRow)
+            .where(ScenarioRunRow.account_id == self._account_id)
+            .order_by(ScenarioRunRow.id.desc())
+            .limit(limit)
+        )
+        if manual is not None:
+            by = ScenarioRunRow.requested_by
+            query = query.where(by.is_not(None) if manual else by.is_(None))
+        if scenario is not None:
+            query = query.where(ScenarioRunRow.scenario == scenario)
+        if before is not None:
+            query = query.where(ScenarioRunRow.id < before)
+        async with self._db.sessions() as session:
+            return list(await session.scalars(query))
+
+    async def run_actions(self, run_id: int) -> list[ActionRow]:
+        """Действия шагов запуска в порядке создания."""
+        async with self._db.sessions() as session:
+            rows = await session.scalars(
+                select(ActionRow)
+                .where(
+                    ActionRow.account_id == self._account_id,
+                    ActionRow.scenario_run_id == run_id,
+                )
+                .order_by(ActionRow.id)
+            )
+            return list(rows)
+
     async def metrics(
         self,
         keys: Sequence[str],

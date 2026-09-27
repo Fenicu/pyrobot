@@ -163,6 +163,27 @@ async def test_from_empty_state_to_first_deed(world: World) -> None:
     assert rig.loop.next_wake == gorbushka.value.next_fight_at + TIMER_MARGIN
 
 
+async def test_scenario_steps_carry_their_run(world: World) -> None:
+    script_day(world)
+    rig = Rig(world)
+    await rig.steps(9)
+    run_of = {r.scenario: i for i, r in enumerate(rig.store.runs, start=1)}
+    steps = {row.req.text: row.req.scenario_run_id for row in world.store.rows.values()}
+    assert steps["/job"] == run_of["deed:job"]
+    assert steps["/gorbushka"] == run_of["gorbushka"]
+    assert None not in steps.values()
+
+
+async def test_manual_run_steps_carry_their_run(world: World) -> None:
+    world.game.on_text("/inv", ("items", 3625102))
+    rig = Rig(world, auto=False)
+    run_id, _ = await rig.loop.request("refresh", {"source": "inventory"}, key="k", by="admin")
+    await rig.loop.run_manual()
+    assert [
+        (r.req.text, r.req.source, r.req.scenario_run_id) for r in world.store.rows.values()
+    ] == [("/inv", Source.MANUAL, run_id)]
+
+
 async def test_repeated_wait_recorded_once(world: World) -> None:
     script_day(world)
     rig = Rig(world)

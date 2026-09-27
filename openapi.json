@@ -170,6 +170,17 @@
             "title": "Id",
             "type": "integer"
           },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
@@ -205,6 +216,17 @@
               }
             ],
             "title": "Reconciled At"
+          },
+          "scenario_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Run Id"
           },
           "sent_at": {
             "anyOf": [
@@ -242,7 +264,9 @@
           "match_detail",
           "sent_at",
           "finished_at",
-          "reconciled_at"
+          "reconciled_at",
+          "idempotency_key",
+          "scenario_run_id"
         ],
         "title": "ActionOut",
         "type": "object"
@@ -3095,6 +3119,13 @@
       },
       "ScenarioRunDetail": {
         "properties": {
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/ActionOut"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
           "decision_id": {
             "anyOf": [
               {
@@ -3177,7 +3208,8 @@
           "status",
           "reason",
           "requested_by",
-          "metro_run_id"
+          "metro_run_id",
+          "actions"
         ],
         "title": "ScenarioRunDetail",
         "type": "object"
@@ -3294,6 +3326,34 @@
           "requested_by"
         ],
         "title": "ScenarioRunOut",
+        "type": "object"
+      },
+      "ScenarioRunsPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioRunOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          }
+        },
+        "required": [
+          "items",
+          "next_before"
+        ],
+        "title": "ScenarioRunsPage",
         "type": "object"
       },
       "SendIn": {
@@ -5615,6 +5675,111 @@
         "summary": "Read Notifications",
         "tags": [
           "reference"
+        ]
+      }
+    },
+    "/api/v1/scenario-runs": {
+      "get": {
+        "operationId": "scenario_runs_api_v1_scenario_runs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "manual",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Manual"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scenario",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scenario"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioRunsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Scenario Runs",
+        "tags": [
+          "journal"
         ]
       }
     },

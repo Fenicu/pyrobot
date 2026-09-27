@@ -310,6 +310,7 @@ class PlannerLoop:
             history=self._history,
             reread=self._reread,
             source=Source.MANUAL if manual else Source.SCENARIO,
+            run_id=run_id,
         )
         self.current = act.scenario
         try:

@@ -81,6 +81,9 @@ class ActionRequest:
     # каждой попыткой отправки — пока действие ждало в очереди, состояние могло измениться.
     confirm_version: int | None = None
     confirm_until: datetime | None = None
+    # Запуск сценария, шагом которого идёт действие (`actions.scenario_run_id`); у ручных
+    # команд, реакций и сверки — None. В отпечаток идемпотентности (`payload`) не входит.
+    scenario_run_id: int | None = None
 
     def payload(self) -> dict[str, object]:
         return {

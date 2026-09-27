@@ -41,6 +41,7 @@ class DbActionStore:
             status=status.value,
             reason=reason[:200],
             idempotency_key=req.idempotency_key,
+            scenario_run_id=req.scenario_run_id,
             finished_at=datetime.now(UTC) if status in _FINAL else None,
         )
         try:

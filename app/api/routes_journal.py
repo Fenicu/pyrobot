@@ -75,8 +75,9 @@ class ScenarioRunOut(BaseModel):
     requested_by: str | None
 
 
-class ScenarioRunDetail(ScenarioRunOut):
-    metro_run_id: int | None
+class ScenarioRunsPage(BaseModel):
+    items: list[ScenarioRunOut]
+    next_before: int | None
 
 
 class DecisionOut(BaseModel):
@@ -107,6 +108,16 @@ class ActionOut(BaseModel):
     sent_at: datetime | None
     finished_at: datetime | None
     reconciled_at: datetime | None
+    # Ключ идемпотентности (`manual:<ключ>` у ручных команд) и запуск, шагом которого было
+    # действие.
+    idempotency_key: str | None
+    scenario_run_id: int | None
+
+
+class ScenarioRunDetail(ScenarioRunOut):
+    metro_run_id: int | None
+    # Действия шагов запуска в порядке создания.
+    actions: list[ActionOut]
 
 
 def _feed_cursor(key: FeedKey) -> str:
@@ -234,6 +245,25 @@ async def action(
     return ActionOut.model_validate(row, from_attributes=True)
 
 
+@router.get("/scenario-runs", response_model=ScenarioRunsPage, responses=AUTH)
+async def scenario_runs(
+    c: Annotated[Container, Depends(container)],
+    _: Annotated[SessionContext, Depends(current_session)],
+    manual: bool | None = None,
+    scenario: Annotated[str | None, Query(max_length=32)] = None,
+    before: Annotated[int | None, Query(ge=1)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> ScenarioRunsPage:
+    rows = await c.reads.scenario_runs(
+        manual=manual, scenario=scenario, limit=limit + 1, before=before
+    )
+    page = rows[:limit]
+    return ScenarioRunsPage(
+        items=[_run(r) for r in page],
+        next_before=page[-1].id if len(rows) > limit else None,
+    )
+
+
 @router.get(
     "/scenario-runs/{run_id}",
     response_model=ScenarioRunDetail,
@@ -248,4 +278,9 @@ async def scenario_run(
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "scenario run not found")
     row, metro_run_id = found
-    return ScenarioRunDetail(**_run(row).model_dump(), metro_run_id=metro_run_id)
+    actions = await c.reads.run_actions(run_id)
+    return ScenarioRunDetail(
+        **_run(row).model_dump(),
+        metro_run_id=metro_run_id,
+        actions=[ActionOut.model_validate(a, from_attributes=True) for a in actions],
+    )

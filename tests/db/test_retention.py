@@ -146,3 +146,21 @@ async def test_purge_keeps_last_completed_metro_runs(clean_db: Database) -> None
     # Для p90 бюджета остаются последние 20 завершённых забегов, даже старше года.
     assert purged["metro_runs"] == 3
     assert await metro.durations() == [float(i) for i in range(2, METRO_HISTORY + 2)]
+
+
+async def test_purged_run_leaves_open_obligation_without_run(clean_db: Database) -> None:
+    # Шаг запуска с несверенным исходом живёт до сверки, а сам запуск удаляется по сроку:
+    # ссылка на запуск обнуляется, удаление не падает на внешнем ключе.
+    planner = DbPlannerStore(clean_db, 1)
+    decision = await planner.record(_ago(10), Wait(None, "old"))
+    run_id = await planner.run_started(decision, "deed:job", {}, _ago(91))
+    await planner.run_finished(run_id, "failed", "timeout", _ago(91))
+    step = _action(91, "outcome_unknown")
+    step.scenario_run_id = run_id
+    async with clean_db.sessions() as s, s.begin():
+        s.add(step)
+    purged = await DbRetention(clean_db, 1).purge(NOW, RetentionSection())
+    assert (purged["scenario_runs"], purged["actions"]) == (1, 0)
+    async with clean_db.sessions() as s:
+        kept = await s.get(ActionRow, step.id)
+    assert kept is not None and kept.scenario_run_id is None

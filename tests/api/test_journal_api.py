@@ -34,6 +34,8 @@ async def _action(db: Database, at: datetime, **kw: object) -> int:
         command_class="action",
         status=kw.get("status", "confirmed"),
         reason="",
+        scenario_run_id=kw.get("run"),
+        idempotency_key=kw.get("key"),
     )
     async with db.sessions() as s, s.begin():
         s.add(row)
@@ -75,6 +77,7 @@ async def _page(client: AsyncClient, **params: object) -> dict[str, object]:
 async def test_journal_needs_session(container: Container, api_client: AsyncClient) -> None:
     assert (await api_client.get("/api/v1/journal")).status_code == 401
     assert (await api_client.get("/api/v1/actions/1")).status_code == 401
+    assert (await api_client.get("/api/v1/scenario-runs")).status_code == 401
 
 
 async def test_feed_merges_types_newest_first(
@@ -177,3 +180,53 @@ async def test_details(container: Container, api_client: AsyncClient, clean_db: 
     assert run["metro_run_id"] == metro_id
     for path in ("decisions", "actions", "scenario-runs"):
         assert (await api_client.get(f"/api/v1/{path}/999999")).status_code == 404
+
+
+async def test_scenario_runs_list_and_actions(
+    container: Container, api_client: AsyncClient, clean_db: Database
+) -> None:
+    planner = DbPlannerStore(clean_db, 1)
+    decision = await planner.record(_at(0), Wait(_at(100), "busy"))
+    planned = await planner.run_started(decision, "deed:job", {"activity": "job"}, _at(1))
+    manual_ids = []
+    for i, name in enumerate(("sleep", "metro", "sleep")):
+        run_id, _ = await planner.run_requested(
+            name, {}, requested={}, key=f"k{i}", by="admin", at=_at(2 + i)
+        )
+        manual_ids.append(run_id)
+    step1 = await _action(clean_db, _at(5), text="/job", run=planned)
+    step2 = await _action(clean_db, _at(6), text="/job2", run=planned)
+    await _action(clean_db, _at(7), text="/inv", source="manual", key="manual:x")
+    await login(api_client)
+
+    async def ids(**params: object) -> tuple[list[int], object]:
+        r = await api_client.get("/api/v1/scenario-runs", params=params)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        return [i["id"] for i in body["items"]], body["next_before"]
+
+    assert await ids() == ([*reversed(manual_ids), planned], None)
+    assert await ids(manual="true") == ([*reversed(manual_ids)], None)
+    assert await ids(manual="false") == ([planned], None)
+    assert await ids(manual="true", scenario="sleep") == (
+        [manual_ids[2], manual_ids[0]],
+        None,
+    )
+    first, cursor = await ids(manual="true", limit=2)
+    assert (first, cursor) == ([manual_ids[2], manual_ids[1]], manual_ids[1])
+    assert await ids(manual="true", limit=2, before=cursor) == ([manual_ids[0]], None)
+    item = (await api_client.get("/api/v1/scenario-runs", params={"limit": 1})).json()["items"][0]
+    assert (item["scenario"], item["status"], item["requested_by"]) == ("sleep", "queued", "admin")
+
+    run = (await api_client.get(f"/api/v1/scenario-runs/{planned}")).json()
+    assert [(a["id"], a["payload"]["text"], a["scenario_run_id"]) for a in run["actions"]] == [
+        (step1, "/job", planned),
+        (step2, "/job2", planned),
+    ]
+    empty = (await api_client.get(f"/api/v1/scenario-runs/{manual_ids[0]}")).json()
+    assert empty["actions"] == []
+    manual = (await api_client.get("/api/v1/actions/" + str(step2 + 1))).json()
+    assert (manual["scenario_run_id"], manual["idempotency_key"]) == (None, "manual:x")
+    assert (
+        await api_client.get("/api/v1/scenario-runs", params={"limit": 101})
+    ).status_code == 422

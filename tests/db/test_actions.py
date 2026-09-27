@@ -1,12 +1,18 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from app.db.actions import DbActionStore
 from app.db.base import Database
+from app.db.models import ActionRow
+from app.db.planner import DbPlannerStore
 from app.engine.commands import CommandClass
 from app.engine.gateway.store import DuplicateKey, Obligation
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
+from app.engine.planner.types import Wait
 
 pytestmark = pytest.mark.db
+T0 = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
 
 
 async def test_lifecycle_idempotency_and_duplicate(clean_db: Database) -> None:
@@ -67,3 +73,22 @@ async def test_obligations_survive_restart_until_reconciled(clean_db: Database) 
     assert [o.action_id for o in await again.unreconciled()] == [spend]
     await again.mark_reconciled([spend])
     assert await store.unreconciled() == []
+
+
+async def test_scenario_run_id_is_stored(clean_db: Database) -> None:
+    planner = DbPlannerStore(clean_db, 1)
+    decision = await planner.record(T0, Wait(None, "busy"))
+    run_id = await planner.run_started(decision, "deed:job", {}, T0)
+    store = DbActionStore(clean_db, account_id=1)
+    step = ActionRequest(kind=ActionKind.SEND, chat_id=1, text="/job", scenario_run_id=run_id)
+    own = await store.create(step, CommandClass.ACTION, ActionStatus.INTENT)
+    manual = await store.create(
+        ActionRequest(kind=ActionKind.SEND, chat_id=1, text="/inv", source=Source.MANUAL),
+        CommandClass.NAV,
+        ActionStatus.INTENT,
+    )
+    async with clean_db.sessions() as session:
+        runs = {a: (await session.get(ActionRow, a)).scenario_run_id for a in (own, manual)}
+    assert runs == {own: run_id, manual: None}
+    # Идентификатор запуска не входит в отпечаток идемпотентности.
+    assert "scenario_run_id" not in step.payload()
