@@ -1,0 +1,157 @@
+"""Снимок формы ответов /engine/status, /tg/*, /state: модели ответов её не меняют."""
+
+import re
+from dataclasses import replace
+from datetime import UTC, datetime
+
+import pytest
+from httpx import AsyncClient
+
+from app.api.container import Container
+from app.engine.bus import Bus
+from app.engine.memory import MemoryJournal
+from app.engine.parsing import default_parser
+from app.engine.pipeline import Pipeline
+from app.engine.settings import ChatsSection
+from app.engine.state.reducer import StateReducer
+from app.engine.transport.fake import FakeTgBackend
+from tests.api.conftest import login
+from tests.engine.test_facade import build
+from tests.fixtures import game_msg
+
+pytestmark = pytest.mark.db
+ISO_UTC = re.compile(r"\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?\+00:00\Z")
+TG_KEYS = ["state", "user_id", "attempt_id", "error"]
+
+
+class _Planner:
+    current = "sleep"
+    next_wake = datetime(2026, 9, 27, 18, 0, 5, 250000, tzinfo=UTC)
+
+
+async def test_engine_status_shape(container: Container, api_client: AsyncClient) -> None:
+    container.facade = build(authorized=False, planner=_Planner())
+    await container.facade.tg.boot()
+    await login(api_client)
+    body = (await api_client.get("/api/v1/engine/status")).json()
+    assert list(body) == [
+        "mode",
+        "paused",
+        "scenario",
+        "next_wake",
+        "killed",
+        "kill_reason",
+        "spending_blocked",
+        "tg",
+        "queue",
+        "in_flight",
+        "pipeline_backlog",
+        "pipeline_healthy",
+        "workers_ok",
+        "lock_ok",
+        "loop_lag_ms",
+    ]
+    assert body == {
+        "mode": "dry_run",
+        "paused": False,
+        "scenario": "sleep",
+        "next_wake": "2026-09-27T18:00:05.250000Z",
+        "killed": False,
+        "kill_reason": None,
+        "spending_blocked": None,
+        "tg": {"state": "unauthorized", "user_id": None, "attempt_id": None, "error": None},
+        "queue": 0,
+        "in_flight": None,
+        "pipeline_backlog": 0,
+        "pipeline_healthy": True,
+        "workers_ok": True,
+        "lock_ok": True,
+        "loop_lag_ms": body["loop_lag_ms"],
+    }
+    assert isinstance(body["loop_lag_ms"], float)
+
+
+async def test_engine_status_without_wake(container: Container, api_client: AsyncClient) -> None:
+    container.facade = build(authorized=False)
+    await container.facade.tg.boot()
+    await login(api_client)
+    body = (await api_client.get("/api/v1/engine/status")).json()
+    assert (body["scenario"], body["next_wake"]) == (None, None)
+
+
+async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
+    container.facade = build(authorized=False, backend=FakeTgBackend(password="pw"))
+    await container.facade.tg.boot()
+    h = {"X-CSRF-Token": await login(api_client)}
+    status = (await api_client.get("/api/v1/tg/status")).json()
+    assert list(status) == TG_KEYS
+    assert status == {"state": "unauthorized", "user_id": None, "attempt_id": None, "error": None}
+    start = (
+        await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    ).json()
+    attempt = start["attempt_id"]
+    assert list(start) == TG_KEYS and isinstance(attempt, str)
+    assert start == {
+        "state": "awaiting_code",
+        "user_id": None,
+        "attempt_id": attempt,
+        "error": None,
+    }
+    code = (
+        await api_client.post(
+            "/api/v1/tg/login/code", headers=h, json={"attempt_id": attempt, "code": "12345"}
+        )
+    ).json()
+    assert list(code) == TG_KEYS and code["state"] == "awaiting_password"
+    wrong = (
+        await api_client.post(
+            "/api/v1/tg/login/password", headers=h, json={"attempt_id": attempt, "password": "x"}
+        )
+    ).json()
+    assert list(wrong) == TG_KEYS and wrong["error"] == "invalid_password"
+    online = (
+        await api_client.post(
+            "/api/v1/tg/login/password", headers=h, json={"attempt_id": attempt, "password": "pw"}
+        )
+    ).json()
+    assert online == {"state": "online", "user_id": 267519921, "attempt_id": None, "error": None}
+    out = (await api_client.post("/api/v1/tg/logout", headers=h)).json()
+    assert list(out) == TG_KEYS and out["state"] == "unauthorized"
+
+
+def _with_state(container: Container) -> Pipeline:
+    facade = build(authorized=False)
+    facade.pipeline = Pipeline(
+        journal=MemoryJournal(),
+        parser=default_parser(ChatsSection()),
+        reducer=StateReducer(),
+        bus=Bus(),
+    )
+    container.facade = facade
+    return facade.pipeline
+
+
+async def test_empty_state_shape(container: Container, api_client: AsyncClient) -> None:
+    _with_state(container)
+    await login(api_client)
+    body = (await api_client.get("/api/v1/state")).json()
+    assert list(body) == ["version", "now", "state", "stale"]
+    assert (body["version"], body["state"], body["stale"]) == (0, {}, [])
+    assert ISO_UTC.match(body["now"])
+
+
+async def test_state_shape(container: Container, api_client: AsyncClient) -> None:
+    pipeline = _with_state(container)
+    await pipeline.process(replace(game_msg("profile", 3624478), date=datetime.now(UTC)))
+    await pipeline.process(replace(game_msg("sleep", 3541942), date=datetime.now(UTC)))
+    await login(api_client)
+    body = (await api_client.get("/api/v1/state")).json()
+    assert list(body) == ["version", "now", "state", "stale"]
+    assert body["version"] == 2 and ISO_UTC.match(body["now"])
+    # Состояние — снимок конвейера как есть: все поля (ненаблюдённые — null), тот же порядок,
+    # без служебного `applied`.
+    expected = {k: v for k, v in pipeline.state.items() if k != "applied"}
+    assert list(body["state"]) == list(expected)
+    assert body["state"] == expected
+    assert body["state"]["money"]["at"] == pipeline.state["money"]["at"]
+    assert isinstance(body["stale"], list)

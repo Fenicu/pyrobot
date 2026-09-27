@@ -137,6 +137,17 @@ async def test_scenario_catalog(container: Container, api_client: AsyncClient) -
     items = {i["name"]: i for i in (await api_client.get("/api/v1/scenarios")).json()}
     assert items["container_medium"]["certified"] and not items["deed:rob"]["certified"]
     assert items["deed:job"]["params"] == {"activity": "job"}
+    assert items["deed:job"]["required"] == {}
+    assert items["sleep"]["required"] == {"hours": {"type": "int", "min": 7, "max": 12}}
+    assert items["tangerine"]["required"] == {"chat": {"type": "int"}, "reply_to": {"type": "int"}}
+    assert items["fastfood"]["required"] == {
+        "food": {"type": "enum", "values": ["banana", "burger", "hotdog", "pizza"]}
+    }
+    assert items["bulls_join"]["required"] == {
+        "code": {"type": "string", "pattern": "^join_fight_[A-Za-z0-9_-]{11}$"}
+    }
+    recipe = items["smoothie"]["required"]["recipe"]
+    assert recipe["type"] == "string" and recipe["pattern"].endswith("){5}$")
 
 
 async def test_run_without_planner(container: Container, api_client: AsyncClient) -> None:

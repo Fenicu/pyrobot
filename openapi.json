@@ -533,6 +533,128 @@
         "title": "DecisionOut",
         "type": "object"
       },
+      "EngineStatusOut": {
+        "properties": {
+          "in_flight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Flight"
+          },
+          "kill_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kill Reason"
+          },
+          "killed": {
+            "title": "Killed",
+            "type": "boolean"
+          },
+          "lock_ok": {
+            "title": "Lock Ok",
+            "type": "boolean"
+          },
+          "loop_lag_ms": {
+            "title": "Loop Lag Ms",
+            "type": "number"
+          },
+          "mode": {
+            "enum": [
+              "dry_run",
+              "live"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "next_wake": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Wake"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "pipeline_backlog": {
+            "title": "Pipeline Backlog",
+            "type": "integer"
+          },
+          "pipeline_healthy": {
+            "title": "Pipeline Healthy",
+            "type": "boolean"
+          },
+          "queue": {
+            "title": "Queue",
+            "type": "integer"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario"
+          },
+          "spending_blocked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spending Blocked"
+          },
+          "tg": {
+            "$ref": "#/components/schemas/TgStatusOut"
+          },
+          "workers_ok": {
+            "title": "Workers Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode",
+          "paused",
+          "scenario",
+          "next_wake",
+          "killed",
+          "kill_reason",
+          "spending_blocked",
+          "tg",
+          "queue",
+          "in_flight",
+          "pipeline_backlog",
+          "pipeline_healthy",
+          "workers_ok",
+          "lock_ok",
+          "loop_lag_ms"
+        ],
+        "title": "EngineStatusOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1124,6 +1246,44 @@
         "title": "NotificationsPage",
         "type": "object"
       },
+      "ParamSpec": {
+        "description": "Обязательный параметр сценария: `values` — у enum, `min`/`max` — у int, `pattern` — у\nstring (ECMA-262). Проверяет сервер: запуск с недопустимым значением — 422.",
+        "properties": {
+          "max": {
+            "title": "Max",
+            "type": "integer"
+          },
+          "min": {
+            "title": "Min",
+            "type": "integer"
+          },
+          "pattern": {
+            "title": "Pattern",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "enum",
+              "int",
+              "string"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "ParamSpec",
+        "type": "object"
+      },
       "PhoneIn": {
         "properties": {
           "phone": {
@@ -1178,12 +1338,20 @@
             "additionalProperties": true,
             "title": "Params",
             "type": "object"
+          },
+          "required": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ParamSpec"
+            },
+            "title": "Required",
+            "type": "object"
           }
         },
         "required": [
           "name",
           "certified",
-          "params"
+          "params",
+          "required"
         ],
         "title": "ScenarioInfo",
         "type": "object"
@@ -1593,6 +1761,98 @@
           "changes"
         ],
         "title": "SettingsVersionOut",
+        "type": "object"
+      },
+      "StateOut": {
+        "properties": {
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "stale": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stale",
+            "type": "array"
+          },
+          "state": {
+            "additionalProperties": true,
+            "title": "State",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "now",
+          "state",
+          "stale"
+        ],
+        "title": "StateOut",
+        "type": "object"
+      },
+      "TgState": {
+        "enum": [
+          "unauthorized",
+          "awaiting_code",
+          "awaiting_password",
+          "online",
+          "error"
+        ],
+        "title": "TgState",
+        "type": "string"
+      },
+      "TgStatusOut": {
+        "properties": {
+          "attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TgState"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "state",
+          "user_id",
+          "attempt_id",
+          "error"
+        ],
+        "title": "TgStatusOut",
         "type": "object"
       },
       "UnrecognizedOut": {
@@ -2348,9 +2608,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Engine Status Api V1 Engine Status Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/EngineStatusOut"
                 }
               }
             },
@@ -3273,9 +3531,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get State Api V1 State Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/StateOut"
                 }
               }
             },
@@ -3324,9 +3580,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Tg Code Api V1 Tg Login Code Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TgStatusOut"
                 }
               }
             },
@@ -3385,9 +3639,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Tg Password Api V1 Tg Login Password Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TgStatusOut"
                 }
               }
             },
@@ -3446,9 +3698,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Tg Start Api V1 Tg Login Start Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TgStatusOut"
                 }
               }
             },
@@ -3497,9 +3747,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Tg Logout Api V1 Tg Logout Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TgStatusOut"
                 }
               }
             },
@@ -3530,9 +3778,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Tg Status Api V1 Tg Status Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TgStatusOut"
                 }
               }
             },

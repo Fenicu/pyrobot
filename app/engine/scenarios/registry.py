@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, get_args
+from typing import Any, Literal, get_args
 
 from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.parsing.smoothie import INGREDIENTS
@@ -12,33 +12,74 @@ from app.engine.scenarios.library import FOOD_BUTTONS, REFRESH, ScenarioFn
 from app.engine.settings import Target
 
 Check = Callable[[Any], bool]
+ParamType = Literal["enum", "int", "string"]
 TASK = re.compile(r"[A-Za-z]+_(?:easy|medium|hard)")
 
 
-def _one_of(values: Iterable[str]) -> Check:
+@dataclass(frozen=True, slots=True)
+class Param:
+    """Обязательный параметр: проверка — исходный предикат, остальное — описание для каталога
+    (`values` у enum, `min`/`max` у int, `pattern` у string — без Python-специфики)."""
+
+    check: Check
+    type: ParamType
+    values: tuple[str, ...] | None = None
+    min: int | None = None
+    max: int | None = None
+    pattern: str | None = None
+
+    def __call__(self, value: Any) -> bool:
+        return self.check(value)
+
+    def spec(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"type": self.type}
+        if self.values is not None:
+            out["values"] = list(self.values)
+        for name in ("min", "max", "pattern"):
+            if (value := getattr(self, name)) is not None:
+                out[name] = value
+        return out
+
+
+def portable(pattern: re.Pattern[str]) -> str:
+    """Шаблон для OpenAPI: якоря строки в синтаксисе ECMA-262 (`^…$` вместо `\\A…\\Z`)."""
+    source = pattern.pattern
+    body = source.removeprefix("\\A").removesuffix("\\Z")
+    return f"^{body}$"
+
+
+def _one_of(values: Iterable[str]) -> Param:
     allowed = frozenset(values)
-    return lambda v: isinstance(v, str) and v in allowed
+    return Param(
+        lambda v: isinstance(v, str) and v in allowed, "enum", values=tuple(sorted(allowed))
+    )
 
 
-def _int(low: int | None = None, high: int | None = None) -> Check:
+def _int(low: int | None = None, high: int | None = None) -> Param:
     def check(v: Any) -> bool:
         if not isinstance(v, int) or isinstance(v, bool):
             return False
         return (low is None or v >= low) and (high is None or v <= high)
 
-    return check
+    return Param(check, "int", min=low, max=high)
 
 
-def _invite(v: Any) -> bool:
-    return isinstance(v, str) and INVITE_CODE.match(v) is not None
-
-
-def _task(v: Any) -> bool:
-    return isinstance(v, str) and TASK.fullmatch(v) is not None
-
-
-def _recipe(v: Any) -> bool:
-    return isinstance(v, str) and len(v) == 5 and all(fruit in INGREDIENTS for fruit in v)
+_invite = Param(
+    lambda v: isinstance(v, str) and INVITE_CODE.match(v) is not None,
+    "string",
+    pattern=portable(INVITE_CODE),
+)
+_task = Param(
+    lambda v: isinstance(v, str) and TASK.fullmatch(v) is not None,
+    "string",
+    pattern=portable(TASK),
+)
+_recipe = Param(
+    lambda v: isinstance(v, str) and len(v) == 5 and all(fruit in INGREDIENTS for fruit in v),
+    "string",
+    # Альтернатива, а не класс символов: фрукты вне BMP, класс без флага `u` их не удержит.
+    pattern="^(?:" + "|".join(INGREDIENTS) + "){5}$",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +90,7 @@ class ScenarioSpec:
     params: Mapping[str, Any] = field(default_factory=dict)
     # Параметры, без которых сценарий не исполнить: у решений планировщика они есть всегда,
     # ручной запуск без них отклоняется.
-    required: Mapping[str, Check] = field(default_factory=dict)
+    required: Mapping[str, Param] = field(default_factory=dict)
 
     def invalid(self, params: Mapping[str, Any]) -> list[str]:
         """Обязательные параметры, которых нет или значение которых недопустимо."""

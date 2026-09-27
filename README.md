@@ -1073,8 +1073,8 @@ python tools/openapi.py [файл]` (по умолчанию `openapi.json` в �
 бэклог и здоровье конвейера, `lock_ok`/`workers_ok` и лаг event loop (`LoopLagMonitor`,
 `app/engine/lag.py`, максимум лага за скользящее окно 60с); `ready()` — истина, когда лок и воркеры
 в порядке, Telegram в состоянии `ONLINE`, нет kill switch, нет блока трат и конвейер здоров. `GET
-/api/v1/engine/status` (сессия) отдаёт этот статус целиком, включая паузу `paused`, текущий
-сценарий планировщика `scenario` и момент его следующего пробуждения `next_wake`. `POST
+/api/v1/engine/status` (сессия) отдаёт этот статус целиком (`EngineStatusOut`), включая паузу
+`paused`, текущий сценарий планировщика `scenario` и момент его следующего пробуждения `next_wake`. `POST
 /api/v1/engine/pause` и `POST /api/v1/engine/resume` (CSRF) сохраняют `engine.paused`, будят
 планировщик и пишут аудит `engine_paused`/`engine_resumed` с логином. Успешные `kill`, `unkill` и `reconciled`
 пишут аудит-уведомление уровня `info` (`engine_killed`, `engine_unkilled`, `engine_reconciled`) с
@@ -1088,7 +1088,8 @@ latch не меняются. `POST /api/v1/engine/reconciled` (CSRF) — явн�
 действий»); автоматическое снятие блока после проверки — задача сверщика. `GET
 /api/v1/tg/status` (сессия) и `POST /api/v1/tg/login/start {phone}`, `.../login/code {attempt_id,
 code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (все — CSRF)
-проксируют `TgAuthManager`; несовпадение попытки входа (`AttemptMismatch`) отдаёт 409. Неверный или
+проксируют `TgAuthManager` и отвечают статусом входа `TgStatusOut` (`state`, `user_id`,
+`attempt_id`, `error`); несовпадение попытки входа (`AttemptMismatch`) отдаёт 409. Неверный или
 истёкший код и неверный пароль 2FA — это 200 с полем `error` (`invalid_code`, `code_expired`,
 `invalid_password`). Прочие ошибки входа — наследники `TgAuthError` с кодом: распознанные (например,
 `invalid_phone`) — 400 `{"detail": "<код>"}`, сбой Telegram или сети (`TgBackendError`:
@@ -1100,8 +1101,10 @@ code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (�
 /readyz` (без авторизации) — 200 `{"status":"ready"}`, если движок поднят и `ready()` истинна, иначе
 503 `{"status":"not_ready"}`.
 
-`GET /api/v1/state` (сессия, CSRF не нужен) отдаёт снимок состояния персонажа: `{"version": int,
-"now": ISO-UTC, "state": {...}, "stale": [...]}`. `version` и `state` — из `EngineFacade.state()`
+`GET /api/v1/state` (сессия, CSRF не нужен) отдаёт снимок состояния персонажа (`StateOut`):
+`{"version": int, "now": ISO-UTC, "state": {...}, "stale": [...]}`; `state` в схеме — свободный
+объект (до первого сообщения он пуст), форма ответа с появлением модели не изменилась — это
+проверяет тест-снимок `tests/api/test_response_shapes.py` (как и у `/engine/status` и `/tg/*`). `version` и `state` — из `EngineFacade.state()`
 (`Pipeline.version`/`Pipeline.state`), служебное поле редьюсера `applied` (ключи применённых итогов)
 в ответ не входит; `stale` — список полей, устаревших по политике свежести
 (`stale_fields`, `app/engine/state/model.py`): для «летучих» полей (`money`, `stamina`,
@@ -1187,7 +1190,10 @@ message_id, revision, callback_data, idempotency_key, confirm_token?}` — на�
 подтверждения не требует.
 
 Ручной запуск сценария: `GET /api/v1/scenarios` (сессия) — каталог реестра `{name, certified,
-params}`; `POST /api/v1/scenarios/{name}/run {params, idempotency_key}` (CSRF) — 202
+params, required}`: `params` — параметры, зафиксированные реестром, `required` — обязательные
+параметры `{имя: ParamSpec}`, где `ParamSpec` — `{type: "enum"|"int"|"string", values?, min?, max?,
+pattern?}` (отсутствующие ключи не выводятся; `pattern` — в синтаксисе ECMA-262, проверка на сервере
+остаётся прежним предикатом реестра, `registry.Param`); `POST /api/v1/scenarios/{name}/run {params, idempotency_key}` (CSRF) — 202
 `{scenario_run_id, status: "queued"}`, неизвестный сценарий — 404, больше 16 параметров — 422.
 Запуск ставится в очередь цикла планировщика (`PlannerLoop.request`, строка `scenario_runs` со
 статусом `queued`, `requested_by` и ключом) и исполняется перед его следующим решением — после

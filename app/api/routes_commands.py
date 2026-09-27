@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
+from pydantic.json_schema import SkipJsonSchema
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
@@ -77,10 +78,23 @@ class ScenarioRunAccepted(BaseModel):
     status: str
 
 
+class ParamSpec(BaseModel):
+    """Обязательный параметр сценария: `values` — у enum, `min`/`max` — у int, `pattern` — у
+    string (ECMA-262). Проверяет сервер: запуск с недопустимым значением — 422."""
+
+    type: Literal["enum", "int", "string"]
+    values: list[str] | SkipJsonSchema[None] = None
+    min: int | SkipJsonSchema[None] = None
+    max: int | SkipJsonSchema[None] = None
+    pattern: str | SkipJsonSchema[None] = None
+
+
 class ScenarioInfo(BaseModel):
     name: str
     certified: bool
+    # Параметры реестра, зафиксированные у сценария (`activity` дела, `item` предмета).
     params: dict[str, Any]
+    required: dict[str, ParamSpec]
 
 
 _RESPONSES: dict[int | str, dict[str, object]] = {
@@ -236,11 +250,16 @@ async def command_click(
     )
 
 
-@router.get("/scenarios", response_model=list[ScenarioInfo])
+@router.get("/scenarios", response_model=list[ScenarioInfo], response_model_exclude_none=True)
 async def scenarios(_: Annotated[SessionContext, Depends(current_session)]) -> list[ScenarioInfo]:
     """Сценарии, доступные ручному запуску; несертифицированные исполняются как simulate."""
     return [
-        ScenarioInfo(name=s.name, certified=s.certified, params=dict(s.params))
+        ScenarioInfo(
+            name=s.name,
+            certified=s.certified,
+            params=dict(s.params),
+            required={k: ParamSpec(**p.spec()) for k, p in s.required.items()},
+        )
         for s in SCENARIOS.values()
     ]
 

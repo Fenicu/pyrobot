@@ -1,6 +1,7 @@
 from collections.abc import Awaitable
 from dataclasses import asdict
-from typing import Annotated, Any
+from datetime import datetime
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -8,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
 from app.engine.facade import EngineFacade, LockLostError
-from app.engine.tg_auth import AttemptMismatch, TgAuthError, TgBackendError, TgStatus
+from app.engine.tg_auth import AttemptMismatch, TgAuthError, TgBackendError, TgState, TgStatus
 from app.engine.transport.base import FloodWait
 
 router = APIRouter(prefix="/api/v1", tags=["engine"])
@@ -38,24 +39,49 @@ class PasswordIn(BaseModel):
     password: str
 
 
-def _tg(st: TgStatus) -> dict[str, Any]:
-    return {
-        "state": st.state.value,
-        "user_id": st.user_id,
-        "attempt_id": st.attempt_id,
-        "error": st.error,
-    }
+class TgStatusOut(BaseModel):
+    state: TgState
+    user_id: int | None
+    attempt_id: str | None
+    # Код последней ошибки входа (`invalid_code`, `session_revoked`, …).
+    error: str | None
 
 
-@router.get("/engine/status")
+class EngineStatusOut(BaseModel):
+    mode: Literal["dry_run", "live"]
+    paused: bool
+    # Сценарий, который сейчас исполняет планировщик.
+    scenario: str | None
+    next_wake: datetime | None
+    killed: bool
+    kill_reason: str | None
+    spending_blocked: str | None
+    tg: TgStatusOut
+    queue: int
+    # Текст или callback_data действия, которое шлюз сейчас отправляет.
+    in_flight: str | None
+    pipeline_backlog: int
+    pipeline_healthy: bool
+    workers_ok: bool
+    lock_ok: bool
+    loop_lag_ms: float
+
+
+def _tg(st: TgStatus) -> TgStatusOut:
+    return TgStatusOut(
+        state=st.state, user_id=st.user_id, attempt_id=st.attempt_id, error=st.error
+    )
+
+
+@router.get("/engine/status", response_model=EngineStatusOut)
 async def engine_status(
     _: Annotated[SessionContext, Depends(current_session)],
     f: Annotated[EngineFacade, Depends(facade)],
-) -> dict[str, Any]:
+) -> EngineStatusOut:
     st = f.status()
     data = asdict(st)
     data["tg"] = _tg(st.tg)
-    return data
+    return EngineStatusOut.model_validate(data)
 
 
 @router.post("/engine/kill", status_code=status.HTTP_204_NO_CONTENT)
@@ -102,15 +128,15 @@ async def engine_reconciled(
     await f.reconciled(by=ctx.login)
 
 
-@router.get("/tg/status")
+@router.get("/tg/status", response_model=TgStatusOut)
 async def tg_status(
     _: Annotated[SessionContext, Depends(current_session)],
     f: Annotated[EngineFacade, Depends(facade)],
-) -> dict[str, Any]:
+) -> TgStatusOut:
     return _tg(f.tg.status())
 
 
-async def _guard(coro: Awaitable[TgStatus]) -> dict[str, Any]:
+async def _guard(coro: Awaitable[TgStatus]) -> TgStatusOut:
     try:
         return _tg(await coro)
     except AttemptMismatch as exc:
@@ -128,36 +154,36 @@ async def _guard(coro: Awaitable[TgStatus]) -> dict[str, Any]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.code) from exc
 
 
-@router.post("/tg/login/start")
+@router.post("/tg/login/start", response_model=TgStatusOut)
 async def tg_start(
     body: PhoneIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],
-) -> dict[str, Any]:
+) -> TgStatusOut:
     return await _guard(f.tg.start(body.phone, owner=str(ctx.session_id)))
 
 
-@router.post("/tg/login/code")
+@router.post("/tg/login/code", response_model=TgStatusOut)
 async def tg_code(
     body: CodeIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],
-) -> dict[str, Any]:
+) -> TgStatusOut:
     return await _guard(f.tg.submit_code(body.attempt_id, str(ctx.session_id), body.code))
 
 
-@router.post("/tg/login/password")
+@router.post("/tg/login/password", response_model=TgStatusOut)
 async def tg_password(
     body: PasswordIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],
-) -> dict[str, Any]:
+) -> TgStatusOut:
     return await _guard(f.tg.submit_password(body.attempt_id, str(ctx.session_id), body.password))
 
 
-@router.post("/tg/logout")
+@router.post("/tg/logout", response_model=TgStatusOut)
 async def tg_logout(
     _: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],
-) -> dict[str, Any]:
+) -> TgStatusOut:
     return _tg(await f.tg.logout())
