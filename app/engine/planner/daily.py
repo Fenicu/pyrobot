@@ -35,7 +35,8 @@ ROB_DETAILS = 12
 # Продаванов в день, если экран билета ещё не видели (на экране — «…продаванов: 4»).
 GORBUSHKA_DAILY = 4
 # Командное задание закрывают и другие игроки, а сообщения о его выполнении нет: прогресс
-# перечитывается с экрана, пока цель не достигнута.
+# перечитывается с экрана, пока цель не достигнута. Невыбранное глава может выбрать позже, а строки
+# прогресса приходят только в итогах дел по его условию.
 TEAM_REREAD = timedelta(minutes=30)
 HARD = "hard"
 
@@ -74,11 +75,7 @@ class DailyTasks(Obligations):
         personal, team = self.personal_today(), self.team_today()
         if personal is None or team is None:
             return self.daily_refresh("tasks unknown")
-        reread = None
-        if self.team_deeds_unknown(team):
-            reread = "team deeds unknown"
-        elif self.team_progress_stale(team):
-            reread = "team progress stale"
+        reread = "team deeds unknown" if self.team_deeds_unknown(team) else self.team_stale(team)
         # Перечитать не дал лимит — выбор личного задания от этого не откладывается.
         if reread is not None and (act := self.daily_refresh(reread)) is not None:
             return act
@@ -98,11 +95,15 @@ class DailyTasks(Obligations):
         derived = seen is not None and seen.src == "derived"
         return team.status == "active" and not team.activities and derived
 
-    def team_progress_stale(self, team: TeamTask) -> bool:
+    def team_stale(self, team: TeamTask) -> str | None:
         seen = self.s.team_task
-        if seen is None or team.status != "active" or team.current >= team.goal:
-            return False
-        return self.now - seen.at >= TEAM_REREAD
+        if seen is None or self.now - seen.at < TEAM_REREAD:
+            return None
+        if team.status == "none":
+            return "team not chosen"
+        if team.status == "active" and team.current < team.goal:
+            return "team progress stale"
+        return None
 
     def daily_refresh(self, reason: str) -> Decision | None:
         last = self.last_refresh.get("daily")

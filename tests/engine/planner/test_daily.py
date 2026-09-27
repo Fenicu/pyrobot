@@ -349,6 +349,15 @@ def test_active_team_task_is_reread_every_half_hour() -> None:
     )
 
 
+def test_team_not_chosen_is_reread_every_half_hour() -> None:
+    # Глава может выбрать задание позже, а строки прогресса приходят только в итогах дел по
+    # условию: без экрана задание на работу или учёбу бот не увидел бы весь день.
+    old = tasks(chosen("robPro"), team_task=Obs(value=NO_TEAM, at=m(-31)))
+    assert picked(decide(old, DAILY, NOW)) == ("daily_refresh", {}, "team not chosen")
+    fresh = tasks(chosen("robPro"), team_task=Obs(value=NO_TEAM, at=m(-29)))
+    assert picked(decide(fresh, DAILY, NOW))[0] == "deed:harvest"
+
+
 def test_stale_team_reread_does_not_block_pick_when_rate_limited() -> None:
     stale = Obs(value=team("dconv"), at=m(-31))
     state = tasks(offers("convDets_hard"), team_task=stale)
