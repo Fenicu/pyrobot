@@ -17,6 +17,16 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
+# Админка: SvelteKit собирается в статику (npm — verdaccio хоумлаба из admin/.npmrc, строго по
+# package-lock.json); TS-типы API — закоммиченный schema.d.ts, openapi.json в контекст не входит.
+FROM node:24-bookworm-slim AS admin
+WORKDIR /admin
+COPY admin/package.json admin/package-lock.json admin/.npmrc ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit --no-fund
+COPY admin/ ./
+RUN npm run build
+
 # Рантайм: тот же Python, что у сборки (venv ссылается на /usr/local/bin/python3.13), без uv и
 # компилятора; процесс — непривилегированный пользователь, сессия Telegram — в томе /data.
 FROM python:3.13-slim-trixie
@@ -28,11 +38,13 @@ WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY alembic.ini ./
 COPY app ./app
+COPY --from=admin /admin/build ./admin
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYROBOT_DATA_DIR=/data \
-    PYROBOT_HTTP_PORT=8080
+    PYROBOT_HTTP_PORT=8080 \
+    PYROBOT_ADMIN_DIR=/app/admin
 USER pyrobot
 VOLUME ["/data"]
 EXPOSE 8080

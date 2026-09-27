@@ -86,7 +86,7 @@ def test_csp_hashes_match_inline_scripts() -> None:
 
 
 async def test_index_and_spa_fallback(client: AsyncClient) -> None:
-    for path in ("/", "/index.html", "/journal", "/settings/engine", "/metro/1"):
+    for path in ("/", "/index.html", "/journal", "/settings/engine", "/metro/1", "/a%00b"):
         r = await client.get(path)
         assert r.status_code == 200, path
         assert r.text == INDEX
@@ -112,7 +112,13 @@ async def test_files_and_cache(client: AsyncClient) -> None:
 
 
 async def test_missing_file_with_extension_is_404(client: AsyncClient) -> None:
-    for path in ("/_app/immutable/x.js", "/robots.txt", "/../config.py", "/_app/%2e%2e/secret.js"):
+    for path in (
+        "/_app/immutable/x.js",
+        "/robots.txt",
+        "/../config.py",
+        "/_app/%2e%2e/secret.js",
+        "/a%00b.js",
+    ):
         r = await client.get(path)
         assert r.status_code == 404, path
         assert r.json() == {"detail": "Not Found"}

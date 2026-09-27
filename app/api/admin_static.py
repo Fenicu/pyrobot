@@ -70,13 +70,21 @@ class AdminStatic:
         rel = PurePosixPath(path.lstrip("/"))
         if str(rel) in ("", ".", INDEX):
             return self._index()
-        target = (self.root / rel).resolve()
-        if target.is_relative_to(self.root) and target.is_file():
+        target = self._file(rel)
+        if target is not None:
             cache = IMMUTABLE_CACHE if str(rel).startswith(IMMUTABLE) else "no-cache"
             return FileResponse(target, headers={**self.headers, "Cache-Control": cache})
         if rel.suffix:
             raise HTTPException(status.HTTP_404_NOT_FOUND)
         return self._index()
+
+    def _file(self, rel: PurePosixPath) -> Path | None:
+        try:
+            target = (self.root / rel).resolve()
+            return target if target.is_relative_to(self.root) and target.is_file() else None
+        except (ValueError, OSError):
+            # Нулевой байт и прочие имена, которых не бывает в каталоге сборки.
+            return None
 
     def _index(self) -> Response:
         return Response(

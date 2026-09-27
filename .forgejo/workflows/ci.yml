@@ -77,10 +77,45 @@ jobs:
           uv sync --frozen
           uv run pytest -q -m "not corpus"
 
+  # Админка: типы API сверяются с openapi.json, svelte-check, vitest и сборка статики.
+  admin:
+    runs-on: docker
+    container:
+      image: node:24-bookworm-slim
+    timeout-minutes: 15
+    steps:
+      - name: Получить исходники
+        run: |
+          # apt-cacher-ng хоумлаба: прямой канал до deb.debian.org нестабилен
+          echo 'Acquire::http::Proxy "http://10.10.40.23:3142";' > /etc/apt/apt.conf.d/00proxy
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git ca-certificates
+          AUTH_URL="$(echo "${{ github.server_url }}/${{ github.repository }}.git" \
+            | sed "s|https://|https://ci:${{ secrets.GITEA_TOKEN }}@|")"
+          git init -q . && git remote add origin "$AUTH_URL"
+          git fetch -q --depth 1 origin "${{ github.sha }}"
+          git checkout -q FETCH_HEAD
+      - name: Зависимости
+        run: cd admin && npm ci --no-audit --no-fund
+      - name: TS-типы API актуальны
+        run: |
+          cd admin
+          npm run gen:api
+          git diff --exit-code -- src/lib/api/schema.d.ts || {
+            echo "schema.d.ts отстал от openapi.json: npm run gen:api и закоммитить" >&2
+            exit 1
+          }
+      - name: svelte-check
+        run: cd admin && npm run check
+      - name: vitest
+        run: cd admin && npm run test
+      - name: Сборка
+        run: cd admin && npm run build
+
   # Образ собирается на каждый push (ловит поломку Dockerfile), в registry уходит только по тегу vX.Y.Z.
   image:
     runs-on: self-hosted
-    needs: [lint, test]
+    needs: [lint, test, admin]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7

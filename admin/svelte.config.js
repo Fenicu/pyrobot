@@ -12,7 +12,8 @@ export default {
 		// SPA за FastAPI: единственная страница index.html, маршруты — на клиенте.
 		adapter: adapter({ fallback: 'index.html' }),
 		prerender: { entries: [] },
-		// Ключ версии сборки не нужен: SPA не опрашивает _app/version.json.
+		// Опрос версии не нужен: если после выката чанк прошлой сборки не загрузился, SvelteKit
+		// сам сверяет _app/version.json (он отдаётся с no-cache) и перезагружает страницу.
 		version: { pollInterval: 0 }
 	}
 };

@@ -20,3 +20,6 @@ data
 sessions
 *.session
 *.session-journal
+admin/node_modules
+admin/build
+admin/.svelte-kit

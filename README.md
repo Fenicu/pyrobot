@@ -1646,7 +1646,10 @@ npm run build               # статика в admin/build
 Типы API генерируются `openapi-typescript` из `openapi.json` в корне (его выгружает `uv run python
 tools/openapi.py`): поменяли API — перевыгрузить схему и `npm run gen:api`, закоммитить оба файла;
 CI сверяет, что `schema.d.ts` актуален. Сборка в Docker берёт закоммиченный `schema.d.ts`.
-Локально собранную админку отдаёт и dev-сервер бэкенда: `PYROBOT_ADMIN_DIR=admin/build`.
+Локально собранную админку отдаёт и dev-сервер бэкенда: `PYROBOT_ADMIN_DIR=admin/build`. В образ
+админка собирается отдельной стадией `node:24-bookworm-slim` (см. «Образ»), в CI — джоб `admin`
+(см. «CI/CD»); `.dockerignore` не пускает в контекст `admin/node_modules`, `admin/build` и
+`admin/.svelte-kit`.
 
 ### Устройство
 
@@ -1790,8 +1793,11 @@ CI сверяет, что `schema.d.ts` актуален. Сборка в Docker
 
 **Образ** (`Dockerfile`, многостадийный): стадия сборки — `ghcr.io/astral-sh/uv` с Python 3.13 и
 компилятором (tgcrypto собирается из исходников), `uv sync --frozen --no-dev` строго по `uv.lock`
-(индекс пакетов — devpi хоумлаба из `pyproject.toml`); рантайм — `python:3.13-slim-trixie` без uv и
-компилятора, только venv, `app/` и `alembic.ini`. Процесс работает от непривилегированного
+(индекс пакетов — devpi хоумлаба из `pyproject.toml`); стадия админки — `node:24-bookworm-slim`:
+`npm ci` строго по `admin/package-lock.json` (реестр — verdaccio хоумлаба из `admin/.npmrc`, кеш npm
+— `--mount=type=cache`) и `npm run build`, TS-типы API — закоммиченный `schema.d.ts` (`openapi.json`
+в контекст сборки не входит); рантайм — `python:3.13-slim-trixie` без uv, компилятора и node:
+venv, `app/`, `alembic.ini` и статика админки в `/app/admin` (`PYROBOT_ADMIN_DIR=/app/admin`). Процесс работает от непривилегированного
 пользователя `pyrobot` (uid/gid 10001); том `/data` (`PYROBOT_DATA_DIR`) — сессия Telegram,
 принадлежит ему же. `HEALTHCHECK` — `python -m app.healthcheck /healthz` (`app/healthcheck.py`,
 код выхода 0 при ответе 200; тем же модулем деплой ждёт `/readyz`), команда по умолчанию — `python -m
@@ -1831,7 +1837,10 @@ docker compose -f compose.yml config          # нужен .env рядом (см
 ### CI/CD
 
 **CI/CD** (`.forgejo/workflows/ci.yml`, Forgejo Actions): на каждый push — `lint` (ruff, mypy) и
-`test` (pytest с сервисом Postgres) в контейнере uv, затем `image` на хостовом раннере
+`test` (pytest с сервисом Postgres) в контейнере uv и `admin` в контейнере `node:24-bookworm-slim`
+(git — через apt-прокси хоумлаба `10.10.40.23:3142`; `npm ci`, `npm run gen:api` + `git diff
+--exit-code` — закоммиченный `schema.d.ts` совпадает с `openapi.json`, `npm run check`, `npm run
+test`, `npm run build`), затем `image` (ждёт все три) на хостовом раннере
 (`self-hosted`) собирает образ — поломка `Dockerfile` видна сразу. Сборка — `docker buildx build`
 своим builder'ом `builder-pyrobot` (драйвер `docker-container`: BuildKit независимо от настроек
 демона; без `--use`, чтобы не переключать общий builder хоста), `--platform linux/amd64
@@ -1855,7 +1864,7 @@ apps).
 
 | Секрет | Назначение |
 |---|---|
-| `GITEA_TOKEN` | Клонирование исходников в контейнерных job (`lint`, `test`). |
+| `GITEA_TOKEN` | Клонирование исходников в контейнерных job (`lint`, `test`, `admin`). |
 | `REGISTRY_USER`, `REGISTRY_TOKEN` | Вход в registry `git.fenicu.com` для публикации образа. |
 | `DEPLOY_SSH_KEY` | Приватный ключ деплоя на apps (`fenicu@10.10.40.20`; по спеке — ключ `~/.ssh/forgejo-deploy-apps`), как у остальных сервисов на apps. |
 | `PYROBOT_DB_PASSWORD` | Пароль Postgres на apps (`POSTGRES_PASSWORD`, hex — без URL-экранирования). |
@@ -1887,7 +1896,9 @@ kill switch или блоком трат `/readyz` тоже 503 — выкат �
 
 ### Первый вход
 
-**Первый вход** (админки ещё нет) — `tools/login.py`, интерактивно по API сервиса:
+**Первый вход** — через админку (`https://sw.fenicu.com/`: вход по `PYROBOT_ADMIN_LOGIN` и
+`PYROBOT_ADMIN_PASSWORD`, дальше «Ещё» → Telegram) или без браузера — `tools/login.py`, интерактивно
+по API сервиса:
 
 ```bash
 uv run python tools/login.py https://sw.fenicu.com   # или http://10.10.40.20:8089 внутри сети
