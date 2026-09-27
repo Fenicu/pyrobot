@@ -58,7 +58,9 @@ class AuthRepo:
             session.add(row)
         return token, row
 
-    async def resolve(self, token: str) -> Resolved | None:
+    async def resolve(self, token: str, *, slide: bool = True) -> Resolved | None:
+        """Живая сессия по токену. `slide=False` — только проверка, без продления: её делает
+        открытый поток SSE, который иначе продлевал бы сессию без действий пользователя."""
         now = datetime.now(UTC)
         async with self._db.sessions() as session, session.begin():
             row = await session.scalar(
@@ -71,7 +73,7 @@ class AuthRepo:
             admin = await session.get(AdminUser, row.admin_user_id)
             if admin is None:
                 return None
-            slid = now - row.last_seen_at > self._slide_after
+            slid = slide and now - row.last_seen_at > self._slide_after
             if slid:
                 row.last_seen_at = now
                 row.expires_at = now + self._ttl

@@ -49,8 +49,8 @@ def _tg(st: TgStatus) -> dict[str, Any]:
 
 @router.get("/engine/status")
 async def engine_status(
-    f: Annotated[EngineFacade, Depends(facade)],
     _: Annotated[SessionContext, Depends(current_session)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> dict[str, Any]:
     st = f.status()
     data = asdict(st)
@@ -61,16 +61,16 @@ async def engine_status(
 @router.post("/engine/kill", status_code=status.HTTP_204_NO_CONTENT)
 async def engine_kill(
     body: KillIn,
-    f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> None:
     await f.kill(body.reason, by=ctx.login)
 
 
 @router.post("/engine/unkill", status_code=status.HTTP_204_NO_CONTENT)
 async def engine_unkill(
-    f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> None:
     try:
         await f.unkill(by=ctx.login)
@@ -80,32 +80,32 @@ async def engine_unkill(
 
 @router.post("/engine/pause", status_code=status.HTTP_204_NO_CONTENT)
 async def engine_pause(
-    f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> None:
     await f.pause(by=ctx.login)
 
 
 @router.post("/engine/resume", status_code=status.HTTP_204_NO_CONTENT)
 async def engine_resume(
-    f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> None:
     await f.resume(by=ctx.login)
 
 
 @router.post("/engine/reconciled", status_code=status.HTTP_204_NO_CONTENT)
 async def engine_reconciled(
-    f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> None:
     await f.reconciled(by=ctx.login)
 
 
 @router.get("/tg/status")
 async def tg_status(
-    f: Annotated[EngineFacade, Depends(facade)],
     _: Annotated[SessionContext, Depends(current_session)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> dict[str, Any]:
     return _tg(f.tg.status())
 
@@ -131,8 +131,8 @@ async def _guard(coro: Awaitable[TgStatus]) -> dict[str, Any]:
 @router.post("/tg/login/start")
 async def tg_start(
     body: PhoneIn,
-    f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> dict[str, Any]:
     return await _guard(f.tg.start(body.phone, owner=str(ctx.session_id)))
 
@@ -140,8 +140,8 @@ async def tg_start(
 @router.post("/tg/login/code")
 async def tg_code(
     body: CodeIn,
-    f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> dict[str, Any]:
     return await _guard(f.tg.submit_code(body.attempt_id, str(ctx.session_id), body.code))
 
@@ -149,15 +149,15 @@ async def tg_code(
 @router.post("/tg/login/password")
 async def tg_password(
     body: PasswordIn,
-    f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> dict[str, Any]:
     return await _guard(f.tg.submit_password(body.attempt_id, str(ctx.session_id), body.password))
 
 
 @router.post("/tg/logout")
 async def tg_logout(
-    f: Annotated[EngineFacade, Depends(facade)],
     _: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> dict[str, Any]:
     return _tg(await f.tg.logout())

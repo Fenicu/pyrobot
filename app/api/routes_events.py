@@ -85,7 +85,7 @@ async def events(
     token = request.cookies.get(COOKIE)
 
     async def alive() -> bool:
-        return token is not None and await c.auth.resolve(token) is not None
+        return token is not None and await c.auth.resolve(token, slide=False) is not None
 
     sub = stream.subscribe(last_event_id)
     return StreamingResponse(

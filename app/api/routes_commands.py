@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
 from app.api.routes_engine import facade
+from app.db.models import ActionRow
 from app.engine.commands import CommandClass, classify_callback, classify_text
 from app.engine.facade import EngineFacade, PlannerUnavailable
 from app.engine.gateway.gateway import STORE_FAILED
@@ -112,10 +113,7 @@ async def _execute(
     if not f.manual_pending(key):
         known = await c.reads.action_by_key(manual_key(key))
         if known is not None:
-            if (known.kind, known.chat_id, known.payload) != fingerprint(req):
-                raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_CONTENT, "idempotency_key reused"
-                )
+            _check_same(known, req)
             return CommandOut(
                 action_id=known.id, status=known.status, reason=known.reason, answer=known.answer
             )
@@ -135,12 +133,22 @@ async def _execute(
     if result is None:
         response.status_code = status.HTTP_202_ACCEPTED
         return CommandOut(action_id=None, status="pending", reason="")
+    # Первое действие с этим ключом могло завершиться между проверками выше и отправкой: тогда
+    # шлюз вернул его сохранённый итог, и он должен быть итогом тех же параметров.
+    stored = await c.reads.action_by_key(manual_key(key))
+    if stored is not None:
+        _check_same(stored, req)
     return CommandOut(
         action_id=result.action_id,
         status=result.status.value,
         reason=result.reason,
         answer=result.answer,
     )
+
+
+def _check_same(stored: ActionRow, req: ActionRequest) -> None:
+    if (stored.kind, stored.chat_id, stored.payload) != fingerprint(req):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "idempotency_key reused")
 
 
 def _require_confirm(

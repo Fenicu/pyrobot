@@ -15,8 +15,8 @@ _INTERNAL = frozenset({"applied"})
 
 @router.get("/state")
 async def get_state(
-    f: Annotated[EngineFacade, Depends(facade)],
     _: Annotated[SessionContext, Depends(current_session)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> dict[str, Any]:
     version, snapshot = f.state()
     now = datetime.now(UTC)

@@ -1,4 +1,5 @@
 import asyncio
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -150,3 +151,20 @@ async def test_password_change_wrong_current_is_throttled(api_client: AsyncClien
     good = {"current": PASSWORD, "new": "a much longer password"}
     r = await api_client.post("/api/v1/auth/password", headers=h, json=good)
     assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
+
+
+async def test_anonymous_gets_401_before_engine_check(
+    container: Container, api_client: AsyncClient
+) -> None:
+    # Сессия проверяется раньше фасада: аноним не получает 503 и не узнаёт, поднят ли движок.
+    assert container.facade is None
+    checked: list[str] = []
+    for template, methods in create_api(container).openapi()["paths"].items():
+        if not template.startswith("/api/v1/") or template == "/api/v1/auth/login":
+            continue
+        path = re.sub(r"\{[^}]+\}", "1", template)
+        for method in methods:
+            resp = await api_client.request(method.upper(), path)
+            assert resp.status_code == 401, (method, path, resp.status_code)
+            checked.append(path)
+    assert {"/api/v1/engine/status", "/api/v1/state", "/api/v1/tg/logout"} <= set(checked)

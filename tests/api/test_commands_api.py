@@ -273,3 +273,23 @@ async def test_unstored_manual_key_is_503(
     assert code == 503 and body == {"detail": "store_failed"}
     code, body = await _send(api_client, h, "😎Я", "s2")
     assert code == 503 and transport.sent == []
+
+
+async def test_key_reused_after_first_finished_in_between_is_422(
+    container: Container,
+    api_client: AsyncClient,
+    clean_db: Database,
+    running: list[asyncio.Task[None]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    f, transport = await _start(container, clean_db, DRY, running)
+    h = {"X-CSRF-Token": await login(api_client)}
+    code, first = await _send(api_client, h, "/job", "w1")
+    assert (code, first["status"]) == (200, "suppressed")
+    # Первое действие завершилось между проверкой «в полёте» и отправкой второго.
+    monkeypatch.setattr(f, "manual_pending", lambda key: True)
+    code, body = await _send(api_client, h, "/harvest", "w1")
+    assert code == 422 and body == {"detail": "idempotency_key reused"}
+    code, again = await _send(api_client, h, "/job", "w1")
+    assert code == 200 and again == first
+    assert transport.sent == []

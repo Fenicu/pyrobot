@@ -1,12 +1,16 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
+from sqlalchemy import select, update
 
 from app.api.app import create_api
 from app.api.container import Container
 from app.api.routes_events import _events
+from app.db.base import Database
+from app.db.models import AuthSession
 from app.engine.stream import EventStream
 from tests.api.conftest import login
 from tests.api.sse import read_sse
@@ -186,3 +190,28 @@ async def test_replay_checks_session_and_is_released() -> None:
     got.append(await anext(gen))
     await gen.aclose()
     assert len(got) == 6 and ok.replay == []
+
+
+async def test_stream_check_does_not_extend_session(
+    app_with_stream: tuple[FastAPI, EventStream], api_client: AsyncClient, clean_db: Database
+) -> None:
+    app, stream = app_with_stream
+    await login(api_client)
+    seen = datetime.now(UTC) - timedelta(days=2)
+    expires = datetime.now(UTC) + timedelta(days=1)
+
+    async def age_session() -> None:
+        # Сутки без запросов: обычный запрос продлил бы сессию, проверка из потока — нет.
+        await until(lambda: stream.subscribers == 1, 2.0)
+        async with clean_db.sessions() as s, s.begin():
+            await s.execute(update(AuthSession).values(last_seen_at=seen, expires_at=expires))
+
+    task = asyncio.create_task(age_session())
+    status, events = await read_sse(
+        app, "/api/v1/events", headers=_cookie(api_client), count=8, keep_comments=True
+    )
+    await task
+    assert status == 200 and sum(e.comment for e in events) == 7
+    async with clean_db.sessions() as s:
+        row = await s.scalar(select(AuthSession))
+    assert row is not None and (row.last_seen_at, row.expires_at) == (seen, expires)

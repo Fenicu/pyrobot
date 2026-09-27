@@ -29,14 +29,16 @@ class ConfirmTokens:
 
     def expires_at(self, token: str) -> int | None:
         head, _, _ = token.partition(".")
-        return int(head) if head.isdigit() else None
+        # isdigit без isascii пропускает «²» и цифры других алфавитов.
+        return int(head) if head.isascii() and head.isdigit() else None
 
     def check(
         self, token: str, session_id: int, key: str, params: Sequence[object], version: int
     ) -> str | None:
         """None — токен годен; иначе причина: `expired` или `invalid`."""
         expires = self.expires_at(token)
-        if expires is None:
+        # compare_digest не сравнивает строки с не-ASCII символами — падает, а не отвечает «нет».
+        if expires is None or not token.isascii():
             return "invalid"
         sig = token.partition(".")[2]
         if not hmac.compare_digest(sig, self._sign(session_id, key, params, version, expires)):

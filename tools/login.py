@@ -9,6 +9,7 @@
 telegram.expected_user_id из настроек сервиса, сессия админа закрывается."""
 
 import asyncio
+import contextlib
 import getpass
 import sys
 from collections.abc import Callable
@@ -24,6 +25,23 @@ Say = Callable[[str], None]
 
 class LoginFailed(Exception):
     pass
+
+
+def _json(resp: httpx.Response, what: str) -> Any:
+    try:
+        return resp.json()
+    except ValueError:
+        # Страница ошибки прокси (HTML) — только код: тело не печатается.
+        raise LoginFailed(f"{what}: HTTP {resp.status_code}, not a JSON response") from None
+
+
+def _detail(resp: httpx.Response) -> str:
+    """Код ошибки сервиса, если он строка; ошибки валидации повторяют присланные значения."""
+    try:
+        detail = resp.json().get("detail")
+    except (ValueError, AttributeError):
+        return ""
+    return f" {detail}" if isinstance(detail, str) else ""
 
 
 class _Session:
@@ -44,9 +62,8 @@ class _Session:
         if resp.status_code == 204:
             return None
         if resp.status_code != 200:
-            detail = resp.json().get("detail") if resp.content else None
-            raise LoginFailed(f"{method} {path}: HTTP {resp.status_code} {detail or ''}".strip())
-        return resp.json()
+            raise LoginFailed(f"{method} {path}: HTTP {resp.status_code}{_detail(resp)}")
+        return _json(resp, f"{method} {path}")
 
     async def login(self, login: str, password: str) -> None:
         resp = await self._client.post(
@@ -55,7 +72,11 @@ class _Session:
         self._client.cookies.clear()
         if resp.status_code != 200:
             raise LoginFailed(f"admin login failed: HTTP {resp.status_code}")
-        self._csrf = resp.json()["csrf_token"]
+        body = _json(resp, "admin login")
+        csrf = body.get("csrf_token") if isinstance(body, dict) else None
+        if not isinstance(csrf, str):
+            raise LoginFailed("admin login returned no csrf token")
+        self._csrf = csrf
         for header in resp.headers.get_list("set-cookie"):
             name, _, rest = header.partition("=")
             if name.strip() == COOKIE:
@@ -111,9 +132,13 @@ async def login_flow(client: httpx.AsyncClient, ask: Ask, secret: Ask, say: Say)
         if status["user_id"] != expected:
             raise LoginFailed(f"telegram user {status['user_id']} is not {expected}")
         say(f"telegram online as {status['user_id']} (expected_user_id matches)")
-        return expected
-    finally:
-        await api.logout()
+    except Exception:
+        # Сессия админа закрывается и при ошибке, но в отчёт идёт первопричина, а не сбой выхода.
+        with contextlib.suppress(LoginFailed):
+            await api.logout()
+        raise
+    await api.logout()
+    return expected
 
 
 def main() -> None:

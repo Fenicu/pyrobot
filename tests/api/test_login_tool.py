@@ -1,3 +1,4 @@
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
@@ -84,3 +85,53 @@ async def test_wrong_admin_password_fails(container: Container, clean_db: Databa
     async with await _client(container, FakeTgBackend()) as client:
         with pytest.raises(LoginFailed, match="HTTP 401"):
             await login_flow(client, console.ask, console.secret, console.say)
+
+
+HTML = "<html><body><h1>502 Bad Gateway</h1>upstream admin:hunter2</body></html>"
+LOGGED_IN = {"login": "admin", "csrf_token": "csrf"}
+
+
+def _proxy(routes: dict[str, httpx.Response]) -> AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return routes.get(request.url.path, httpx.Response(204))
+
+    return AsyncClient(transport=httpx.MockTransport(handler), base_url="http://t")
+
+
+def _html(code: int) -> httpx.Response:
+    return httpx.Response(code, text=HTML, headers={"content-type": "text/html"})
+
+
+async def _fail(routes: dict[str, httpx.Response]) -> str:
+    console = Console([""], [PASSWORD])
+    async with _proxy(routes) as client:
+        with pytest.raises(LoginFailed) as err:
+            await login_flow(client, console.ask, console.secret, console.say)
+    return str(err.value)
+
+
+async def test_html_error_from_proxy_is_reported_by_code() -> None:
+    cookie = {"set-cookie": "pyrobot_session=s; Path=/"}
+    logged_in = httpx.Response(200, json=LOGGED_IN, headers=cookie)
+    routes = {
+        "/api/v1/auth/login": logged_in,
+        "/api/v1/settings": _html(502),
+        "/api/v1/auth/logout": _html(502),
+    }
+    # Первопричина не подменяется ошибкой закрытия сессии.
+    assert await _fail(routes) == "GET /api/v1/settings: HTTP 502"
+    assert await _fail({"/api/v1/auth/login": _html(200)}) == (
+        "admin login: HTTP 200, not a JSON response"
+    )
+
+
+async def test_error_detail_shown_only_as_code() -> None:
+    cookie = {"set-cookie": "pyrobot_session=s; Path=/"}
+    logged_in = httpx.Response(200, json=LOGGED_IN, headers=cookie)
+    # Ошибка валидации FastAPI повторяет присланные значения — их не печатаем.
+    echoed = httpx.Response(422, json={"detail": [{"msg": "bad", "input": "12345"}]})
+    message = await _fail({"/api/v1/auth/login": logged_in, "/api/v1/settings": echoed})
+    assert message == "GET /api/v1/settings: HTTP 422"
+    coded = httpx.Response(503, json={"detail": "engine not started"})
+    message = await _fail({"/api/v1/auth/login": logged_in, "/api/v1/settings": coded})
+    assert message == "GET /api/v1/settings: HTTP 503 engine not started"
