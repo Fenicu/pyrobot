@@ -77,12 +77,15 @@ def goals(screen: LotteryScreen, params: Params) -> dict[str, Goal]:
     return out
 
 
+def _short_note(screen: LotteryScreen, short: Mapping[str, int]) -> dict[str, object]:
+    """Нехватку сверх запасов и резервов снимок тиража не знает (запасы — в настройках): заметка
+    несёт валюты и ресурс с экрана, и планировщик ждёт роста ресурса, а не только устаревания."""
+    return {"lottery": {"draw": screen.draw, "short": dict(short)}}
+
+
 def cant_afford(screen: LotteryScreen, short: Mapping[str, int]) -> ScenarioResult:
-    """Ни на один недостающий билет не хватает. Нехватку сверх запасов и резервов снимок тиража
-    не знает (запасы — в настройках): итог несёт валюты и ресурс с экрана, и планировщик ждёт
-    роста ресурса, а не только его устаревания."""
-    note = {"lottery": {"draw": screen.draw, "short": dict(short)}}
-    return ScenarioResult("nothing", "cant_afford", details=note)
+    """Ни на один недостающий билет не хватает."""
+    return ScenarioResult("nothing", "cant_afford", details=_short_note(screen, short))
 
 
 def buys_all(goals: Mapping[str, Goal]) -> bool:
@@ -241,7 +244,10 @@ async def buy_each(
         if lacked:
             short[currency] = screen.resources[currency]
     if total:
-        return ScenarioResult("done", "bought_each")
+        # Другая валюта в этом же проходе могла упереться в keep или резерв: нехватка идёт в
+        # details так же, как у cant_afford, иначе планировщик её не увидит.
+        details = _short_note(screen, short) if short else None
+        return ScenarioResult("done", "bought_each", details=details)
     if short:
         return cant_afford(screen, short)
     return ScenarioResult("nothing", "target_reached")

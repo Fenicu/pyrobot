@@ -319,6 +319,15 @@ async def test_lottery_nothing_holds(world: World, reason: str, hold: timedelta)
     assert rig.loop._cooldowns == {"lottery_buy": at + hold}
 
 
+def test_lottery_short_reads_details_regardless_of_status() -> None:
+    # `buy_each` докупает часть валют и всё равно несёт нехватку по остальным: «done» не должен
+    # прятать её от планировщика, как и «nothing» у cant_afford.
+    done = ScenarioResult(
+        "done", "bought_each", details={"lottery": {"draw": 3286, "short": {"knowledge": 21973}}}
+    )
+    assert loop_module._lottery_short(done) == (3286, {"knowledge": 21973})
+
+
 @pytest.mark.parametrize(
     ("hour", "minute", "hold"),
     [

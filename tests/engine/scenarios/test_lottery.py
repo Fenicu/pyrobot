@@ -210,6 +210,20 @@ async def test_next_currency_after_safe_point_rereads_screen(world: World) -> No
 
 
 @certifies("lottery_buy")
+async def test_bought_each_notes_short_currency_for_planner(world: World) -> None:
+    # 💵 куплены, 📚 упёрлись в keep: нехватка идёт в details так же, как у cant_afford, иначе
+    # PlannerLoop._lottery_short обнуляется и устаревший 📚 снова открывает /tickets без роста.
+    world.game.on_text("/tickets", LIVE_SCREEN)
+    world.game.on_text("💵 => 🤑", MONEY_SCREEN)
+    world.game.on_click("tickets_money_1", edit=MONEY_CLICKED)
+    params = {**ONLY_MONEY, "tickets_knowledge": "max", "keep_knowledge": 21_973}
+    result = await run_scenario(lottery_buy, context(world), CharacterState(), params)
+    assert (result.status, result.reason) == ("done", "bought_each")
+    assert result.details == {"lottery": {"draw": 3286, "short": {"knowledge": 21_973}}}
+    assert world.game.payloads() == ["/tickets", "💵 => 🤑", "tickets_money_1"]
+
+
+@certifies("lottery_buy")
 async def test_pause_stops_between_currencies(world: World) -> None:
     world.game.on_text("/tickets", LIVE_SCREEN)
     world.game.on_text("💵 => 🤑", MONEY_SCREEN)
