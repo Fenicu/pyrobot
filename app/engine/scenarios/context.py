@@ -109,10 +109,13 @@ class ScenarioContext:
         history: History | None = None,
         reread: Reread | None = None,
         dry_run: bool = False,
+        source: Source = Source.SCENARIO,
     ) -> None:
         self._gateway = gateway
         # Режим запуска, зафиксированный на его старте (см. ActionRequest.dry_run).
         self.dry_run = dry_run
+        # Ручной запуск из админки шлёт шаги от имени MANUAL: приоритет и правила паузы — ручные.
+        self._source = source
         self._game = game_chat_id
         self.simulate = simulate
         self._paused = paused
@@ -241,7 +244,7 @@ class ScenarioContext:
                 reply_to=reply_to,
                 expect_revision=expect_revision,
                 expect_content=expect_content,
-                source=Source.SCENARIO,
+                source=self._source,
                 # Ответы на шаги сценариев всегда приходят от игры, в её чат.
                 expect=Expectation(
                     capture, timeout, chat_id=self._game, silence_confirms=silence_confirms

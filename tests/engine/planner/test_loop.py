@@ -1,3 +1,4 @@
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -7,16 +8,25 @@ import pytest
 
 import app.engine.planner.loop as loop_module
 from app.engine.bus import Delivery
+from app.engine.gateway.types import Source
 from app.engine.metro.store import MemoryMetroRunStore
 from app.engine.notify import Level
 from app.engine.parsing.food import FoodMenu
 from app.engine.planner.base import TIMER_MARGIN
-from app.engine.planner.loop import DEEDS, MAX_RETRY, NOTHING_RETRY, RETRY_AFTER, PlannerLoop
+from app.engine.planner.loop import (
+    DEEDS,
+    MAX_RETRY,
+    NOTHING_RETRY,
+    RETRY_AFTER,
+    FixedParams,
+    PlannerLoop,
+)
 from app.engine.planner.store import MemoryPlannerStore
 from app.engine.planner.types import Act, Decision
 from app.engine.scenarios.library import ScenarioResult
 from app.engine.scenarios.registry import ScenarioSpec
 from tests.engine.fakegame import LIVE, World, running_world
+from tests.engine.helpers import until
 
 
 class ShiftClock:
@@ -39,7 +49,7 @@ class Notes:
 
 
 class Rig:
-    def __init__(self, world: World, ready: str | None = None) -> None:
+    def __init__(self, world: World, ready: str | None = None, auto: bool = True) -> None:
         self.world = world
         self.clock = ShiftClock()
         self.store = MemoryPlannerStore()
@@ -54,6 +64,7 @@ class Rig:
             notifier=self.notes,
             ready=lambda: self.ready,
             step_timeout_s=0.3,
+            auto=auto,
         )
 
     async def steps(self, n: int) -> None:
@@ -498,3 +509,79 @@ async def test_run_started_in_dry_run_stays_simulated_after_switch(dry_world: Wo
     # Следующий запуск стартует уже в новом режиме: отложенное подавлением снимается.
     await rig.loop.step()
     assert rig.loop._held == {}
+
+
+async def test_manual_run_uses_manual_source(world: World) -> None:
+    world.game.on_text("/read_exp", ("items", 3516680))
+    rig = Rig(world)
+    # Параметр, противоречащий реестру, — ошибка, а не молчаливая подмена.
+    with pytest.raises(FixedParams):
+        await rig.loop.request("book", {"item": "card"}, key="m0", by="admin")
+    run_id, created = await rig.loop.request("book", {"item": "book"}, key="m1", by="admin")
+    assert created and rig.store.runs[0].status == "queued"
+    assert rig.store.runs[0].requested == {"item": "book"}
+    assert await rig.loop.request("book", {}, key="m1", by="admin") == (run_id, False)
+    await rig.loop.run_manual()
+    assert world.game.payloads() == ["/read_exp"]
+    run = rig.store.runs[run_id - 1]
+    assert (run.status, run.decision_id, run.requested_by) == ("done", None, "admin")
+    assert [r.req.source for r in world.store.rows.values()] == [Source.MANUAL]
+    assert rig.store.decisions == []
+    with pytest.raises(KeyError):
+        await rig.loop.request("nope", {}, key="m2", by="admin")
+
+
+async def test_manual_uncertified_is_simulated_and_not_held(world: World) -> None:
+    rig = Rig(world)
+    run_id, _ = await rig.loop.request("container_medium", {}, key="u1", by="admin")
+    await rig.loop.run_manual()
+    run = rig.store.runs[run_id - 1]
+    assert (run.status, run.reason) == ("suppressed", "uncertified")
+    assert world.game.payloads() == [] and rig.loop._held == {}
+
+
+async def test_manual_run_respects_manual_while_paused(world: World) -> None:
+    world.game.on_text("/read_exp", ("items", 3516680))
+    await set_engine(world, paused=True)
+    rig = Rig(world)
+    await rig.loop.request("book", {}, key="p1", by="admin")
+    await rig.loop.run_manual()
+    assert rig.store.runs[0].status == "done"
+    await set_engine(world, manual_while_paused=False)
+    await rig.loop.request("book", {}, key="p2", by="admin")
+    await rig.loop.run_manual()
+    assert (rig.store.runs[1].status, rig.store.runs[1].reason) == ("stopped", "paused")
+    assert world.game.payloads() == ["/read_exp"]
+
+
+async def test_loop_without_auto_runs_only_manual(world: World) -> None:
+    script_day(world)
+    rig = Rig(world, auto=False)
+    task = asyncio.create_task(rig.loop.run())
+    try:
+        await asyncio.sleep(0.05)
+        assert world.game.payloads() == []
+        await rig.loop.request("refresh", {"source": "profile"}, key="r1", by="admin")
+        await until(lambda: rig.store.runs[0].status == "done")
+        assert world.game.payloads() == ["😎Я"] and rig.store.decisions == []
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_manual_run_started_in_dry_run_stays_simulated(dry_world: World) -> None:
+    world = dry_world
+    world.game.on_text("/to_eat", ("food", 3521844))
+    world.game.on_text("🌭Хот-дог", ("food", 3624983))
+
+    async def to_live(delivery: Delivery) -> None:
+        if any(isinstance(e, FoodMenu) for e in delivery.events):
+            await set_engine(world, mode="live")
+
+    world.bus.subscribe(to_live)
+    rig = Rig(world)
+    run_id, _ = await rig.loop.request("fastfood", {"food": "hotdog"}, key="d1", by="admin")
+    await rig.loop.run_manual()
+    run = rig.store.runs[run_id - 1]
+    assert (run.status, run.reason) == ("suppressed", "dry_run")
+    assert world.game.payloads() == ["/to_eat"]

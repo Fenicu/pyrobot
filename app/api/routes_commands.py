@@ -1,16 +1,16 @@
 import logging
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 from app.api.container import Container
-from app.api.deps import SessionContext, container, require_csrf
+from app.api.deps import SessionContext, container, current_session, require_csrf
 from app.api.routes_engine import facade
 from app.engine.commands import CommandClass, classify_callback, classify_text
-from app.engine.facade import EngineFacade
+from app.engine.facade import EngineFacade, PlannerUnavailable
 from app.engine.gateway.gateway import STORE_FAILED
 from app.engine.gateway.types import ActionRequest, ActionStatus
 from app.engine.manual import (
@@ -21,11 +21,14 @@ from app.engine.manual import (
     manual_key,
     send_request,
 )
+from app.engine.planner.loop import FixedParams
+from app.engine.scenarios.registry import SCENARIOS
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["commands"])
 KEY_PATTERN = r"^[A-Za-z0-9_.:-]{1,64}$"
 _NEVER = (CommandClass.FORBIDDEN, CommandClass.DONATE)
+MAX_SCENARIO_PARAMS = 16
 
 
 class SendIn(BaseModel):
@@ -58,6 +61,25 @@ class ConfirmRequired(BaseModel):
     expires_at: datetime
     state_version: int
     command_class: str
+
+
+ParamValue = str | int | float | bool | None
+
+
+class ScenarioRunIn(BaseModel):
+    params: dict[str, ParamValue] = Field(default_factory=dict)
+    idempotency_key: str = Field(pattern=KEY_PATTERN)
+
+
+class ScenarioRunAccepted(BaseModel):
+    scenario_run_id: int
+    status: str
+
+
+class ScenarioInfo(BaseModel):
+    name: str
+    certified: bool
+    params: dict[str, Any]
 
 
 _RESPONSES: dict[int | str, dict[str, object]] = {
@@ -204,3 +226,59 @@ async def command_click(
             confirm=confirm,
         ),
     )
+
+
+@router.get("/scenarios", response_model=list[ScenarioInfo])
+async def scenarios(_: Annotated[SessionContext, Depends(current_session)]) -> list[ScenarioInfo]:
+    """Сценарии, доступные ручному запуску; несертифицированные исполняются как simulate."""
+    return [
+        ScenarioInfo(name=s.name, certified=s.certified, params=dict(s.params))
+        for s in SCENARIOS.values()
+    ]
+
+
+@router.post(
+    "/scenarios/{name}/run",
+    response_model=ScenarioRunAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        200: {"model": ScenarioRunAccepted, "description": "Key already used: existing run"},
+        404: {"description": "unknown scenario"},
+        422: {
+            "description": "invalid body, params contradicting fixed scenario params, or "
+            "idempotency_key reused with other parameters"
+        },
+    },
+)
+async def scenario_run(
+    name: str,
+    body: ScenarioRunIn,
+    response: Response,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    c: Annotated[Container, Depends(container)],
+    f: Annotated[EngineFacade, Depends(facade)],
+) -> ScenarioRunAccepted:
+    if name not in SCENARIOS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown scenario")
+    if len(body.params) > MAX_SCENARIO_PARAMS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "too many params")
+    try:
+        run_id, created = await f.run_scenario(
+            name, body.params, key=body.idempotency_key, by=ctx.login
+        )
+    except PlannerUnavailable as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "planner not started") from exc
+    except FixedParams as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"fixed params: {', '.join(exc.args[0])}"
+        ) from exc
+    if created:
+        return ScenarioRunAccepted(scenario_run_id=run_id, status="queued")
+    found = await c.reads.scenario_run(run_id)
+    if found is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "scenario run not found")
+    row = found[0]
+    if (row.scenario, row.requested_params) != (name, body.params):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "idempotency_key reused")
+    response.status_code = status.HTTP_200_OK
+    return ScenarioRunAccepted(scenario_run_id=run_id, status=row.status)

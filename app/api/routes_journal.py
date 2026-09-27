@@ -73,6 +73,7 @@ class ScenarioRunOut(BaseModel):
     finished_at: datetime | None
     status: str
     reason: str
+    requested_by: str | None
 
 
 class ScenarioRunDetail(ScenarioRunOut):

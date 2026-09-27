@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
-from dataclasses import replace
+from collections import deque
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from typing import Any
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
 from app.engine.gateway.gateway import ActionGateway
+from app.engine.gateway.types import Source
 from app.engine.metro.store import METRO_HISTORY, MetroRunStore
 from app.engine.notify import NotifierPort
 from app.engine.planner.decide import decide
@@ -43,6 +46,17 @@ SHARED_REFUSALS = frozenset(
 )
 
 
+class FixedParams(ValueError):
+    """Параметр ручного запуска противоречит параметру сценария из реестра."""
+
+
+@dataclass(frozen=True, slots=True)
+class ManualRun:
+    run_id: int
+    scenario: str
+    params: dict[str, Any]
+
+
 def cooldown_key(act: Act) -> str:
     """Кулдаун и серия неудач рефреша — свои у каждого источника."""
     if act.scenario == "refresh":
@@ -67,8 +81,12 @@ class PlannerLoop:
         metro_store: MetroRunStore | None = None,
         history: History | None = None,
         reread: Reread | None = None,
+        auto: bool = True,
     ) -> None:
         self._gateway = gateway
+        # auto=False — только ручные запуски из админки, без собственных решений.
+        self._auto = auto
+        self._manual: deque[ManualRun] = deque()
         self._state = state
         self._settings = settings
         self._clock = clock
@@ -102,12 +120,48 @@ class PlannerLoop:
     def wake(self) -> None:
         self._wake.set()
 
+    async def request(
+        self, scenario: str, params: Mapping[str, Any], *, key: str, by: str
+    ) -> tuple[int, bool]:
+        """Ручной запуск сценария: в очередь перед решениями планировщика. Возвращает id
+        запуска и признак, что он создан сейчас (иначе ключ уже встречался). KeyError — нет
+        такого сценария, FixedParams — параметр противоречит зафиксированному в реестре."""
+        fixed = SCENARIOS[scenario].params
+        clash = sorted(k for k, v in params.items() if k in fixed and fixed[k] != v)
+        if clash:
+            raise FixedParams(clash)
+        merged = {**params, **fixed}
+        run_id, created = await self._store.run_requested(
+            scenario, merged, requested=params, key=key, by=by, at=self._clock.now()
+        )
+        if created:
+            self._manual.append(ManualRun(run_id, scenario, merged))
+            self._wake.set()
+        return run_id, created
+
     async def run(self) -> None:
         while True:
             self._wake.clear()
-            pause = await self.step()
+            if self._manual:
+                await self.run_manual()
+                continue
+            pause = await self.step() if self._auto else self._max_idle_s
             if pause is not None:
                 await self._pause(pause)
+
+    async def run_manual(self) -> None:
+        item = self._manual.popleft()
+        started = self._clock.now()
+        # Режим ручного запуска фиксируется на его старте, как у запусков плана.
+        dry_run = self._settings.current.engine.mode == "dry_run"
+        await self._store.run_begin(item.run_id, started)
+        await self._perform(
+            Act(item.scenario, item.params, "manual"),
+            item.run_id,
+            started,
+            manual=True,
+            dry_run=dry_run,
+        )
 
     async def _pause(self, seconds: float) -> None:
         try:
@@ -167,26 +221,38 @@ class PlannerLoop:
 
     async def _execute(self, act: Act, decision_id: int, *, dry_run: bool) -> None:
         spec = SCENARIOS[act.scenario]
-        settings = self._settings.current
         params = {**spec.params, **act.params}
+        started = self._clock.now()
+        run_id = await self._store.run_started(decision_id, act.scenario, params, started)
+        await self._perform(
+            replace(act, params=params), run_id, started, manual=False, dry_run=dry_run
+        )
+
+    def _paused(self, manual: bool) -> bool:
+        engine = self._settings.current.engine
+        return engine.paused and not (manual and engine.manual_while_paused)
+
+    async def _perform(
+        self, act: Act, run_id: int, started: datetime, *, manual: bool, dry_run: bool
+    ) -> None:
+        spec = SCENARIOS[act.scenario]
         ctx = ScenarioContext(
             self._gateway,
-            game_chat_id=settings.chats.game_chat_id,
+            game_chat_id=self._settings.current.chats.game_chat_id,
             simulate=not spec.certified,
             # Смена dry_run → live посреди сценария не делает его шаги реальными.
             dry_run=dry_run,
-            paused=lambda: self._settings.current.engine.paused,
+            paused=lambda: self._paused(manual),
             timeout_s=self._step_timeout_s,
             clock=self._clock,
             notifier=self._notifier,
             history=self._history,
             reread=self._reread,
+            source=Source.MANUAL if manual else Source.SCENARIO,
         )
-        started = self._clock.now()
-        run_id = await self._store.run_started(decision_id, act.scenario, params, started)
         self.current = act.scenario
         try:
-            result = await run_scenario(spec.fn, ctx, self._state(), params)
+            result = await run_scenario(spec.fn, ctx, self._state(), act.params)
         except Exception:
             log.exception("scenario %s crashed", act.scenario)
             result = ScenarioResult("failed", "crashed")
@@ -195,8 +261,10 @@ class PlannerLoop:
         if result.reason == "paused":
             result = replace(result, status="stopped")
         finished = self._clock.now()
-        # Кулдаун — до записи в журнал: сбой БД не должен оставить сценарий без него.
-        await self._after(act, result, started, finished)
+        # Подавленный ручной запуск о планах ничего не говорит: откладывать сценарий незачем.
+        if not (manual and result.status == "suppressed"):
+            # Кулдаун — до записи в журнал: сбой БД не должен оставить сценарий без него.
+            await self._after(act, result, started, finished)
         await self._store.run_finished(run_id, result.status, result.reason, finished)
         if result.details is not None and "metro" in result.details:
             await self._save_metro(run_id, result)

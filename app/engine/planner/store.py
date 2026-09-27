@@ -9,6 +9,8 @@ from app.engine.planner.types import Act, Decision
 
 # Запуски, после которых сценарий мог исполниться: мандарин после рестарта не повторяется.
 LAST_DONE = ("done", "interrupted")
+# Незавершённые запуски прошлого процесса: начатый мог исполниться, из очереди — точно нет.
+CLOSED_ON_RESTART = {"running": "interrupted", "queued": "cancelled"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,8 +41,28 @@ class PlannerStore(Protocol):
 
     async def run_finished(self, run_id: int, status: str, reason: str, at: datetime) -> None: ...
 
+    async def run_requested(
+        self,
+        scenario: str,
+        params: Mapping[str, Any],
+        *,
+        requested: Mapping[str, Any],
+        key: str,
+        by: str,
+        at: datetime,
+    ) -> tuple[int, bool]:
+        """Ручной запуск в очереди (`queued`): `params` — с чем он исполнится, `requested` — что
+        прислал клиент (по нему сверяется повтор ключа). Ключ уже встречался — (его запуск,
+        False)."""
+        ...
+
+    async def run_begin(self, run_id: int, at: datetime) -> None:
+        """Запуск из очереди начал исполняться (`running`, начало — `at`)."""
+        ...
+
     async def close_running(self, at: datetime) -> int:
-        """Незавершённые запуски прошлого процесса → `interrupted`; возвращает их число."""
+        """Незавершённые запуски прошлого процесса → `interrupted`, так и не начатые из очереди
+        → `cancelled`; возвращает их число."""
         ...
 
     async def last_done(self) -> dict[str, datetime]:
@@ -50,13 +72,16 @@ class PlannerStore(Protocol):
 
 @dataclass
 class MemoryRun:
-    decision_id: int
+    decision_id: int | None
     scenario: str
     params: dict[str, Any]
     started_at: datetime
     finished_at: datetime | None = None
     status: str = "running"
     reason: str = ""
+    requested_by: str | None = None
+    key: str | None = None
+    requested: dict[str, Any] | None = None
 
 
 @dataclass
@@ -78,11 +103,48 @@ class MemoryPlannerStore:
         run = self.runs[run_id - 1]
         run.status, run.reason, run.finished_at = status, reason, at
 
+    async def run_requested(
+        self,
+        scenario: str,
+        params: Mapping[str, Any],
+        *,
+        requested: Mapping[str, Any],
+        key: str,
+        by: str,
+        at: datetime,
+    ) -> tuple[int, bool]:
+        for run_id, run in enumerate(self.runs, start=1):
+            if run.key == key:
+                return run_id, False
+        self.runs.append(
+            MemoryRun(
+                None,
+                scenario,
+                dict(params),
+                at,
+                status="queued",
+                requested_by=by,
+                key=key,
+                requested=dict(requested),
+            )
+        )
+        return len(self.runs), True
+
+    async def run_begin(self, run_id: int, at: datetime) -> None:
+        run = self.runs[run_id - 1]
+        run.status, run.started_at = "running", at
+
     async def close_running(self, at: datetime) -> int:
-        running = [run for run in self.runs if run.status == "running"]
-        for run in running:
-            run.status, run.reason, run.finished_at = "interrupted", "restart", at
-        return len(running)
+        closed = 0
+        for run in self.runs:
+            if run.status in CLOSED_ON_RESTART:
+                run.status, run.reason, run.finished_at = (
+                    CLOSED_ON_RESTART[run.status],
+                    "restart",
+                    at,
+                )
+                closed += 1
+        return closed
 
     async def last_done(self) -> dict[str, datetime]:
         done: dict[str, datetime] = {}

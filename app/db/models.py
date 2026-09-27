@@ -178,7 +178,10 @@ class DecisionRow(Base):
 
 class ScenarioRunRow(Base):
     __tablename__ = "scenario_runs"
-    __table_args__ = (Index("ix_scenario_runs_account_started", "account_id", "started_at"),)
+    __table_args__ = (
+        Index("ix_scenario_runs_account_started", "account_id", "started_at"),
+        UniqueConstraint("account_id", "idempotency_key", name="uq_scenario_runs_account_key"),
+    )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
     decision_id: Mapped[int | None] = mapped_column(
@@ -190,6 +193,11 @@ class ScenarioRunRow(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(12))
     reason: Mapped[str] = mapped_column(String(200), default="")
+    # Ручной запуск из админки: кто запросил и ключ идемпотентности; у плановых — NULL.
+    requested_by: Mapped[str | None] = mapped_column(String(64))
+    idempotency_key: Mapped[str | None] = mapped_column(String(100))
+    # Параметры, присланные клиентом (до слияния с реестром): по ним сверяется повтор ключа.
+    requested_params: Mapped[dict[str, Any] | None]
 
 
 class MetroRunRow(Base):

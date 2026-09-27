@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.db.base import Database
 from app.db.models import Account, DecisionRow, ScenarioRunRow
 from app.db.planner import DbPlannerStore
+from app.engine.planner.store import MemoryPlannerStore
 from app.engine.planner.types import Act, Candidate, Wait
 
 pytestmark = pytest.mark.db
@@ -82,3 +83,41 @@ async def test_last_done_counts_run_interrupted_by_restart(clean_db: Database) -
     await store.run_started(decided, "tangerine", {}, AT)
     assert await store.close_running(AT + timedelta(minutes=1)) == 1
     assert await store.last_done() == {"tangerine": AT}
+
+
+@pytest.mark.parametrize("kind", ["db", "memory"])
+async def test_manual_run_queued_then_begun(clean_db: Database, kind: str) -> None:
+    store: DbPlannerStore | MemoryPlannerStore = (
+        DbPlannerStore(clean_db, account_id=1) if kind == "db" else MemoryPlannerStore()
+    )
+    run_id, created = await store.run_requested(
+        "book", {"item": "book"}, requested={}, key="k1", by="admin", at=AT
+    )
+    assert created
+    again = {"requested": {"x": 1}, "key": "k1", "by": "x", "at": AT}
+    assert await store.run_requested("book", {"item": "book"}, **again) == (
+        run_id,
+        False,
+    )
+    other, created = await store.run_requested(
+        "card", {}, requested={}, key="k2", by="admin", at=AT
+    )
+    assert created and other != run_id
+    later = AT + timedelta(minutes=1)
+    await store.run_begin(run_id, later)
+    # Рестарт: начатый прерван, так и не начатый — отменён (он точно не исполнялся).
+    assert await store.close_running(later) == 2
+    assert await store.last_done() == {"book": later}
+    if isinstance(store, DbPlannerStore):
+        async with clean_db.sessions() as session:
+            rows = {r.id: r for r in await session.scalars(select(ScenarioRunRow))}
+        begun, queued = rows[run_id], rows[other]
+        assert (begun.status, begun.started_at, begun.decision_id) == ("interrupted", later, None)
+        assert (begun.requested_by, begun.idempotency_key) == ("admin", "k1")
+        assert begun.requested_params == {}
+        assert (queued.status, queued.reason) == ("cancelled", "restart")
+    else:
+        assert [(r.status, r.reason) for r in store.runs] == [
+            ("interrupted", "restart"),
+            ("cancelled", "restart"),
+        ]

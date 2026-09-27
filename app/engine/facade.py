@@ -37,6 +37,10 @@ class LockLostError(Exception):
     pass
 
 
+class PlannerUnavailable(Exception):
+    pass
+
+
 @dataclass(frozen=True)
 class EngineStatus:
     mode: str
@@ -195,6 +199,14 @@ class EngineFacade:
             return await asyncio.wait_for(asyncio.shield(task), wait_s)
         except TimeoutError:
             return None
+
+    async def run_scenario(
+        self, name: str, params: Mapping[str, Any], *, key: str, by: str
+    ) -> tuple[int, bool]:
+        """Ручной запуск сценария через очередь планировщика; KeyError — нет такого сценария."""
+        if self._planner is None:
+            raise PlannerUnavailable
+        return await self._planner.request(name, params, key=key, by=by)
 
     def manual_pending(self, key: str) -> bool:
         return self.gateway.pending_key(manual_key(key))

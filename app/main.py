@@ -207,6 +207,7 @@ class Runtime:
             metro_store=DbMetroRunStore(self.db, self.config.account_id),
             history=journal_history(journal),
             reread=live_reread(transport, pipeline),
+            auto=self.config.planner,
         )
         bus.subscribe(self.planner.on_delivery, priority=90)
         lag = LoopLagMonitor()
@@ -227,8 +228,8 @@ class Runtime:
         self.supervisor.start("pipeline", pipeline.run)
         self.supervisor.start("gateway", self.gateway.run)
         self.supervisor.start("reconcile", reconciler.run)
-        if self.config.planner:
-            self.supervisor.start("planner", self.planner.run)
+        # Без PYROBOT_PLANNER цикл всё равно нужен: он исполняет ручные запуски сценариев.
+        self.supervisor.start("planner", self.planner.run)
         self.supervisor.start("lag", lag.run)
         self.supervisor.start("lock-watch", self._watch_lock)
         self.supervisor.start("session-purge", self._purge_sessions)
