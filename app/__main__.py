@@ -20,6 +20,8 @@ def uvicorn_options(cfg: AppConfig) -> dict[str, Any]:
         "log_level": cfg.log_level.lower(),
         "proxy_headers": True,
         "forwarded_allow_ips": cfg.forwarded_allow_ips,
+        # Открытый SSE иначе держит SIGTERM до SIGKILL, и Runtime.stop не выполняется.
+        "timeout_graceful_shutdown": 5,
     }
 
 

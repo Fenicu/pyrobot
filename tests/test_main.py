@@ -17,3 +17,9 @@ def test_proxy_defaults_to_localhost(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("PYROBOT_FORWARDED_ALLOW_IPS", raising=False)
     cfg = AppConfig(_env_file=None, transport="fake")
     assert uvicorn_options(cfg)["forwarded_allow_ips"] == "127.0.0.1"
+
+
+def test_open_requests_do_not_hold_shutdown() -> None:
+    # Бесконечный SSE иначе держит SIGTERM до SIGKILL, и Runtime.stop не выполняется.
+    cfg = AppConfig(_env_file=None, transport="fake")
+    assert uvicorn_options(cfg)["timeout_graceful_shutdown"] == 5

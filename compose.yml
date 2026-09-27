@@ -27,6 +27,8 @@ services:
     volumes:
       - pyrobot-data:/data
     stop_grace_period: 30s
+    # Предохранитель: при утечке OOM убивает бота, а не соседей по apps.
+    mem_limit: 1g
 
   # Одноразовый шаг деплоя: docker compose run --rm migrate
   migrate:

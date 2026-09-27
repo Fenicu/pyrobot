@@ -720,7 +720,10 @@ Postgres advisory lock) → если лок не взят, движок не с�
 шлюз → остановить транспорт (новые апдейты больше не приходят) → дождаться, пока конвейер запишет в
 журнал всё уже принятое (`Pipeline.drain`, до 10 секунд; если не успел — warning с числом
 оставшихся сообщений) → остановить супервизор → освободить lock → закрыть пул БД — сбой одного шага
-не мешает остальным.
+не мешает остальным. По SIGTERM uvicorn ждёт открытые запросы не дольше 5 секунд
+(`timeout_graceful_shutdown`): поток SSE бесконечен и иначе держал бы остановку до SIGKILL, так и не
+дойдя до `Runtime.stop`; по истечении срока запросы отменяются и остановка идёт по шагам выше. 5
+секунд плюс дренаж конвейера укладываются в `stop_grace_period: 30s` compose.
 
 ## Структура
 
@@ -1089,10 +1092,11 @@ docker build --build-arg APT_PROXY=http://10.10.40.23:3142 -t pyrobot:local .
 деплой подставляет тег), том `pyrobot-data` → `/data` (сессия Telegram), порт
 `${PYROBOT_BIND:-10.10.40.20}:${PYROBOT_PORT:-8090}` → 8080 (только адрес apps в VLAN — к нему ходит
 Caddy с web), `PYROBOT_FORWARDED_ALLOW_IPS` по умолчанию `10.10.40.3`, `restart: unless-stopped`,
-ротация логов 5×10 МБ; `migrate` — тот же образ, профиль `migrate`, `alembic upgrade head`,
-запускается только явно (`docker compose run --rm migrate`); `postgres` — `postgres:17`, том
-`pgdata`, healthcheck `pg_isready`; `backup` — `pg_dump --format=custom` при старте и дальше раз в
-сутки в `${PYROBOT_BACKUP_DIR:-./backups}/pyrobot-<дата>.dump`, файлы старше 14 дней удаляются
+ротация логов 5×10 МБ, лимит памяти `mem_limit: 1g` (предохранитель: при утечке OOM убивает бота,
+а не соседей по apps, и `restart` поднимает его заново); `migrate` — тот же образ, профиль
+`migrate`, `alembic upgrade head`, запускается только явно (`docker compose run --rm migrate`);
+`postgres` — `postgres:17`, том `pgdata`, healthcheck `pg_isready`; `backup` — `pg_dump
+--format=custom` при старте и дальше раз в сутки в `${PYROBOT_BACKUP_DIR:-./backups}/pyrobot-<дата>.dump`, файлы старше 14 дней удаляются
 (восстановление — `pg_restore`). `PYROBOT_DATABASE_URL` собирается в compose из `POSTGRES_PASSWORD`
 (пароль — без символов, требующих URL-экранирования, например hex), остальное — из `.env`.
 Проверка локально:
@@ -1131,10 +1135,11 @@ Telegram делается через API уже работающего серв�
 kill switch или блоком трат `/readyz` тоже 503 — выкат будет красным, пока их не снять.
 
 **Caddy на web** — `deploy/Caddyfile.sw.fenicu.com`: блок `sw.fenicu.com` → `http://10.10.40.20:8090`
-без Authelia (у админки своя авторизация), `flush_interval -1` для SSE; добавляется в
-`/home/fenicu/caddy/Caddyfile` на 10.10.40.3, проверка `caddy validate` и перезапуск контейнера
-`caddy`. Caddy сам ставит `X-Forwarded-For` с адресом клиента, бот доверяет ему только от
-`10.10.40.3` (`PYROBOT_FORWARDED_ALLOW_IPS`).
+без Authelia (у админки своя авторизация), `flush_interval -1` для SSE, тело запроса не больше 1 МБ
+(`request_body { max_size 1MB }`: запросы API — килобайты, большее тело Caddy отклоняет, не
+передавая боту); добавляется в `/home/fenicu/caddy/Caddyfile` на 10.10.40.3, проверка `caddy
+validate` и перезапуск контейнера `caddy`. Caddy сам ставит `X-Forwarded-For` с адресом клиента,
+бот доверяет ему только от `10.10.40.3` (`PYROBOT_FORWARDED_ALLOW_IPS`).
 
 `.env` деплой пишет скриптом `deploy/render-env.sh` из переменных окружения шага: каждое значение —
 в литеральной форме Compose (`ИМЯ='значение'`, одинарная кавычка внутри — `\'`), поэтому `$` в

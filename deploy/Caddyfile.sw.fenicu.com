@@ -4,6 +4,10 @@
 sw.fenicu.com {
 	import access-log sw
 	import robots-block
+	# Самые большие запросы API — килобайты; всё, что больше, отбрасывается до бота.
+	request_body {
+		max_size 1MB
+	}
 	reverse_proxy http://10.10.40.20:8090 {
 		# SSE (/api/v1/events): каждое событие уходит клиенту сразу, без буферизации.
 		flush_interval -1
