@@ -1,7 +1,7 @@
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -23,7 +23,7 @@ from app.engine.planner.loop import (
     PlannerLoop,
 )
 from app.engine.planner.store import MemoryPlannerStore
-from app.engine.planner.types import Act, Decision
+from app.engine.planner.types import Act, Decision, Wait
 from app.engine.scenarios.library import ScenarioResult
 from app.engine.scenarios.registry import ScenarioSpec
 from tests.engine.fakegame import LIVE, World, running_world
@@ -81,7 +81,8 @@ class Rig:
 
 
 # Цикл проверяется на механиках фазы 3; календарь фазы 4 — в test_obligations.py. Окна по часам
-# (обязательства, ночной сон) выключены: часы здесь настоящие.
+# (обязательства, ночной сон) выключены: часы здесь настоящие. Дело выбирается по оценке:
+# чередование основных дел — в test_decide.py.
 QUIET = LIVE.model_copy(
     update={
         "features": LIVE.features.model_copy(
@@ -94,7 +95,8 @@ QUIET = LIVE.model_copy(
                 "sleep": False,
                 "metro": False,
             }
-        )
+        ),
+        "strategy": LIVE.strategy.model_copy(update={"focus": ()}),
     }
 )
 DRY = QUIET.model_copy(update={"engine": QUIET.engine.model_copy(update={"mode": "dry_run"})})
@@ -454,6 +456,86 @@ async def test_not_playing_recipient_notified(world: World) -> None:
         ("tangerine", "refused", "not_player")
     ]
     assert rig.notes.codes == ["tangerine_not_player"]
+
+
+class FixedClock:
+    def __init__(self, at: datetime) -> None:
+        self.at = at
+
+    def now(self) -> datetime:
+        return self.at
+
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+
+MSK = timezone(timedelta(hours=3))
+NOON = datetime(2026, 9, 27, 12, 0, tzinfo=MSK)
+
+
+def capture_decide(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, int]]:
+    seen: list[dict[str, int]] = []
+
+    def fake(*args: Any, done_today: dict[str, int], **kwargs: Any) -> Decision:
+        seen.append(dict(done_today))
+        return Wait(None, "no_timers")
+
+    monkeypatch.setattr(loop_module, "decide", fake)
+    return seen
+
+
+async def test_deeds_done_today_loaded_per_day_and_counted(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = MemoryPlannerStore()
+    for scenario, status, started in (
+        ("deed:harvest", "done", NOON - timedelta(hours=2)),
+        ("deed:harvest", "done", NOON - timedelta(hours=12, seconds=1)),
+        ("deed:dconv", "done", NOON - timedelta(hours=1)),
+        ("deed:dconv", "interrupted", NOON - timedelta(minutes=30)),
+    ):
+        run = await store.run_started(1, scenario, {}, started)
+        await store.run_finished(run, status, "", started)
+    seen = capture_decide(monkeypatch)
+    rig = Rig(world, store=store)
+    clock = FixedClock(NOON)
+    rig.loop._clock = clock
+    await rig.loop.step()
+    assert seen[-1] == {"deed:harvest": 1, "deed:dconv": 1}
+    dconv = Act("deed:dconv", {}, "focus dconv (1 today)")
+    await rig.loop._after(dconv, ScenarioResult("done", "activity_started"), NOON, NOON)
+    await rig.loop._after(dconv, ScenarioResult("refused", "busy"), NOON, NOON)
+    # Запуск, начатый вчера и законченный сегодня, относится ко вчера.
+    yesterday = NOON - timedelta(days=1)
+    await rig.loop._after(dconv, ScenarioResult("done", "activity_started"), yesterday, NOON)
+    await rig.loop.step()
+    assert seen[-1] == {"deed:harvest": 1, "deed:dconv": 2}
+    # Смена дня в 00:00 MSK: счётчик заново из хранилища.
+    clock.at = NOON + timedelta(hours=12, seconds=1)
+    await rig.loop.step()
+    assert seen[-1] == {}
+
+
+async def test_deeds_done_today_store_failure_is_retried(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = MemoryPlannerStore()
+    run = await store.run_started(1, "deed:harvest", {}, NOON)
+    await store.run_finished(run, "done", "", NOON)
+    loaded = store.done_on_day
+
+    async def broken(day: date) -> dict[str, int]:
+        raise ConnectionError("db down")
+
+    store.done_on_day = broken  # type: ignore[method-assign]
+    seen = capture_decide(monkeypatch)
+    rig = Rig(world, store=store)
+    rig.loop._clock = FixedClock(NOON)
+    await rig.loop.step()
+    assert seen[-1] == {}
+    store.done_on_day = loaded  # type: ignore[method-assign]
+    await rig.loop.step()
+    assert seen[-1] == {"deed:harvest": 1}
 
 
 async def test_metro_run_saved_and_durations_loaded(

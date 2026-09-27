@@ -75,12 +75,13 @@ class StrategySection(BaseModel):
     weight_xp: float = Field(default=1.0, ge=0)
     weight_money: float = Field(default=1.0, ge=0)
     weight_resources: float = Field(default=0.5, ge=0)
-    weight_team: float = Field(default=0.5, ge=0)
     # Масштабы «типичного дохода на 1🔥» — приводят разные единицы к сравнимому виду.
     exp_scale: float = Field(default=200.0, gt=0)
     money_scale: float = Field(default=30.0, gt=0)
     resource_scale: float = Field(default=10.0, gt=0)
-    deeds: tuple[Deed, ...] = ("harvest", "job", "learn", "dconv")
+    # Основные дела: делят 🔥 поровну, остальные разрешённые (`deeds`) — запасные по оценке.
+    focus: tuple[Deed, ...] = ("harvest", "dconv")
+    deeds: tuple[Deed, ...] = ("harvest", "job", "learn", "dconv", "walk")
 
 
 Food = Literal["hotdog", "pizza", "burger", "banana"]

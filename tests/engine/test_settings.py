@@ -42,7 +42,9 @@ def test_click_answer_timeout_bounded() -> None:
 def test_strategy_defaults_follow_spec() -> None:
     s = Settings()
     assert (s.strategy.weight_xp, s.strategy.weight_money) == (1.0, 1.0)
-    assert (s.strategy.weight_resources, s.strategy.weight_team) == (0.5, 0.5)
+    assert s.strategy.weight_resources == 0.5
+    assert s.strategy.focus == ("harvest", "dconv")
+    assert s.strategy.deeds == ("harvest", "job", "learn", "dconv", "walk")
     assert s.features.books and s.features.gorbushka and not s.features.lottery
     assert not s.features.casino and not s.features.pet_feast and s.features.daily_tasks
     assert s.food.order == ("hotdog", "pizza", "burger") and s.food.banana_reserve == 50
@@ -163,3 +165,36 @@ def test_restart_required_paths() -> None:
         "engine.recovered_react_max_age_min"
     ]
     assert restart_required(["telegram.expected_user_id"]) == ["telegram.expected_user_id"]
+
+
+# Версия настроек прода до основных дел: командный вес и явный список дел без прогулки.
+PROD_V1 = {
+    "strategy": {
+        "weight_xp": 1.0,
+        "weight_money": 1.0,
+        "weight_resources": 0.5,
+        "weight_team": 0.5,
+        "exp_scale": 200.0,
+        "money_scale": 30.0,
+        "resource_scale": 10.0,
+        "deeds": ["harvest", "job", "learn", "dconv"],
+    },
+    "features": {"daily_tasks": False},
+}
+
+
+def test_old_settings_with_weight_team_still_load() -> None:
+    s = Settings.model_validate(PROD_V1)
+    assert s.strategy.deeds == ("harvest", "job", "learn", "dconv")
+    assert s.strategy.focus == ("harvest", "dconv")
+    assert not s.features.daily_tasks
+    assert "weight_team" not in s.model_dump()["strategy"]
+    patched = apply_patch(s, {"food": {"banana_reserve": 40}})
+    diff = settings_diff(s.model_dump(mode="json"), patched.model_dump(mode="json"))
+    assert diff == {"food.banana_reserve": [50, 40]}
+
+
+def test_weight_team_is_gone_from_patch() -> None:
+    with pytest.raises(SettingsPatchError) as err:
+        apply_patch(Settings(), {"strategy": {"weight_team": 1.0}})
+    assert (err.value.code, err.value.path) == ("unknown_field", "strategy.weight_team")

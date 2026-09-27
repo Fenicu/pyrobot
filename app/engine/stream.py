@@ -9,7 +9,7 @@ import time
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from app.engine.bus import Delivery
@@ -265,6 +265,9 @@ class PublishingPlannerStore:
 
     async def last_done(self) -> dict[str, datetime]:
         return await self.inner.last_done()
+
+    async def done_on_day(self, day: date) -> dict[str, int]:
+        return await self.inner.done_on_day(day)
 
     def _run(self, run_id: int, scenario: str | None, status: str, reason: str = "") -> None:
         self.stream.publish(

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -121,3 +121,30 @@ async def test_manual_run_queued_then_begun(clean_db: Database, kind: str) -> No
             ("interrupted", "restart"),
             ("cancelled", "restart"),
         ]
+
+
+@pytest.mark.parametrize("kind", ["db", "memory"])
+async def test_done_on_day_counts_done_deeds_by_msk_day(clean_db: Database, kind: str) -> None:
+    store: DbPlannerStore | MemoryPlannerStore = (
+        DbPlannerStore(clean_db, account_id=1) if kind == "db" else MemoryPlannerStore()
+    )
+    msk = timezone(timedelta(hours=3))
+    midnight = datetime(2026, 9, 27, 0, 0, tzinfo=msk)
+    runs = [
+        ("deed:harvest", "done", midnight - timedelta(seconds=1)),
+        ("deed:harvest", "done", midnight),
+        ("deed:harvest", "done", midnight + timedelta(hours=23, minutes=59)),
+        ("deed:dconv", "done", midnight + timedelta(hours=1)),
+        # Прерванные, неудачные и не дела — не в счёт.
+        ("deed:dconv", "interrupted", midnight + timedelta(hours=2)),
+        ("deed:dconv", "refused", midnight + timedelta(hours=3)),
+        ("refresh", "done", midnight + timedelta(hours=1)),
+        ("deed:harvest", "done", midnight + timedelta(days=1)),
+    ]
+    decided = await store.record(midnight, Act("deed:harvest", {}, "focus"))
+    for scenario, status, started in runs:
+        run = await store.run_started(decided, scenario, {}, started)
+        await store.run_finished(run, status, "", started)
+    assert await store.done_on_day(date(2026, 9, 27)) == {"deed:harvest": 2, "deed:dconv": 1}
+    assert await store.done_on_day(date(2026, 9, 26)) == {"deed:harvest": 1}
+    assert await store.done_on_day(date(2026, 9, 25)) == {}

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
 
-from app.engine.gametime import tasks_day
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, Step
 from app.engine.planner.obligations import Obligations
 from app.engine.planner.types import Act, Candidate, Decision
@@ -14,10 +14,7 @@ from app.engine.state.model import (
     BusyState,
     CharacterState,
     PriceState,
-    TeamTask,
 )
-
-TEAM_RESOURCE = {"💡": "exp", "💵": "money", "📚": "knowledge", "⚙️": "details", "🔩": "raw"}
 
 
 class _Planner(Obligations):
@@ -211,12 +208,6 @@ class _Planner(Obligations):
             return None
         return self.act(name, {"buy": buy}, reason)
 
-    def team(self) -> TeamTask | None:
-        task: TeamTask | None = self.value("team_task")
-        if task is None or task.day != tasks_day(self.now) or task.status != "active":
-            return None
-        return task if task.current < task.goal else None
-
     def score(self, activity: str, price: PriceState) -> float:
         cfg = self.cfg.strategy
         stat = self.s.activity_stats.get(activity) or DEED_PRIORS.get(activity) or ActivityStat()
@@ -226,10 +217,6 @@ class _Planner(Obligations):
             + cfg.weight_money * (stat.money - price.money) / cfg.money_scale
             + cfg.weight_resources * resources / cfg.resource_scale
         )
-        task = self.team()
-        if task is not None and (field := TEAM_RESOURCE.get(task.resource)) is not None:
-            scale = {"exp": cfg.exp_scale, "money": cfg.money_scale}.get(field, cfg.resource_scale)
-            value += cfg.weight_team * getattr(stat, field) / scale
         return value / max(price.motivation, 1)
 
     def deeds(self, busy: BusyState | None) -> Decision | None:
@@ -237,17 +224,30 @@ class _Planner(Obligations):
             return None
         if (field := self.stale_of("motivation", "money", "details", "battle_at")) is not None:
             return self.refresh("deeds", field)
+        ok = self.doable_deeds()
+        if not ok:
+            return None
+        chosen, reason = self.focus_deed(ok) or self.best_deed(ok)
+        for candidate in ok:
+            verdict = "chosen" if candidate is chosen else "ok"
+            self.candidates.append(replace(candidate, verdict=verdict))
+        return Act(chosen.scenario, {}, reason, tuple(self.candidates))
+
+    def doable_deeds(self) -> list[Candidate]:
+        """Разрешённые дела с вердиктом `ok`; отказанные сразу уходят в кандидаты."""
         battle = self.battle_time()
         deadline: datetime | None = self.value("sleep_deadline")
         motivation = self.value("motivation") - self.motivation_reserve() - self.metro_reserve()
         money = self.value("money") - self.ticket_reserve() - self.hotel_reserve()
         details: int = self.value("details")
+        focus = self.cfg.strategy.focus
         ok: list[Candidate] = []
         for activity in self.cfg.strategy.deeds:
             name = f"deed:{activity}"
             price = self.price(activity)
             end = self.now + self.duration(activity, price)
             score = self.score(activity, price)
+            params = {"today": self.done_today.get(name, 0)} if activity in focus else {}
             verdict = None
             if (
                 battle is not None
@@ -272,18 +272,29 @@ class _Planner(Obligations):
             else:
                 verdict = self.gate(name)
             if verdict is None:
-                ok.append(Candidate(name, {}, score, "ok"))
+                ok.append(Candidate(name, params, score, "ok"))
             else:
-                self.candidates.append(Candidate(name, {}, score, verdict))
-        if not ok:
+                self.candidates.append(Candidate(name, params, score, verdict))
+        return ok
+
+    def focus_deed(self, ok: list[Candidate]) -> tuple[Candidate, str] | None:
+        """Основные дела делят 🔥 поровну: первым — сделанное сегодня меньше раз, при равенстве —
+        первое по порядку `strategy.focus`."""
+        order = [f"deed:{activity}" for activity in self.cfg.strategy.focus]
+        ready = [c for c in ok if c.scenario in order]
+        if not ready:
             return None
+
+        def rank(c: Candidate) -> tuple[int, int]:
+            return self.done_today.get(c.scenario, 0), order.index(c.scenario)
+
+        pick = min(ready, key=rank)
+        today = self.done_today.get(pick.scenario, 0)
+        return pick, f"focus {pick.scenario.removeprefix('deed:')} ({today} today)"
+
+    def best_deed(self, ok: list[Candidate]) -> tuple[Candidate, str]:
         best = max(ok, key=lambda c: c.score or 0.0)
-        for candidate in ok:
-            chosen = candidate is best
-            self.candidates.append(
-                Candidate(candidate.scenario, {}, candidate.score, "chosen" if chosen else "ok")
-            )
-        return Act(best.scenario, {}, f"best score {best.score:.2f}", tuple(self.candidates))
+        return best, f"best score {best.score or 0.0:.2f}"
 
 
 def decide(
@@ -296,11 +307,13 @@ def decide(
     cooldowns: Mapping[str, datetime] | None = None,
     last_done: Mapping[str, datetime] | None = None,
     metro_durations: Sequence[float] = (),
+    done_today: Mapping[str, int] | None = None,
 ) -> Decision:
     """Следующий шаг: сценарий или ожидание. `certified=None` — без ограничения (dry_run).
 
     `last_done` — момент последнего успешного запуска каждого сценария (журнал запусков);
-    `metro_durations` — длительности прошлых забегов метро в секундах (бюджет по p90).
+    `metro_durations` — длительности прошлых забегов метро в секундах (бюджет по p90);
+    `done_today` — успешные запуски дел за текущий день MSK (чередование основных дел).
     """
     planner = _Planner(
         state,
@@ -311,5 +324,6 @@ def decide(
         cooldowns or {},
         last_done or {},
         metro_durations,
+        done_today,
     )
     return planner.decide()

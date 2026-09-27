@@ -3,7 +3,7 @@ from httpx import AsyncClient
 
 from app.api.container import Container
 from app.db.base import Database
-from app.db.models import SettingsHistory
+from app.db.models import SettingsHistory, SettingsRow
 from app.db.settings_store import DbSettingsStore
 from app.engine.settings import Settings
 from tests.api.conftest import login
@@ -134,6 +134,57 @@ async def test_history_ignores_sections_missing_in_old_versions(
     assert [(i["version"], i["changes"]) for i in items] == [
         (2, {"food.banana_reserve": [50, 40]}),
         (1, {}),
+    ]
+
+
+def _prod_version(weight_xp: float) -> dict[str, object]:
+    """Версия настроек прода до основных дел: с `strategy.weight_team`, без `strategy.focus`,
+    явный список дел без прогулки и выключенные задания."""
+    data = Settings().model_dump(mode="json")
+    strategy = data["strategy"]
+    del strategy["focus"]
+    strategy.update(
+        weight_team=0.5, weight_xp=weight_xp, deeds=["harvest", "job", "learn", "dconv"]
+    )
+    data["features"]["daily_tasks"] = False
+    return data
+
+
+async def test_prod_settings_with_weight_team_load_patch_and_history(
+    container: Container, clean_db: Database, api_client: AsyncClient
+) -> None:
+    v1, v2 = _prod_version(1.0), _prod_version(2.0)
+    async with clean_db.sessions() as s, s.begin():
+        s.add(SettingsRow(account_id=1, version=2, data=v2))
+        s.add(SettingsHistory(account_id=1, version=1, data=v1, changed_by="admin"))
+        s.add(SettingsHistory(account_id=1, version=2, data=v2, changed_by="admin"))
+    store = DbSettingsStore(clean_db, 1)
+    await store.load()
+    container.facade = build(settings=store)
+    h = await _csrf(api_client)
+    got = (await api_client.get("/api/v1/settings")).json()
+    assert got["values"]["strategy"]["deeds"] == ["harvest", "job", "learn", "dconv"]
+    assert got["values"]["strategy"]["focus"] == ["harvest", "dconv"]
+    assert "weight_team" not in got["values"]["strategy"]
+    patch = {"version": 2, "changes": {"food": {"banana_reserve": 40}}}
+    r = await api_client.patch("/api/v1/settings", headers=h, json=patch)
+    assert r.status_code == 200, r.text
+    assert r.json()["changed"] == {"food.banana_reserve": [50, 40]}
+    items = (await api_client.get("/api/v1/settings/history")).json()["items"]
+    assert [(i["version"], i["changes"]) for i in items] == [
+        (3, {"food.banana_reserve": [50, 40]}),
+        (2, {"strategy.weight_xp": [1.0, 2.0]}),
+        # Первая версия — к нынешним умолчаниям: список дел и флаг заданий у неё свои.
+        (
+            1,
+            {
+                "features.daily_tasks": [True, False],
+                "strategy.deeds": [
+                    ["harvest", "job", "learn", "dconv", "walk"],
+                    ["harvest", "job", "learn", "dconv"],
+                ],
+            },
+        ),
     ]
 
 

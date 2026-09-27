@@ -5,11 +5,12 @@ import logging
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
+from app.engine.gametime import tasks_day
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import Source
 from app.engine.metro.store import METRO_HISTORY, MetroRunStore
@@ -114,6 +115,9 @@ class PlannerLoop:
         self._reread = reread
         # Длительности прошлых забегов метро (бюджет по p90): из хранилища при первом решении.
         self._metro_durations: list[float] | None = None
+        # Успешные запуски дел за день заданий (чередование основных дел): при смене дня — заново
+        # из хранилища, дальше — по итогам своих запусков.
+        self._done_today: tuple[date, dict[str, int]] | None = None
         self._last_wait: DecisionRecord | None = None
         self.current: str | None = None
         self.next_wake: datetime | None = None
@@ -204,6 +208,7 @@ class PlannerLoop:
             self._last_done = await self._store.last_done()
         if self._metro_durations is None:
             self._metro_durations = await self._load_metro_durations()
+        done_today = await self._deeds_today(now)
         if settings.engine.mode != self._mode:
             self._held.clear()
             self._mode = settings.engine.mode
@@ -216,6 +221,7 @@ class PlannerLoop:
             cooldowns=self._blocked(),
             last_done=self._last_done,
             metro_durations=self._metro_durations,
+            done_today=done_today,
         )
         if isinstance(decision, Wait):
             return await self._wait(now, decision)
@@ -296,6 +302,18 @@ class PlannerLoop:
         if result.details is not None and "metro" in result.details:
             await self._save_metro(run_id, result)
 
+    async def _deeds_today(self, now: datetime) -> dict[str, int]:
+        day = tasks_day(now)
+        if self._done_today is None or self._done_today[0] != day:
+            try:
+                counts = await self._store.done_on_day(day)
+            except Exception:
+                # Без счётчика решаем как в начале дня; перечитаем на следующем решении.
+                log.exception("deeds done on %s not loaded", day)
+                return {}
+            self._done_today = (day, counts)
+        return self._done_today[1]
+
     async def _load_metro_durations(self) -> list[float]:
         if self._metro_store is None:
             return []
@@ -340,6 +358,10 @@ class PlannerLoop:
             self._failures.pop(key, None)
             if self._last_done is not None:
                 self._last_done[name] = started
+            today = self._done_today
+            # Запуск относится к дню своего начала: вчерашний сегодняшний счётчик не меняет.
+            if is_deed and today is not None and tasks_day(started) == today[0]:
+                today[1][name] = today[1].get(name, 0) + 1
             return
         if name == "tangerine" and result.status == "refused" and result.reason == "not_player":
             await self._notifier.notify(

@@ -101,6 +101,7 @@ class PlannerBase:
         cooldowns: Mapping[str, datetime],
         last_done: Mapping[str, datetime],
         metro_durations: Sequence[float] = (),
+        done_today: Mapping[str, int] | None = None,
     ) -> None:
         self.s = state
         self.cfg = settings
@@ -110,6 +111,7 @@ class PlannerBase:
         self.cooldowns = cooldowns
         self.last_done = last_done
         self.metro_durations = metro_durations
+        self.done_today: Mapping[str, int] = done_today or {}
         volatile = timedelta(minutes=settings.engine.state_stale_after_min)
         stale = set(stale_fields(state, now, volatile))
         # После тика регенерации 🔥 наблюдение мотивации устарело независимо от возраста.

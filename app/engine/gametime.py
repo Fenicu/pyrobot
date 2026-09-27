@@ -15,3 +15,8 @@ def from_msk_naive(moment: datetime) -> datetime:
 def tasks_day(moment: datetime) -> date:
     """Игровой день ежедневных заданий: дата по Москве, сброс в 00:00 (не смузи в 03:00)."""
     return to_msk(moment).date()
+
+
+def day_start(day: date) -> datetime:
+    """Начало дня заданий `day` (00:00 по Москве) в UTC."""
+    return datetime(day.year, day.month, day.day, tzinfo=MSK).astimezone(UTC)

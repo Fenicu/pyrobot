@@ -3,7 +3,6 @@ from typing import Any
 
 import pytest
 
-from app.engine.gametime import tasks_day
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
 from app.engine.planner.decide import decide
 from app.engine.planner.types import Act, Candidate, Decision, Wait
@@ -16,7 +15,6 @@ from app.engine.state.model import (
     GorbushkaState,
     Obs,
     PriceState,
-    TeamTask,
 )
 
 NOW = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
@@ -31,11 +29,19 @@ QUIET = {
 }
 
 
+# Слой оценки проверяется без чередования основных дел (`strategy.focus` пуст); чередование —
+# в тестах `focus_*` с настройками по умолчанию.
+SCORE_ONLY = {"focus": []}
+
+
 def config(data: dict[str, Any]) -> Settings:
-    return Settings.model_validate({**data, "features": {**QUIET, **data.get("features", {})}})
+    strategy = {**SCORE_ONLY, **data.get("strategy", {})}
+    features = {**QUIET, **data.get("features", {})}
+    return Settings.model_validate({**data, "strategy": strategy, "features": features})
 
 
 BASE = config({})
+FOCUS = Settings.model_validate({"features": QUIET})
 
 
 def m(minutes: float) -> datetime:
@@ -118,11 +124,13 @@ def act(decision: Decision) -> tuple[str, dict[str, Any]]:
 def test_idle_picks_best_deed_by_default_weights() -> None:
     decision = decide(awake(), BASE, NOW)
     assert act(decision) == ("deed:job", {})
+    assert isinstance(decision, Act) and decision.reason.startswith("best score ")
     assert verdicts(decision) == {
         "deed:harvest": "ok",
         "deed:job": "chosen",
         "deed:learn": "ok",
         "deed:dconv": "ok",
+        "deed:walk": "ok",
     }
 
 
@@ -140,15 +148,53 @@ def test_learned_average_replaces_prior() -> None:
     assert act(decide(state, BASE, NOW)) == ("deed:harvest", {})
 
 
-def test_team_task_boosts_matching_resource() -> None:
-    settings = config({"strategy": {"weight_team": 5}})
-    today = tasks_day(NOW)
-    state = awake(team_task=TeamTask(current=10, goal=360, resource="📚", day=today))
-    assert act(decide(state, settings, NOW)) == ("deed:learn", {})
-    # Вчерашнее командное задание не в счёт: оно могло смениться.
-    yesterday = today - timedelta(days=1)
-    old = awake(team_task=TeamTask(current=10, goal=360, resource="📚", day=yesterday))
-    assert act(decide(old, settings, NOW)) == ("deed:job", {})
+def test_focus_starts_with_first_main_deed() -> None:
+    decision = decide(awake(), FOCUS, NOW)
+    assert isinstance(decision, Act)
+    assert (decision.scenario, decision.reason) == ("deed:harvest", "focus harvest (0 today)")
+    focus = {c.scenario: c.params for c in decision.candidates if c.params}
+    assert focus == {"deed:harvest": {"today": 0}, "deed:dconv": {"today": 0}}
+
+
+@pytest.mark.parametrize(
+    ("today", "chosen", "reason"),
+    [
+        ({"deed:harvest": 3, "deed:dconv": 2}, "deed:dconv", "focus dconv (2 today)"),
+        ({"deed:harvest": 2, "deed:dconv": 2}, "deed:harvest", "focus harvest (2 today)"),
+        ({"deed:dconv": 1}, "deed:harvest", "focus harvest (0 today)"),
+        # Прочие дела в счётчике на чередование не влияют.
+        ({"deed:harvest": 1, "deed:job": 9}, "deed:dconv", "focus dconv (0 today)"),
+    ],
+)
+def test_focus_alternates_by_count_today(today: dict[str, int], chosen: str, reason: str) -> None:
+    decision = decide(awake(), FOCUS, NOW, done_today=today)
+    assert isinstance(decision, Act) and (decision.scenario, decision.reason) == (chosen, reason)
+
+
+def test_unavailable_main_deed_passes_turn_to_other_main() -> None:
+    # Добыче не хватает $30, переработке ($5 и 10⚙️) — хватает, даже если её сделано больше.
+    decision = decide(awake(money=20), FOCUS, NOW, done_today={"deed:dconv": 5})
+    assert act(decision) == ("deed:dconv", {})
+    assert verdicts(decision)["deed:harvest"] == "no_money"
+    cooled = decide(awake(), FOCUS, NOW, cooldowns={"deed:harvest": m(5)})
+    assert act(cooled) == ("deed:dconv", {})
+
+
+def test_no_main_deed_falls_back_to_best_score() -> None:
+    decision = decide(awake(money=3, details=0), FOCUS, NOW)
+    assert isinstance(decision, Act)
+    assert (decision.scenario, decision.reason[:11]) == ("deed:job", "best score ")
+    assert verdicts(decision)["deed:harvest"] == "no_money"
+    assert verdicts(decision)["deed:dconv"] == "no_money"
+
+
+def test_main_deed_outside_allowed_deeds_is_ignored() -> None:
+    settings = Settings.model_validate(
+        {"features": QUIET, "strategy": {"deeds": ["job", "dconv"], "focus": ["harvest", "dconv"]}}
+    )
+    decision = decide(awake(), settings, NOW, done_today={"deed:dconv": 7})
+    assert isinstance(decision, Act) and decision.reason == "focus dconv (7 today)"
+    assert "deed:harvest" not in verdicts(decision)
 
 
 def test_busy_waits_until_free() -> None:
@@ -363,8 +409,9 @@ def test_no_motivation_waits_for_regen() -> None:
 
 
 def test_cooldown_skips_scenario() -> None:
+    # Следующая по оценке после работы — прогулка ($4 и 🔩 за 1🔥).
     decision = decide(awake(), BASE, NOW, cooldowns={"deed:job": m(5)})
-    assert act(decision) == ("deed:dconv", {})
+    assert act(decision) == ("deed:walk", {})
     assert verdicts(decision)["deed:job"] == "cooldown"
 
 
@@ -372,7 +419,7 @@ def test_deed_prices_from_screen() -> None:
     state = awake().model_copy(
         update={"prices": {"job": obs(PriceState(motivation=3, minutes=2))}}
     )
-    assert act(decide(state, BASE, NOW)) == ("deed:dconv", {})
+    assert act(decide(state, BASE, NOW)) == ("deed:walk", {})
 
 
 def test_sleep_near_deadline_passes_threshold_and_reserve() -> None:

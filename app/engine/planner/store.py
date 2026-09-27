@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Protocol
 
+from app.engine.gametime import tasks_day
 from app.engine.planner.types import Act, Decision
 
 # Запуски, после которых сценарий мог исполниться: мандарин после рестарта не повторяется.
 LAST_DONE = ("done", "interrupted")
+# Счётчик дел за день: только успешные запуски `deed:*`.
+DEED_PREFIX = "deed:"
 # Незавершённые запуски прошлого процесса: начатый мог исполниться, из очереди — точно нет.
 CLOSED_ON_RESTART = {"running": "interrupted", "queued": "cancelled"}
 
@@ -67,6 +70,11 @@ class PlannerStore(Protocol):
 
     async def last_done(self) -> dict[str, datetime]:
         """Начало последнего успешного или прерванного рестартом (исход неизвестен) запуска."""
+        ...
+
+    async def done_on_day(self, day: date) -> dict[str, int]:
+        """Число успешных (`done`) запусков каждого дела `deed:*`, начатых в день заданий `day`
+        (граница — 00:00 MSK)."""
         ...
 
 
@@ -152,3 +160,12 @@ class MemoryPlannerStore:
             if run.status in LAST_DONE:
                 done[run.scenario] = max(run.started_at, done.get(run.scenario, run.started_at))
         return done
+
+    async def done_on_day(self, day: date) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for run in self.runs:
+            if run.status != "done" or not run.scenario.startswith(DEED_PREFIX):
+                continue
+            if tasks_day(run.started_at) == day:
+                counts[run.scenario] = counts.get(run.scenario, 0) + 1
+        return counts

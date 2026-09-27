@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import case, func, select, update
@@ -7,7 +7,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.base import Database
 from app.db.models import DecisionRow, ScenarioRunRow
-from app.engine.planner.store import CLOSED_ON_RESTART, LAST_DONE, DecisionRecord
+from app.engine.gametime import day_start
+from app.engine.planner.store import CLOSED_ON_RESTART, DEED_PREFIX, LAST_DONE, DecisionRecord
 from app.engine.planner.types import Decision
 
 
@@ -133,3 +134,20 @@ class DbPlannerStore:
         async with self._db.sessions() as session:
             rows = await session.execute(query)
         return {scenario: started for scenario, started in rows.all()}
+
+    async def done_on_day(self, day: date) -> dict[str, int]:
+        start = day_start(day)
+        query = (
+            select(ScenarioRunRow.scenario, func.count())
+            .where(
+                ScenarioRunRow.account_id == self._account_id,
+                ScenarioRunRow.status == "done",
+                ScenarioRunRow.scenario.startswith(DEED_PREFIX, autoescape=True),
+                ScenarioRunRow.started_at >= start,
+                ScenarioRunRow.started_at < start + timedelta(days=1),
+            )
+            .group_by(ScenarioRunRow.scenario)
+        )
+        async with self._db.sessions() as session:
+            rows = await session.execute(query)
+        return {scenario: int(n) for scenario, n in rows.all()}
