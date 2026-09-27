@@ -18,6 +18,7 @@ FAMILIES = (
     "gorbushka",
     "levelup",
     "crew",
+    "daily",
     "bulls",
     "stocks",
     "smoothie",

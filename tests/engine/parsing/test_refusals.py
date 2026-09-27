@@ -30,6 +30,9 @@ def test_busy(msg_id: int, left: int) -> None:
         (3520789, Refused(reason="prizebox_locked", left_s=17400)),
         (3535591, Refused(reason="no_such_gift")),
         (3527305, Refused(reason="unknown_command")),
+        # «⏳Задания» не из меню команды и «/t_…» не с экрана заданий — та же общая справка.
+        (3625754, Refused(reason="unknown_command")),
+        (3625756, Refused(reason="unknown_command")),
         (3624999, Refused(reason="fastfood_cooldown", left_s=1740)),
         (3532814, Refused(reason="levelup_required")),
     ],

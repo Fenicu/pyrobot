@@ -47,7 +47,6 @@ _INFO = tuple(
         ("viruses", r"\A" + _VIRUS + r"\S+ /help_viruses\n"),
         ("viruses", r"\A" + _VIRUS + r"\S+ \(\d+\) становится твоим главным вирусом"),
         ("viruses", r"\A❗️Ты убрал активный вирус!"),
-        ("daily_tasks", r"\A⏳Ежедневные задания\n"),
         ("office", r"\AОфис \S"),
         ("office", r"\AЛаборатории\n"),
         ("office", r"\A🧰Сборка ресурсов\n"),

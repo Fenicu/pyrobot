@@ -7,6 +7,8 @@ import pytest
 
 from app.engine.events import Unrecognized
 from app.engine.parsing import default_parser
+from app.engine.parsing.common import parse_rewards
+from app.engine.parsing.daily import DailyTasksScreen, TaskCompleted, recognize_daily
 from app.engine.parsing.screens import LotteryWin
 from app.engine.parsing.smoothie import SmoothieRecipe
 from app.engine.parsing.swinfo import BattleSummary
@@ -19,6 +21,7 @@ RESEARCH = Path(os.environ.get("PYROBOT_RESEARCH", Path.home() / "pyrobot-resear
 HISTORY = RESEARCH / "raw" / "history" / "startup_bot.jsonl"
 SWINFO = RESEARCH / "raw" / "history" / "startup_main_swinfo.jsonl"
 CHANNEL = RESEARCH / "raw" / "history" / "smoothie_channel.jsonl"
+SEARCH = RESEARCH / "raw" / "search" / "game.jsonl"
 no_research = pytest.mark.skipif(not HISTORY.exists(), reason="no ~/pyrobot-research")
 MIN_RATIO = 0.999
 
@@ -86,3 +89,26 @@ def test_every_lottery_win_has_a_prize() -> None:
     for win in wins:
         prize = (win.rewards.knowledge, win.rewards.raw, win.rewards.details, win.motivation)
         assert any(prize) or win.containers_small or win.containers_medium or win.skills
+
+
+@pytest.mark.skipif(not SEARCH.exists(), reason="no search export in ~/pyrobot-research")
+def test_every_daily_tasks_message_in_search_parsed() -> None:
+    """Экраны заданий за 2019–2026, сообщения о выполнении и строки личного прогресса."""
+    seen: Counter[str] = Counter()
+    kinds = (("⏳Ежедневные задания", DailyTasksScreen), ("Ты завершил задание", TaskCompleted))
+    with SEARCH.open(encoding="utf-8") as fh:
+        for line in fh:
+            rec = json.loads(line)
+            text = str(rec.get("text") or "")
+            if rec.get("out"):
+                continue
+            for prefix, event in kinds:
+                if text.startswith(prefix):
+                    seen[event.kind] += 1
+                    events = recognize_daily(record_message(rec))
+                    assert [type(e) for e in events] == [event], rec["id"]
+            if "🔜Личное задание" in text:
+                seen["line"] += 1
+                assert parse_rewards(text).personal_task is not None, rec["id"]
+    assert seen["daily_tasks_screen"] > 5000 and seen["task_completed"] > 1000
+    assert seen["line"] > 5000

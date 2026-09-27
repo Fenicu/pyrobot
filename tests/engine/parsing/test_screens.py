@@ -35,7 +35,6 @@ from tests.fixtures import game_msg
         (3568618, InfoScreen(name="artifacts")),
         (3603396, InfoScreen(name="tops")),
         (3585192, InfoScreen(name="viruses")),
-        (3617607, InfoScreen(name="daily_tasks")),
         (3623175, InfoScreen(name="office")),
         (3621873, InfoScreen(name="help")),
         (3606025, InfoScreen(name="casino")),

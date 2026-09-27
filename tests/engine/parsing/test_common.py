@@ -56,6 +56,30 @@ def test_rewards_team_task_and_knowledge() -> None:
     assert (r.exp, r.knowledge, r.team_task) == (261, 9, (355, 360, "📚"))
 
 
+@pytest.mark.parametrize(
+    ("family", "msg_id", "personal", "team"),
+    [
+        ("activities", 3625819, (29, 132, "💵"), None),
+        ("activities", 3625828, (100, 132, "💵"), None),
+        # Итог, закрывший задание, строки прогресса уже не несёт.
+        ("activities", 3625832, None, None),
+        ("activities", 3436287, (36, 48, "💵"), None),
+        ("activities", 3434588, (50, 72, "⚙️"), (120, 720, "⚙️")),
+        ("gorbushka", 3433205, (33, 39, "⚙️"), None),
+        # До 2023 — ⚙ без VS16: ресурс приводится к ⚙️.
+        ("gorbushka", 1628917, (18, 39, "⚙️"), (134, 390, "⚙️")),
+    ],
+)
+def test_rewards_task_progress_lines(
+    family: str,
+    msg_id: int,
+    personal: tuple[int, int, str] | None,
+    team: tuple[int, int, str] | None,
+) -> None:
+    r = _rewards(family, msg_id)
+    assert (r.personal_task, r.team_task) == (personal, team)
+
+
 def test_rewards_gorbushka_vip_details_upgrades_prizebox() -> None:
     r = _rewards("gorbushka", 3516744)
     assert (r.exp, r.money, r.knowledge, r.details, r.stamina) == (259, 36, 7, 16, 100)

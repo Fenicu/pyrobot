@@ -16,9 +16,11 @@ _REWARD = re.compile(
 _UPGRADE = re.compile(
     r"^(?P<tier>⚪️|🔵|🔴) ?(?:(?:Простые|Редкие|Уникальные) у|У)лучшения: \+(?P<n>\d+)", re.M
 )
-_TEAM_TASK = re.compile(
-    r"🔜Командное задание: (?P<cur>" + NUM + r") из (?P<goal>" + NUM + r")(?P<res>\S+?)\."
-)
+_TASK_LINE = r" задание: (?P<cur>" + NUM + r") из (?P<goal>" + NUM + r")(?P<res>\S+?)\."
+_TEAM_TASK = re.compile(r"🔜Командное" + _TASK_LINE)
+_PERSONAL_TASK = re.compile(r"🔜Личное" + _TASK_LINE)
+# До 2023 игра писала ⚙ без VS16.
+_RESOURCE_ALIASES = {"⚙": "⚙️"}
 _REWARD_KEYS = {"💡": "exp", "💵": "money", "📚": "knowledge", "⚙️": "details", "🔩": "raw"}
 # Компании биржи и битв: название на экранах игры → код в командах (/buys_<код>_N).
 COMPANIES = {
@@ -49,6 +51,10 @@ def dur(text: str) -> int:
     return sum(int(n) * _UNIT_S[unit] for n, unit in _DUR_PART.findall(text))
 
 
+def resource(emoji: str) -> str:
+    return _RESOURCE_ALIASES.get(emoji, emoji)
+
+
 def first_line(text: str) -> str:
     return text.split("\n", 1)[0][:200]
 
@@ -65,7 +71,14 @@ class Rewards:
     upgrades_blue: int = 0
     upgrades_red: int = 0
     prizebox: bool = False
+    # Строки прогресса заданий в итоге: (текущее, цель, ресурс).
     team_task: tuple[int, int, str] | None = None
+    personal_task: tuple[int, int, str] | None = None
+
+
+def _task_line(pattern: re.Pattern[str], text: str) -> tuple[int, int, str] | None:
+    m = pattern.search(text)
+    return (num(m["cur"]), num(m["goal"]), resource(m["res"])) if m else None
 
 
 def parse_rewards(text: str) -> Rewards:
@@ -81,7 +94,6 @@ def parse_rewards(text: str) -> Rewards:
     ups = {"⚪️": 0, "🔵": 0, "🔴": 0}
     for m in _UPGRADE.finditer(text):
         ups[m["tier"]] += int(m["n"])
-    team = _TEAM_TASK.search(text)
     return Rewards(
         exp=totals["exp"],
         money=totals["money"],
@@ -93,5 +105,6 @@ def parse_rewards(text: str) -> Rewards:
         upgrades_blue=ups["🔵"],
         upgrades_red=ups["🔴"],
         prizebox="🎁Призовую коробку" in text,
-        team_task=(num(team["cur"]), num(team["goal"]), team["res"]) if team else None,
+        team_task=_task_line(_TEAM_TASK, text),
+        personal_task=_task_line(_PERSONAL_TASK, text),
     )
