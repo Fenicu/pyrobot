@@ -2,6 +2,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.api.container import Container
+from app.api.errors import VersionConflictOut
 from app.db.base import Database
 from app.db.models import SettingsHistory, SettingsRow
 from app.db.settings_store import DbSettingsStore
@@ -52,6 +53,7 @@ async def test_patch_requires_csrf_and_bumps_version(
     again = await api_client.patch("/api/v1/settings", headers=h, json=patch)
     assert again.status_code == 409
     assert again.json()["detail"] == {"code": "version_conflict", "version": 1}
+    VersionConflictOut.model_validate(again.json())
 
 
 async def test_patch_errors_are_422_with_location(

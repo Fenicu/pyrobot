@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.api.container import Container
 from app.api.cursor import decode_cursor, encode_cursor
 from app.api.deps import SessionContext, container, current_session, require_csrf
+from app.api.errors import AUTH, CSRF, not_found
 from app.engine.state.reducer import METRIC_FIELDS
 
 router = APIRouter(prefix="/api/v1", tags=["reference"])
@@ -107,7 +108,7 @@ def _fields(raw: str | None) -> list[str]:
     return keys
 
 
-@router.get("/metrics", response_model=MetricsOut)
+@router.get("/metrics", response_model=MetricsOut, responses=AUTH)
 async def metrics(
     _: Annotated[SessionContext, Depends(current_session)],
     c: Annotated[Container, Depends(container)],
@@ -145,7 +146,7 @@ async def metrics(
     )
 
 
-@router.get("/metro/runs", response_model=MetroRunsPage)
+@router.get("/metro/runs", response_model=MetroRunsPage, responses=AUTH)
 async def metro_runs(
     _: Annotated[SessionContext, Depends(current_session)],
     c: Annotated[Container, Depends(container)],
@@ -160,7 +161,11 @@ async def metro_runs(
     )
 
 
-@router.get("/metro/runs/{run_id}", response_model=MetroRunDetail)
+@router.get(
+    "/metro/runs/{run_id}",
+    response_model=MetroRunDetail,
+    responses={**AUTH, **not_found("metro run")},
+)
 async def metro_run(
     run_id: int,
     _: Annotated[SessionContext, Depends(current_session)],
@@ -172,7 +177,7 @@ async def metro_run(
     return MetroRunDetail.model_validate(row, from_attributes=True)
 
 
-@router.get("/unrecognized", response_model=UnrecognizedPage)
+@router.get("/unrecognized", response_model=UnrecognizedPage, responses=AUTH)
 async def unrecognized(
     _: Annotated[SessionContext, Depends(current_session)],
     c: Annotated[Container, Depends(container)],
@@ -201,7 +206,7 @@ async def unrecognized(
     )
 
 
-@router.post("/unrecognized/ack", response_model=AckOut)
+@router.post("/unrecognized/ack", response_model=AckOut, responses=CSRF)
 async def ack_unrecognized(
     body: AckIn,
     _: Annotated[SessionContext, Depends(require_csrf)],
@@ -210,7 +215,7 @@ async def ack_unrecognized(
     return AckOut(acked=await c.reads.ack_unrecognized(body.ids))
 
 
-@router.get("/notifications", response_model=NotificationsPage)
+@router.get("/notifications", response_model=NotificationsPage, responses=AUTH)
 async def notifications(
     _: Annotated[SessionContext, Depends(current_session)],
     c: Annotated[Container, Depends(container)],
@@ -230,7 +235,7 @@ async def notifications(
     )
 
 
-@router.post("/notifications/read", response_model=ReadOut)
+@router.post("/notifications/read", response_model=ReadOut, responses=CSRF)
 async def read_notifications(
     body: ReadIn,
     _: Annotated[SessionContext, Depends(require_csrf)],

@@ -8,6 +8,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.api.container import Container
+from app.api.routes_state import StateOut
 from app.engine.bus import Bus
 from app.engine.memory import MemoryJournal
 from app.engine.parsing import default_parser
@@ -139,6 +140,7 @@ async def test_empty_state_shape(container: Container, api_client: AsyncClient) 
     assert list(body) == ["version", "now", "state", "stale"]
     assert (body["version"], body["state"], body["stale"]) == (0, {}, [])
     assert ISO_UTC.match(body["now"])
+    StateOut.model_validate(body)
 
 
 async def test_state_shape(container: Container, api_client: AsyncClient) -> None:
@@ -156,3 +158,21 @@ async def test_state_shape(container: Container, api_client: AsyncClient) -> Non
     assert body["state"] == expected
     assert body["state"]["money"]["at"] == pipeline.state["money"]["at"]
     assert isinstance(body["stale"], list)
+    # Реальный снимок проходит публичную схему из OpenAPI.
+    StateOut.model_validate(body)
+
+
+async def test_state_sends_only_public_keys(container: Container, api_client: AsyncClient) -> None:
+    # Снимок прошлой сборки может нести поле, которого уже нет в модели: наружу — только ключи
+    # публичной схемы, значения — как в снимке.
+    pipeline = _with_state(container)
+    await pipeline.process(replace(game_msg("profile", 3624478), date=datetime.now(UTC)))
+    assert container.facade is not None
+    version, snapshot = container.facade.state()
+    legacy = {**snapshot, "legacy_field": {"value": 1, "at": "2026-09-27T12:00:00Z"}}
+    container.facade.state = lambda: (version, legacy)  # type: ignore[method-assign]
+    await login(api_client)
+    body = (await api_client.get("/api/v1/state")).json()
+    assert "legacy_field" not in body["state"] and "applied" not in body["state"]
+    assert body["state"] == {k: v for k, v in snapshot.items() if k != "applied"}
+    StateOut.model_validate(body)

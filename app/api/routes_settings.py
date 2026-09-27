@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
+from app.api.errors import AUTH, CSRF, ENGINE, VersionConflictOut
 from app.api.routes_engine import facade
 from app.engine.facade import EngineFacade
 from app.engine.settings import (
@@ -54,7 +55,7 @@ def _unprocessable(errors: list[dict[str, Any]]) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, errors)
 
 
-@router.get("/settings", response_model=SettingsOut)
+@router.get("/settings", response_model=SettingsOut, responses={**AUTH, **ENGINE})
 async def get_settings(
     _: Annotated[SessionContext, Depends(current_session)],
     f: Annotated[EngineFacade, Depends(facade)],
@@ -67,7 +68,15 @@ async def get_settings(
     )
 
 
-@router.patch("/settings", response_model=SettingsPatchOut)
+@router.patch(
+    "/settings",
+    response_model=SettingsPatchOut,
+    responses={
+        **CSRF,
+        **ENGINE,
+        409: {"model": VersionConflictOut, "description": "settings changed since `version`"},
+    },
+)
 async def patch_settings(
     body: SettingsPatchIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
@@ -100,7 +109,7 @@ async def patch_settings(
     )
 
 
-@router.get("/settings/history", response_model=SettingsHistoryOut)
+@router.get("/settings/history", response_model=SettingsHistoryOut, responses=AUTH)
 async def settings_history(
     c: Annotated[Container, Depends(container)],
     _: Annotated[SessionContext, Depends(current_session)],

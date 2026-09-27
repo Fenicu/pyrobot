@@ -6,6 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.api.container import Container
+from app.api.routes_commands import ConfirmRequiredOut
 from app.db.actions import DbActionStore
 from app.db.base import Database
 from app.db.models import ActionRow
@@ -157,6 +158,8 @@ async def test_risky_needs_confirm_token(
     code, body = await _send(api_client, h, "/ucon", "r1")
     detail = body["detail"]
     assert code == 409 and isinstance(detail, dict)
+    # Ответ совпадает со схемой 409 в OpenAPI (оболочка `detail`).
+    ConfirmRequiredOut.model_validate(body)
     assert (detail["code"], detail["reason"], detail["command_class"]) == (
         "confirm_required",
         "missing",

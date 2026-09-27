@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.container import Container
 from app.api.deps import COOKIE, SessionContext, container, current_session
+from app.api.errors import AUTH, ENGINE_NOT_STARTED, error
 from app.api.routes_engine import facade
 from app.engine.facade import EngineFacade
 from app.engine.stream import EventStream, Subscription
@@ -70,7 +71,11 @@ async def _events(
 @router.get(
     "/events",
     response_class=StreamingResponse,
-    responses={200: {"content": {"text/event-stream": {}}, "description": "SSE stream"}},
+    responses={
+        200: {"content": {"text/event-stream": {}}, "description": "SSE stream"},
+        **AUTH,
+        503: error(ENGINE_NOT_STARTED, "event stream not started"),
+    },
 )
 async def events(
     request: Request,

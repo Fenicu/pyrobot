@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.api.container import Container
 from app.api.cursor import decode_cursor, encode_cursor
 from app.api.deps import SessionContext, container, current_session
+from app.api.errors import AUTH, not_found
 from app.db.models import ActionRow, DecisionRow, MessageRow, ScenarioRunRow
 from app.db.reads import FeedFilter, FeedKey, feed_types
 
@@ -165,7 +166,7 @@ def _run(row: ScenarioRunRow) -> ScenarioRunOut:
     return ScenarioRunOut.model_validate(row, from_attributes=True)
 
 
-@router.get("/journal", response_model=JournalPage)
+@router.get("/journal", response_model=JournalPage, responses=AUTH)
 async def journal(
     c: Annotated[Container, Depends(container)],
     _: Annotated[SessionContext, Depends(current_session)],
@@ -192,7 +193,11 @@ async def journal(
     )
 
 
-@router.get("/decisions/{decision_id}", response_model=DecisionOut)
+@router.get(
+    "/decisions/{decision_id}",
+    response_model=DecisionOut,
+    responses={**AUTH, **not_found("decision")},
+)
 async def decision(
     decision_id: int,
     c: Annotated[Container, Depends(container)],
@@ -215,7 +220,9 @@ async def decision(
     )
 
 
-@router.get("/actions/{action_id}", response_model=ActionOut)
+@router.get(
+    "/actions/{action_id}", response_model=ActionOut, responses={**AUTH, **not_found("action")}
+)
 async def action(
     action_id: int,
     c: Annotated[Container, Depends(container)],
@@ -227,7 +234,11 @@ async def action(
     return ActionOut.model_validate(row, from_attributes=True)
 
 
-@router.get("/scenario-runs/{run_id}", response_model=ScenarioRunDetail)
+@router.get(
+    "/scenario-runs/{run_id}",
+    response_model=ScenarioRunDetail,
+    responses={**AUTH, **not_found("scenario run")},
+)
 async def scenario_run(
     run_id: int,
     c: Annotated[Container, Depends(container)],

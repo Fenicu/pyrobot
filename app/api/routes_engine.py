@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, PlainSerializer
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
+from app.api.errors import AUTH, CSRF, ENGINE, Responses, error
 from app.engine.facade import EngineFacade, LockLostError
 from app.engine.tg_auth import AttemptMismatch, TgAuthError, TgBackendError, TgState, TgStatus
 from app.engine.transport.base import FloodWait
@@ -15,6 +16,18 @@ from app.engine.transport.base import FloodWait
 router = APIRouter(prefix="/api/v1", tags=["engine"])
 # Даты — через isoformat(), как в прежнем ответе (jsonable_encoder) и `now` в /state: `+00:00`.
 IsoDatetime = Annotated[datetime, PlainSerializer(datetime.isoformat, when_used="json")]
+
+
+_READ: Responses = {**AUTH, **ENGINE}
+_WRITE: Responses = {**CSRF, **ENGINE}
+# Вход в Telegram: ошибки попытки и Telegram; неверный код или пароль — 200 с `error`.
+_TG_LOGIN: Responses = {
+    **_WRITE,
+    400: error("invalid_phone", "password_required", "<код TgAuthError>"),
+    409: error("already online", "another login in progress", "unknown attempt", "state is …"),
+    429: error("flood_wait"),
+    502: error("send_code_failed", "sign_in_failed", "check_password_failed"),
+}
 
 
 def facade(c: Annotated[Container, Depends(container)]) -> EngineFacade:
@@ -36,7 +49,7 @@ class CodeIn(BaseModel):
     code: str
 
 
-class PasswordIn(BaseModel):
+class TgPasswordIn(BaseModel):
     attempt_id: str
     password: str
 
@@ -75,7 +88,7 @@ def _tg(st: TgStatus) -> TgStatusOut:
     )
 
 
-@router.get("/engine/status", response_model=EngineStatusOut)
+@router.get("/engine/status", response_model=EngineStatusOut, responses=_READ)
 async def engine_status(
     _: Annotated[SessionContext, Depends(current_session)],
     f: Annotated[EngineFacade, Depends(facade)],
@@ -86,7 +99,7 @@ async def engine_status(
     return EngineStatusOut.model_validate(data)
 
 
-@router.post("/engine/kill", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/engine/kill", status_code=status.HTTP_204_NO_CONTENT, responses=_WRITE)
 async def engine_kill(
     body: KillIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
@@ -95,7 +108,11 @@ async def engine_kill(
     await f.kill(body.reason, by=ctx.login)
 
 
-@router.post("/engine/unkill", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/engine/unkill",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={**_WRITE, 409: error("lock_lost")},
+)
 async def engine_unkill(
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],
@@ -106,7 +123,7 @@ async def engine_unkill(
         raise HTTPException(status.HTTP_409_CONFLICT, "lock_lost") from exc
 
 
-@router.post("/engine/pause", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/engine/pause", status_code=status.HTTP_204_NO_CONTENT, responses=_WRITE)
 async def engine_pause(
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],
@@ -114,7 +131,7 @@ async def engine_pause(
     await f.pause(by=ctx.login)
 
 
-@router.post("/engine/resume", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/engine/resume", status_code=status.HTTP_204_NO_CONTENT, responses=_WRITE)
 async def engine_resume(
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],
@@ -122,7 +139,7 @@ async def engine_resume(
     await f.resume(by=ctx.login)
 
 
-@router.post("/engine/reconciled", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/engine/reconciled", status_code=status.HTTP_204_NO_CONTENT, responses=_WRITE)
 async def engine_reconciled(
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],
@@ -130,7 +147,7 @@ async def engine_reconciled(
     await f.reconciled(by=ctx.login)
 
 
-@router.get("/tg/status", response_model=TgStatusOut)
+@router.get("/tg/status", response_model=TgStatusOut, responses=_READ)
 async def tg_status(
     _: Annotated[SessionContext, Depends(current_session)],
     f: Annotated[EngineFacade, Depends(facade)],
@@ -156,7 +173,7 @@ async def _guard(coro: Awaitable[TgStatus]) -> TgStatusOut:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.code) from exc
 
 
-@router.post("/tg/login/start", response_model=TgStatusOut)
+@router.post("/tg/login/start", response_model=TgStatusOut, responses=_TG_LOGIN)
 async def tg_start(
     body: PhoneIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
@@ -165,7 +182,7 @@ async def tg_start(
     return await _guard(f.tg.start(body.phone, owner=str(ctx.session_id)))
 
 
-@router.post("/tg/login/code", response_model=TgStatusOut)
+@router.post("/tg/login/code", response_model=TgStatusOut, responses=_TG_LOGIN)
 async def tg_code(
     body: CodeIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
@@ -174,16 +191,16 @@ async def tg_code(
     return await _guard(f.tg.submit_code(body.attempt_id, str(ctx.session_id), body.code))
 
 
-@router.post("/tg/login/password", response_model=TgStatusOut)
+@router.post("/tg/login/password", response_model=TgStatusOut, responses=_TG_LOGIN)
 async def tg_password(
-    body: PasswordIn,
+    body: TgPasswordIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],
 ) -> TgStatusOut:
     return await _guard(f.tg.submit_password(body.attempt_id, str(ctx.session_id), body.password))
 
 
-@router.post("/tg/logout", response_model=TgStatusOut)
+@router.post("/tg/logout", response_model=TgStatusOut, responses=_WRITE)
 async def tg_logout(
     _: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(facade)],

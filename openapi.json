@@ -247,6 +247,108 @@
         "title": "ActionOut",
         "type": "object"
       },
+      "ActivityStat": {
+        "description": "Скользящее среднее наград одного дела (без его цены).",
+        "properties": {
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "details": {
+            "default": 0,
+            "title": "Details",
+            "type": "number"
+          },
+          "exp": {
+            "default": 0,
+            "title": "Exp",
+            "type": "number"
+          },
+          "knowledge": {
+            "default": 0,
+            "title": "Knowledge",
+            "type": "number"
+          },
+          "money": {
+            "default": 0,
+            "title": "Money",
+            "type": "number"
+          },
+          "raw": {
+            "default": 0,
+            "title": "Raw",
+            "type": "number"
+          }
+        },
+        "title": "ActivityStat",
+        "type": "object"
+      },
+      "BusyState": {
+        "properties": {
+          "activity": {
+            "title": "Activity",
+            "type": "string"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activity",
+          "until"
+        ],
+        "title": "BusyState",
+        "type": "object"
+      },
+      "ChosenTaskState": {
+        "properties": {
+          "activities": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Activities",
+            "type": "array"
+          },
+          "goal": {
+            "default": 0,
+            "title": "Goal",
+            "type": "integer"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "resource": {
+            "default": "",
+            "title": "Resource",
+            "type": "string"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "title": "ChosenTaskState",
+        "type": "object"
+      },
       "ClickIn": {
         "properties": {
           "callback_data": {
@@ -397,6 +499,18 @@
           "command_class"
         ],
         "title": "ConfirmRequired",
+        "type": "object"
+      },
+      "ConfirmRequiredOut": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ConfirmRequired"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ConfirmRequiredOut",
         "type": "object"
       },
       "DecisionItem": {
@@ -655,6 +769,125 @@
         "title": "EngineStatusOut",
         "type": "object"
       },
+      "ErrorOut": {
+        "description": "Ошибка со строковым кодом.",
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorOut",
+        "type": "object"
+      },
+      "FoodStockState": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "high": {
+            "title": "High",
+            "type": "integer"
+          },
+          "low": {
+            "title": "Low",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "low",
+          "high"
+        ],
+        "title": "FoodStockState",
+        "type": "object"
+      },
+      "GorbushkaState": {
+        "properties": {
+          "comeback_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comeback At"
+          },
+          "fight_cost": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fight Cost"
+          },
+          "next_fight_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Fight At"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "ticket_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Until"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "won": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Won"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "GorbushkaState",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -747,6 +980,83 @@
           "password"
         ],
         "title": "LoginIn",
+        "type": "object"
+      },
+      "LotteryState": {
+        "description": "Снимок одного тиража: по валютам (`money`, `knowledge`, `raw`, `details`) куплено, лимит и\nцена; None — неизвестно (ответ покупки без экрана этого тиража). `until` — закрытие продажи.\n`short` — валюты, на которые при последней попытке не хватило, и сколько ресурса было после неё\n(None — неизвестно).",
+        "properties": {
+          "bought": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bought"
+          },
+          "draw": {
+            "title": "Draw",
+            "type": "integer"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limits"
+          },
+          "prices": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prices"
+          },
+          "short": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "default": {},
+            "title": "Short",
+            "type": "object"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "draw",
+          "until"
+        ],
+        "title": "LotteryState",
         "type": "object"
       },
       "MeOut": {
@@ -1045,6 +1355,29 @@
         "title": "MetroRunDetail",
         "type": "object"
       },
+      "MetroRunRefOut": {
+        "properties": {
+          "battle_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "title": "MetroRunRefOut",
+        "type": "object"
+      },
       "MetroRunSummary": {
         "properties": {
           "buffs": {
@@ -1246,6 +1579,659 @@
         "title": "NotificationsPage",
         "type": "object"
       },
+      "Observed_GorbushkaState_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/GorbushkaState"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[GorbushkaState]",
+        "type": "object"
+      },
+      "Observed_LotteryState_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/LotteryState"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[LotteryState]",
+        "type": "object"
+      },
+      "Observed_PersonalTask_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/PersonalTask"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[PersonalTask]",
+        "type": "object"
+      },
+      "Observed_PriceState_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/PriceState"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[PriceState]",
+        "type": "object"
+      },
+      "Observed_RefusalState_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/RefusalState"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[RefusalState]",
+        "type": "object"
+      },
+      "Observed_Skills_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Skills"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[Skills]",
+        "type": "object"
+      },
+      "Observed_SmoothieRecipeState_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/SmoothieRecipeState"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[SmoothieRecipeState]",
+        "type": "object"
+      },
+      "Observed_StockLimits_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/StockLimits"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[StockLimits]",
+        "type": "object"
+      },
+      "Observed_TargetSet_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/TargetSet"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[TargetSet]",
+        "type": "object"
+      },
+      "Observed_TeamTask_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/TeamTask"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[TeamTask]",
+        "type": "object"
+      },
+      "Observed_Union_BusyState__NoneType__": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BusyState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[Union[BusyState, NoneType]]",
+        "type": "object"
+      },
+      "Observed_Union_MetroRunRefOut__NoneType__": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetroRunRefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[Union[MetroRunRefOut, NoneType]]",
+        "type": "object"
+      },
+      "Observed_Union_datetime__NoneType__": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[Union[datetime, NoneType]]",
+        "type": "object"
+      },
+      "Observed_Union_str__NoneType__": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[Union[str, NoneType]]",
+        "type": "object"
+      },
+      "Observed_Upgrades_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Upgrades"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[Upgrades]",
+        "type": "object"
+      },
+      "Observed_bool_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[bool]",
+        "type": "object"
+      },
+      "Observed_datetime_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "format": "date-time",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[datetime]",
+        "type": "object"
+      },
+      "Observed_dict_str__FoodStockState__": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FoodStockState"
+            },
+            "title": "Value",
+            "type": "object"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[dict[str, FoodStockState]]",
+        "type": "object"
+      },
+      "Observed_dict_str__int__": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Value",
+            "type": "object"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[dict[str, int]]",
+        "type": "object"
+      },
+      "Observed_int_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[int]",
+        "type": "object"
+      },
+      "Observed_str_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[str]",
+        "type": "object"
+      },
       "ParamSpec": {
         "description": "Обязательный параметр сценария: `values` — у enum, `min`/`max` — у int, `pattern` — у\nstring (ECMA-262). Проверяет сервер: запуск с недопустимым значением — 422.",
         "properties": {
@@ -1284,6 +2270,75 @@
         "title": "ParamSpec",
         "type": "object"
       },
+      "PasswordChangeIn": {
+        "properties": {
+          "current": {
+            "maxLength": 1024,
+            "title": "Current",
+            "type": "string"
+          },
+          "new": {
+            "maxLength": 1024,
+            "minLength": 12,
+            "title": "New",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current",
+          "new"
+        ],
+        "title": "PasswordChangeIn",
+        "type": "object"
+      },
+      "PersonalTask": {
+        "description": "Личное задание за день `day`: варианты, выбранное (`current` — прогресс) или выполненное\n(у выполненного по сообщению о выполнении `chosen` может быть неизвестно).",
+        "properties": {
+          "chosen": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChosenTaskState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "default": 0,
+            "title": "Current",
+            "type": "integer"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "offers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TaskOfferState"
+            },
+            "title": "Offers",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "offers",
+              "active",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "status"
+        ],
+        "title": "PersonalTask",
+        "type": "object"
+      },
       "PhoneIn": {
         "properties": {
           "phone": {
@@ -1295,6 +2350,646 @@
           "phone"
         ],
         "title": "PhoneIn",
+        "type": "object"
+      },
+      "PriceState": {
+        "properties": {
+          "blue": {
+            "default": 0,
+            "title": "Blue",
+            "type": "integer"
+          },
+          "details": {
+            "default": 0,
+            "title": "Details",
+            "type": "integer"
+          },
+          "knowledge": {
+            "default": 0,
+            "title": "Knowledge",
+            "type": "integer"
+          },
+          "minutes": {
+            "default": 0,
+            "title": "Minutes",
+            "type": "integer"
+          },
+          "money": {
+            "default": 0,
+            "title": "Money",
+            "type": "integer"
+          },
+          "motivation": {
+            "default": 0,
+            "title": "Motivation",
+            "type": "integer"
+          },
+          "white": {
+            "default": 0,
+            "title": "White",
+            "type": "integer"
+          }
+        },
+        "title": "PriceState",
+        "type": "object"
+      },
+      "PublicState": {
+        "additionalProperties": false,
+        "description": "Снимок персонажа (`CharacterState` без служебного `applied`).",
+        "properties": {
+          "activity_stats": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ActivityStat"
+            },
+            "default": {},
+            "title": "Activity Stats",
+            "type": "object"
+          },
+          "bag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bag_cap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "battle_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "battle_target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_str__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "battle_target_set": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_TargetSet_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "book_ready_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "books": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bulls_invite": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_str_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bulls_won_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "busy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_BusyState__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "card_ready_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cards": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "containers_medium": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "containers_small": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "daily_personal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_PersonalTask_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exp_next": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "factory_call_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "factory_signed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_bool_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "factory_skip": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_bool_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "factory_wins": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "factory_won_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fastfood_ready_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "food_stock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_dict_str__FoodStockState__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gorbushka": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_GorbushkaState_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "knowledge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_refusal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_RefusalState_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "levelup_pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_bool_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lottery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_LotteryState_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metro_message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_MetroRunRefOut__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "metro_ready_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "money": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "motivation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "motivation_max": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "motivation_next_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_datetime__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prices": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Observed_PriceState_"
+            },
+            "default": {},
+            "title": "Prices",
+            "type": "object"
+          },
+          "prizebox": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_bool_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "prizebox_ready_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_datetime__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "skills": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Skills_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sleep_allowed_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_datetime__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sleep_deadline": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_datetime__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "smoothie_bonus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_str__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "smoothie_ingredients": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_dict_str__int__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "smoothie_recipe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_SmoothieRecipeState_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stamina": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stock_holdings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_dict_str__int__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stock_limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_StockLimits_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stock_quotes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_dict_str__int__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tangerine_not_player": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_str_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tangerine_ready_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tangerines": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "team_tag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_str_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "team_task": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_TeamTask_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "upgrades": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Upgrades_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "woke_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "PublicState",
         "type": "object"
       },
       "ReadIn": {
@@ -1322,6 +3017,30 @@
           "read"
         ],
         "title": "ReadOut",
+        "type": "object"
+      },
+      "RefusalState": {
+        "properties": {
+          "need": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Need"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RefusalState",
         "type": "object"
       },
       "ScenarioInfo": {
@@ -1763,6 +3482,52 @@
         "title": "SettingsVersionOut",
         "type": "object"
       },
+      "Skills": {
+        "properties": {
+          "cunning": {
+            "title": "Cunning",
+            "type": "integer"
+          },
+          "practice": {
+            "title": "Practice",
+            "type": "integer"
+          },
+          "theory": {
+            "title": "Theory",
+            "type": "integer"
+          },
+          "wisdom": {
+            "title": "Wisdom",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "practice",
+          "theory",
+          "cunning",
+          "wisdom"
+        ],
+        "title": "Skills",
+        "type": "object"
+      },
+      "SmoothieRecipeState": {
+        "properties": {
+          "bonus": {
+            "title": "Bonus",
+            "type": "string"
+          },
+          "recipe": {
+            "title": "Recipe",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipe",
+          "bonus"
+        ],
+        "title": "SmoothieRecipeState",
+        "type": "object"
+      },
       "StateOut": {
         "properties": {
           "now": {
@@ -1778,9 +3543,7 @@
             "type": "array"
           },
           "state": {
-            "additionalProperties": true,
-            "title": "State",
-            "type": "object"
+            "$ref": "#/components/schemas/PublicState"
           },
           "version": {
             "title": "Version",
@@ -1794,6 +3557,157 @@
           "stale"
         ],
         "title": "StateOut",
+        "type": "object"
+      },
+      "StockLimits": {
+        "properties": {
+          "close_hour": {
+            "title": "Close Hour",
+            "type": "integer"
+          },
+          "max_sell": {
+            "title": "Max Sell",
+            "type": "integer"
+          },
+          "min_buy": {
+            "title": "Min Buy",
+            "type": "integer"
+          },
+          "open_hour": {
+            "title": "Open Hour",
+            "type": "integer"
+          },
+          "reserve": {
+            "title": "Reserve",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min_buy",
+          "max_sell",
+          "reserve",
+          "open_hour",
+          "close_hour"
+        ],
+        "title": "StockLimits",
+        "type": "object"
+      },
+      "TargetSet": {
+        "properties": {
+          "battle_at": {
+            "format": "date-time",
+            "title": "Battle At",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "battle_at"
+        ],
+        "title": "TargetSet",
+        "type": "object"
+      },
+      "TaskOfferState": {
+        "properties": {
+          "goal": {
+            "title": "Goal",
+            "type": "integer"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "trophies": {
+            "title": "Trophies",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "level",
+          "goal",
+          "trophies"
+        ],
+        "title": "TaskOfferState",
+        "type": "object"
+      },
+      "TeamTask": {
+        "properties": {
+          "activities": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Activities",
+            "type": "array"
+          },
+          "current": {
+            "title": "Current",
+            "type": "integer"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          },
+          "goal": {
+            "title": "Goal",
+            "type": "integer"
+          },
+          "resource": {
+            "title": "Resource",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "enum": [
+              "none",
+              "active",
+              "done"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current",
+          "goal",
+          "resource"
+        ],
+        "title": "TeamTask",
+        "type": "object"
+      },
+      "TgPasswordIn": {
+        "properties": {
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "password"
+        ],
+        "title": "TgPasswordIn",
         "type": "object"
       },
       "TgState": {
@@ -1939,6 +3853,29 @@
         "title": "UnrecognizedPage",
         "type": "object"
       },
+      "Upgrades": {
+        "properties": {
+          "blue": {
+            "title": "Blue",
+            "type": "integer"
+          },
+          "red": {
+            "title": "Red",
+            "type": "integer"
+          },
+          "white": {
+            "title": "White",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "white",
+          "blue",
+          "red"
+        ],
+        "title": "Upgrades",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1979,43 +3916,35 @@
         "title": "ValidationError",
         "type": "object"
       },
-      "app__api__routes_auth__PasswordIn": {
+      "VersionConflict": {
         "properties": {
-          "current": {
-            "maxLength": 1024,
-            "title": "Current",
+          "code": {
+            "const": "version_conflict",
+            "title": "Code",
             "type": "string"
           },
-          "new": {
-            "maxLength": 1024,
-            "minLength": 12,
-            "title": "New",
-            "type": "string"
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
-          "current",
-          "new"
+          "code",
+          "version"
         ],
-        "title": "PasswordIn",
+        "title": "VersionConflict",
         "type": "object"
       },
-      "app__api__routes_engine__PasswordIn": {
+      "VersionConflictOut": {
         "properties": {
-          "attempt_id": {
-            "title": "Attempt Id",
-            "type": "string"
-          },
-          "password": {
-            "title": "Password",
-            "type": "string"
+          "detail": {
+            "$ref": "#/components/schemas/VersionConflict"
           }
         },
         "required": [
-          "attempt_id",
-          "password"
+          "detail"
         ],
-        "title": "PasswordIn",
+        "title": "VersionConflictOut",
         "type": "object"
       }
     }
@@ -2050,6 +3979,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "action not found"
           },
           "422": {
             "content": {
@@ -2092,6 +4041,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "invalid credentials"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2101,6 +4060,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "too many attempts"
           }
         },
         "summary": "Login",
@@ -2134,6 +4103,26 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2164,6 +4153,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
           }
         },
         "summary": "Me",
@@ -2197,7 +4196,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__api__routes_auth__PasswordIn"
+                "$ref": "#/components/schemas/PasswordChangeIn"
               }
             }
           },
@@ -2206,6 +4205,26 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch | invalid current password"
           },
           "422": {
             "content": {
@@ -2216,6 +4235,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "too many attempts"
           }
         },
         "summary": "Change Password",
@@ -2276,14 +4305,31 @@
             },
             "description": "Not finished yet; repeat with the same key"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
           "403": {
-            "description": "forbidden or donate command"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch | forbidden | donate"
           },
           "409": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfirmRequired"
+                  "$ref": "#/components/schemas/ConfirmRequiredOut"
                 }
               }
             },
@@ -2293,7 +4339,14 @@
             "description": "invalid body or idempotency_key reused with other parameters"
           },
           "503": {
-            "description": "idempotency record not stored; retry with the same key"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started | store_failed"
           }
         },
         "summary": "Command Click",
@@ -2354,14 +4407,31 @@
             },
             "description": "Not finished yet; repeat with the same key"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
           "403": {
-            "description": "forbidden or donate command"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch | forbidden | donate"
           },
           "409": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfirmRequired"
+                  "$ref": "#/components/schemas/ConfirmRequiredOut"
                 }
               }
             },
@@ -2371,7 +4441,14 @@
             "description": "invalid body or idempotency_key reused with other parameters"
           },
           "503": {
-            "description": "idempotency record not stored; retry with the same key"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started | store_failed"
           }
         },
         "summary": "Command Send",
@@ -2404,6 +4481,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "decision not found"
           },
           "422": {
             "content": {
@@ -2457,6 +4554,26 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2466,6 +4583,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Engine Kill",
@@ -2499,6 +4626,26 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2508,6 +4655,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Engine Pause",
@@ -2541,6 +4698,26 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2550,6 +4727,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Engine Reconciled",
@@ -2583,6 +4770,26 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2592,6 +4799,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Engine Resume",
@@ -2613,6 +4830,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Engine Status",
@@ -2646,6 +4883,36 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "lock_lost"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2655,6 +4922,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Engine Unkill",
@@ -2692,6 +4969,16 @@
             },
             "description": "SSE stream"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2701,6 +4988,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started | event stream not started"
           }
         },
         "summary": "Events",
@@ -2855,6 +5152,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2968,6 +5275,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3030,6 +5347,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3071,6 +5398,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "metro run not found"
           },
           "422": {
             "content": {
@@ -3165,6 +5512,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3224,6 +5581,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3266,6 +5643,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "scenario run not found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3301,6 +5698,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
           }
         },
         "summary": "Scenarios",
@@ -3370,11 +5777,48 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
           "404": {
-            "description": "unknown scenario"
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "unknown scenario | scenario run not found"
           },
           "422": {
             "description": "invalid body, params contradicting fixed scenario params, missing or invalid required params, or idempotency_key reused with other parameters"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started | planner not started"
           }
         },
         "summary": "Scenario Run",
@@ -3396,6 +5840,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Get Settings",
@@ -3444,6 +5908,36 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionConflictOut"
+                }
+              }
+            },
+            "description": "settings changed since `version`"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3453,6 +5947,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Patch Settings",
@@ -3506,6 +6010,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3536,6 +6050,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Get State",
@@ -3586,6 +6120,46 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "invalid_phone | password_required | <код TgAuthError>"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "already online | another login in progress | unknown attempt | state is …"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3595,6 +6169,36 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "flood_wait"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "send_code_failed | sign_in_failed | check_password_failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Tg Code",
@@ -3628,7 +6232,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/app__api__routes_engine__PasswordIn"
+                "$ref": "#/components/schemas/TgPasswordIn"
               }
             }
           },
@@ -3645,6 +6249,46 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "invalid_phone | password_required | <код TgAuthError>"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "already online | another login in progress | unknown attempt | state is …"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3654,6 +6298,36 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "flood_wait"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "send_code_failed | sign_in_failed | check_password_failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Tg Password",
@@ -3704,6 +6378,46 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "invalid_phone | password_required | <код TgAuthError>"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "already online | another login in progress | unknown attempt | state is …"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3713,6 +6427,36 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "flood_wait"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "send_code_failed | sign_in_failed | check_password_failed"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Tg Start",
@@ -3753,6 +6497,26 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3762,6 +6526,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Tg Logout",
@@ -3783,6 +6557,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started"
           }
         },
         "summary": "Tg Status",
@@ -3851,6 +6645,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -3909,6 +6713,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
           },
           "422": {
             "content": {

@@ -1341,6 +1341,17 @@ python tools/openapi.py [файл]` (по умолчанию `openapi.json` в �
 `app/api/openapi.py` собирает приложение без БД и движка); из неё генерируются TS-типы админки.
 `openapi.json` лежит в репозитории, тест `tests/test_openapi.py` падает, если он отстал от кода.
 
+Ответы с ошибками описаны в схеме (`responses=`, модели — `app/api/errors.py`; форма ответов от
+этого не меняется, модели только описывают её для TS-типов): строковые коды — `ErrorOut`
+`{"detail": "<код>"}`, в описании ответа перечислены возможные коды (401 `not authenticated` у
+всех эндпоинтов с сессией, 403 `csrf token mismatch` у изменяющих, у ручных команд ещё `forbidden`
+и `donate`; 503 `engine not started` у эндпоинтов движка, у команд ещё `store_failed`, у запуска
+сценария — `planner not started`); 409 ручной команды — `ConfirmRequiredOut` `{"detail":
+ConfirmRequired}`, 409 настроек — `VersionConflictOut` `{"detail": {"code": "version_conflict",
+"version"}}`, 422 настроек — стандартная `HTTPValidationError` (`{"detail": [{loc, msg, type}]}`).
+Клиент различает 403 CSRF (перечитать `/auth/me` и повторить) и 403 запрета, 503 недоступного
+движка и 503 `store_failed` по строке кода.
+
 ### Статус движка и Telegram
 
 `EngineFacade` (`app/engine/facade.py`) — фасад над `ActionGateway`, `Pipeline` и `TgAuthManager`:
@@ -1380,9 +1391,18 @@ code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (�
 ### Состояние персонажа
 
 `GET /api/v1/state` (сессия, CSRF не нужен) отдаёт снимок состояния персонажа (`StateOut`):
-`{"version": int, "now": ISO-UTC, "state": {...}, "stale": [...]}`; `state` в схеме — свободный
-объект (до первого сообщения он пуст), форма ответа с появлением модели не изменилась — это
-проверяет тест-снимок `tests/api/test_response_shapes.py` (как и у `/engine/status` и `/tg/*`). `version` и `state` — из `EngineFacade.state()`
+`{"version": int, "now": ISO-UTC, "state": {...}, "stale": [...]}`. `state` в схеме — публичная
+модель `PublicState` (`app/api/state_schema.py`): поля `CharacterState` без `applied`, наблюдаемое
+поле — `Observed[T]` `{value, at, src}` или `null`, `schema_version` — число, `prices` — словарь
+наблюдений цен, `activity_stats` — словарь средних без оболочки; все поля необязательны (до первого
+сообщения `state` — `{}`, в снимке прошлой сборки нет полей, появившихся позже). Снимок отдаётся
+как есть, без пересборки моделью (`JSONResponse`): порядок ключей, даты и значения — как в
+конвейере, из ключей — только поля `PublicState` (поле снимка прошлой сборки, которого уже нет в
+модели, и `applied` наружу не уходят); форма ответа с появлением модели не изменилась — это проверяет тест-снимок
+`tests/api/test_response_shapes.py` (как и у `/engine/status` и `/tg/*`), а
+`tests/api/test_state_schema.py` сверяет `PublicState` с `CharacterState` поле в поле (новое поле
+движка без публичного валит тест) и прогоняет через схему реальный снимок с прода
+(`tests/fixtures/api/state.json`). `version` и `state` — из `EngineFacade.state()`
 (`Pipeline.version`/`Pipeline.state`), служебное поле редьюсера `applied` (ключи применённых итогов)
 в ответ не входит; `stale` — список полей, устаревших по политике свежести
 (`stale_fields`, `app/engine/state/model.py`): для «летучих» полей (`money`, `stamina`,

@@ -12,6 +12,7 @@ from app.api.deps import (
     require_csrf,
     set_session_cookie,
 )
+from app.api.errors import AUTH, CSRF, CSRF_MISMATCH, Responses, error
 from app.api.security import dummy_hash, hash_password, verify_password
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -27,7 +28,7 @@ class MeOut(BaseModel):
     csrf_token: str
 
 
-class PasswordIn(BaseModel):
+class PasswordChangeIn(BaseModel):
     current: str = Field(max_length=1024)
     new: str = Field(min_length=12, max_length=1024)
 
@@ -42,7 +43,13 @@ def _raise_if_blocked(c: Container, key: str) -> None:
         )
 
 
-@router.post("/login", response_model=MeOut)
+# Слишком много неудачных попыток: ждать `Retry-After` секунд.
+_LIMITED: Responses = {429: error("too many attempts")}
+
+
+@router.post(
+    "/login", response_model=MeOut, responses={401: error("invalid credentials"), **_LIMITED}
+)
 async def login(
     body: LoginIn,
     request: Request,
@@ -66,12 +73,12 @@ async def login(
     return MeOut(login=admin.login, csrf_token=session.csrf_token)
 
 
-@router.get("/me", response_model=MeOut)
+@router.get("/me", response_model=MeOut, responses=AUTH)
 async def me(ctx: Annotated[SessionContext, Depends(current_session)]) -> MeOut:
     return MeOut(login=ctx.login, csrf_token=ctx.csrf_token)
 
 
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, responses=CSRF)
 async def logout(
     response: Response,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
@@ -81,9 +88,17 @@ async def logout(
     response.delete_cookie(COOKIE, path="/")
 
 
-@router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        **CSRF,
+        403: error(CSRF_MISMATCH, "invalid current password"),
+        **_LIMITED,
+    },
+)
 async def change_password(
-    body: PasswordIn,
+    body: PasswordChangeIn,
     response: Response,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],

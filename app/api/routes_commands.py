@@ -9,6 +9,7 @@ from pydantic.json_schema import SkipJsonSchema
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
+from app.api.errors import AUTH, CSRF, CSRF_MISMATCH, ENGINE_NOT_STARTED, Responses, error
 from app.api.routes_engine import facade
 from app.db.models import ActionRow
 from app.engine.commands import CommandClass, classify_callback, classify_text
@@ -65,6 +66,10 @@ class ConfirmRequired(BaseModel):
     command_class: str
 
 
+class ConfirmRequiredOut(BaseModel):
+    detail: ConfirmRequired
+
+
 ParamValue = str | int | float | bool | None
 
 
@@ -97,12 +102,15 @@ class ScenarioInfo(BaseModel):
     required: dict[str, ParamSpec]
 
 
-_RESPONSES: dict[int | str, dict[str, object]] = {
+_RESPONSES: Responses = {
     202: {"model": CommandOut, "description": "Not finished yet; repeat with the same key"},
-    403: {"description": "forbidden or donate command"},
-    409: {"model": ConfirmRequired, "description": "risky command needs confirm_token"},
+    **CSRF,
+    # forbidden/donate не уходят никогда; csrf — перечитать /auth/me и повторить.
+    403: error(CSRF_MISMATCH, "forbidden", "donate"),
+    409: {"model": ConfirmRequiredOut, "description": "risky command needs confirm_token"},
     422: {"description": "invalid body or idempotency_key reused with other parameters"},
-    503: {"description": "idempotency record not stored; retry with the same key"},
+    # store_failed — ключ идемпотентности не записан, повтор с тем же ключом безопасен.
+    503: error(ENGINE_NOT_STARTED, STORE_FAILED),
 }
 
 
@@ -250,7 +258,12 @@ async def command_click(
     )
 
 
-@router.get("/scenarios", response_model=list[ScenarioInfo], response_model_exclude_none=True)
+@router.get(
+    "/scenarios",
+    response_model=list[ScenarioInfo],
+    response_model_exclude_none=True,
+    responses=AUTH,
+)
 async def scenarios(_: Annotated[SessionContext, Depends(current_session)]) -> list[ScenarioInfo]:
     """Сценарии, доступные ручному запуску; несертифицированные исполняются как simulate."""
     return [
@@ -270,11 +283,13 @@ async def scenarios(_: Annotated[SessionContext, Depends(current_session)]) -> l
     status_code=status.HTTP_202_ACCEPTED,
     responses={
         200: {"model": ScenarioRunAccepted, "description": "Key already used: existing run"},
-        404: {"description": "unknown scenario"},
+        **CSRF,
+        404: error("unknown scenario", "scenario run not found"),
         422: {
             "description": "invalid body, params contradicting fixed scenario params, "
             "missing or invalid required params, or idempotency_key reused with other parameters"
         },
+        503: error(ENGINE_NOT_STARTED, "planner not started"),
     },
 )
 async def scenario_run(
