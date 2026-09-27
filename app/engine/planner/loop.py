@@ -50,6 +50,10 @@ class FixedParams(ValueError):
     """Параметр ручного запуска противоречит параметру сценария из реестра."""
 
 
+class InvalidParams(ValueError):
+    """Обязательного параметра ручного запуска нет или он недопустим."""
+
+
 @dataclass(frozen=True, slots=True)
 class ManualRun:
     run_id: int
@@ -125,12 +129,16 @@ class PlannerLoop:
     ) -> tuple[int, bool]:
         """Ручной запуск сценария: в очередь перед решениями планировщика. Возвращает id
         запуска и признак, что он создан сейчас (иначе ключ уже встречался). KeyError — нет
-        такого сценария, FixedParams — параметр противоречит зафиксированному в реестре."""
-        fixed = SCENARIOS[scenario].params
+        такого сценария, FixedParams — параметр противоречит зафиксированному в реестре,
+        InvalidParams — обязательного параметра нет или он недопустим."""
+        spec = SCENARIOS[scenario]
+        fixed = spec.params
         clash = sorted(k for k, v in params.items() if k in fixed and fixed[k] != v)
         if clash:
             raise FixedParams(clash)
         merged = {**params, **fixed}
+        if bad := spec.invalid(merged):
+            raise InvalidParams(bad)
         run_id, created = await self._store.run_requested(
             scenario, merged, requested=params, key=key, by=by, at=self._clock.now()
         )
@@ -150,18 +158,34 @@ class PlannerLoop:
                 await self._pause(pause)
 
     async def run_manual(self) -> None:
+        """Следующий ручной запуск из очереди. Его сбой не роняет цикл планировщика."""
         item = self._manual.popleft()
         started = self._clock.now()
         # Режим ручного запуска фиксируется на его старте, как у запусков плана.
         dry_run = self._settings.current.engine.mode == "dry_run"
-        await self._store.run_begin(item.run_id, started)
-        await self._perform(
-            Act(item.scenario, item.params, "manual"),
-            item.run_id,
-            started,
-            manual=True,
-            dry_run=dry_run,
-        )
+        try:
+            await self._store.run_begin(item.run_id, started)
+        except Exception:
+            log.exception("manual run %d not started", item.run_id)
+            await self._close_failed(item.run_id, "store_failed")
+            return
+        try:
+            await self._perform(
+                Act(item.scenario, item.params, "manual"),
+                item.run_id,
+                started,
+                manual=True,
+                dry_run=dry_run,
+            )
+        except Exception:
+            log.exception("manual run %d of %s failed", item.run_id, item.scenario)
+
+    async def _close_failed(self, run_id: int, reason: str) -> None:
+        try:
+            await self._store.run_finished(run_id, "failed", reason, self._clock.now())
+        except Exception:
+            # Строка остаётся queued: при рестарте close_running закроет её как cancelled.
+            log.exception("manual run %d not closed", run_id)
 
     async def _pause(self, seconds: float) -> None:
         try:
@@ -261,11 +285,14 @@ class PlannerLoop:
         if result.reason == "paused":
             result = replace(result, status="stopped")
         finished = self._clock.now()
-        # Подавленный ручной запуск о планах ничего не говорит: откладывать сценарий незачем.
-        if not (manual and result.status == "suppressed"):
-            # Кулдаун — до записи в журнал: сбой БД не должен оставить сценарий без него.
-            await self._after(act, result, started, finished)
-        await self._store.run_finished(run_id, result.status, result.reason, finished)
+        try:
+            # Подавленный ручной запуск о планах ничего не говорит: откладывать сценарий незачем.
+            if not (manual and result.status == "suppressed"):
+                # Кулдаун — до записи в журнал: сбой БД не должен оставить сценарий без него.
+                await self._after(act, result, started, finished)
+        finally:
+            # Сбой учёта итога (уведомление, БД) не оставляет запуск в running.
+            await self._store.run_finished(run_id, result.status, result.reason, finished)
         if result.details is not None and "metro" in result.details:
             await self._save_metro(run_id, result)
 

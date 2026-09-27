@@ -1,11 +1,38 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, get_args
 
+from app.engine.parsing.bulls import INVITE_CODE
+from app.engine.parsing.smoothie import INGREDIENTS
 from app.engine.scenarios import library, metro, obligations
-from app.engine.scenarios.library import ScenarioFn
+from app.engine.scenarios.library import FOOD_BUTTONS, REFRESH, ScenarioFn
+from app.engine.settings import Target
+
+Check = Callable[[Any], bool]
+
+
+def _one_of(values: Iterable[str]) -> Check:
+    allowed = frozenset(values)
+    return lambda v: isinstance(v, str) and v in allowed
+
+
+def _int(low: int | None = None, high: int | None = None) -> Check:
+    def check(v: Any) -> bool:
+        if not isinstance(v, int) or isinstance(v, bool):
+            return False
+        return (low is None or v >= low) and (high is None or v <= high)
+
+    return check
+
+
+def _invite(v: Any) -> bool:
+    return isinstance(v, str) and INVITE_CODE.match(v) is not None
+
+
+def _recipe(v: Any) -> bool:
+    return isinstance(v, str) and len(v) == 5 and all(fruit in INGREDIENTS for fruit in v)
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +41,13 @@ class ScenarioSpec:
     fn: ScenarioFn
     certified: bool
     params: Mapping[str, Any] = field(default_factory=dict)
+    # Параметры, без которых сценарий не исполнить: у решений планировщика они есть всегда,
+    # ручной запуск без них отклоняется.
+    required: Mapping[str, Check] = field(default_factory=dict)
+
+    def invalid(self, params: Mapping[str, Any]) -> list[str]:
+        """Обязательные параметры, которых нет или значение которых недопустимо."""
+        return sorted(k for k, ok in self.required.items() if k not in params or not ok(params[k]))
 
 
 _CERTIFIED_DEEDS = frozenset({"harvest", "job", "learn", "dconv", "eat"})
@@ -21,17 +55,32 @@ _CERTIFIED_DEEDS = frozenset({"harvest", "job", "learn", "dconv", "eat"})
 
 def _specs() -> dict[str, ScenarioSpec]:
     specs = [
-        ScenarioSpec("refresh", library.refresh, True),
-        ScenarioSpec("fastfood", library.fastfood, True),
+        ScenarioSpec("refresh", library.refresh, True, required={"source": _one_of(REFRESH)}),
+        ScenarioSpec("fastfood", library.fastfood, True, required={"food": _one_of(FOOD_BUTTONS)}),
         ScenarioSpec("levelup", library.levelup, True),
         ScenarioSpec("gorbushka", library.gorbushka, True),
-        ScenarioSpec("sleep", library.sleep, True),
-        ScenarioSpec("battle_target", obligations.battle_target, True),
-        ScenarioSpec("stocks_dump", obligations.stocks_dump, True),
+        ScenarioSpec("sleep", library.sleep, True, required={"hours": _int(7, 12)}),
+        ScenarioSpec(
+            "battle_target",
+            obligations.battle_target,
+            True,
+            required={"target": _one_of(get_args(Target))},
+        ),
+        ScenarioSpec(
+            "stocks_dump",
+            obligations.stocks_dump,
+            True,
+            required={"keep": _int(0), "margin": _int(0)},
+        ),
         ScenarioSpec("factory_signup", obligations.factory_signup, True),
-        ScenarioSpec("bulls_join", obligations.bulls_join, True),
-        ScenarioSpec("tangerine", obligations.tangerine, True),
-        ScenarioSpec("smoothie", obligations.smoothie, True),
+        ScenarioSpec("bulls_join", obligations.bulls_join, True, required={"code": _invite}),
+        ScenarioSpec(
+            "tangerine",
+            obligations.tangerine,
+            True,
+            required={"chat": _int(), "reply_to": _int()},
+        ),
+        ScenarioSpec("smoothie", obligations.smoothie, True, required={"recipe": _recipe}),
         ScenarioSpec("metro", metro.metro, True),
     ]
     for item, certified in (

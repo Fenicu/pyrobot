@@ -19,6 +19,7 @@ from app.engine.planner.loop import (
     NOTHING_RETRY,
     RETRY_AFTER,
     FixedParams,
+    InvalidParams,
     PlannerLoop,
 )
 from app.engine.planner.store import MemoryPlannerStore
@@ -49,11 +50,18 @@ class Notes:
 
 
 class Rig:
-    def __init__(self, world: World, ready: str | None = None, auto: bool = True) -> None:
+    def __init__(
+        self,
+        world: World,
+        ready: str | None = None,
+        auto: bool = True,
+        store: MemoryPlannerStore | None = None,
+        notes: Notes | None = None,
+    ) -> None:
         self.world = world
         self.clock = ShiftClock()
-        self.store = MemoryPlannerStore()
-        self.notes = Notes()
+        self.store = store or MemoryPlannerStore()
+        self.notes = notes or Notes()
         self.ready = ready
         self.loop = PlannerLoop(
             gateway=world.gateway,
@@ -585,3 +593,97 @@ async def test_manual_run_started_in_dry_run_stays_simulated(dry_world: World) -
     run = rig.store.runs[run_id - 1]
     assert (run.status, run.reason) == ("suppressed", "dry_run")
     assert world.game.payloads() == ["/to_eat"]
+
+
+@pytest.mark.parametrize(
+    ("scenario", "params"),
+    [
+        ("refresh", {}),
+        ("refresh", {"source": "bank"}),
+        ("fastfood", {}),
+        ("fastfood", {"food": "caviar"}),
+        ("sleep", {"hours": 3}),
+        ("sleep", {"hours": "8"}),
+        ("battle_target", {"target": "/job"}),
+        ("stocks_dump", {"keep": 100}),
+        ("stocks_dump", {"keep": 100, "margin": True}),
+        ("bulls_join", {"code": "/job"}),
+        ("tangerine", {"chat": -100}),
+        ("smoothie", {"recipe": "🍋🍋"}),
+    ],
+)
+async def test_manual_run_needs_required_params(
+    world: World, scenario: str, params: dict[str, Any]
+) -> None:
+    rig = Rig(world)
+    with pytest.raises(InvalidParams):
+        await rig.loop.request(scenario, params, key="k", by="admin")
+    assert rig.store.runs == []
+
+
+@pytest.mark.parametrize(
+    ("scenario", "params"),
+    [
+        ("refresh", {"source": "gifts"}),
+        ("fastfood", {"food": "banana"}),
+        ("sleep", {"hours": 12}),
+        ("battle_target", {"target": "🤖Hooli"}),
+        ("stocks_dump", {"keep": 100, "margin": 5}),
+        ("bulls_join", {"code": "join_fight_AbCdEfGhIjK"}),
+        ("tangerine", {"chat": -100, "reply_to": 7}),
+        ("smoothie", {"recipe": "🍋🍇🍏🥕🍅"}),
+        ("metro", {}),
+        ("deed:job", {}),
+    ],
+)
+async def test_manual_run_with_required_params_is_queued(
+    world: World, scenario: str, params: dict[str, Any]
+) -> None:
+    rig = Rig(world)
+    _, created = await rig.loop.request(scenario, params, key="k", by="admin")
+    assert created and rig.store.runs[0].status == "queued"
+
+
+class BrokenNotes(Notes):
+    async def notify(self, level: Level, code: str, text: str) -> None:
+        raise ConnectionError("db down")
+
+
+class BeginFails(MemoryPlannerStore):
+    async def run_begin(self, run_id: int, at: datetime) -> None:
+        raise ConnectionError("db down")
+
+
+async def _next_manual_done(rig: Rig, key: str) -> None:
+    rig.world.game.on_text("😎Я", ("profile", 3624478))
+    run_id, _ = await rig.loop.request("refresh", {"source": "profile"}, key=key, by="admin")
+    await until(lambda: rig.store.runs[run_id - 1].status == "done")
+
+
+async def test_manual_run_closed_when_after_fails(world: World) -> None:
+    # Нет ответа на /read_exp: сценарий неудачен, а уведомление о неудаче падает (БД).
+    rig = Rig(world, auto=False, notes=BrokenNotes())
+    task = asyncio.create_task(rig.loop.run())
+    try:
+        run_id, _ = await rig.loop.request("book", {}, key="a1", by="admin")
+        await until(lambda: rig.store.runs[run_id - 1].finished_at is not None, 3.0)
+        assert rig.store.runs[run_id - 1].status == "failed"
+        await _next_manual_done(rig, "a2")
+        assert not task.done()
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_manual_run_failed_when_begin_not_stored(world: World) -> None:
+    rig = Rig(world, auto=False, store=BeginFails())
+    task = asyncio.create_task(rig.loop.run())
+    try:
+        run_id, _ = await rig.loop.request("book", {}, key="b1", by="admin")
+        await until(lambda: rig.store.runs[run_id - 1].status != "queued")
+        run = rig.store.runs[run_id - 1]
+        assert (run.status, run.reason) == ("failed", "store_failed")
+        assert world.game.payloads() == [] and not task.done()
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

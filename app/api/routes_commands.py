@@ -21,7 +21,7 @@ from app.engine.manual import (
     manual_key,
     send_request,
 )
-from app.engine.planner.loop import FixedParams
+from app.engine.planner.loop import FixedParams, InvalidParams
 from app.engine.scenarios.registry import SCENARIOS
 
 log = logging.getLogger(__name__)
@@ -245,8 +245,8 @@ async def scenarios(_: Annotated[SessionContext, Depends(current_session)]) -> l
         200: {"model": ScenarioRunAccepted, "description": "Key already used: existing run"},
         404: {"description": "unknown scenario"},
         422: {
-            "description": "invalid body, params contradicting fixed scenario params, or "
-            "idempotency_key reused with other parameters"
+            "description": "invalid body, params contradicting fixed scenario params, "
+            "missing or invalid required params, or idempotency_key reused with other parameters"
         },
     },
 )
@@ -271,6 +271,10 @@ async def scenario_run(
     except FixedParams as exc:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, f"fixed params: {', '.join(exc.args[0])}"
+        ) from exc
+    except InvalidParams as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"invalid params: {', '.join(exc.args[0])}"
         ) from exc
     if created:
         return ScenarioRunAccepted(scenario_run_id=run_id, status="queued")

@@ -3116,7 +3116,7 @@
             "description": "unknown scenario"
           },
           "422": {
-            "description": "invalid body, params contradicting fixed scenario params, or idempotency_key reused with other parameters"
+            "description": "invalid body, params contradicting fixed scenario params, missing or invalid required params, or idempotency_key reused with other parameters"
           }
         },
         "summary": "Scenario Run",

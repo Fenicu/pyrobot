@@ -108,6 +108,16 @@ async def test_manual_scenario_run(world: World, api_client: AsyncClient) -> Non
     assert code == 422
 
 
+async def test_run_without_required_params_is_422(world: World, api_client: AsyncClient) -> None:
+    h = {"X-CSRF-Token": await login(api_client)}
+    code, body = await _run(api_client, h, "refresh", "q1")
+    assert code == 422 and body == {"detail": "invalid params: source"}
+    code, body = await _run(api_client, h, "refresh", "q2", source="bank")
+    assert code == 422 and body == {"detail": "invalid params: source"}
+    code, _ = await _run(api_client, h, "refresh", "q3", source="profile")
+    assert code == 202
+
+
 async def test_uncertified_run_is_simulated(world: World, api_client: AsyncClient) -> None:
     h = {"X-CSRF-Token": await login(api_client)}
     code, body = await _run(api_client, h, "container_medium", "u1")
