@@ -650,14 +650,12 @@ async def test_manual_run_uses_manual_source(world: World) -> None:
 
 
 async def test_manual_uncertified_is_simulated_and_not_held(world: World) -> None:
-    # /gifts — nav, уходит даже несертифицированным; подавляется только сама команда открытия.
-    world.game.on_text("/gifts", ("items", 3573852))
     rig = Rig(world)
-    run_id, _ = await rig.loop.request("container_medium", {}, key="u1", by="admin")
+    run_id, _ = await rig.loop.request("deed:rob", {}, key="u1", by="admin")
     await rig.loop.run_manual()
     run = rig.store.runs[run_id - 1]
     assert (run.status, run.reason) == ("suppressed", "uncertified")
-    assert world.game.payloads() == ["/gifts"] and rig.loop._held == {}
+    assert world.game.payloads() == [] and rig.loop._held == {}
 
 
 async def test_manual_run_respects_manual_while_paused(world: World) -> None:

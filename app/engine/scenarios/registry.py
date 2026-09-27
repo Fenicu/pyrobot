@@ -96,7 +96,7 @@ def _specs() -> dict[str, ScenarioSpec]:
         ("card", True),
         ("prizebox", True),
         ("container_small", True),
-        ("container_medium", False),
+        ("container_medium", True),
     ):
         specs.append(ScenarioSpec(item, library.free_item, certified, {"item": item}))
     for activity in library.DEED_COMMANDS:

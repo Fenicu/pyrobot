@@ -74,7 +74,9 @@ from tests.fixtures import game_msg
         (3516678, CardUsed(money=597, next_in_s=3000)),
         (3516682, GiftsScreen(containers_small=0, containers_medium=0, tangerines=2)),
         (3623585, GiftsScreen(containers_small=5, containers_medium=0, tangerines=2)),
+        (3611231, GiftsScreen(containers_small=0, containers_medium=1, tangerines=2)),
         (3517971, ContainerOpened(size="small")),
+        (3611233, ContainerOpened(size="medium")),
         (3517262, PrizeboxOpened(money_after=1108)),
     ],
 )

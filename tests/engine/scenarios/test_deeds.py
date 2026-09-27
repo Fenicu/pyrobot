@@ -120,6 +120,33 @@ async def test_container_small_opens_from_gifts_screen(world: World) -> None:
     assert world.gateway.lease is None
 
 
+@certifies("container_medium")
+async def test_container_medium_opens_from_gifts_screen(world: World) -> None:
+    # Живая цепочка 16.08: 🎁Подарки со средним контейнером → /unbox_lm → «Ты открыл Средний».
+    world.game.on_text("/gifts", ("items", 3611231))
+    world.game.on_text("/unbox_lm", ("items", 3611233))
+    result = await run_scenario(
+        free_item, context(world), CharacterState(), {"item": "container_medium"}
+    )
+    assert (result.status, world.game.payloads()) == ("done", ["/gifts", "/unbox_lm"])
+    assert world.gateway.lease is None
+
+
+@certifies("container_medium")
+async def test_container_medium_screen_early_exit(world: World) -> None:
+    # Малые есть, средних нет: /unbox_lm не уходит.
+    world.game.on_text("/gifts", ("items", 3623585))
+    result = await run_scenario(
+        free_item, context(world), CharacterState(), {"item": "container_medium"}
+    )
+    assert (result.status, result.reason, world.game.payloads()) == (
+        "nothing",
+        "no_containers",
+        ["/gifts"],
+    )
+    assert world.gateway.lease is None
+
+
 @certifies("prizebox")
 @pytest.mark.parametrize(
     ("fixture", "reason"),
@@ -154,22 +181,25 @@ OPEN_COMMANDS = {
     "card": "/use_card",
     "prizebox": "/unbox",
     "container_small": "/unbox_ls",
+    "container_medium": "/unbox_lm",
 }
 # Предметы, открытие которых игра принимает только с определённого экрана: экран
 # показывается заранее и не выглядит противоречащим последующему отказу игры.
 OPEN_SCREENS: dict[str, tuple[str, int]] = {
     "prizebox": ("/inv", 3625715),
     "container_small": ("/gifts", 3623585),
+    "container_medium": ("/gifts", 3611231),
 }
 
 
-@certifies("card", "prizebox", "container_small", "book")
+@certifies("card", "prizebox", "container_small", "container_medium", "book")
 @pytest.mark.parametrize(
     ("item", "fixture", "reason"),
     [
         ("card", 3577823, "card_cooldown"),
         ("prizebox", 3520789, "prizebox_locked"),
         ("container_small", 3535591, "no_such_gift"),
+        ("container_medium", 3535591, "no_such_gift"),
         ("book", 3517617, "busy"),
     ],
 )
