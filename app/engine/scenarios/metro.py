@@ -151,8 +151,8 @@ async def metro(ctx: ScenarioContext, state: CharacterState, params: Params) -> 
     async with ctx.lease("metro"):
         if (resume := params.get("resume")) is not None:
             return await _resume(ctx, params, int(resume))
+        # 🚇Метро — кнопка меню офиса: без безопасной точки после него.
         require(await ctx.send("🏢Офис", expect_events(InfoScreen, accept=_is_office)))
-        await ctx.safe_point()
         entrance = await ctx.send("🚇Метро", _entrance_answer())
         if entrance.step is Step.REFUSED:
             return finish(entrance)

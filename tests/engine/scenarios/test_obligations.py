@@ -73,34 +73,84 @@ async def test_stocks_dump_no_candidate_within_limits(world: World) -> None:
     assert (result.status, result.reason) == ("nothing", "no_stock")
 
 
+CREW_MENU = ("crew", 3624389)
+
+
+def factory_chain(world: World, screen: int = 3624391) -> None:
+    world.game.on_text("/crew", CREW_MENU)
+    world.game.on_text("/crew_factory", ("crew", screen))
+
+
+@certifies("factory_signup")
+async def test_factory_signup_via_crew_menu(world: World) -> None:
+    # Живая цепочка 27.09 18:00: меню команды → экран фабрики → запись.
+    world.game.on_text("/crew", ("crew", 3626163))
+    world.game.on_text("/crew_factory", ("crew", 3626165))
+    world.game.on_text("👍Записаться", ("crew", 3626167))
+    result = await run_scenario(factory_signup, context(world), CharacterState(), {})
+    assert (result.status, result.reason) == ("done", "signed")
+    assert world.game.payloads() == ["/crew", "/crew_factory", "👍Записаться"]
+    signed = world.state.factory_signed
+    assert signed is not None and signed.value is True
+    assert world.gateway.lease is None
+
+
 @certifies("factory_signup")
 @pytest.mark.parametrize(("reply", "reason"), [(3624393, "signed"), (3621811, "skip")])
 async def test_factory_signup(world: World, reply: int, reason: str) -> None:
-    world.game.on_text("/crew_factory", ("crew", 3624391))
+    factory_chain(world)
     world.game.on_text("👍Записаться", ("crew", reply))
     result = await run_scenario(factory_signup, context(world), CharacterState(), {})
     assert (result.status, result.reason) == ("done", reason)
-    assert world.game.payloads() == ["/crew_factory", "👍Записаться"]
+    assert world.game.payloads() == ["/crew", "/crew_factory", "👍Записаться"]
 
 
 @certifies("factory_signup")
 @pytest.mark.parametrize(("screen", "reason"), [(3572473, "signed"), (3586815, "closed")])
 async def test_factory_nothing_to_do(world: World, screen: int, reason: str) -> None:
-    world.game.on_text("/crew_factory", ("crew", screen))
+    factory_chain(world, screen)
     result = await run_scenario(factory_signup, context(world), CharacterState(), {})
     assert (result.status, result.reason, world.game.payloads()) == (
         "nothing",
         reason,
-        ["/crew_factory"],
+        ["/crew", "/crew_factory"],
     )
 
 
 @certifies("factory_signup")
 async def test_factory_signup_busy(world: World) -> None:
-    world.game.on_text("/crew_factory", ("crew", 3624391))
+    factory_chain(world)
     world.game.on_text("👍Записаться", ("refusals", 3517360))
     result = await run_scenario(factory_signup, context(world), CharacterState(), {})
     assert (result.status, result.reason) == ("refused", "busy")
+
+
+@certifies("factory_signup")
+async def test_factory_off_screen_is_wrong_screen(world: World) -> None:
+    # 27.09 18:00: /crew_factory не из меню команды — общая справка «Если жаждешь общения…».
+    world.game.on_text("/crew", CREW_MENU)
+    world.game.on_text("/crew_factory", ("refusals", 3626159))
+    result = await run_scenario(factory_signup, context(world), CharacterState(), {})
+    assert (result.status, result.reason) == ("failed", "wrong_screen")
+    assert world.game.payloads() == ["/crew", "/crew_factory"]
+    assert world.gateway.lease is None
+
+
+@certifies("factory_signup")
+async def test_signup_button_off_screen_is_wrong_screen(world: World) -> None:
+    # Экран фабрики пришёл, а 👍Записаться игра приняла уже не с него — общая справка.
+    factory_chain(world)
+    world.game.on_text("👍Записаться", ("refusals", 3626159))
+    result = await run_scenario(factory_signup, context(world), CharacterState(), {})
+    assert (result.status, result.reason) == ("failed", "wrong_screen")
+    assert world.game.payloads() == ["/crew", "/crew_factory", "👍Записаться"]
+
+
+@certifies("factory_signup")
+async def test_factory_without_crew_menu_fails(world: World) -> None:
+    result = await run_scenario(factory_signup, context(world), CharacterState(), {})
+    assert (result.status, result.reason) == ("failed", "timeout")
+    assert world.game.payloads() == ["/crew"]
 
 
 @certifies("bulls_join")

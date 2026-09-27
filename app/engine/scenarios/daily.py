@@ -5,20 +5,11 @@ from datetime import date
 from app.engine.gametime import tasks_day
 from app.engine.parsing.crew import CrewScreen
 from app.engine.parsing.daily import DailyTasksScreen, TaskChosen, TaskConfirm
-from app.engine.scenarios.context import ScenarioContext, Step, StepResult, expect_events
-from app.engine.scenarios.library import Params, ScenarioResult, finish
+from app.engine.scenarios.context import ScenarioContext, Step, expect_events
+from app.engine.scenarios.library import CREW, Params, ScenarioResult, finish, wrong_screen
 from app.engine.state.model import CharacterState
 
-CREW = "/crew"
 TASKS = "⏳Задания"
-
-
-def _failed(step: StepResult) -> ScenarioResult:
-    # «Если жаждешь общения…» — команда ушла не с того экрана (игрок мог листать меню с телефона).
-    # Это неудача, а не отказ игры: пауза повтора растёт, об этом уведомляют.
-    if step.step is Step.REFUSED and step.reason == "unknown_command":
-        return ScenarioResult("failed", "wrong_screen")
-    return finish(step)
 
 
 async def _open(ctx: ScenarioContext) -> tuple[DailyTasksScreen, date] | ScenarioResult:
@@ -26,11 +17,11 @@ async def _open(ctx: ScenarioContext) -> tuple[DailyTasksScreen, date] | Scenari
     между шагами нет: срочное действие между ними сбило бы экран."""
     crew = await ctx.send(CREW, expect_events(CrewScreen))
     if crew.step is not Step.OK:
-        return _failed(crew)
+        return wrong_screen(crew)
     opened = await ctx.send(TASKS, expect_events(DailyTasksScreen))
     screen = opened.first(DailyTasksScreen)
     if opened.step is not Step.OK or screen is None or opened.delivery is None:
-        return _failed(opened)
+        return wrong_screen(opened)
     return screen, tasks_day(opened.delivery.msg.date)
 
 
@@ -69,7 +60,7 @@ async def daily_pick(
             return ScenarioResult("nothing", "day_changed")
         asked = await ctx.send(f"/t_{task}", confirm)
         if asked.step is not Step.OK or asked.delivery is None:
-            return _failed(asked)
+            return wrong_screen(asked)
         if _day_changed(ctx, day):
             return ScenarioResult("nothing", "day_changed")
         # Кнопка привязана к сообщению подтверждения, а не к экрану.

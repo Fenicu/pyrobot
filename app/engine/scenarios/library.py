@@ -78,6 +78,19 @@ def finish(step: StepResult) -> ScenarioResult:
     return ScenarioResult(_STATUS[step.step], step.reason)
 
 
+# Меню команды: `⏳Задания` и `/crew_factory` игра принимает только из него.
+CREW = "/crew"
+
+
+def wrong_screen(step: StepResult) -> ScenarioResult:
+    """Итог неудачного шага экранной команды. «Если жаждешь общения…» — команда ушла не с того
+    экрана (игрок мог листать меню с телефона): это неудача, а не отказ игры — пауза повтора
+    растёт, об этом уведомляют."""
+    if step.step is Step.REFUSED and step.reason == "unknown_command":
+        return ScenarioResult("failed", "wrong_screen")
+    return finish(step)
+
+
 def require(step: StepResult) -> StepResult:
     if step.step is not Step.OK:
         raise ScenarioStopped(step.reason, step)
@@ -117,7 +130,8 @@ async def free_item(ctx: ScenarioContext, state: CharacterState, params: Params)
 
 
 async def _open_prizebox(ctx: ScenarioContext) -> ScenarioResult:
-    # Игра принимает /unbox только с экрана рюкзака, иначе общая справка «Если жаждешь общения…».
+    # Игра принимает /unbox только с экрана рюкзака, иначе общая справка «Если жаждешь общения…»:
+    # безопасной точки между ними нет — ручное или срочное действие сбило бы экран.
     async with ctx.lease("free_item"):
         inv = require(await ctx.send(INVENTORY.command, expect_events(Inventory))).first(Inventory)
         if inv is None:
@@ -126,12 +140,11 @@ async def _open_prizebox(ctx: ScenarioContext) -> ScenarioResult:
             return ScenarioResult("nothing", "no_prizebox")
         if (inv.prizebox_in_s or 0) > 0:
             return ScenarioResult("nothing", "prizebox_locked")
-        await ctx.safe_point()
         return finish(await ctx.send("/unbox", expect_events(PrizeboxOpened)))
 
 
 async def _open_container(ctx: ScenarioContext, item: str) -> ScenarioResult:
-    # Игра принимает /unbox_ls и /unbox_lm только с экрана подарков.
+    # Игра принимает /unbox_ls и /unbox_lm только с экрана подарков: без безопасной точки.
     command = _CONTAINERS[item]
     async with ctx.lease("free_item"):
         gifts = require(await ctx.send(GIFTS.command, expect_events(GiftsScreen))).first(
@@ -142,7 +155,6 @@ async def _open_container(ctx: ScenarioContext, item: str) -> ScenarioResult:
         count = gifts.containers_small if item == "container_small" else gifts.containers_medium
         if count == 0:
             return ScenarioResult("nothing", "no_containers")
-        await ctx.safe_point()
         return finish(await ctx.send(command, expect_events(ContainerOpened)))
 
 
@@ -152,13 +164,12 @@ async def refresh(ctx: ScenarioContext, state: CharacterState, params: Params) -
 
 
 async def fastfood(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
-    # Кнопки еды — из меню 🍴, поэтому сначала открываем меню (nav).
+    # Кнопки еды — из меню 🍴, поэтому сначала открываем меню (nav), и без безопасной точки.
     async with ctx.lease("fastfood"):
         menu = require(await ctx.send("/to_eat", expect_events(FoodMenu))).first(FoodMenu)
         # Кулдаун виден в самом меню: кнопка дала бы только отказ.
         if menu is not None and (menu.fastfood_in_s or 0) > 0:
             return ScenarioResult("nothing", "fastfood_cooldown")
-        await ctx.safe_point()
         return finish(
             await ctx.send(FOOD_BUTTONS[str(params["food"])], expect_events(FastfoodEaten))
         )
@@ -181,11 +192,11 @@ async def levelup(ctx: ScenarioContext, state: CharacterState, params: Params) -
             LevelUpStep, accept=lambda e: isinstance(e, LevelUpStep) and e.step == name
         )
 
+    # Кнопки навыков — из меню level-up, каждая следующая — с экрана после предыдущей: безопасных
+    # точек между шагами нет.
     async with ctx.lease("levelup"):
         require(await ctx.send("/levelup", step("menu")))
-        await ctx.safe_point()
         require(await ctx.send(main, step("main_skill")))
-        await ctx.safe_point()
         return finish(await ctx.send(extra, step("done")))
 
 

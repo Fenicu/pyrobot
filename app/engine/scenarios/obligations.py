@@ -4,7 +4,7 @@ from app.engine.gateway.types import Predicate
 from app.engine.market import dump_size, pick_stock
 from app.engine.parsing.battle import BattleTargetSet
 from app.engine.parsing.bulls import BullsJoined, BullsRefused
-from app.engine.parsing.crew import FactoryScreen, FactorySignup
+from app.engine.parsing.crew import CrewScreen, FactoryScreen, FactorySignup
 from app.engine.parsing.refusals import Busy, Refused
 from app.engine.parsing.screens import BattleMenu
 from app.engine.parsing.smoothie import (
@@ -22,7 +22,14 @@ from app.engine.scenarios.context import (
     Step,
     expect_events,
 )
-from app.engine.scenarios.library import Params, ScenarioResult, finish, require
+from app.engine.scenarios.library import (
+    CREW,
+    Params,
+    ScenarioResult,
+    finish,
+    require,
+    wrong_screen,
+)
 from app.engine.state.model import CharacterState
 
 _DROPS = {fruit: n for n, fruit in enumerate(INGREDIENTS, start=1)}
@@ -33,9 +40,9 @@ async def battle_target(
 ) -> ScenarioResult:
     target = str(params["target"])
     async with ctx.lease("battle_target"):
-        # Кнопки целей — из меню ⚔Битва, поэтому сначала открываем меню (nav).
+        # Кнопки целей — из меню ⚔Битва, поэтому сначала открываем меню (nav), и без безопасной
+        # точки между ними.
         require(await ctx.send("⚔Битва", expect_events(BattleMenu)))
-        await ctx.safe_point()
         chosen = expect_events(
             BattleTargetSet, accept=lambda e: isinstance(e, BattleTargetSet) and e.target == target
         )
@@ -62,7 +69,7 @@ async def stocks_dump(
         n = dump_size(screen.money, keep, screen.reserve or 0, price)
         if n < 1:
             return ScenarioResult("nothing", "not_enough_money")
-        await ctx.safe_point()
+        # Покупка — сразу с экрана биржи, по его деньгам: без безопасной точки.
         bought = expect_events(
             StockBought, accept=lambda e: isinstance(e, StockBought) and e.company == company
         )
@@ -72,19 +79,23 @@ async def stocks_dump(
 async def factory_signup(
     ctx: ScenarioContext, state: CharacterState, params: Params
 ) -> ScenarioResult:
+    # /crew_factory игра принимает только из меню команды, 👍Записаться — только с экрана фабрики.
+    # Безопасной точки между шагами нет: срочное действие между ними сбило бы экран.
     async with ctx.lease("factory_signup"):
-        opened = require(await ctx.send("/crew_factory", expect_events(FactoryScreen)))
+        crew = await ctx.send(CREW, expect_events(CrewScreen))
+        if crew.step is not Step.OK:
+            return wrong_screen(crew)
+        opened = await ctx.send("/crew_factory", expect_events(FactoryScreen))
         screen = opened.first(FactoryScreen)
-        if screen is None:
-            raise ScenarioStopped("unexpected_screen", opened)
+        if opened.step is not Step.OK or screen is None:
+            return wrong_screen(opened)
         if screen.status != "not_signed":
             return ScenarioResult("nothing", screen.status)
-        await ctx.safe_point()
         step = await ctx.send("👍Записаться", expect_events(FactorySignup))
         signup = step.first(FactorySignup)
         if step.step is Step.OK and signup is not None:
             return ScenarioResult("done", signup.result)
-        return finish(step)
+        return wrong_screen(step)
 
 
 async def bulls_join(
@@ -121,7 +132,8 @@ async def smoothie(ctx: ScenarioContext, state: CharacterState, params: Params) 
             return ScenarioResult("nothing", "cooked_today")
         if any(screen.ingredients.get(name, 0) < n for name, n in recipe_need(recipe).items()):
             return ScenarioResult("nothing", "no_ingredients")
-        await ctx.safe_point()
+        # 🍹Готовить — кнопка экрана Смузийной: без безопасной точки. Фрукты — кнопки сообщения
+        # варки, между ними точка есть.
         cooking = require(await ctx.send("🍹Готовить", _dropped("")))
         if cooking.delivery is None:
             raise ScenarioStopped("unexpected_screen", cooking)

@@ -63,19 +63,6 @@ async def test_fastfood_menu_missing_stops(world: World) -> None:
     assert world.gateway.lease is None
 
 
-@certifies("fastfood")
-async def test_fastfood_paused_between_steps(world: World) -> None:
-    world.game.on_text("/to_eat", ("food", 3521844))
-    result = await run_scenario(
-        fastfood, context(world, paused=True), CharacterState(), {"food": "hotdog"}
-    )
-    assert (result.status, result.reason, world.game.payloads()) == (
-        "stopped",
-        "paused",
-        ["/to_eat"],
-    )
-
-
 def _skills(practice: int, theory: int, cunning: int, wisdom: int) -> CharacterState:
     from datetime import UTC, datetime
 
