@@ -356,21 +356,66 @@ def test_stale_team_reread_does_not_block_pick_when_rate_limited() -> None:
     assert picked(decision)[:2] == ("daily_pick", {"task": "convDets_hard"})
 
 
-def test_planned_sleep_cuts_time_for_tasks() -> None:
-    # Ложиться — за 2 ч до дедлайна, то есть через 40 мин; переработке на 72⚙️ нужно 8 × 6 мин.
+NO_SLEEP = Settings.model_validate({"features": {**DAILY.features.model_dump(), "sleep": False}})
+AFTER_MIDNIGHT = datetime(2026, 9, 27, 0, 5, tzinfo=MSK)
+
+
+def after_midnight(personal: PersonalTask, **over: Any) -> CharacterState:
+    day = tasks_day(AFTER_MIDNIGHT)
+    none = TeamTask(current=0, goal=0, resource="", day=day, status="none")
+    return tasks(personal.model_copy(update={"day": day}), none, at=AFTER_MIDNIGHT, **over)
+
+
+def test_sleep_before_midnight_takes_its_hours_from_tasks() -> None:
+    # 16:30, лечь в 16:40 (за 2 ч до дедлайна), встать в 23:40: без сна до полуночи 30 мин.
+    # Переработке на 72⚙️ нужно 8 × 6 мин, работе на $132 — 6 × 2 мин.
+    at = datetime(2026, 9, 26, 16, 30, tzinfo=MSK)
     variants = offers("convDets_hard", "jobMoney_hard")
-    sleepy = tasks(variants, sleep_deadline=m(160))
-    decision = decide(sleepy, DAILY, NOW)
+    sleepy = tasks(variants, at=at, sleep_deadline=at + timedelta(minutes=130))
+    decision = decide(sleepy, DAILY, at)
     assert picked(decision)[1] == {"task": "jobMoney_hard"}
     assert [c.verdict for c in decision.candidates if c.params == {"task": "convDets_hard"}] == [
         "not_feasible"
     ]
-    assert picked(decide(tasks(variants), DAILY, NOW))[1] == {"task": "convDets_hard"}
     # Сон выключен — отдыхать не придётся, время до полуночи целиком.
-    no_sleep = Settings.model_validate(
-        {"features": {**DAILY.features.model_dump(), "sleep": False}}
+    assert picked(decide(sleepy, NO_SLEEP, at))[1] == {"task": "convDets_hard"}
+
+
+def test_night_sleep_after_midnight_leaves_the_day_for_tasks() -> None:
+    # 00:05: сон начнётся сейчас и закончится в 07:05, до сброса ещё почти 17 ч.
+    state = after_midnight(offers("convDets_hard", "jobMoney_hard"), details=0)
+    assert picked(decide(state, DAILY, AFTER_MIDNIGHT))[1] == {"task": "jobMoney_hard"}
+
+
+def test_sleep_across_midnight_ends_the_task_day() -> None:
+    # 21:30: сон с 22:05 до 05:05 — на задания 35 мин, переработке нужно 48.
+    at = datetime(2026, 9, 26, 21, 30, tzinfo=MSK)
+    state = tasks(offers("convDets_hard", "jobMoney_hard"), at=at)
+    assert picked(decide(state, DAILY, at))[1] == {"task": "jobMoney_hard"}
+    assert picked(decide(state, NO_SLEEP, at))[1] == {"task": "convDets_hard"}
+
+
+def test_rob_pro_after_midnight_counts_fights_after_sleep() -> None:
+    # Сон 00:05–07:05, дальше бои раз в час до полуночи: 4 боя × 12⚙️ ≥ 39. Переработать
+    # без ⚙️ нельзя, поэтому первое по порядку не берётся.
+    soon = AFTER_MIDNIGHT + timedelta(minutes=10)
+    waiting = GorbushkaState(state="waiting", won=0, total=4, next_fight_at=soon)
+    variants = offers("convDets_hard", "robPro_hard")
+    state = after_midnight(variants, gorbushka=waiting, details=0)
+    assert picked(decide(state, DAILY, AFTER_MIDNIGHT))[1] == {"task": "robPro_hard"}
+
+
+def test_rob_pro_ticket_fights_until_sleep_across_midnight() -> None:
+    # 20:00, лечь в 22:00 и спать за полночь: на бои два часа, 39⚙️ не набрать.
+    at = datetime(2026, 9, 26, 20, 0, tzinfo=MSK)
+    state = tasks(
+        offers("robPro_hard", "jobMoney_hard"),
+        at=at,
+        gorbushka=GorbushkaState(state="need_ticket"),
+        sleep_deadline=datetime(2026, 9, 27, 0, 0, tzinfo=MSK),
     )
-    assert picked(decide(sleepy, no_sleep, NOW))[1] == {"task": "convDets_hard"}
+    assert picked(decide(state, DAILY, at))[1] == {"task": "jobMoney_hard"}
+    assert picked(decide(state, NO_SLEEP, at))[1] == {"task": "robPro_hard"}
 
 
 @pytest.mark.parametrize(
@@ -380,16 +425,14 @@ def test_planned_sleep_cuts_time_for_tasks() -> None:
         (GorbushkaState(state="need_ticket"), {}, "robPro_hard"),
         # На билет ($120) не хватает.
         (GorbushkaState(state="need_ticket"), {"money": 100}, "jobMoney_hard"),
-        # Резерв на отель перед сном: денег сверх него на билет нет.
+        # Резерв на отель ($210) перед сном: денег сверх него на билет нет.
         (
             GorbushkaState(state="need_ticket"),
-            {"money": 150, "sleep_deadline": m(4 * 60)},
+            {"money": 200, "sleep_deadline": m(4 * 60)},
             "jobMoney_hard",
         ),
         # Дневной лимит с экрана — 3 продавана: 36 < 39.
         (GorbushkaState(state="need_ticket", total=3), {}, "jobMoney_hard"),
-        # До сна два часа — два боя.
-        (GorbushkaState(state="need_ticket"), {"sleep_deadline": m(240)}, "jobMoney_hard"),
     ],
 )
 def test_rob_pro_with_ticket_to_buy(

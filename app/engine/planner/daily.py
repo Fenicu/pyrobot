@@ -147,8 +147,8 @@ class DailyTasks(Obligations):
         return self.certified is None or name in self.certified
 
     def fits_today(self, kind: str, goal: int, deed: str) -> bool:
-        """Грубая оценка «успеет ли до 24:00»: 🔥 с приростом, время без окна битвы, $ сверх
-        резервов и ⚙️ на переработку."""
+        """Грубая оценка «успеет ли до 24:00»: 🔥 с приростом, время без сна и окна битвы, $
+        сверх резервов и ⚙️ на переработку."""
         price = self.price(deed)
         stat = self.s.activity_stats.get(deed) or DEED_PRIORS.get(deed) or ActivityStat()
         if kind == "convDets":
@@ -159,8 +159,9 @@ class DailyTasks(Obligations):
             return False
         runs = math.ceil(goal / income)
         deadline = self.task_deadline()
-        left = deadline - self.now
-        motivation = int(self.value("motivation") or 0) + int(left / MOTIVATION_REGEN)
+        regen = int((deadline - self.now) / MOTIVATION_REGEN)
+        motivation = int(self.value("motivation") or 0) + regen
+        left = self.awake_between(self.now, deadline)
         battle = self.battle_time()
         if battle is not None and self.now < battle < deadline:
             left -= BATTLE_BEFORE + BATTLE_AFTER
@@ -175,16 +176,31 @@ class DailyTasks(Obligations):
         )
 
     def task_deadline(self) -> datetime:
-        """Крайний срок заданий: 24:00 или начало ближайшего сна, если он раньше; после
-        засыпания дела не идут."""
-        midnight = self.midnight()
+        """Крайний срок заданий: 24:00 или начало сна, который длится за полночь."""
+        sleep = self.sleep_today()
+        if sleep is None or sleep[1] <= self.midnight():
+            return self.midnight()
+        return sleep[0]
+
+    def sleep_today(self) -> tuple[datetime, datetime] | None:
+        """Ближайший сон, если он начнётся до 24:00."""
         deadline: datetime | None = self.value("sleep_deadline")
         if not self.sleep_runs() or deadline is None:
-            return midnight
-        return min(midnight, max(self.now, self.sleep_start(deadline)))
+            return None
+        start = max(self.now, self.sleep_start(deadline))
+        if start >= self.midnight():
+            return None
+        return start, start + timedelta(hours=self.cfg.sleep.duration_h)
+
+    def awake_between(self, start: datetime, end: datetime) -> timedelta:
+        """Время от `start` до `end` без сна: во сне ни дела, ни бои не идут."""
+        left = end - start
+        if (sleep := self.sleep_today()) is not None:
+            left -= max(min(end, sleep[1]) - max(start, sleep[0]), timedelta(0))
+        return left
 
     def fights_today(self) -> int:
-        """Сколько боёв Горбушки ещё успеет пройти до крайнего срока (раз в час, пока жив
+        """Сколько боёв Горбушки ещё успеет пройти до крайнего срока (раз в час без сна, пока жив
         билет); билета нет — сколько даст новый, если он по карману сверх резервов."""
         g = self.gorbushka_state()
         deadline = self.task_deadline()
@@ -193,15 +209,16 @@ class DailyTasks(Obligations):
         if g.state == "need_ticket":
             if not self.ticket_affordable():
                 return 0
-            hours = int((deadline - self.now) / GORBUSHKA_FIGHT_GAP)
+            hours = int(self.awake_between(self.now, deadline) / GORBUSHKA_FIGHT_GAP)
             return min(g.total or GORBUSHKA_DAILY, hours)
         if g.state not in ("meeting", "waiting") or g.won is None or g.total is None:
             return 0
         first = max(self.now, g.next_fight_at or self.now)
         end = min(deadline, g.ticket_until) if g.ticket_until else deadline
-        if first >= end:
+        awake = self.awake_between(first, end)
+        if awake <= timedelta(0):
             return 0
-        slots = int((end - first) / GORBUSHKA_FIGHT_GAP) + 1
+        slots = int(awake / GORBUSHKA_FIGHT_GAP) + 1
         return max(0, min(g.total - g.won, slots))
 
     # --- приоритет дел заданий
