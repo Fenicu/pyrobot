@@ -7,6 +7,7 @@ from app.engine.bus import Bus
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade, LockLostError
 from app.engine.gateway.gateway import ActionGateway
+from app.engine.gateway.store import ActionStore
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
 from app.engine.lag import LoopLagMonitor
 from app.engine.memory import MemoryActionStore, MemoryJournal
@@ -32,19 +33,23 @@ def build(
     backend: TgAuthBackend | None = None,
     notifier: NotifierPort | None = None,
     planner: object | None = None,
+    store: ActionStore | None = None,
 ) -> EngineFacade:
     settings = settings or StaticSettings()
+    bus = Bus()
     pipeline = Pipeline(
-        journal=MemoryJournal(), parser=default_parser(), reducer=NullReducer(), bus=Bus()
+        journal=MemoryJournal(), parser=default_parser(), reducer=NullReducer(), bus=bus
     )
     gateway = ActionGateway(
         transport=FakeTransport(),
-        store=MemoryActionStore(),
+        store=store or MemoryActionStore(),
         settings=settings,
         latest=pipeline.latest,
         boundary=lambda: pipeline.last_journal_id,
         clock=SystemClock(),
+        state_version=lambda: pipeline.version,
     )
+    bus.subscribe(gateway.on_delivery, priority=0)
     tg = TgAuthManager(backend or FakeTgBackend(authorized=authorized), expected_user_id=267519921)
     return EngineFacade(
         settings=settings,

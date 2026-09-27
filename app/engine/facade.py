@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -7,7 +8,9 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from app.engine.gateway.gateway import ActionGateway
+from app.engine.gateway.types import ActionRequest, ActionResult
 from app.engine.lag import LoopLagMonitor
+from app.engine.manual import Fingerprint, KeyReused, fingerprint, manual_key
 from app.engine.notify import NotifierPort
 from app.engine.pipeline import Pipeline
 from app.engine.settings import (
@@ -85,6 +88,10 @@ class EngineFacade:
         self._notifier = notifier
         self._reconciler = reconciler
         self._planner = planner
+        self._manual: set[asyncio.Future[ActionResult]] = set()
+        # Отпечатки ручных действий в полёте: повтор ключа с другими параметрами отклоняется
+        # и до записи ключа в БД.
+        self._inflight: dict[str, Fingerprint] = {}
 
     def state(self) -> tuple[int, dict[str, Any]]:
         return self.pipeline.version, self.pipeline.state
@@ -168,6 +175,29 @@ class EngineFacade:
         await self.settings.update(change, changed_by=by)
         if self._planner is not None:
             self._planner.wake()
+
+    async def manual(self, req: ActionRequest, *, wait_s: float) -> ActionResult | None:
+        """Ручное действие через шлюз. None — не завершилось за `wait_s`: оно продолжает
+        исполняться, итог отдаст повтор с тем же ключом идемпотентности. KeyReused — ключ
+        занят действием в полёте с другими параметрами."""
+        key = req.idempotency_key
+        if key is not None:
+            known = self._inflight.get(key)
+            if known is not None and known != fingerprint(req):
+                raise KeyReused(key)
+        task = asyncio.ensure_future(self.gateway.submit(req))
+        self._manual.add(task)
+        task.add_done_callback(self._manual.discard)
+        if key is not None and key not in self._inflight:
+            self._inflight[key] = fingerprint(req)
+            task.add_done_callback(lambda _: self._inflight.pop(key, None))
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), wait_s)
+        except TimeoutError:
+            return None
+
+    def manual_pending(self, key: str) -> bool:
+        return self.gateway.pending_key(manual_key(key))
 
     async def patch_settings(
         self,

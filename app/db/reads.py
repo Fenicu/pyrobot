@@ -112,6 +112,14 @@ class DbReads:
             row = await session.get(ActionRow, action_id)
         return row if row is not None and row.account_id == self._account_id else None
 
+    async def action_by_key(self, key: str) -> ActionRow | None:
+        async with self._db.sessions() as session:
+            return await session.scalar(
+                select(ActionRow).where(
+                    ActionRow.account_id == self._account_id, ActionRow.idempotency_key == key
+                )
+            )
+
     async def scenario_run(self, run_id: int) -> tuple[ScenarioRunRow, int | None] | None:
         async with self._db.sessions() as session:
             row = await session.get(ScenarioRunRow, run_id)

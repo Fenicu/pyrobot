@@ -154,6 +154,7 @@ class Runtime:
             boundary=lambda: pipeline.last_journal_id,
             clock=SystemClock(),
             can_send=self._can_send,
+            state_version=lambda: pipeline.version,
         )
         pending = await actions.unreconciled()
         if pending:

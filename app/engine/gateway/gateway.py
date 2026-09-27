@@ -43,6 +43,7 @@ log = logging.getLogger(__name__)
 LatestLookup = Callable[[int, int], IncomingMessage | None]
 Boundary = Callable[[], int]
 CanSend = Callable[[], str | None]
+StateVersion = Callable[[], int]
 Blocked = tuple[ActionStatus, str]
 UncertainHook = Callable[[ActionRequest, int | None], None]
 DATE_SKEW = timedelta(seconds=2)
@@ -51,6 +52,8 @@ MAX_KEY_LEN = 100
 _NEXT_ERROR_PAUSE_S = 0.05
 _ABANDON_WRITE_S = 5.0
 RECONCILE_REASON = "reconcile_required"
+# Ключ ручного действия не записан: запрос проваливается, повтор тем же ключом безопасен.
+STORE_FAILED = "store_failed"
 
 
 @dataclass(eq=False)
@@ -85,6 +88,10 @@ def _always_can_send() -> str | None:
     return None
 
 
+def _keyed_manual(req: ActionRequest) -> bool:
+    return req.source is Source.MANUAL and req.idempotency_key is not None
+
+
 def command_class(req: ActionRequest) -> CommandClass:
     if req.kind is ActionKind.SEND:
         return classify_text(req.text or "")
@@ -114,9 +121,11 @@ class ActionGateway:
         clock: Clock,
         can_send: CanSend = _always_can_send,
         on_uncertain: UncertainHook | None = None,
+        state_version: StateVersion | None = None,
     ) -> None:
         self._transport = transport
         self._can_send = can_send
+        self._state_version = state_version
         self._store = store
         self._settings = settings
         self._latest = latest
@@ -212,6 +221,10 @@ class ActionGateway:
             if req.idempotency_key is None:
                 await self._withdraw(pending)
             raise
+
+    def pending_key(self, key: str) -> bool:
+        """Действие с этим ключом идемпотентности ещё не завершено в этом процессе."""
+        return self._live_shared(key) is not None
 
     def _live_shared(self, key: str) -> asyncio.Future[ActionResult] | None:
         # done_callback снимает ключ через call_soon — без .done() можно поймать
@@ -356,6 +369,8 @@ class ActionGateway:
             return ActionStatus.REJECTED, "chat_not_allowed"
         if cls is CommandClass.RISKY and not (req.source is Source.MANUAL and req.risky_confirmed):
             return ActionStatus.REJECTED, "risky_requires_confirm"
+        if self._confirm_stale(req):
+            return ActionStatus.REJECTED, "confirm_stale"
         if cls is not CommandClass.NAV and req.expect is None:
             return ActionStatus.REJECTED, "expectation_required"
         if self._kill_reason is not None or eng.killed:
@@ -374,6 +389,14 @@ class ActionGateway:
         if self._spend_block is not None and cls is not CommandClass.NAV:
             return ActionStatus.REJECTED, f"blocked:{self._spend_block}"
         return None
+
+    def _confirm_stale(self, req: ActionRequest) -> bool:
+        if req.confirm_until is not None and self._clock.now() > req.confirm_until:
+            return True
+        if req.confirm_version is None:
+            return False
+        current = self._state_version() if self._state_version is not None else None
+        return current != req.confirm_version
 
     def _policy_checks(self, req: ActionRequest) -> Blocked | None:
         current = self._settings.current
@@ -487,18 +510,28 @@ class ActionGateway:
             return dup.existing.to_result()
         except Exception:
             log.exception("intent not persisted")
+            if _keyed_manual(p.req):
+                return ActionResult(ActionStatus.REJECTED, reason=STORE_FAILED)
             if p.cls is not CommandClass.NAV:
                 return ActionResult(ActionStatus.REJECTED, reason="db_unavailable")
         return await self._attempts(p)
 
     async def _record(self, p: _Pending, status: ActionStatus, reason: str) -> ActionResult:
-        # Действие не дошло до INTENT — ключ идемпотентности не расходуется,
-        # чтобы тем же ключом можно было повторить попытку (например, после dry_run).
-        req_for_store = replace(p.req, idempotency_key=None)
+        # Действие не дошло до INTENT — ключ идемпотентности не расходуется, чтобы тем же ключом
+        # можно было повторить попытку (например, после dry_run). Кроме ручных: для API повтор
+        # с тем же ключом возвращает прежний итог.
+        manual = _keyed_manual(p.req)
+        req_for_store = p.req if manual else replace(p.req, idempotency_key=None)
         try:
             action_id: int | None = await self._store.create(req_for_store, p.cls, status, reason)
+        except DuplicateKey as dup:
+            return dup.existing.to_result()
         except Exception:
             log.exception("action record not persisted")
+            # Итог ручного действия без сохранённого ключа нельзя отдавать: повтор тем же
+            # ключом уже в live отправил бы команду, подавленную сейчас.
+            if manual:
+                return ActionResult(ActionStatus.REJECTED, reason=STORE_FAILED)
             action_id = None
         return ActionResult(status, action_id=action_id, reason=reason)
 

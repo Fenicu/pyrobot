@@ -272,6 +272,38 @@ async def test_idempotency_key_reusable_after_dry_run_suppressed() -> None:
         assert len(r.transport.sent) == 1
 
 
+async def test_manual_key_keeps_result_after_dry_run_suppressed() -> None:
+    # Ручной ключ — идемпотентность API: повтор возвращает прежний итог, а не новую попытку.
+    dry = Settings(engine=LIVE.engine.model_copy(update={"mode": "dry_run"}))
+    async for r in running_rig(dry):
+        req = send(
+            "/job", expect=expect_text("работать"), idempotency_key="m", source=Source.MANUAL
+        )
+        r1 = await r.gw.submit(req)
+        assert r1.status is ActionStatus.SUPPRESSED and r1.reason == "dry_run"
+        await r.settings.update(
+            lambda s: s.model_copy(
+                update={"engine": s.engine.model_copy(update={"mode": "live"})}
+            ),
+            changed_by="t",
+        )
+        r2 = await r.gw.submit(req)
+        assert (r2.status, r2.action_id) == (ActionStatus.SUPPRESSED, r1.action_id)
+        assert r.transport.sent == [] and len(r.store.rows) == 1
+        assert not r.gw.pending_key("m")
+
+
+async def test_pending_key_while_queued(rig: Rig) -> None:
+    exp = expect_text("работать", timeout=5.0)
+    req = send("/job", expect=exp, idempotency_key="q", source=Source.MANUAL)
+    task = asyncio.create_task(rig.gw.submit(req))
+    await until(lambda: bool(rig.transport.sent))
+    assert rig.gw.pending_key("q") and not rig.gw.pending_key("other")
+    await rig.deliver(make_msg("Ты отправился работать", msg_id=900))
+    assert (await task).status is ActionStatus.CONFIRMED
+    await until(lambda: not rig.gw.pending_key("q"))
+
+
 async def test_idempotency_key_too_long_rejected(rig: Rig) -> None:
     res = await rig.gw.submit(send("😎Я", idempotency_key="x" * 101))
     assert res.status is ActionStatus.REJECTED and res.reason == "bad_key"
@@ -617,3 +649,54 @@ async def test_content_rechecked_before_retry() -> None:
         res = await r.gw.submit(_map_click(decided.content_hash()))
         assert (res.status, res.reason) == (ActionStatus.REJECTED, "stale_content")
         assert len(r.transport.sent) == 1
+
+
+async def test_risky_confirm_checked_at_send(rig: Rig) -> None:
+    exp = expect_text("перерабатываешь")
+    rig.reply_with("Ты перерабатываешь улучшения")
+    later = datetime.now(UTC) + timedelta(minutes=2)
+
+    def risky(version: int, until: datetime) -> ActionRequest:
+        return send(
+            "⚪️ → 🔵",
+            source=Source.MANUAL,
+            risky_confirmed=True,
+            confirm_version=version,
+            confirm_until=until,
+            expect=exp,
+        )
+
+    # Пока действие ждало (аренда сценария), состояние изменилось: подтверждение устарело.
+    lease = await rig.gw.acquire_lease("scenario")
+    task = asyncio.create_task(rig.gw.submit(risky(0, later)))
+    await until(lambda: rig.gw.queue_size == 1)
+    rig.version = 1
+    await rig.gw.release_lease(lease)
+    res = await task
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "confirm_stale")
+    expired = await rig.gw.submit(risky(1, datetime.now(UTC) - timedelta(seconds=1)))
+    assert (expired.status, expired.reason) == (ActionStatus.REJECTED, "confirm_stale")
+    assert rig.transport.sent == []
+    ok = await rig.gw.submit(risky(1, later))
+    assert ok.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["⚪️ → 🔵"]
+
+
+class _BrokenStore(MemoryActionStore):
+    async def create(self, *args: object, **kwargs: object) -> int:
+        raise ConnectionError("db down")
+
+
+async def test_manual_key_not_stored_fails_request() -> None:
+    dry = Settings(engine=LIVE.engine.model_copy(update={"mode": "dry_run"}))
+    async for r in running_rig(dry):
+        r.gw._store = _BrokenStore()
+        manual = send("/job", expect=expect_text("x"), idempotency_key="m", source=Source.MANUAL)
+        res = await r.gw.submit(manual)
+        assert (res.status, res.reason) == (ActionStatus.REJECTED, "store_failed")
+        nav = await r.gw.submit(send("😎Я", idempotency_key="n", source=Source.MANUAL))
+        assert (nav.status, nav.reason) == (ActionStatus.REJECTED, "store_failed")
+        # Без ключа или не вручную — как раньше: итог есть, записи нет.
+        planner = await r.gw.submit(send("/job", expect=expect_text("x")))
+        assert (planner.status, planner.action_id) == (ActionStatus.SUPPRESSED, None)
+        assert r.transport.sent == []

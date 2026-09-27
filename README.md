@@ -802,7 +802,10 @@ identity (`get_me`) проверяется до запуска апдейтов,
 `OUTCOME_UNKNOWN "timeout"` без автоматического повтора, а у ожидания с `silence_confirms` —
 `CONFIRMED "silence"`. `MemoryActionStore`
 (`app/engine/memory.py`) — реализация для тестов; `DbActionStore` (`app/db/actions.py`) — Postgres,
-с уникальным `(account_id, idempotency_key)` для дедупликации повторных отправок и
+с уникальным `(account_id, idempotency_key)` для дедупликации повторных отправок (ключ действия,
+отклонённого или подавленного до `INTENT`, не расходуется — тем же ключом можно повторить попытку;
+кроме ручных `MANUAL`: их итог сохраняется под ключом всегда, повтор возвращает его, а если ключ
+записать не удалось — `REJECTED "store_failed"` вместо итога) и
 `mark_unfinished_unknown()` для восстановления после рестарта (незавершённые `INTENT`/`SENT`
 переводятся в `OUTCOME_UNKNOWN "restart"`). Если выполнение действия прервано внутренней ошибкой или
 остановкой шлюза, строка, уже дошедшая до `INTENT`/`SENT`, сразу закрывается как `OUTCOME_UNKNOWN` с
@@ -951,3 +954,33 @@ code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (�
 payload, попытки, ответ-тост, деталь совпадения ожидания, моменты отправки, завершения и сверки) и
 `GET /api/v1/scenario-runs/{id}` (запуск сценария и `metro_run_id`, если это забег метро); чужая или
 несуществующая запись — 404.
+
+Ручные команды (`app/api/routes_commands.py`, CSRF): `POST /api/v1/commands/send {text,
+idempotency_key, confirm_token?}` — текст в игровой чат, `POST /api/v1/commands/click {chat_id,
+message_id, revision, callback_data, idempotency_key, confirm_token?}` — нажатие кнопки ревизии
+`revision` (шлюз отклонит клик, если последняя правка сообщения другая, `stale_revision`, или кнопки
+в ней нет, `stale_button`). Обе идут через шлюз от имени `MANUAL` (приоритет выше сценариев и плана;
+во время паузы — по `engine.manual_while_paused`; выключенная механика ручную команду не
+отклоняет) и отвечают `{action_id, status, reason, answer}` — итог шлюза (`confirmed`, `refused`,
+`suppressed`, `rejected`, `outcome_unknown`) с причиной. Смысл ручной команды движку неизвестен,
+поэтому не-`nav` подтверждает первый ответ игры в чате, а отказ игры (`Busy`, `Refused`) — отказ
+(`any_reply`, `app/engine/manual.py`); `nav` подтверждается отправкой. Запрос ждёт итога до
+`Container.command_wait_s` (30 с); не успел — 202 `{"status": "pending", "action_id": null}`,
+действие продолжает исполняться, итог отдаёт повтор с тем же ключом. `idempotency_key` — до 64
+символов `[A-Za-z0-9_.:-]`, в `actions` хранится как `manual:<ключ>`; повтор с тем же ключом
+возвращает прежний итог (в том числе подавление в `dry_run` — новая попытка требует нового ключа),
+тот же ключ с другими параметрами — 422, в том числе пока первое действие ещё в очереди (фасад
+держит отпечаток запросов в полёте). Если ключ не удалось записать (сбой БД), итога нет: шлюз
+отвечает `REJECTED "store_failed"`, API — 503 `{"detail": "store_failed"}`, повтор тем же ключом
+безопасен. `forbidden`/`donate` — всегда 403 `{"detail":
+"forbidden"}`/`{"detail": "donate"}`, попытка пишется в `actions` как `rejected` без ключа. `risky`
+требует подтверждения: запрос без `confirm_token` или с негодным токеном — 409 `{"detail": {"code":
+"confirm_required", "reason": "missing"|"invalid"|"expired", "confirm_token", "expires_at",
+"state_version", "command_class"}}`; клиент показывает подтверждение и повторяет тот же запрос с
+токеном. Токен (`ConfirmTokens`, `app/api/confirm.py`) — HMAC над сессией, ключом
+идемпотентности, точными параметрами и версией состояния, живёт 120 с, секрет — на процесс: изменилось
+состояние персонажа, параметры или сессия — нужен новый токен. Версия и срок токена уходят в шлюз
+(`ActionRequest.confirm_version`/`confirm_until`), и он сверяет их с текущей версией состояния перед
+каждой попыткой отправки: изменилось, пока действие ждало в очереди, или срок вышел — `REJECTED
+"confirm_stale"`, команда не уходит. Повтор уже исполненного или ещё исполняемого ключа
+подтверждения не требует.

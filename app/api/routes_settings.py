@@ -56,8 +56,8 @@ def _unprocessable(errors: list[dict[str, Any]]) -> HTTPException:
 
 @router.get("/settings", response_model=SettingsOut)
 async def get_settings(
-    f: Annotated[EngineFacade, Depends(facade)],
     _: Annotated[SessionContext, Depends(current_session)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> SettingsOut:
     return SettingsOut(
         version=f.settings.version,
@@ -70,8 +70,8 @@ async def get_settings(
 @router.patch("/settings", response_model=SettingsPatchOut)
 async def patch_settings(
     body: SettingsPatchIn,
-    f: Annotated[EngineFacade, Depends(facade)],
     ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(facade)],
 ) -> SettingsPatchOut:
     try:
         upd = await f.patch_settings(

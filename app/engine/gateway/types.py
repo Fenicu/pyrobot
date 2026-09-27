@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from enum import IntEnum, StrEnum
 
 from app.engine.bus import Delivery
@@ -76,6 +77,10 @@ class ActionRequest:
     # Шаг запуска, начатого в dry_run: режим запуска зафиксирован на старте, переключение
     # в live посреди сценария не делает его следующие шаги реальными.
     dry_run: bool = False
+    # Подтверждение risky: версия состояния и срок, на которые выдан токен. Шлюз сверяет их перед
+    # каждой попыткой отправки — пока действие ждало в очереди, состояние могло измениться.
+    confirm_version: int | None = None
+    confirm_until: datetime | None = None
 
     def payload(self) -> dict[str, object]:
         return {

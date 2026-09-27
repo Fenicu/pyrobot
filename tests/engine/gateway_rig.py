@@ -37,6 +37,7 @@ class Rig:
         self.latest: dict[tuple[int, int], IncomingMessage] = {}
         self.jid = 0
         self.block: str | None = None
+        self.version = 0
         self.gw = ActionGateway(
             transport=self.transport,
             store=self.store,
@@ -45,6 +46,7 @@ class Rig:
             boundary=lambda: self.jid,
             clock=clock or SystemClock(),
             can_send=lambda: self.block,
+            state_version=lambda: self.version,
         )
         self.task: asyncio.Task[None] | None = None
 
