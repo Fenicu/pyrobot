@@ -1,4 +1,4 @@
-name: Проверки pyrobot
+name: Проверки, сборка и выкатка pyrobot
 
 on:
   push:
@@ -9,6 +9,9 @@ on:
 concurrency:
   group: ci-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  IMAGE: git.fenicu.com/fenicu/pyrobot
 
 jobs:
   lint:
@@ -73,3 +76,76 @@ jobs:
         run: |
           uv sync --frozen
           uv run pytest -q -m "not corpus"
+
+  # Образ собирается на каждый push (ловит поломку Dockerfile), в registry уходит только по тегу vX.Y.Z.
+  image:
+    runs-on: self-hosted
+    needs: [lint, test]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Сборка образа
+        run: |
+          docker build --build-arg APT_PROXY=http://10.10.40.23:3142 \
+            -t "$IMAGE:ci-${{ github.sha }}" .
+      - name: Публикация в registry
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag $TAG is not vX.Y.Z"; exit 1; }
+          echo "$REGISTRY_TOKEN" | docker login git.fenicu.com -u "$REGISTRY_USER" --password-stdin
+          docker tag "$IMAGE:ci-${{ github.sha }}" "$IMAGE:$TAG"
+          docker tag "$IMAGE:ci-${{ github.sha }}" "$IMAGE:latest"
+          docker push "$IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+      - name: Убрать локальные теги
+        if: always()
+        run: |
+          docker image rm "$IMAGE:ci-${{ github.sha }}" "$IMAGE:${{ github.ref_name }}" \
+            "$IMAGE:latest" 2>/dev/null || true
+
+  # Выкатка на apps по тегу: compose.yml, .env из секретов и скрипт выкатки по ssh, дальше на apps
+  # pull → migrate → up → ожидание /readyz (deploy/remote-deploy.sh).
+  deploy:
+    runs-on: self-hosted
+    needs: [image]
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-pyrobot
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - name: Выкатка на apps
+        env:
+          TAG: ${{ github.ref_name }}
+          APPS: fenicu@10.10.40.20
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.PYROBOT_DB_PASSWORD }}
+          PYROBOT_TG_API_ID: ${{ secrets.PYROBOT_TG_API_ID }}
+          PYROBOT_TG_API_HASH: ${{ secrets.PYROBOT_TG_API_HASH }}
+          # Нужен только первому старту (создание админа); дальше пароль меняется через API.
+          PYROBOT_ADMIN_PASSWORD: ${{ secrets.PYROBOT_ADMIN_PASSWORD }}
+          # Переменная репозитория: true — только на первый выкат, пока не выполнен вход в Telegram.
+          SKIP_READY: ${{ vars.PYROBOT_SKIP_READY }}
+        run: |
+          KEY="$(mktemp)"
+          ENV_FILE="$(mktemp)"
+          trap 'rm -f "$KEY" "$ENV_FILE"' EXIT
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$KEY"
+          chmod 600 "$KEY"
+          # .env пересоздаётся целиком; значения — в литеральной форме Compose (render-env.sh),
+          # чтобы `$` в секретах не интерполировался.
+          export PYROBOT_IMAGE="$IMAGE:$TAG" PYROBOT_TRANSPORT=kurigram PYROBOT_ADMIN_LOGIN=admin \
+            PYROBOT_COOKIE_SECURE=true PYROBOT_LOG_LEVEL=INFO PYROBOT_FORWARDED_ALLOW_IPS=10.10.40.3
+          bash deploy/render-env.sh PYROBOT_IMAGE POSTGRES_PASSWORD PYROBOT_TRANSPORT \
+            PYROBOT_TG_API_ID PYROBOT_TG_API_HASH PYROBOT_ADMIN_LOGIN PYROBOT_ADMIN_PASSWORD \
+            PYROBOT_COOKIE_SECURE PYROBOT_LOG_LEVEL PYROBOT_FORWARDED_ALLOW_IPS > "$ENV_FILE"
+          OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
+          ssh "${OPTS[@]}" "$APPS" 'mkdir -p ~/pyrobot'
+          scp "${OPTS[@]}" compose.yml deploy/remote-deploy.sh "$APPS:pyrobot/"
+          scp "${OPTS[@]}" "$ENV_FILE" "$APPS:pyrobot/.env"
+          ssh "${OPTS[@]}" "$APPS" "SKIP_READY=${SKIP_READY:-false} bash ~/pyrobot/remote-deploy.sh"

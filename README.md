@@ -1098,5 +1098,68 @@ Caddy с web), `PYROBOT_FORWARDED_ALLOW_IPS` по умолчанию `10.10.40.3
 Проверка локально:
 
 ```bash
-docker compose -f compose.yml config          # нужен .env рядом (см. .env.example + POSTGRES_PASSWORD)
+docker compose -f compose.yml config          # нужен .env рядом (см. .env.example, POSTGRES_PASSWORD обязателен)
 ```
+
+**CI/CD** (`.forgejo/workflows/ci.yml`, Forgejo Actions): на каждый push — `lint` (ruff, mypy) и
+`test` (pytest с сервисом Postgres) в контейнере uv, затем `image` на хостовом раннере
+(`self-hosted`) собирает образ — поломка `Dockerfile` видна сразу. По тегу `vX.Y.Z` `image`
+публикует образ в registry Forgejo как `git.fenicu.com/fenicu/pyrobot:<тег>` и `:latest` (тег другого
+вида — ошибка), и `deploy` выкатывает его на apps: пишет `.env` из секретов, копирует по ssh
+`compose.yml` и `deploy/remote-deploy.sh` в `~/pyrobot` и запускает скрипт — `docker compose pull
+pyrobot` → `docker compose run --rm migrate` (ошибка миграции останавливает выкат, старый бот работает
+дальше) → `docker compose up -d --remove-orphans` → ожидание `/readyz` до 5 минут (`python -m
+app.healthcheck /readyz` внутри контейнера), не дождался — вывод `docker compose ps` и хвоста логов,
+job красный. Выкаты не идут параллельно (`concurrency: deploy-pyrobot`). apps должен быть залогинен
+в `git.fenicu.com` (как для остальных сервисов на apps).
+
+Секреты репозитория (`secrets.*`):
+
+| Секрет | Назначение |
+|---|---|
+| `GITEA_TOKEN` | Клонирование исходников в контейнерных job (`lint`, `test`). |
+| `REGISTRY_USER`, `REGISTRY_TOKEN` | Вход в registry `git.fenicu.com` для публикации образа. |
+| `DEPLOY_SSH_KEY` | Приватный ключ деплоя на apps (`fenicu@10.10.40.20`; по спеке — ключ `~/.ssh/forgejo-deploy-apps`), как у остальных сервисов на apps. |
+| `PYROBOT_DB_PASSWORD` | Пароль Postgres на apps (`POSTGRES_PASSWORD`, hex — без URL-экранирования). |
+| `PYROBOT_TG_API_ID`, `PYROBOT_TG_API_HASH` | Telegram API (my.telegram.org). |
+| `PYROBOT_ADMIN_PASSWORD` | Пароль первого админа (нужен только первому старту; дальше пароль меняется через `POST /api/v1/auth/password`). |
+
+Переменная репозитория `PYROBOT_SKIP_READY` (`vars.*`, по умолчанию не задана): `true` — выкат ждёт
+только `/healthz`. Нужна на первый выкат: `/readyz` отдаёт 200 только при Telegram `ONLINE`, а вход в
+Telegram делается через API уже работающего сервиса (см. «Первый вход»); после входа переменную
+убрать. С включённым
+kill switch или блоком трат `/readyz` тоже 503 — выкат будет красным, пока их не снять.
+
+**Caddy на web** — `deploy/Caddyfile.sw.fenicu.com`: блок `sw.fenicu.com` → `http://10.10.40.20:8090`
+без Authelia (у админки своя авторизация), `flush_interval -1` для SSE; добавляется в
+`/home/fenicu/caddy/Caddyfile` на 10.10.40.3, проверка `caddy validate` и перезапуск контейнера
+`caddy`. Caddy сам ставит `X-Forwarded-For` с адресом клиента, бот доверяет ему только от
+`10.10.40.3` (`PYROBOT_FORWARDED_ALLOW_IPS`).
+
+`.env` деплой пишет скриптом `deploy/render-env.sh` из переменных окружения шага: каждое значение —
+в литеральной форме Compose (`ИМЯ='значение'`, одинарная кавычка внутри — `\'`), поэтому `$` в
+паролях не интерполируется; значения с обратным слэшем перед кавычкой или в конце и с переводом
+строки Compose так прочитать не может — скрипт их отклоняет (выкат падает, значение не печатается).
+Проверка — `tests/test_render_env.py` (круг через `docker compose config` с настоящим `compose.yml`).
+
+**Первый вход** (админки ещё нет) — `tools/login.py`, интерактивно по API сервиса:
+
+```bash
+uv run python tools/login.py https://sw.fenicu.com   # или http://10.10.40.20:8090 внутри сети
+```
+
+Скрипт спрашивает логин и пароль админа (`PYROBOT_ADMIN_LOGIN`/`PYROBOT_ADMIN_PASSWORD`), входит
+(`POST /api/v1/auth/login` → cookie сессии и CSRF-токен — только в памяти процесса, cookie
+передаётся заголовком), проверяет `GET /api/v1/tg/status` и, если Telegram не `online`, ведёт вход:
+телефон → `tg/login/start`, код из Telegram → `tg/login/code` (до 3 попыток), при 2FA пароль →
+`tg/login/password` (до 3 попыток). Коды и пароли вводятся без эха и нигде не печатаются. В конце
+`user_id` аккаунта сверяется с `telegram.expected_user_id` из `GET /api/v1/settings` (сервис и сам
+выходит из чужого аккаунта с ошибкой `unexpected_user`), сессия админа закрывается
+(`auth/logout`); ошибка — код выхода 1 и причина без секретов. Тесты —
+`tests/api/test_login_tool.py` (ASGI-приложение с fake-транспортом: неверный код и пароль 2FA,
+уже `online`, чужой аккаунт, неверный пароль админа).
+
+Первый выкат: завести секреты и `PYROBOT_SKIP_READY=true` → тег `vX.Y.Z` (выкат ждёт только
+`/healthz`) → добавить блок в Caddy → `tools/login.py` (вход админа и в Telegram) → проверить `GET
+/readyz` = 200 → убрать `PYROBOT_SKIP_READY` (следующие выкаты ждут `/readyz`). Режим после выката —
+`dry_run` (дефолт настроек), переход в `live` — отдельным решением (спека, «Катовер»).
