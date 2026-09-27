@@ -1,6 +1,8 @@
 import { goto } from '$app/navigation';
 import { createApi, EVENTS_URL } from '$lib/api/client';
 import { LiveConnection } from '$lib/live/connection.svelte';
+import { CharacterStore } from '$lib/stores/character.svelte';
+import { EngineStore } from '$lib/stores/engine.svelte';
 import { Session } from '$lib/stores/session.svelte';
 import { UnreadCounter } from '$lib/stores/unread.svelte';
 
@@ -14,6 +16,8 @@ export const live = new LiveConnection({
 	onUnauthorized: () => session.expire()
 });
 export const unread = new UnreadCounter(api);
+export const engine = new EngineStore(api);
+export const character = new CharacterStore(api);
 
 let unsubscribe: (() => void) | null = null;
 
@@ -22,13 +26,19 @@ export function startApp(): void {
 	if (unsubscribe !== null) return;
 	unsubscribe = live.subscribe((event) => {
 		unread.onEvent(event);
+		engine.onEvent(event);
+		character.onEvent(event);
 	});
 	live.start();
 	void unread.load();
+	engine.start();
+	character.start();
 }
 
 export function stopApp(): void {
 	unsubscribe?.();
 	unsubscribe = null;
 	live.stop();
+	engine.stop();
+	character.stop();
 }
