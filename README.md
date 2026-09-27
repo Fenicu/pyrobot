@@ -32,6 +32,7 @@ uv run mypy
 | `PYROBOT_LOG_LEVEL` | Уровень логирования (DEBUG, INFO, WARNING, ERROR). Логгер `pyrogram` никогда не опускается ниже INFO: в DEBUG kurigram печатает код входа в Telegram. |
 | `PYROBOT_HTTP_HOST` | IP для привязки HTTP сервера. |
 | `PYROBOT_HTTP_PORT` | Порт для HTTP API. |
+| `PYROBOT_FORWARDED_ALLOW_IPS` | Адреса обратного прокси через запятую, чьим `X-Forwarded-For`/`X-Forwarded-Proto` доверяет uvicorn (`--proxy-headers`), по умолчанию `127.0.0.1`; в боевой — Caddy `10.10.40.3`. Без этого лимитер входа видит всех клиентов одним адресом прокси, а заголовок от чужого адреса игнорируется. |
 | `PYROBOT_ACCOUNT_ID` | Внутренний `accounts.id` в базе pyrobot (по умолчанию 1), не ID игрока в игре. |
 | `PYROBOT_PLANNER` | Планировщик принимает решения сам (по умолчанию `true`); `false` — движок только принимает сообщения и выполняет ручные команды и ручные запуски сценариев (цикл планировщика работает без собственных решений). |
 
@@ -890,7 +891,11 @@ backoff с 429 и `Retry-After`. Истёкшие `auth_sessions` удаляет
 час (`Runtime.session_purge_s`, `AuthRepo.purge_expired`). Смена пароля (`POST
 /api/v1/auth/password`, новый пароль не короче 12 и не длиннее 1024 символов, текущий — не длиннее
 1024) отзывает все сессии админа, включая текущую. `GET /healthz` — проверка живости, без
-авторизации. Swagger UI, ReDoc и `/openapi.json` отключены (404).
+авторизации. Swagger UI, ReDoc и `/openapi.json` отключены (404): схема не публикуется, а
+выгружается офлайн — `uv run python tools/openapi.py [файл]` (по умолчанию `openapi.json` в корне
+репозитория, `build_schema` в `app/api/openapi.py` собирает приложение без БД и движка); из неё
+генерируются TS-типы админки. `openapi.json` лежит в репозитории, тест `tests/test_openapi.py`
+падает, если он отстал от кода.
 
 `EngineFacade` (`app/engine/facade.py`) — фасад над `ActionGateway`, `Pipeline` и `TgAuthManager`:
 `status()` отдаёт режим, kill switch, блок трат, статус Telegram, длину очереди, текущее действие,
