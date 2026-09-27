@@ -39,7 +39,7 @@ async def test_refresh_reads_screen_via_crew_menu(world: World) -> None:
 async def test_refresh_off_screen_is_wrong_screen(world: World) -> None:
     open_screen(world, WRONG_SCREEN)
     result = await run_scenario(daily_refresh, context(world), CharacterState(), {})
-    assert (result.status, result.reason) == ("refused", "wrong_screen")
+    assert (result.status, result.reason) == ("failed", "wrong_screen")
     assert world.gateway.lease is None
 
 
@@ -100,7 +100,7 @@ async def test_pick_reads_screen_first(
 async def test_pick_off_screen_is_wrong_screen(world: World) -> None:
     open_screen(world, WRONG_SCREEN)
     result = await run_scenario(daily_pick, context(world), CharacterState(), {"task": TASK})
-    assert (result.status, result.reason) == ("refused", "wrong_screen")
+    assert (result.status, result.reason) == ("failed", "wrong_screen")
     assert world.game.payloads() == ["/crew", "⏳Задания"]
 
 
@@ -110,7 +110,7 @@ async def test_pick_command_off_screen_is_wrong_screen(world: World) -> None:
     open_screen(world, OFFERS)
     world.game.on_text(f"/t_{TASK}", ("refusals", 3625756))
     result = await run_scenario(daily_pick, context(world), CharacterState(), {"task": TASK})
-    assert (result.status, result.reason) == ("refused", "wrong_screen")
+    assert (result.status, result.reason) == ("failed", "wrong_screen")
     assert world.game.payloads() == ["/crew", "⏳Задания", f"/t_{TASK}"]
 
 

@@ -282,6 +282,19 @@ async def test_daily_refresh_marks_last_refresh_even_on_failure(world: World) ->
     assert rig.loop._cooldowns["daily_pick"] == later + NOTHING_RETRY
 
 
+async def test_wrong_tasks_screen_backs_off_and_notifies_once(world: World) -> None:
+    # Экран заданий сбился (игрок листает меню с телефона): пауза растёт, как у прочих неудач.
+    rig = Rig(world)
+    at = moment()
+    pick = Act("daily_pick", {"task": "convDets_hard"}, "personal convDets")
+    spans = []
+    for _ in range(3):
+        await rig.loop._after(pick, ScenarioResult("failed", "wrong_screen"), at, at)
+        spans.append(rig.loop._cooldowns["daily_pick"] - at)
+    assert spans == [timedelta(minutes=m) for m in (5, 10, 20)]
+    assert rig.notes.codes == ["scenario_failed"]
+
+
 async def test_closed_market_holds_dump_longer(world: World) -> None:
     rig = Rig(world)
     at = moment()

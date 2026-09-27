@@ -15,8 +15,9 @@ TASKS = "⏳Задания"
 
 def _failed(step: StepResult) -> ScenarioResult:
     # «Если жаждешь общения…» — команда ушла не с того экрана (игрок мог листать меню с телефона).
+    # Это неудача, а не отказ игры: пауза повтора растёт, об этом уведомляют.
     if step.step is Step.REFUSED and step.reason == "unknown_command":
-        return ScenarioResult("refused", "wrong_screen")
+        return ScenarioResult("failed", "wrong_screen")
     return finish(step)
 
 
