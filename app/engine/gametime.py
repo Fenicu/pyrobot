@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 
 # Москва без перехода на летнее время с 2014 года: фиксированный UTC+3.
 MSK = timezone(timedelta(hours=3), "MSK")
@@ -10,3 +10,8 @@ def to_msk(moment: datetime) -> datetime:
 
 def from_msk_naive(moment: datetime) -> datetime:
     return moment.replace(tzinfo=MSK).astimezone(UTC)
+
+
+def tasks_day(moment: datetime) -> date:
+    """Игровой день ежедневных заданий: дата по Москве, сброс в 00:00 (не смузи в 03:00)."""
+    return to_msk(moment).date()

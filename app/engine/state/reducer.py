@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from app.engine.events import Event, Unrecognized
+from app.engine.gametime import tasks_day
 from app.engine.parsing.activities import (
     ActivityCancelled,
     ActivityFinished,
@@ -20,6 +21,12 @@ from app.engine.parsing.battle import BattleTargetSet
 from app.engine.parsing.bulls import BullsInvite, BullsJoined, BullsRefused, BullsResult
 from app.engine.parsing.common import Rewards
 from app.engine.parsing.crew import CrewScreen, FactoryScreen, FactorySignup
+from app.engine.parsing.daily import (
+    ChosenTask,
+    DailyTasksScreen,
+    TaskChosen,
+    TaskCompleted,
+)
 from app.engine.parsing.food import FastfoodEaten, FoodMenu
 from app.engine.parsing.gorbushka import GorbushkaFight, GorbushkaScreen
 from app.engine.parsing.items import (
@@ -76,15 +83,18 @@ from app.engine.parsing.stocks import Dividends, StockBought, StockScreen, Stock
 from app.engine.parsing.swinfo import BattleSummary, FactoryCall, FactoryResult
 from app.engine.parsing.tangerine import TangerineRefused
 from app.engine.state.model import (
+    DAY_SCOPED,
     DEED_PRIORS,
     DEFAULT_PRICES,
     ActivityStat,
     BusyState,
     CharacterState,
+    ChosenTaskState,
     FoodStockState,
     GorbushkaState,
     MetroRunRef,
     Obs,
+    PersonalTask,
     PriceState,
     RefusalState,
     Skills,
@@ -92,6 +102,7 @@ from app.engine.state.model import (
     Src,
     StockLimits,
     TargetSet,
+    TaskOfferState,
     TeamTask,
     Upgrades,
     dump_state,
@@ -142,6 +153,18 @@ _REFUSAL_TIMERS = {
 }
 
 
+# Статус задания за день только растёт: экран или строка с меткой не новее сохранённой (в том
+# числе той же секунды, доставленные позже) его не понижают.
+_TASK_RANK = {"none": 0, "offers": 0, "active": 1, "done": 2}
+
+
+def _demotes(current: Obs[Any], value: Any, at: datetime) -> bool:
+    known = current.value
+    if at > current.at or known.day != value.day:
+        return False
+    return bool(_TASK_RANK[value.status] < _TASK_RANK[known.status])
+
+
 class _Patch:
     """Изменения состояния от одного сообщения: `origin` — создание, `at` — правка."""
 
@@ -163,6 +186,8 @@ class _Patch:
     def snap(self, name: str, value: Any, *, src: Src = "screen") -> None:
         current: Obs[Any] | None = self.get(name)
         if current is not None and self.at < current.at:
+            return
+        if current is not None and name in DAY_SCOPED and _demotes(current, value, self.at):
             return
         self.updates[name] = Obs(value=value, at=self.at, src=src)
 
@@ -226,8 +251,34 @@ class _Patch:
             self.snap("prizebox", True, src="derived")
             self.snap("prizebox_ready_at", None, src="derived")
         if r.team_task is not None:
-            current, goal, resource = r.team_task
-            self.snap("team_task", TeamTask(current=current, goal=goal, resource=resource))
+            self.team_line(*r.team_task)
+        if r.personal_task is not None:
+            self.personal_line(*r.personal_task)
+
+    def team_line(self, current: int, goal: int, resource: str) -> None:
+        """Строка командного прогресса: к известному заданию того же дня и ресурса — только
+        прогресс; иначе новое значение без дел (план перечитает экран, чтобы их узнать)."""
+        day = tasks_day(self.at)
+        known: Obs[TeamTask] | None = self.get("team_task")
+        task = known.value if known is not None else None
+        if task is not None and task.day == day and task.resource == resource:
+            status = "done" if current >= goal else task.status
+            value = task.model_copy(update={"current": current, "goal": goal, "status": status})
+        else:
+            status = "done" if current >= goal else "active"
+            value = TeamTask(current=current, goal=goal, resource=resource, day=day, status=status)
+        self.snap("team_task", value)
+
+    def personal_line(self, current: int, goal: int, resource: str) -> None:
+        """Строка личного прогресса обновляет только прогресс выбранного задания того же дня и
+        ресурса; иначе игнорируется — план сам перечитает экран."""
+        known: Obs[PersonalTask] | None = self.get("daily_personal")
+        task = known.value if known is not None else None
+        if task is None or task.chosen is None or task.day != tasks_day(self.at):
+            return
+        if task.chosen.resource != resource:
+            return
+        self.snap("daily_personal", task.model_copy(update={"current": current}))
 
     def stat(self, activity: str, r: Rewards) -> None:
         stats: dict[str, ActivityStat] = dict(self.get("activity_stats"))
@@ -594,6 +645,67 @@ def _crew(p: _Patch, e: CrewScreen) -> None:
     if e.signup_open:
         # Запасной сигнал о начале записи, если SWINFO пропущен.
         p.snap("factory_call_at", p.at)
+
+
+def _chosen(task: ChosenTask) -> ChosenTaskState:
+    return ChosenTaskState(
+        type=task.type,
+        level=task.level,
+        goal=task.goal,
+        resource=task.resource,
+        activities=task.activities,
+    )
+
+
+@_on(DailyTasksScreen)
+def _daily_screen(p: _Patch, e: DailyTasksScreen) -> None:
+    # Полный снимок обоих заданий за день экрана.
+    day = tasks_day(p.at)
+    if e.chosen is not None:
+        status: Literal["active", "done"] = "done" if e.chosen.done else "active"
+        personal = PersonalTask(
+            day=day, status=status, chosen=_chosen(e.chosen), current=e.chosen.current
+        )
+    else:
+        offers = tuple(
+            TaskOfferState(type=o.type, level=o.level, goal=o.goal, trophies=o.trophies)
+            for o in e.offers
+        )
+        personal = PersonalTask(day=day, status="offers", offers=offers)
+    p.snap("daily_personal", personal)
+    team = TeamTask(current=0, goal=0, resource="", day=day, status="none")
+    if e.team is not None:
+        t = e.team
+        team = TeamTask(
+            current=t.current,
+            goal=t.goal,
+            resource=t.resource,
+            day=day,
+            status="done" if t.done or 0 < t.goal <= t.current else "active",
+            activities=t.activities,
+        )
+    p.snap("team_task", team)
+
+
+@_on(TaskChosen)
+def _task_chosen(p: _Patch, e: TaskChosen) -> None:
+    task = PersonalTask(day=tasks_day(p.at), status="active", chosen=_chosen(e.chosen))
+    p.snap("daily_personal", task)
+
+
+@_on(TaskCompleted)
+def _task_completed(p: _Patch, e: TaskCompleted) -> None:
+    p.rewards(e.rewards)
+    day = tasks_day(p.at)
+    known: Obs[PersonalTask] | None = p.get("daily_personal")
+    if known is not None and known.value.day == day:
+        task = known.value
+        goal = task.chosen.goal if task.chosen is not None else task.current
+        done = task.model_copy(update={"status": "done", "current": goal})
+    else:
+        # Деталей нет, но и этого достаточно, чтобы задание не брать и не выполнять.
+        done = PersonalTask(day=day, status="done")
+    p.snap("daily_personal", done, src="derived")
 
 
 @_on(FactoryResult)

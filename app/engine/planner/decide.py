@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 
+from app.engine.gametime import tasks_day
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, Step
 from app.engine.planner.obligations import Obligations
 from app.engine.planner.types import Act, Candidate, Decision
@@ -212,9 +213,9 @@ class _Planner(Obligations):
 
     def team(self) -> TeamTask | None:
         task: TeamTask | None = self.value("team_task")
-        if task is None or "team_task" in self.stale or task.current >= task.goal:
+        if task is None or task.day != tasks_day(self.now) or task.status != "active":
             return None
-        return task
+        return task if task.current < task.goal else None
 
     def score(self, activity: str, price: PriceState) -> float:
         cfg = self.cfg.strategy

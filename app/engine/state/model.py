@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -75,6 +75,37 @@ class TeamTask(_Frozen):
     current: int
     goal: int
     resource: str
+    # День заданий (00:00 MSK). Снимки прошлых версий дня не знают — такое значение планировщик
+    # считает неизвестным.
+    day: date | None = None
+    status: Literal["none", "active", "done"] = "active"
+    activities: tuple[str, ...] = ()
+
+
+class TaskOfferState(_Frozen):
+    type: str
+    level: str
+    goal: int
+    trophies: int
+
+
+class ChosenTaskState(_Frozen):
+    type: str | None = None
+    level: str | None = None
+    goal: int = 0
+    resource: str = ""
+    activities: tuple[str, ...] = ()
+
+
+class PersonalTask(_Frozen):
+    """Личное задание за день `day`: варианты, выбранное (`current` — прогресс) или выполненное
+    (у выполненного по сообщению о выполнении `chosen` может быть неизвестно)."""
+
+    day: date
+    status: Literal["offers", "active", "done"]
+    offers: tuple[TaskOfferState, ...] = ()
+    chosen: ChosenTaskState | None = None
+    current: int = 0
 
 
 class StockLimits(_Frozen):
@@ -176,6 +207,7 @@ class CharacterState(_Frozen):
     gorbushka: Obs[GorbushkaState] | None = None
     last_refusal: Obs[RefusalState] | None = None
     team_task: Obs[TeamTask] | None = None
+    daily_personal: Obs[PersonalTask] | None = None
     team_tag: Obs[str] | None = None
     factory_wins: Obs[int] | None = None
     factory_won_at: Obs[datetime] | None = None
@@ -254,6 +286,8 @@ TIMERS = frozenset(
         "metro_message",
     }
 )
+# Значения за день заданий: устаревают сменой дня (её проверяет планировщик), а не возрастом.
+DAY_SCOPED = frozenset({"team_task", "daily_personal"})
 SLOW_MAX_AGE = timedelta(hours=6)
 PRICE_MAX_AGE = timedelta(days=7)
 
@@ -264,7 +298,7 @@ def stale_fields(state: CharacterState, now: datetime, volatile_max_age: timedel
         obs = getattr(state, name)
         if not isinstance(obs, Obs):
             continue
-        if name in TIMERS:
+        if name in TIMERS or name in DAY_SCOPED:
             if obs.src == "doubtful":
                 names.append(name)
             continue

@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from app.engine.gametime import tasks_day
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
 from app.engine.planner.decide import decide
 from app.engine.planner.types import Act, Candidate, Decision, Wait
@@ -141,8 +142,13 @@ def test_learned_average_replaces_prior() -> None:
 
 def test_team_task_boosts_matching_resource() -> None:
     settings = config({"strategy": {"weight_team": 5}})
-    state = awake(team_task=TeamTask(current=10, goal=360, resource="📚"))
+    today = tasks_day(NOW)
+    state = awake(team_task=TeamTask(current=10, goal=360, resource="📚", day=today))
     assert act(decide(state, settings, NOW)) == ("deed:learn", {})
+    # Вчерашнее командное задание не в счёт: оно могло смениться.
+    yesterday = today - timedelta(days=1)
+    old = awake(team_task=TeamTask(current=10, goal=360, resource="📚", day=yesterday))
+    assert act(decide(old, settings, NOW)) == ("deed:job", {})
 
 
 def test_busy_waits_until_free() -> None:
