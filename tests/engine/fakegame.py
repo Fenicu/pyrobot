@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 from app.engine.bus import Bus
-from app.engine.clock import SystemClock
+from app.engine.clock import Clock, SystemClock
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.memory import MemoryActionStore, MemoryJournal
 from app.engine.parsing import default_parser
@@ -60,6 +60,8 @@ class FakeGame:
         # Что `fetch` отдаёт вместо последней доставленной версии; `unreadable` — не прочитать.
         self.current: dict[int, IncomingMessage] = {}
         self.unreadable = False
+        # Даты ответов игры: часы можно подменить (сценарий через полночь).
+        self.clock: Clock = SystemClock()
 
     def on_text(self, text: str, *new: Ref) -> None:
         self._text.setdefault(text, []).append(Reply(new=list(new)))
@@ -106,7 +108,7 @@ class FakeGame:
     async def _deliver(self, reply: Reply, message_id: int | None) -> None:
         await asyncio.sleep(0)
         async with self._lock:
-            now = datetime.now(UTC)
+            now = self.clock.now()
             for ref in reply.edits if message_id is not None else ():
                 original = self.messages[message_id]
                 msg = replace(

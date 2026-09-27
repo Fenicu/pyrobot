@@ -63,7 +63,7 @@ class FeaturesSection(BaseModel):
     casino: bool = False
     arena: bool = False
     pet_feast: bool = False
-    daily_tasks: bool = False
+    daily_tasks: bool = True
     paid_info: bool = False
     seasonal: bool = False
 

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, get_args
 
 from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.parsing.smoothie import INGREDIENTS
-from app.engine.scenarios import library, metro, obligations
+from app.engine.scenarios import daily, library, metro, obligations
 from app.engine.scenarios.library import FOOD_BUTTONS, REFRESH, ScenarioFn
 from app.engine.settings import Target
 
 Check = Callable[[Any], bool]
+TASK = re.compile(r"[A-Za-z]+_(?:easy|medium|hard)")
 
 
 def _one_of(values: Iterable[str]) -> Check:
@@ -29,6 +31,10 @@ def _int(low: int | None = None, high: int | None = None) -> Check:
 
 def _invite(v: Any) -> bool:
     return isinstance(v, str) and INVITE_CODE.match(v) is not None
+
+
+def _task(v: Any) -> bool:
+    return isinstance(v, str) and TASK.fullmatch(v) is not None
 
 
 def _recipe(v: Any) -> bool:
@@ -82,6 +88,8 @@ def _specs() -> dict[str, ScenarioSpec]:
         ),
         ScenarioSpec("smoothie", obligations.smoothie, True, required={"recipe": _recipe}),
         ScenarioSpec("metro", metro.metro, True),
+        ScenarioSpec("daily_refresh", daily.daily_refresh, True),
+        ScenarioSpec("daily_pick", daily.daily_pick, True, required={"task": _task}),
     ]
     for item, certified in (
         ("book", True),

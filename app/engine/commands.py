@@ -306,6 +306,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"pet_select_decline_\w+\Z",
         r"subprof_select_decline\Z",
         r"maze_nothing\Z",
+        r"tasksel_decline\Z",
     ),
     *_re(
         _A,
@@ -320,6 +321,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         rf"buys_{_COMPANIES}\Z",
         r"pet_feast_accept_\w+\Z",
         r"spring_roll_smiles\Z",
+        r"t_\w+_confirm\Z",
     ),
 )
 
@@ -378,6 +380,7 @@ _FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (rf"buys_{_COMPANIES}\Z", "stocks_dump"),
         (r"pet_feast_accept_", "pet_feast"),
         (r"spring_roll_smiles\Z", "seasonal"),
+        (r"t_\w+_confirm\Z", "daily_tasks"),
     )
 )
 
