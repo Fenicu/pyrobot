@@ -1067,3 +1067,19 @@ reason}`), `decision` (решение планировщика без канди
 время досылки истории; после выхода или смены пароля поток закрывается. В тишине раз в тот же
 интервал уходит комментарий `: ping`. Заголовки `Cache-Control:
 no-cache` и `X-Accel-Buffering: no` отключают буферизацию на прокси.
+
+## Образ и деплой
+
+**Образ** (`Dockerfile`, многостадийный): стадия сборки — `ghcr.io/astral-sh/uv` с Python 3.13 и
+компилятором (tgcrypto собирается из исходников), `uv sync --frozen --no-dev` строго по `uv.lock`
+(индекс пакетов — devpi хоумлаба из `pyproject.toml`); рантайм — `python:3.13-slim-trixie` без uv и
+компилятора, только venv, `app/` и `alembic.ini`. Процесс работает от непривилегированного
+пользователя `pyrobot` (uid/gid 10001); том `/data` (`PYROBOT_DATA_DIR`) — сессия Telegram,
+принадлежит ему же. `HEALTHCHECK` — `python -m app.healthcheck /healthz` (`app/healthcheck.py`,
+код выхода 0 при ответе 200; тем же модулем деплой ждёт `/readyz`), команда по умолчанию — `python -m
+app`, миграции — `alembic upgrade head` в том же образе. Локальная сборка (прокси apt хоумлаба —
+необязательный `APT_PROXY`):
+
+```bash
+docker build --build-arg APT_PROXY=http://10.10.40.23:3142 -t pyrobot:local .
+```
