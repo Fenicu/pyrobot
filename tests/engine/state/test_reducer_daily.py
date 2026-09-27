@@ -1,12 +1,14 @@
+from dataclasses import replace
 from datetime import date
 from typing import Any
 
 from app.engine.gametime import tasks_day
 from app.engine.parsing.activities import ActivityFinished
 from app.engine.parsing.common import Rewards
+from app.engine.parsing.daily import DailyTasksScreen
 from app.engine.state.model import load_state, stale_fields
 from app.engine.state.reducer import StateReducer
-from tests.engine.state.helpers import at, feed, fixture_at, value
+from tests.engine.state.helpers import PARSER, at, feed, fixture_at, value
 
 # T0 — 12:00 MSK 26.09; полночь по Москве — через 12 часов.
 DAY = date(2026, 9, 26)
@@ -187,6 +189,34 @@ def test_team_line_without_known_task_creates_active_without_activities() -> Non
     screen = feed(reducer, {}, "daily", 9100009, 1)
     other = _team(feed(reducer, screen, "activities", 3625689, 5))
     assert (other["resource"], other["activities"]) == ("🔩", [])
+
+
+def test_team_line_fills_unrecognized_condition_of_screen_task() -> None:
+    # Условие командного на экране не распознано — ресурса нет: строка прогресса того же дня
+    # дополняет задание, дела и статус с экрана остаются. Иначе каждая строка создавала бы
+    # задание без дел, и экран перечитывался бы весь день.
+    reducer = StateReducer()
+    msg = fixture_at("daily", 3625786, 1)
+    screen = next(e for e in PARSER.parse(msg) if isinstance(e, DailyTasksScreen))
+    assert screen.team is not None
+    blank = replace(screen, team=replace(screen.team, resource=""))
+    state = reducer.apply({}, msg, [blank])
+    state = feed(reducer, state, "activities", 3625689, 5)
+    assert state["team_task"]["src"] == "screen"
+    team = _team(state)
+    assert (team["current"], team["goal"], team["resource"], team["status"]) == (
+        18,
+        120,
+        "🔩",
+        "active",
+    )
+    assert team["activities"] == ["job", "walk"]
+    # Глава ещё не выбрал задание: строка значит, что выбрал, — дела неизвестны.
+    none = feed(reducer, {}, "daily", 3349359, 1)
+    assert _team(none)["status"] == "none"
+    chosen = feed(reducer, none, "activities", 3625689, 5)
+    assert chosen["team_task"]["src"] == "derived"
+    assert (_team(chosen)["status"], _team(chosen)["activities"]) == ("active", [])
 
 
 def test_team_line_reaching_goal_is_done() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from app.engine.events import Event, Unrecognized
@@ -158,6 +158,11 @@ _REFUSAL_TIMERS = {
 _TASK_RANK = {"none": 0, "offers": 0, "active": 1, "done": 2}
 
 
+def _same_team(task: TeamTask, day: date, resource: str) -> bool:
+    # Экранное задание с нераспознанным условием ресурса не знает: строка его дополняет.
+    return task.day == day and task.status != "none" and task.resource in (resource, "")
+
+
 def _demotes(current: Obs[Any], value: Any, at: datetime) -> bool:
     known = current.value
     if at > current.at or known.day != value.day:
@@ -257,15 +262,16 @@ class _Patch:
 
     def team_line(self, current: int, goal: int, resource: str) -> None:
         """Строка командного прогресса: к известному заданию того же дня и ресурса — только
-        прогресс; иначе новое значение без дел, `derived` — план перечитает экран, чтобы их
-        узнать (дела с экрана известны, даже если подсказка незнакомая)."""
+        прогресс (у экранного с нераспознанным условием — ещё и ресурс); иначе новое значение без
+        дел, `derived` — план перечитает экран, чтобы их узнать (дела с экрана известны, даже
+        если подсказка незнакомая)."""
         day = tasks_day(self.at)
         known: Obs[TeamTask] | None = self.get("team_task")
-        if known is not None and known.value.day == day and known.value.resource == resource:
+        if known is not None and _same_team(known.value, day, resource):
             task = known.value
             status = "done" if current >= goal else task.status
-            value = task.model_copy(update={"current": current, "goal": goal, "status": status})
-            self.snap("team_task", value, src=known.src)
+            update = {"current": current, "goal": goal, "resource": resource, "status": status}
+            self.snap("team_task", task.model_copy(update=update), src=known.src)
             return
         status = "done" if current >= goal else "active"
         value = TeamTask(current=current, goal=goal, resource=resource, day=day, status=status)
