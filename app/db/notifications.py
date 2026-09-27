@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 
 from sqlalchemy import select
 
@@ -14,16 +15,23 @@ class DbNotifier:
         self._db = db
         self._account_id = account_id
         self._log = LogNotifier()
+        # Вызываются после записи (поток SSE); исключение слушателя не мешает уведомлению.
+        self.listeners: list[Callable[[NotificationRow], None]] = []
 
     async def notify(self, level: Level, code: str, text: str) -> None:
         try:
             await self._log.notify(level, code, text)
+            row = NotificationRow(account_id=self._account_id, level=level, code=code, text=text)
             async with self._db.sessions() as session, session.begin():
-                session.add(
-                    NotificationRow(account_id=self._account_id, level=level, code=code, text=text)
-                )
+                session.add(row)
         except Exception:
             log.exception("notify failed: %s", code)
+            return
+        for listener in self.listeners:
+            try:
+                listener(row)
+            except Exception:
+                log.exception("notification listener failed: %s", code)
 
     async def recent(self, limit: int = 50) -> list[NotificationRow]:
         async with self._db.sessions() as session:

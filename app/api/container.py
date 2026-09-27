@@ -23,3 +23,5 @@ class Container:
     confirm: ConfirmTokens = field(default_factory=ConfirmTokens)
     # Сколько запрос ручной команды ждёт итога шлюза, прежде чем ответить 202 pending.
     command_wait_s: float = 30.0
+    # Пинг SSE; на каждом пинге сессия перепроверяется (отозванная закрывает поток).
+    sse_heartbeat_s: float = 15.0

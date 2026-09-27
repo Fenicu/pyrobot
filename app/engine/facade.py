@@ -25,6 +25,7 @@ from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
 if TYPE_CHECKING:
     from app.engine.planner.loop import PlannerLoop
     from app.engine.reconcile import Reconciler
+    from app.engine.stream import EventStream
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +82,7 @@ class EngineFacade:
         notifier: NotifierPort | None = None,
         reconciler: Reconciler | None = None,
         planner: PlannerLoop | None = None,
+        stream: EventStream | None = None,
     ) -> None:
         self.settings = settings
         self.gateway = gateway
@@ -96,6 +98,7 @@ class EngineFacade:
         # Отпечатки ручных действий в полёте: повтор ключа с другими параметрами отклоняется
         # и до записи ключа в БД.
         self._inflight: dict[str, Fingerprint] = {}
+        self.stream = stream
 
     def state(self) -> tuple[int, dict[str, Any]]:
         return self.pipeline.version, self.pipeline.state

@@ -1,4 +1,6 @@
 import asyncio
+import logging
+from collections.abc import Callable
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -6,6 +8,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.db.base import Database
 from app.db.models import SettingsHistory, SettingsRow
 from app.engine.settings import Settings, SettingsChange, SettingsConflict
+
+log = logging.getLogger(__name__)
 
 
 class DbSettingsStore:
@@ -15,6 +19,8 @@ class DbSettingsStore:
         self._settings = Settings()
         self._version = 0
         self._lock = asyncio.Lock()
+        # Вызываются после сохранения новой версии (поток SSE).
+        self.listeners: list[Callable[[Settings, int], None]] = []
 
     @property
     def current(self) -> Settings:
@@ -66,4 +72,9 @@ class DbSettingsStore:
                     )
                 )
             self._settings, self._version = new, version
-            return new
+        for listener in self.listeners:
+            try:
+                listener(new, version)
+            except Exception:
+                log.exception("settings listener failed")
+        return new

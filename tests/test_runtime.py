@@ -21,6 +21,7 @@ from app.engine.settings import Settings
 from app.engine.supervisor import Supervisor
 from app.engine.transport.fake import Sent
 from app.main import create_application
+from tests.api.sse import read_sse
 from tests.conftest import TEST_DB_URL
 from tests.engine.helpers import GAME, make_msg, now, until
 from tests.fixtures import game_msg
@@ -267,3 +268,24 @@ async def test_start_interrupts_runs_left_by_previous_process(clean_db: Database
         run = await s.get(ScenarioRunRow, left)
     assert run is not None and (run.status, run.reason) == ("interrupted", "restart")
     assert run.finished_at is not None and run.finished_at >= moment
+
+
+async def test_runtime_streams_engine_events(clean_db: Database) -> None:
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            h = await _login_tg(client)
+            cookie = {"cookie": f"pyrobot_session={client.cookies['pyrobot_session']}"}
+            status, events = await read_sse(app, "/api/v1/events", headers=cookie, count=1)
+            assert status == 200 and events[0].event == "reset"
+            await client.post("/api/v1/engine/pause", headers=h)
+            await client.post(
+                "/api/v1/commands/send", headers=h, json={"text": "😎Я", "idempotency_key": "s1"}
+            )
+            await runtime.pipeline.submit(make_msg("что-то новое", msg_id=77))
+            await until(lambda: "message" in {e.type for e in runtime.stream.history()})
+    kinds = [e.type for e in runtime.stream.history()]
+    assert {"settings", "notification", "action", "message"} <= set(kinds)
+    paused = next(e for e in runtime.stream.history() if e.type == "settings")
+    assert paused.data["paused"] is True

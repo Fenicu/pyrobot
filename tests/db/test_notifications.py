@@ -21,3 +21,17 @@ async def test_notify_with_unreachable_db_does_not_raise() -> None:
         await n.notify("error", "test_code", "should not raise")
     finally:
         await unreachable_db.engine.dispose()
+
+
+async def test_listeners_get_saved_row(clean_db: Database) -> None:
+    n = DbNotifier(clean_db, account_id=1)
+    seen: list[tuple[int, str]] = []
+
+    def broken(row: object) -> None:
+        raise RuntimeError("listener down")
+
+    n.listeners += [lambda row: seen.append((row.id, row.code)), broken]
+    await n.notify("info", "a", "x")
+    await n.notify("info", "b", "y")
+    assert [code for _, code in seen] == ["a", "b"] and seen[0][0] < seen[1][0]
+    assert len(await n.recent()) == 2

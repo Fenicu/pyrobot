@@ -44,3 +44,15 @@ async def test_load_waits_for_update_lock(clean_db: Database) -> None:
         await asyncio.sleep(0.05)
         assert not task.done()
     await task
+
+
+async def test_listeners_after_save(clean_db: Database) -> None:
+    store = DbSettingsStore(clean_db, 1)
+    await store.load()
+    seen: list[tuple[str, int]] = []
+    store.listeners.append(lambda s, v: seen.append((s.engine.mode, v)))
+    await store.update(_to_live, changed_by="admin")
+    assert seen == [("live", 1)]
+    with pytest.raises(SettingsConflict):
+        await store.update(_to_live, changed_by="admin", expected_version=0)
+    assert seen == [("live", 1)]

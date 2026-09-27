@@ -16,6 +16,7 @@ from app.db.base import Database
 from app.db.journal import DbJournal
 from app.db.lock import SingleInstanceLock
 from app.db.metro import DbMetroRunStore
+from app.db.models import NotificationRow
 from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
 from app.db.reads import DbReads
@@ -30,8 +31,15 @@ from app.engine.pipeline import Pipeline
 from app.engine.planner.loop import PlannerLoop
 from app.engine.reconcile import Reconciler
 from app.engine.scenarios.context import History, Reread
+from app.engine.settings import Settings
 from app.engine.state.model import load_state
 from app.engine.state.reducer import StateReducer
+from app.engine.stream import (
+    EventStream,
+    PublishingActionStore,
+    PublishingPlannerStore,
+    StreamFeed,
+)
 from app.engine.supervisor import Supervisor
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
@@ -88,6 +96,9 @@ class Runtime:
         self.db = Database(config.database_url)
         self.notifier = DbNotifier(self.db, config.account_id)
         self.settings = DbSettingsStore(self.db, config.account_id)
+        self.stream = EventStream()
+        self.notifier.listeners.append(self._publish_notification)
+        self.settings.listeners.append(self._publish_settings)
         self.lock = SingleInstanceLock(self.db)
         self.auth = AuthRepo(self.db)
         self.container = Container(
@@ -128,7 +139,9 @@ class Runtime:
                 "error", "second_instance", "another pyrobot instance holds the lock"
             )
             return
-        actions = DbActionStore(self.db, self.config.account_id)
+        actions = PublishingActionStore(
+            DbActionStore(self.db, self.config.account_id), self.stream
+        )
         await actions.mark_unfinished_unknown()
         bus = Bus()
         react_age = self.settings.current.engine.recovered_react_max_age_min
@@ -191,7 +204,9 @@ class Runtime:
             poll_s=self.reconcile_poll_s,
         )
         gateway.on_uncertain = reconciler.note
-        planner_store = DbPlannerStore(self.db, self.config.account_id)
+        planner_store = PublishingPlannerStore(
+            DbPlannerStore(self.db, self.config.account_id), self.stream
+        )
         interrupted = await planner_store.close_running(SystemClock().now())
         if interrupted:
             log.info("marked %d unfinished scenario runs as interrupted", interrupted)
@@ -210,6 +225,7 @@ class Runtime:
             auto=self.config.planner,
         )
         bus.subscribe(self.planner.on_delivery, priority=90)
+        bus.subscribe(StreamFeed(self.stream, lambda: pipeline.state).on_delivery, priority=95)
         lag = LoopLagMonitor()
         lock = self.lock
         self.facade = EngineFacade(
@@ -223,6 +239,7 @@ class Runtime:
             notifier=self.notifier,
             reconciler=reconciler,
             planner=self.planner,
+            stream=self.stream,
         )
         self.container.facade = self.facade
         self.supervisor.start("pipeline", pipeline.run)
@@ -236,6 +253,23 @@ class Runtime:
         if self._kurigram is not None:
             self.supervisor.start("tg-probe", self._probe_tg)
         await self.tg.boot()
+
+    def _publish_notification(self, row: NotificationRow) -> None:
+        self.stream.publish(
+            "notification", {"id": row.id, "level": row.level, "code": row.code, "text": row.text}
+        )
+
+    def _publish_settings(self, settings: Settings, version: int) -> None:
+        engine = settings.engine
+        self.stream.publish(
+            "settings",
+            {
+                "version": version,
+                "mode": engine.mode,
+                "paused": engine.paused,
+                "killed": engine.killed,
+            },
+        )
 
     def _can_send(self) -> str | None:
         if not self.lock.held:
