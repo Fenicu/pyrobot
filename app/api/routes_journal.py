@@ -1,6 +1,3 @@
-import base64
-import binascii
-import json
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
@@ -8,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.container import Container
+from app.api.cursor import decode_cursor, encode_cursor
 from app.api.deps import SessionContext, container, current_session
 from app.db.models import ActionRow, DecisionRow, MessageRow, ScenarioRunRow
 from app.db.reads import FeedFilter, FeedKey, feed_types
@@ -110,17 +108,15 @@ class ActionOut(BaseModel):
     reconciled_at: datetime | None
 
 
-def encode_cursor(key: FeedKey) -> str:
-    raw = json.dumps([key.at.isoformat(), key.rank, key.id]).encode()
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+def _feed_cursor(key: FeedKey) -> str:
+    return encode_cursor([key.at.isoformat(), key.rank, key.id])
 
 
-def decode_cursor(cursor: str) -> FeedKey:
+def _feed_key(cursor: str) -> FeedKey:
+    at, rank, ident = decode_cursor(cursor, 3)
     try:
-        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
-        at, rank, ident = json.loads(raw)
         return FeedKey(datetime.fromisoformat(at), int(rank), int(ident))
-    except (binascii.Error, ValueError, TypeError) as exc:
+    except (TypeError, ValueError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid cursor") from exc
 
 
@@ -186,13 +182,13 @@ async def journal(
         kinds = feed_types(types)
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
-    after = decode_cursor(cursor) if cursor else None
+    after = _feed_key(cursor) if cursor else None
     flt = FeedFilter(kinds, since, until, chat_id, status_, source)
     items = await c.reads.feed(flt, limit + 1, after)
     page = items[:limit]
     return JournalPage(
         items=[_item(i.row) for i in page],
-        next_cursor=encode_cursor(page[-1].key) if len(items) > limit else None,
+        next_cursor=_feed_cursor(page[-1].key) if len(items) > limit else None,
     )
 
 

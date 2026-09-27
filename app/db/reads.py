@@ -1,17 +1,22 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, and_, or_, select
+from sqlalchemy import Select, and_, func, or_, select, update
+from sqlalchemy.dialects.postgresql import distinct_on
 
 from app.db.base import Database
 from app.db.models import (
     ActionRow,
     DecisionRow,
     MessageRow,
+    MetricRow,
     MetroRunRow,
+    NotificationRow,
     ScenarioRunRow,
     SettingsHistory,
+    UnrecognizedRow,
 )
 from app.engine.settings import Settings, settings_diff
 
@@ -58,6 +63,20 @@ class FeedItem:
     type: str
     key: FeedKey
     row: FeedRow
+
+
+@dataclass(frozen=True, slots=True)
+class MetricPoint:
+    id: int
+    ts: datetime
+    key: str
+    value: float
+
+
+@dataclass(frozen=True, slots=True)
+class UnrecognizedItem:
+    row: UnrecognizedRow
+    text: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +151,138 @@ class DbReads:
                 .limit(1)
             )
             return row, metro
+
+    async def metrics(
+        self,
+        keys: Sequence[str],
+        since: datetime,
+        until: datetime,
+        limit: int,
+        after: tuple[datetime, int] | None,
+    ) -> list[MetricPoint]:
+        """Точки окна `[since, until)` по возрастанию `(ts, id)`, строго после `after`."""
+        query = (
+            select(MetricRow)
+            .where(
+                MetricRow.account_id == self._account_id,
+                MetricRow.key.in_(keys),
+                MetricRow.ts >= since,
+                MetricRow.ts < until,
+            )
+            .order_by(MetricRow.ts, MetricRow.id)
+            .limit(limit)
+        )
+        if after is not None:
+            ts, ident = after
+            query = query.where(
+                or_(MetricRow.ts > ts, and_(MetricRow.ts == ts, MetricRow.id > ident))
+            )
+        async with self._db.sessions() as session:
+            rows = await session.scalars(query)
+            return [MetricPoint(r.id, r.ts, r.key, r.value) for r in rows]
+
+    async def metrics_before(
+        self, keys: Sequence[str], moment: datetime
+    ) -> dict[str, tuple[datetime, float]]:
+        """Последнее значение каждого ключа до `moment` — значение на начало окна."""
+        query = (
+            select(MetricRow.key, MetricRow.ts, MetricRow.value)
+            .where(
+                MetricRow.account_id == self._account_id,
+                MetricRow.key.in_(keys),
+                MetricRow.ts < moment,
+            )
+            .order_by(MetricRow.key, MetricRow.ts.desc(), MetricRow.id.desc())
+            .ext(distinct_on(MetricRow.key))
+        )
+        async with self._db.sessions() as session:
+            rows = await session.execute(query)
+            return {key: (ts, value) for key, ts, value in rows.all()}
+
+    async def metro_runs(self, limit: int, before: int | None) -> list[MetroRunRow]:
+        query = (
+            select(MetroRunRow)
+            .where(MetroRunRow.account_id == self._account_id)
+            .order_by(MetroRunRow.id.desc())
+            .limit(limit)
+        )
+        if before is not None:
+            query = query.where(MetroRunRow.id < before)
+        async with self._db.sessions() as session:
+            return list(await session.scalars(query))
+
+    async def metro_run(self, run_id: int) -> MetroRunRow | None:
+        async with self._db.sessions() as session:
+            row = await session.get(MetroRunRow, run_id)
+        return row if row is not None and row.account_id == self._account_id else None
+
+    async def unrecognized(
+        self, acked: bool | None, limit: int, before: int | None
+    ) -> list[UnrecognizedItem]:
+        query = (
+            select(UnrecognizedRow, MessageRow.text)
+            .join(MessageRow, MessageRow.id == UnrecognizedRow.message_id)
+            .where(UnrecognizedRow.account_id == self._account_id)
+            .order_by(UnrecognizedRow.id.desc())
+            .limit(limit)
+        )
+        if acked is not None:
+            query = query.where(UnrecognizedRow.acked.is_(acked))
+        if before is not None:
+            query = query.where(UnrecognizedRow.id < before)
+        async with self._db.sessions() as session:
+            rows = await session.execute(query)
+            return [UnrecognizedItem(row, text) for row, text in rows.all()]
+
+    async def ack_unrecognized(self, ids: Sequence[int]) -> int:
+        async with self._db.sessions() as session, session.begin():
+            done = await session.scalars(
+                update(UnrecognizedRow)
+                .where(
+                    UnrecognizedRow.account_id == self._account_id,
+                    UnrecognizedRow.id.in_(ids),
+                    UnrecognizedRow.acked.is_(False),
+                )
+                .values(acked=True)
+                .returning(UnrecognizedRow.id)
+            )
+            return len(done.all())
+
+    async def notifications(
+        self, *, unread: bool, level: str | None, limit: int, before: int | None
+    ) -> tuple[list[NotificationRow], int]:
+        """Страница уведомлений от новых к старым и общее число непрочитанных."""
+        own = NotificationRow.account_id == self._account_id
+        query = select(NotificationRow).where(own).order_by(NotificationRow.id.desc()).limit(limit)
+        if unread:
+            query = query.where(NotificationRow.read.is_(False))
+        if level is not None:
+            query = query.where(NotificationRow.level == level)
+        if before is not None:
+            query = query.where(NotificationRow.id < before)
+        count = (
+            select(func.count())
+            .select_from(NotificationRow)
+            .where(own, NotificationRow.read.is_(False))
+        )
+        async with self._db.sessions() as session:
+            rows = list(await session.scalars(query))
+            total = await session.scalar(count)
+        return rows, int(total or 0)
+
+    async def read_notifications(self, up_to_id: int) -> int:
+        async with self._db.sessions() as session, session.begin():
+            done = await session.scalars(
+                update(NotificationRow)
+                .where(
+                    NotificationRow.account_id == self._account_id,
+                    NotificationRow.id <= up_to_id,
+                    NotificationRow.read.is_(False),
+                )
+                .values(read=True)
+                .returning(NotificationRow.id)
+            )
+            return len(done.all())
 
     async def settings_history(self, limit: int, before: int | None) -> list[SettingsVersion]:
         query = (

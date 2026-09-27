@@ -1007,3 +1007,18 @@ params}`; `POST /api/v1/scenarios/{name}/run {params, idempotency_key}` (CSRF) �
 Статус — `GET /api/v1/scenario-runs/{id}` (`queued` → `running` → итог сценария); при рестарте
 незавершённые запуски закрываются (`close_running`): начатые — `interrupted`, так и не начатые из
 очереди — `cancelled`, обе с причиной `restart`.
+
+Справочное (`app/api/routes_reference.py`, сессия, работает и без движка): `GET
+/api/v1/metrics?from&to&fields&limit&cursor` — временной ряд `metrics` в окне `[from, to)` (по
+умолчанию последние 24 часа) по ключам `fields` через запятую (по умолчанию все из
+`METRIC_FIELDS`, незнакомый — 422): `{series: {ключ: [[момент, значение], …]}, initial, next_cursor}`.
+Метрика пишется только при изменении значения, поэтому `initial` — последнее значение каждого ключа
+до начала окна (для ступенчатого графика; только на первой странице). Объём ограничен: не больше
+`limit` точек (по умолчанию 2000, максимум 5000) на страницу, продолжение — по `next_cursor`. `GET
+/api/v1/metro/runs?before&limit` — забеги метро от новых к старым без тяжёлых полей (карта, путь,
+события, 🔋 по шагам), `GET /api/v1/metro/runs/{id}` — забег целиком. `GET
+/api/v1/unrecognized?acked=false|true|all&before&limit` — нераспознанные сообщения с полным текстом
+из журнала, `POST /api/v1/unrecognized/ack {ids}` (CSRF, до 500 id) — отметить разобранными,
+отвечает числом отмеченных. `GET /api/v1/notifications?unread&level&before&limit` — уведомления
+от новых к старым и общее число непрочитанных `unread`, `POST /api/v1/notifications/read {up_to_id}`
+(CSRF) — прочитаны все до этого id включительно. Страницы по `id` — через `next_before`.
