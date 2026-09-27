@@ -6,8 +6,10 @@ from typing import Any
 import pytest
 
 import app.engine.planner.loop as loop_module
+from app.engine.bus import Delivery
 from app.engine.metro.store import MemoryMetroRunStore
 from app.engine.notify import Level
+from app.engine.parsing.food import FoodMenu
 from app.engine.planner.base import TIMER_MARGIN
 from app.engine.planner.loop import DEEDS, MAX_RETRY, NOTHING_RETRY, RETRY_AFTER, PlannerLoop
 from app.engine.planner.store import MemoryPlannerStore
@@ -382,8 +384,9 @@ async def test_uncertified_step_stays_suppressed_after_switch_to_live(
     dry_world.game.send_text = switch_after_menu  # type: ignore[method-assign]
     rig = Rig(dry_world)
     await rig.loop.step()
+    # Запуск начат в dry_run и остаётся в нём; причина dry_run важнее uncertified, как в шлюзе.
     assert [(r.scenario, r.status, r.reason) for r in rig.store.runs] == [
-        ("sleep", "suppressed", "uncertified")
+        ("sleep", "suppressed", "dry_run")
     ]
     assert dry_world.game.payloads() == ["🛌Спать"]
 
@@ -450,11 +453,11 @@ async def test_metro_run_saved_and_durations_loaded(
     await rig.loop.step()
     assert rig.loop._metro_durations == [1500.0]
     decision = await rig.store.record(datetime.now(UTC), Act("metro", {}, "metro_ready"))
-    await rig.loop._execute(Act("metro", {}, "metro_ready"), decision)
+    await rig.loop._execute(Act("metro", {}, "metro_ready"), decision, dry_run=False)
     assert store.runs[-1] == {**record, "scenario_run_id": len(rig.store.runs), "status": "done"}
     assert rig.loop._metro_durations == [1500.0, 960.0]
     for _ in range(25):
-        await rig.loop._execute(Act("metro", {}, "metro_ready"), decision)
+        await rig.loop._execute(Act("metro", {}, "metro_ready"), decision, dry_run=False)
     assert rig.loop._metro_durations == [960.0] * 20
 
 
@@ -470,6 +473,28 @@ async def test_paused_metro_run_is_saved(world: World, monkeypatch: pytest.Monke
     rig = Rig(world)
     rig.loop._metro_store = store
     decision = await rig.store.record(datetime.now(UTC), Act("metro", {}, "metro_ready"))
-    await rig.loop._execute(Act("metro", {}, "metro_ready"), decision)
+    await rig.loop._execute(Act("metro", {}, "metro_ready"), decision, dry_run=False)
     assert [(r.status, r.reason) for r in rig.store.runs] == [("stopped", "paused")]
     assert store.runs == [{**record, "scenario_run_id": 1, "status": "stopped"}]
+
+
+async def test_run_started_in_dry_run_stays_simulated_after_switch(dry_world: World) -> None:
+    world = dry_world
+    world.game.on_text("/to_eat", ("food", 3521844))
+    world.game.on_text("🌭Хот-дог", ("food", 3624983))
+
+    async def to_live(delivery: Delivery) -> None:
+        # Переключение в live, пока сертифицированный сценарий между шагами.
+        if any(isinstance(e, FoodMenu) for e in delivery.events):
+            await set_engine(world, mode="live")
+
+    world.bus.subscribe(to_live)
+    rig = Rig(world)
+    await rig.loop._execute(Act("fastfood", {"food": "hotdog"}, "test"), 1, dry_run=True)
+    assert world.settings.current.engine.mode == "live"
+    run = rig.store.runs[-1]
+    assert (run.status, run.reason) == ("suppressed", "dry_run")
+    assert world.game.payloads() == ["/to_eat"]
+    # Следующий запуск стартует уже в новом режиме: отложенное подавлением снимается.
+    await rig.loop.step()
+    assert rig.loop._held == {}

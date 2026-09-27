@@ -367,7 +367,7 @@ class ActionGateway:
             blocked = self._policy_checks(req)
             if blocked is not None:
                 return blocked
-        if eng.mode == "dry_run" and cls is not CommandClass.NAV:
+        if (eng.mode == "dry_run" or req.dry_run) and cls is not CommandClass.NAV:
             return ActionStatus.SUPPRESSED, "dry_run"
         if req.simulate and cls is not CommandClass.NAV:
             return ActionStatus.SUPPRESSED, "uncertified"

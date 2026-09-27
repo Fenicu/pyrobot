@@ -144,7 +144,8 @@ class PlannerLoop:
         self._last_wait = None
         self.next_wake = None
         decision_id = await self._store.record(now, decision)
-        await self._execute(decision, decision_id)
+        # Режим запуска — тот, в котором принято решение.
+        await self._execute(decision, decision_id, dry_run=settings.engine.mode == "dry_run")
         return None
 
     def _blocked(self) -> dict[str, datetime]:
@@ -164,15 +165,16 @@ class PlannerLoop:
             return self._max_idle_s
         return min(max((decision.until - now).total_seconds(), 0.0), self._max_idle_s)
 
-    async def _execute(self, act: Act, decision_id: int) -> None:
+    async def _execute(self, act: Act, decision_id: int, *, dry_run: bool) -> None:
         spec = SCENARIOS[act.scenario]
         settings = self._settings.current
         params = {**spec.params, **act.params}
         ctx = ScenarioContext(
             self._gateway,
             game_chat_id=settings.chats.game_chat_id,
-            # Не зависит от режима: смена dry_run → live посреди сценария не делает шаг реальным.
             simulate=not spec.certified,
+            # Смена dry_run → live посреди сценария не делает его шаги реальными.
+            dry_run=dry_run,
             paused=lambda: self._settings.current.engine.paused,
             timeout_s=self._step_timeout_s,
             clock=self._clock,

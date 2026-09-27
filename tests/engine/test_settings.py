@@ -1,7 +1,16 @@
 import pytest
 from pydantic import ValidationError
 
-from app.engine.settings import EngineSection, Settings, SettingsConflict, StaticSettings
+from app.engine.settings import (
+    EngineSection,
+    Settings,
+    SettingsConflict,
+    SettingsPatchError,
+    StaticSettings,
+    apply_patch,
+    restart_required,
+    settings_diff,
+)
 
 
 def test_defaults_are_safe() -> None:
@@ -91,3 +100,66 @@ def test_metro_bounds() -> None:
         Settings.model_validate({"metro": {"buffs": ["fastMove", "coins"]}})
     with pytest.raises(ValidationError):
         Settings.model_validate({"metro": {"heal_at": 120}})
+
+
+def test_patch_merges_sections_and_replaces_leaves() -> None:
+    s = apply_patch(
+        Settings(),
+        {"engine": {"min_request_interval_s": 2.0}, "food": {"order": ["banana"]}},
+    )
+    assert s.engine.min_request_interval_s == 2.0 and s.engine.action_ttl_s == 60.0
+    assert s.food.order == ("banana",) and s.food.banana_reserve == 50
+
+
+def test_patch_replaces_mapping_fields_whole() -> None:
+    base = apply_patch(Settings(), {"battle": {"overrides": {"13": "🤖Hooli"}}})
+    s = apply_patch(base, {"battle": {"overrides": {"22": "🛡Защита"}}})
+    assert s.battle.overrides == {22: "🛡Защита"}
+
+
+@pytest.mark.parametrize(
+    ("changes", "code", "path"),
+    [
+        ({"engine": {"moed": "live"}}, "unknown_field", "engine.moed"),
+        ({"nope": {}}, "unknown_field", "nope"),
+        ({"engine": {"killed": False}}, "read_only", "engine.killed"),
+        ({"engine": {"kill_reason": None}}, "read_only", "engine.kill_reason"),
+        ({"engine": {"paused": True}}, "read_only", "engine.paused"),
+        ({"engine": 1}, "section_expected", "engine"),
+    ],
+)
+def test_patch_rejects_bad_paths(changes: dict[str, object], code: str, path: str) -> None:
+    with pytest.raises(SettingsPatchError) as err:
+        apply_patch(Settings(), changes)
+    assert (err.value.code, err.value.path) == (code, path)
+
+
+def test_patch_validates_values() -> None:
+    with pytest.raises(ValidationError):
+        apply_patch(Settings(), {"sleep": {"duration_h": 13}})
+
+
+def test_read_only_marked_in_schema() -> None:
+    engine = Settings.model_json_schema()["$defs"]["EngineSection"]["properties"]
+    assert engine["killed"]["readOnly"] and engine["paused"]["readOnly"]
+    assert "readOnly" not in engine["mode"]
+
+
+def test_settings_diff_lists_leaf_paths() -> None:
+    old = Settings().model_dump(mode="json")
+    new = apply_patch(
+        Settings(), {"engine": {"mode": "live"}, "battle": {"overrides": {"13": "🤖Hooli"}}}
+    ).model_dump(mode="json")
+    assert settings_diff(old, new) == {
+        "engine.mode": ["dry_run", "live"],
+        "battle.overrides.13": [None, "🤖Hooli"],
+    }
+    assert settings_diff(new, new) == {}
+
+
+def test_restart_required_paths() -> None:
+    assert restart_required(["chats.game_chat_id", "engine.mode"]) == ["chats.game_chat_id"]
+    assert restart_required(["engine.recovered_react_max_age_min"]) == [
+        "engine.recovered_react_max_age_min"
+    ]
+    assert restart_required(["telegram.expected_user_id"]) == ["telegram.expected_user_id"]

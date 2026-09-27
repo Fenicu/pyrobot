@@ -18,6 +18,7 @@ from app.db.lock import SingleInstanceLock
 from app.db.metro import DbMetroRunStore
 from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
+from app.db.reads import DbReads
 from app.db.settings_store import DbSettingsStore
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
@@ -89,7 +90,12 @@ class Runtime:
         self.settings = DbSettingsStore(self.db, config.account_id)
         self.lock = SingleInstanceLock(self.db)
         self.auth = AuthRepo(self.db)
-        self.container = Container(config=config, auth=self.auth, limiter=LoginRateLimiter())
+        self.container = Container(
+            config=config,
+            auth=self.auth,
+            limiter=LoginRateLimiter(),
+            reads=DbReads(self.db, config.account_id),
+        )
         self.supervisor = Supervisor(self.notifier)
         self.lock_check_s = LOCK_CHECK_S
         self.tg_probe_s = TG_PROBE_S

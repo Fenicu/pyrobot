@@ -317,7 +317,10 @@ SWINFO (`swinfo`): анонс записи на фабрику, итог бит�
 числе очередной шаг сценария, начатого до паузы; срочные и ручные — по флагам
 `urgent_while_paused`/`manual_while_paused`. Шаг несертифицированного сценария
 (`ActionRequest.simulate`) подавляется в любом режиме (`SUPPRESSED "uncertified"`, в `dry_run` —
-`"dry_run"`), `nav` уходит. Ожидание может слушать другой чат (`Expectation.chat_id`): шаги
+`"dry_run"`), `nav` уходит. Режим запуска сценария фиксируется на его старте (для плана — в момент
+решения): шаги запуска, начатого в `dry_run`, несут `ActionRequest.dry_run` и подавляются
+(`SUPPRESSED "dry_run"`) до конца запуска, даже если режим переключили в `live`; следующий запуск
+идёт уже в новом режиме. Ожидание может слушать другой чат (`Expectation.chat_id`): шаги
 сценариев всегда ждут ответа в чате игры, даже если команда ушла в чат Tangerine (`/gt`). Если игра
 отвечает только на ошибку, ожидание помечается `Expectation.silence_confirms` (сейчас — только
 `/gt`): тишина до тайм-аута подтверждает действие (`CONFIRMED "silence"`) без блока трат и сверки.
@@ -907,3 +910,25 @@ code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (�
 `doubtful`, для цен — старше 7 дней (`prices.<ключ>`). Поле, которое ещё не встречалось на экране
 (например `books` до `/inv`), есть в `state` со значением `null` и в `stale` не попадает — это не
 устаревшее значение, а ненаблюдавшееся. Без запущенного движка — 503, как `/api/v1/engine/status`.
+
+`GET /api/v1/settings` (сессия) отдаёт `{version, values, defaults, schema}`: текущие настройки,
+дефолты и JSON Schema модели `Settings` (поля `engine.killed`, `engine.kill_reason`,
+`engine.paused` помечены `readOnly` — их меняют только `/engine/kill|unkill|pause|resume` с latch
+шлюза, проверкой блокировки экземпляра и аудитом). `PATCH /api/v1/settings` (CSRF) принимает
+`{version, changes, confirm_live?}`: `changes` — частичный JSON, секции сливаются, листья (списки,
+словари вроде `battle.overrides`) заменяются целиком (`apply_patch`, `app/engine/settings.py`).
+`version` — версия, которую видел клиент; если настройки успели измениться — 409
+`{"detail": {"code": "version_conflict", "version": <текущая>}}`. Незнакомый или read-only путь и
+невалидное значение — 422 в формате ошибок валидации FastAPI (`loc` = `["body", "changes", …путь]`,
+`type` = `unknown_field`/`read_only`/`section_expected` или тип ошибки pydantic). Переход
+`engine.mode` из `dry_run` в `live` требует `confirm_live: true`, иначе 422 с `loc` `["body",
+"confirm_live"]` и `type` `live_requires_confirm`; обратно в `dry_run` подтверждение не нужно.
+Ответ — `{version, values, changed, restart_required}`: `changed` — изменённые листья
+(`путь → [было, стало]`), `restart_required` — те из них, что читаются только при старте процесса
+(`chats.*`, `telegram.*`, `engine.recovered_react_max_age_min`). Любое изменение будит шлюз (стоящие
+в очереди действия перепроверяются по новым правилам) и планировщик (смена режима сбрасывает
+отложенные подавлением сценарии; идущий запуск доигрывает в режиме своего старта, см. «Политика
+шлюза»); смена режима пишет аудит `engine_mode` с логином. `GET
+/api/v1/settings/history?limit&before` (сессия, работает и без движка) — версии от новых к старым с
+автором, моментом и `changes` относительно предыдущей версии (у первой — относительно дефолтов);
+`next_before` — курсор следующей страницы.

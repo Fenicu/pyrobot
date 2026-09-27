@@ -1,15 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Annotated, Literal, Protocol
+from collections.abc import Callable, Iterable, Mapping
+from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
+
+# Меняется только своими эндпоинтами движка (kill/unkill, pause/resume): у них latch шлюза,
+# проверка блокировки экземпляра и аудит, а PATCH настроек обошёл бы их.
+READ_ONLY: dict[str, Any] = {"readOnly": True}
 
 
 class EngineSection(BaseModel):
     mode: Literal["dry_run", "live"] = "dry_run"
-    killed: bool = False
-    kill_reason: str | None = None
+    killed: bool = Field(default=False, json_schema_extra=READ_ONLY)
+    kill_reason: str | None = Field(default=None, json_schema_extra=READ_ONLY)
     min_request_interval_s: float = Field(default=1.6, ge=0)
     antiflood_retry_max: int = Field(default=2, ge=0)
     antiflood_pause_s: float = Field(default=10.0, ge=0)
@@ -19,7 +23,7 @@ class EngineSection(BaseModel):
     recovered_react_max_age_min: int = Field(default=10, ge=0)
     refresh_min_interval_s: float = Field(default=120.0, gt=0)
     state_stale_after_min: int = Field(default=15, ge=1)
-    paused: bool = False
+    paused: bool = Field(default=False, json_schema_extra=READ_ONLY)
     urgent_while_paused: bool = True
     manual_while_paused: bool = True
 
@@ -159,6 +163,64 @@ class Settings(BaseModel):
 
 class SettingsConflict(Exception):
     pass
+
+
+class SettingsPatchError(ValueError):
+    def __init__(self, code: str, path: str) -> None:
+        super().__init__(f"{code}: {path}")
+        self.code = code
+        self.path = path
+
+
+# Читаются только при старте процесса (парсер, фильтр чатов, вход в Telegram, конвейер).
+_RESTART_REQUIRED = ("chats.", "telegram.", "engine.recovered_react_max_age_min")
+
+
+def apply_patch(settings: Settings, changes: Mapping[str, Any]) -> Settings:
+    """Частичное изменение: секции сливаются, листья (в том числе словари и списки)
+    заменяются целиком; незнакомый или read-only путь — `SettingsPatchError`."""
+    data = settings.model_dump(mode="json")
+    _merge(Settings, data, changes, "")
+    return Settings.model_validate(data)
+
+
+def _merge(
+    model: type[BaseModel], data: dict[str, Any], changes: Mapping[str, Any], prefix: str
+) -> None:
+    for key, value in changes.items():
+        path = f"{prefix}{key}"
+        field = model.model_fields.get(key)
+        if field is None:
+            raise SettingsPatchError("unknown_field", path)
+        extra = field.json_schema_extra
+        if isinstance(extra, dict) and extra.get("readOnly"):
+            raise SettingsPatchError("read_only", path)
+        section = field.annotation
+        if isinstance(section, type) and issubclass(section, BaseModel):
+            if not isinstance(value, Mapping):
+                raise SettingsPatchError("section_expected", path)
+            _merge(section, data[key], value, f"{path}.")
+        else:
+            data[key] = value
+
+
+def settings_diff(old: Mapping[str, Any], new: Mapping[str, Any]) -> dict[str, list[Any]]:
+    """Изменённые листья JSON-дампа настроек: путь через точку → [было, стало]."""
+    out: dict[str, list[Any]] = {}
+    _diff(old, new, "", out)
+    return out
+
+
+def _diff(old: Any, new: Any, prefix: str, out: dict[str, list[Any]]) -> None:
+    if isinstance(old, Mapping) and isinstance(new, Mapping):
+        for key in sorted(old.keys() | new.keys(), key=str):
+            _diff(old.get(key), new.get(key), f"{prefix}{key}.", out)
+    elif old != new:
+        out[prefix.rstrip(".")] = [old, new]
+
+
+def restart_required(paths: Iterable[str]) -> list[str]:
+    return [p for p in paths if p.startswith(_RESTART_REQUIRED)]
 
 
 SettingsChange = Callable[[Settings], Settings]

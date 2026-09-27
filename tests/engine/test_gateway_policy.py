@@ -107,3 +107,10 @@ async def test_answer_expected_in_other_chat(rig: Rig) -> None:
     assert res.status is ActionStatus.CONFIRMED
     [sent] = rig.transport.sent
     assert (sent.chat_id, sent.payload) == (tangerine, "/gt")
+
+
+async def test_run_pinned_to_dry_run_suppressed_in_live(rig: Rig) -> None:
+    res = await rig.gw.submit(send("/job", dry_run=True, expect=expect_text("работать")))
+    assert res.status is ActionStatus.SUPPRESSED and res.reason == "dry_run"
+    assert (await rig.gw.submit(send("😎Я", dry_run=True))).status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["😎Я"]

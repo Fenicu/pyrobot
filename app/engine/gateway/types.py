@@ -73,6 +73,9 @@ class ActionRequest:
     expect_content: str | None = None
     # Шаг несертифицированного сценария: не-nav подавляется как в dry_run даже в live.
     simulate: bool = False
+    # Шаг запуска, начатого в dry_run: режим запуска зафиксирован на старте, переключение
+    # в live посреди сценария не делает его следующие шаги реальными.
+    dry_run: bool = False
 
     def payload(self) -> dict[str, object]:
         return {

@@ -108,8 +108,11 @@ class ScenarioContext:
         notifier: NotifierPort | None = None,
         history: History | None = None,
         reread: Reread | None = None,
+        dry_run: bool = False,
     ) -> None:
         self._gateway = gateway
+        # Режим запуска, зафиксированный на его старте (см. ActionRequest.dry_run).
+        self.dry_run = dry_run
         self._game = game_chat_id
         self.simulate = simulate
         self._paused = paused
@@ -246,6 +249,7 @@ class ScenarioContext:
                 ttl_s=timeout * 3,
                 lease_token=self._lease.token if self._lease else None,
                 simulate=self.simulate,
+                dry_run=self.dry_run,
             )
         )
         step = _STEP_OF.get(result.status, Step.FAILED)

@@ -10,6 +10,7 @@ from app.api.security import LoginRateLimiter
 from app.config import AppConfig
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.reads import DbReads
 
 PASSWORD = "correct horse battery"
 
@@ -22,7 +23,9 @@ def make_container(db: Database, *, secure: bool = False) -> Container:
         admin_login="admin",
         admin_password=SecretStr(PASSWORD),
     )
-    return Container(config=cfg, auth=AuthRepo(db), limiter=LoginRateLimiter())
+    return Container(
+        config=cfg, auth=AuthRepo(db), limiter=LoginRateLimiter(), reads=DbReads(db, 1)
+    )
 
 
 @pytest.fixture

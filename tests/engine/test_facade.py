@@ -13,7 +13,13 @@ from app.engine.memory import MemoryActionStore, MemoryJournal
 from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
-from app.engine.settings import SettingsChange, StaticSettings
+from app.engine.settings import (
+    SettingsChange,
+    SettingsConflict,
+    SettingsPatchError,
+    SettingsProvider,
+    StaticSettings,
+)
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from tests.engine.helpers import GAME, until
@@ -21,10 +27,11 @@ from tests.engine.helpers import GAME, until
 
 def build(
     authorized: bool = True,
-    settings: StaticSettings | None = None,
+    settings: SettingsProvider | None = None,
     lock_ok: Callable[[], bool] = lambda: True,
     backend: TgAuthBackend | None = None,
     notifier: NotifierPort | None = None,
+    planner: object | None = None,
 ) -> EngineFacade:
     settings = settings or StaticSettings()
     pipeline = Pipeline(
@@ -47,6 +54,7 @@ def build(
         lag=LoopLagMonitor(),
         lock_ok=lock_ok,
         notifier=notifier,
+        planner=planner,  # type: ignore[arg-type]
     )
 
 
@@ -152,3 +160,34 @@ async def test_pause_resume_persist_and_audit() -> None:
     assert not f.status().paused
     assert [code for _, code, _ in rec.items] == ["engine_paused", "engine_resumed"]
     assert "alice" in rec.items[0][2]
+
+
+class _Planner:
+    current: str | None = None
+    next_wake = None
+
+    def __init__(self) -> None:
+        self.woken = 0
+
+    def wake(self) -> None:
+        self.woken += 1
+
+
+async def test_patch_settings_wakes_planner_and_audits_mode() -> None:
+    rec, planner = _Recorder(), _Planner()
+    f = build(notifier=rec, planner=planner)
+    upd = await f.patch_settings({"engine": {"min_request_interval_s": 2}}, version=0, by="alice")
+    assert upd.version == 1 and upd.changed == {"engine.min_request_interval_s": [1.6, 2.0]}
+    assert planner.woken == 1 and rec.items == []
+    with pytest.raises(SettingsPatchError) as err:
+        await f.patch_settings({"engine": {"mode": "live"}}, version=1, by="alice")
+    assert err.value.code == "live_requires_confirm" and f.settings.version == 1
+    await f.patch_settings({"engine": {"mode": "live"}}, version=1, by="alice", confirm_live=True)
+    assert f.status().mode == "live" and planner.woken == 2
+    assert [(lvl, code) for lvl, code, _ in rec.items] == [("info", "engine_mode")]
+    assert "dry_run -> live" in rec.items[0][2] and "alice" in rec.items[0][2]
+    # Обратно в dry_run подтверждение не нужно.
+    await f.patch_settings({"engine": {"mode": "dry_run"}}, version=2, by="bob")
+    assert f.status().mode == "dry_run"
+    with pytest.raises(SettingsConflict):
+        await f.patch_settings({"engine": {"action_ttl_s": 5}}, version=1, by="bob")

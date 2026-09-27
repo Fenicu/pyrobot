@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -10,7 +10,13 @@ from app.engine.gateway.gateway import ActionGateway
 from app.engine.lag import LoopLagMonitor
 from app.engine.notify import NotifierPort
 from app.engine.pipeline import Pipeline
-from app.engine.settings import Settings, SettingsProvider
+from app.engine.settings import (
+    Settings,
+    SettingsPatchError,
+    SettingsProvider,
+    apply_patch,
+    settings_diff,
+)
 from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
 
 if TYPE_CHECKING:
@@ -45,6 +51,13 @@ class EngineStatus:
     workers_ok: bool
     lock_ok: bool
     loop_lag_ms: float
+
+
+@dataclass(frozen=True)
+class SettingsUpdate:
+    settings: Settings
+    version: int
+    changed: dict[str, list[Any]]
 
 
 class EngineFacade:
@@ -155,6 +168,37 @@ class EngineFacade:
         await self.settings.update(change, changed_by=by)
         if self._planner is not None:
             self._planner.wake()
+
+    async def patch_settings(
+        self,
+        changes: Mapping[str, Any],
+        *,
+        version: int,
+        by: str,
+        confirm_live: bool = False,
+    ) -> SettingsUpdate:
+        """Частичное изменение настроек с оптимистичной блокировкой по `version`.
+        Переход в `live` — только с `confirm_live`: из dry_run начинаются реальные траты."""
+        before: list[Settings] = []
+
+        def change(s: Settings) -> Settings:
+            new = apply_patch(s, changes)
+            if new.engine.mode == "live" and s.engine.mode != "live" and not confirm_live:
+                raise SettingsPatchError("live_requires_confirm", "engine.mode")
+            before.append(s)
+            return new
+
+        new = await self.settings.update(change, changed_by=by, expected_version=version)
+        old = before[-1]
+        await self.gateway.wake()
+        if self._planner is not None:
+            self._planner.wake()
+        if old.engine.mode != new.engine.mode:
+            await self._audit(
+                "engine_mode", f"mode {old.engine.mode} -> {new.engine.mode} by {by}"
+            )
+        changed = settings_diff(old.model_dump(mode="json"), new.model_dump(mode="json"))
+        return SettingsUpdate(new, self.settings.version, changed)
 
     async def reconciled(self, *, by: str) -> None:
         log.info("spending unblocked by %s", by)
