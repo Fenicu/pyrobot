@@ -13,6 +13,7 @@ from app.engine.stream import (
     PublishingPlannerStore,
     StreamFeed,
 )
+from app.engine.types import Button
 from tests.engine.helpers import GAME, make_msg
 
 AT = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
@@ -124,3 +125,38 @@ async def test_feed_publishes_messages_and_changed_state() -> None:
         "version": 2,
         "changed": {"money": {"value": 2}, "busy": {"value": 5}},
     }
+
+
+async def test_feed_message_carries_buttons_like_journal() -> None:
+    stream = EventStream(epoch="e1")
+    feed = StreamFeed(stream, lambda: {})
+    buttons = (
+        Button("Под мостом - 0 💵", 0, 0, "sleep_Bridge"),
+        Button("В отеле - 213 💵", 1, 0, "sleep_Hotel"),
+    )
+    msg = make_msg("Где собираешься спать?", msg_id=3626304, revision=1790535904, buttons=buttons)
+    await feed.on_delivery(Delivery(msg, (), 0, 776))
+    await feed.on_delivery(Delivery(make_msg("без кнопок", msg_id=8), (), 0, 777))
+    first, second = (e.data for e in stream.history())
+    assert list(first) == [
+        "journal_id",
+        "chat_id",
+        "msg_id",
+        "revision",
+        "kind",
+        "date",
+        "outgoing",
+        "text",
+        "events",
+        "markup",
+    ]
+    assert (first["chat_id"], first["msg_id"], first["revision"]) == (GAME, 3626304, 1790535904)
+    # Та же форма, что у элемента /journal (кадр с прода 27.09).
+    assert first["markup"] == {
+        "inline": [
+            ["Под мостом - 0 💵", 0, 0, "sleep_Bridge", None, None],
+            ["В отеле - 213 💵", 1, 0, "sleep_Hotel", None, None],
+        ]
+    }
+    assert first["markup"] == msg.markup_json()
+    assert second["markup"] is None

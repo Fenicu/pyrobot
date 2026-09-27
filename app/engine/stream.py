@@ -129,6 +129,9 @@ class StreamFeed:
                 "outgoing": msg.outgoing,
                 "text": msg.text,
                 "events": [e.to_json() for e in delivery.events],
+                # Кнопки — как `markup` элемента /journal: по ним админка кликает
+                # (`/commands/click` с `chat_id`, `msg_id` и `revision` этой правки).
+                "markup": msg.markup_json(),
             },
         )
         if delivery.state_version == self._version:

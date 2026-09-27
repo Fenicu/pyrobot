@@ -1567,8 +1567,9 @@ pattern?}` (отсутствующие ключи не выводятся; `patt
 
 `GET /api/v1/events` (сессия) — поток SSE (`text/event-stream`) из `EventStream`
 (`app/engine/stream.py`). Каждое событие — `id: <эпоха процесса>:<номер>` (эпоха — момент старта в
-мс), `event: <тип>`, `data: <JSON>`. Типы: `message` (каждая запись журнала: `journal_id`, чат,
-сообщение, ревизия, текст, события парсера), `state` (`version` и `changed` — изменившиеся поля
+мс), `event: <тип>`, `data: <JSON>`. Типы: `message` (каждая запись журнала: `journal_id`,
+`chat_id`, `msg_id`, `revision`, вид, дата, текст, события парсера и кнопки `markup` в той же форме,
+что у элемента `/journal`, — по ним админка кликает из живой ленты), `state` (`version` и `changed` — изменившиеся поля
 состояния, как в `GET /state`, без служебного `applied`), `action` (создание строки `actions` —
 статус, источник, текст или `callback_data`, класс; каждый следующий переход — `{id, status,
 reason}`), `decision` (решение планировщика без кандидатов), `scenario_run` (`queued`, `running`,

@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -43,6 +44,7 @@ async def read_sse(
     count: int,
     timeout: float = 3.0,  # noqa: ASYNC109
     keep_comments: bool = False,
+    on_event: Callable[[SseEvent], None] | None = None,
 ) -> tuple[int, list[SseEvent]]:
     done = asyncio.Event()
     status = 0
@@ -69,6 +71,8 @@ async def read_sse(
                 parsed = _parse(frame)
                 if parsed is not None and (keep_comments or not parsed.comment):
                     events.append(parsed)
+                    if on_event is not None:
+                        on_event(parsed)
             if len(events) >= count or not message.get("more_body", False):
                 done.set()
 

@@ -13,7 +13,7 @@ from app.db.base import Database
 from app.db.models import AuthSession
 from app.engine.stream import EventStream
 from tests.api.conftest import login
-from tests.api.sse import read_sse
+from tests.api.sse import SseEvent, read_sse
 from tests.engine.helpers import until
 from tests.engine.test_facade import build
 
@@ -91,13 +91,21 @@ async def test_revoked_session_closes_stream(
     csrf = await login(api_client)
     headers = _cookie(api_client)
 
+    pinged = asyncio.Event()
+
+    def seen(event: SseEvent) -> None:
+        if event.comment:
+            pinged.set()
+
+    # Выход — после того, как клиент увидел первый пинг, а не через паузу: пауза сборщика мусора
+    # тестового процесса съедала фиксированный запас до первого пинга.
     async def logout() -> None:
-        await asyncio.sleep(0.12)
+        await pinged.wait()
         await api_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": csrf})
 
     task = asyncio.create_task(logout())
     status, events = await read_sse(
-        app, "/api/v1/events", headers=headers, count=100, keep_comments=True
+        app, "/api/v1/events", headers=headers, count=100, keep_comments=True, on_event=seen
     )
     await task
     assert status == 200
