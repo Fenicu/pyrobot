@@ -12,10 +12,20 @@ STARTS = {
     "learn": ("/learns", 3603614),
     "dconv": ("/dconv", 3624728),
     "eat": ("/eat", 3516647),
+    "walk": ("/walk", 3625686),
+    "confa": ("/confa", 3437620),
 }
 
 
-@certifies("deed:harvest", "deed:job", "deed:learn", "deed:dconv", "deed:eat")
+@certifies(
+    "deed:harvest",
+    "deed:job",
+    "deed:learn",
+    "deed:dconv",
+    "deed:eat",
+    "deed:walk",
+    "deed:confa",
+)
 @pytest.mark.parametrize("activity", sorted(STARTS))
 async def test_deed_started(world: World, activity: str) -> None:
     command, fixture = STARTS[activity]
@@ -24,6 +34,21 @@ async def test_deed_started(world: World, activity: str) -> None:
     assert (result.status, world.game.payloads()) == ("done", [command])
     busy = world.state.busy
     assert busy is not None and busy.value is not None and busy.value.activity == activity
+
+
+@certifies("deed:walk", "deed:confa")
+@pytest.mark.parametrize(("activity", "finish"), [("walk", 3625689), ("confa", 3438035)])
+async def test_walk_and_confa_finish_frees_and_updates_stats(
+    world: World, activity: str, finish: int
+) -> None:
+    command, start = STARTS[activity]
+    world.game.on_text(command, ("activities", start))
+    result = await run_scenario(deed, context(world), CharacterState(), {"activity": activity})
+    assert result.status == "done"
+    await world.feed("activities", finish)
+    state = world.state
+    assert state.busy is not None and state.busy.value is None
+    assert state.activity_stats[activity].count == 1
 
 
 @certifies("deed:harvest")

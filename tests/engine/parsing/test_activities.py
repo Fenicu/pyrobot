@@ -32,6 +32,12 @@ def _events(msg_id: int) -> list[Event]:
         (3603614, ActivityStarted(activity="learn", duration_s=210)),
         (3516647, ActivityStarted(activity="eat", duration_s=300, money=5)),
         (3624728, ActivityStarted(activity="dconv", duration_s=360, money=5, details=10)),
+        # Прогулка со 🏌️Клюшкой (живой замер), ⛷лыжами и 🐕.
+        (3625686, ActivityStarted(activity="walk", duration_s=250)),
+        (3385717, ActivityStarted(activity="walk", duration_s=280)),
+        (3213190, ActivityStarted(activity="walk", duration_s=247)),
+        (3437620, ActivityStarted(activity="confa", duration_s=240, money=7)),
+        (3438033, ActivityStarted(activity="confa", duration_s=240, money=7)),
     ],
 )
 def test_starts(msg_id: int, expected: ActivityStarted) -> None:
@@ -60,6 +66,27 @@ def test_other_results() -> None:
     assert [_finished(i).rewards.stamina for i in (3516648, 3517759, 3520195)] == [100, 0, 200]
     dconv = _finished(3624873)
     assert (dconv.activity, dconv.rewards.exp, dconv.rewards.raw) == ("dconv", 253, 5)
+
+
+def test_walk_results() -> None:
+    walk = _finished(3625689)
+    assert (walk.activity, walk.failed) == ("walk", False)
+    r = walk.rewards
+    assert (r.exp, r.money, r.raw, r.team_task) == (253, 4, 1, (18, 120, "🔩"))
+    plain = _finished(3436320)
+    assert (plain.activity, plain.rewards.exp, plain.rewards.money) == ("walk", 175, 3)
+    # Итог без наград — тоже итог прогулки.
+    empty = _finished(3428028)
+    assert (empty.activity, empty.rewards.exp) == ("walk", 0)
+
+
+def test_confa_results() -> None:
+    owl = _finished(3437625)
+    assert (owl.activity, owl.rewards.exp, owl.rewards.knowledge) == ("confa", 394, 99)
+    team = _finished(3438035)
+    assert (team.rewards.knowledge, team.rewards.team_task) == (88, (437, 600, "📚"))
+    empty = _finished(3437621)
+    assert (empty.activity, empty.rewards.knowledge) == ("confa", 0)
 
 
 def test_logistic_refund() -> None:
