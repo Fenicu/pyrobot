@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from app.engine.events import Event
@@ -91,6 +93,24 @@ def test_robbed_while_asleep(msg_id: int, robber: str, level: int, exp: int, mon
     assert isinstance(loss, RobberyLoss)
     assert (loss.robber, loss.level, loss.pct) == (robber, level, 30)
     assert (loss.rewards.exp, loss.rewards.money, loss.rewards.stamina) == (exp, money, None)
+    assert loss.money_lost == money
+
+
+def test_robbed_with_zero_money_line_has_money_lost_zero() -> None:
+    # «-$0» — строка потери есть, потеря просто нулевая: не «строки нет».
+    msg = game_msg("sleep", 3420239)
+    text = (msg.text or "").replace("-$38", "-$0")
+    [loss] = recognize_sleep(replace(msg, text=text))
+    assert isinstance(loss, RobberyLoss)
+    assert (loss.rewards.money, loss.money_lost) == (0, 0)
+
+
+def test_robbed_without_money_line_has_no_money_lost() -> None:
+    msg = game_msg("sleep", 3420239)
+    text = (msg.text or "").split("\n\nТы потерял:")[0]
+    [loss] = recognize_sleep(replace(msg, text=text))
+    assert isinstance(loss, RobberyLoss)
+    assert (loss.rewards.money, loss.money_lost) == (0, None)
 
 
 def test_live_sleep_with_place_step() -> None:

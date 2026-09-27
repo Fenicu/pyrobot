@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from app.engine.events import Event
-from app.engine.parsing.common import Rewards, parse_rewards
+from app.engine.parsing.common import Rewards, has_money_line, parse_rewards
 from app.engine.types import IncomingMessage
 
 _WARNING = re.compile(r"\AТы уже достаточно долго бодрствуешь\. Через (?P<h>\d+) час")
@@ -103,7 +103,9 @@ class RobberyAlert(Event):
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RobberyLoss(Event):
     """Не проснулся: грабитель забрал `pct`% 💵 — отдельное сообщение через ~4 мин после тревоги,
-    сама тревога не правится. Потерю игра пишет строкой «💵Деньги: -$N»."""
+    сама тревога не правится. Потерю игра пишет строкой «💵Деньги: -$N»; `money_lost` — эта сумма,
+    `None` — строки нет (в отличие от `rewards.money == 0`, который не отличает «нет строки» от
+    «строка "-$0"»)."""
 
     kind: ClassVar[str] = "robbery_loss"
     outcome: ClassVar[bool] = True
@@ -111,6 +113,7 @@ class RobberyLoss(Event):
     level: int
     pct: int
     rewards: Rewards
+    money_lost: int | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -154,12 +157,14 @@ def recognize_sleep(msg: IncomingMessage) -> list[Event]:
     if m := _ALERT.match(text):
         return [RobberyAlert(robber=m["robber"], level=int(m["lvl"]))]
     if m := _LOSS.match(text):
+        rewards = parse_rewards(text)
         return [
             RobberyLoss(
                 robber=m["robber"],
                 level=int(m["lvl"]),
                 pct=int(m["pct"]),
-                rewards=parse_rewards(text),
+                rewards=rewards,
+                money_lost=rewards.money if has_money_line(text) else None,
             )
         ]
     for topic, prefix in _ACKS:

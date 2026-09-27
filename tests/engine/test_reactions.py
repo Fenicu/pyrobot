@@ -207,6 +207,15 @@ async def test_click_ttl_is_what_is_left_of_robbery_window(
     assert row.req.ttl_s == pytest.approx(ttl) and row.req.ttl_s <= CLICK_TTL_S
 
 
+async def test_alert_exactly_at_window_boundary_is_not_clicked(rig: Rig) -> None:
+    # Ровно ROBBERY_WINDOW_S: `_left_s` == 0, не > 0 — окно уже вышло, клика нет.
+    rig.world.game.on_click(BUTTON, edit=WON)
+    await rig.alert(age=timedelta(seconds=ROBBERY_WINDOW_S))
+    await rig.settled()
+    assert rig.clicks() == []
+    assert rig.world.store.rows == {}
+
+
 async def test_click_ttl_is_not_longer_than_configured(world: World) -> None:
     clock = Frozen()
     defense = RobberyDefense(

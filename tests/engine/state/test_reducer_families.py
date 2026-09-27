@@ -83,6 +83,18 @@ def test_robbed_without_money_line_doubts_money() -> None:
     assert value(state, "exp") == 17496049 + 118
 
 
+def test_robbed_with_zero_money_line_is_not_doubtful() -> None:
+    # «-$0» — строка потери есть: сумма известна точно, деньги не помечаются недостоверными.
+    reducer = StateReducer()
+    state = _profiled(reducer)
+    msg = fixture_at("sleep", 3420239, 30)
+    text = (msg.text or "").replace("-$38", "-$0")
+    lost = replace(msg, text=text)
+    state = reducer.apply(state, lost, PARSER.parse(lost))
+    assert (value(state, "money"), state["money"]["src"]) == (867, "screen")
+    assert value(state, "exp") == 17496049 + 118
+
+
 def test_sleep_warning_sets_deadline() -> None:
     reducer = StateReducer()
     state = feed(reducer, _profiled(reducer), "sleep", 3517243, 1)

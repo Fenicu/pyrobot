@@ -81,6 +81,11 @@ def _task_line(pattern: re.Pattern[str], text: str) -> tuple[int, int, str] | No
     return (num(m["cur"]), num(m["goal"]), resource(m["res"])) if m else None
 
 
+def has_money_line(text: str) -> bool:
+    """Строка 💵 в тексте: `Rewards.money == 0` не отличает «строки нет» от строки «-$0»."""
+    return any(m["k"].startswith("💵") for m in _REWARD.finditer(text))
+
+
 def parse_rewards(text: str) -> Rewards:
     totals = dict.fromkeys(_REWARD_KEYS.values(), 0)
     stamina: int | None = None

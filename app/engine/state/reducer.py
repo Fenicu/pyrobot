@@ -476,7 +476,7 @@ def _robbery(p: _Patch, e: RobberyFight) -> None:
 def _robbery_loss(p: _Patch, e: RobberyLoss) -> None:
     # Сон продолжается. Без строки потери деньги изменились на неизвестную сумму.
     p.rewards(e.rewards)
-    if e.rewards.money == 0:
+    if e.money_lost is None:
         p.doubt("money")
 
 

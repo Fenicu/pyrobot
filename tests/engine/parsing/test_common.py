@@ -3,7 +3,7 @@ from dataclasses import asdict
 
 import pytest
 
-from app.engine.parsing.common import Rewards, dur, first_line, num, parse_rewards
+from app.engine.parsing.common import Rewards, dur, first_line, has_money_line, num, parse_rewards
 from tests.fixtures import game_msg
 
 
@@ -40,6 +40,20 @@ def _rewards(family: str, msg_id: int) -> Rewards:
     text = game_msg(family, msg_id).text
     assert text is not None
     return parse_rewards(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("💵Деньги: -$0", True),
+        ("💵Деньги: -$38", True),
+        ("💡Опыт: +118", False),
+        ("Тебя ограбил 🤖Хук (37).\nТы потерял 30% 💵", False),
+    ],
+)
+def test_has_money_line(text: str, expected: bool) -> None:
+    # `Rewards.money == 0` не отличает «строки нет» от «строка "-$0"» — нужен отдельный признак.
+    assert has_money_line(text) is expected
 
 
 def test_rewards_owl_bonus_summed() -> None:
