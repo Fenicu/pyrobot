@@ -23,7 +23,8 @@ def test_ids_are_epoch_and_sequence() -> None:
     stream.publish("notification", {"code": "a"})
     stream.publish("notification", {"code": "b"})
     assert [stream.event_id(e.seq) for e in stream.history()] == ["e1:1", "e1:2"]
-    assert stream.position == "e1:2"
+    # reset нового подключения получает id последнего события.
+    assert stream.event_id(stream.subscribe(None).at) == "e1:2"
 
 
 def test_resume_replays_after_last_id() -> None:

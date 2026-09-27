@@ -140,6 +140,7 @@ class UnrecognizedRow(Base):
     __tablename__ = "unrecognized"
     __table_args__ = (
         Index("ix_unrecognized_account_acked_created", "account_id", "acked", "created_at"),
+        Index("ix_unrecognized_message_id", "message_id"),
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
@@ -180,6 +181,7 @@ class ScenarioRunRow(Base):
     __tablename__ = "scenario_runs"
     __table_args__ = (
         Index("ix_scenario_runs_account_started", "account_id", "started_at"),
+        Index("ix_scenario_runs_decision_id", "decision_id"),
         UniqueConstraint("account_id", "idempotency_key", name="uq_scenario_runs_account_key"),
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -202,7 +204,10 @@ class ScenarioRunRow(Base):
 
 class MetroRunRow(Base):
     __tablename__ = "metro_runs"
-    __table_args__ = (Index("ix_metro_runs_account_started", "account_id", "started_at"),)
+    __table_args__ = (
+        Index("ix_metro_runs_account_started", "account_id", "started_at"),
+        Index("ix_metro_runs_scenario_run_id", "scenario_run_id"),
+    )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
     scenario_run_id: Mapped[int | None] = mapped_column(

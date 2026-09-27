@@ -77,7 +77,11 @@ uv run alembic upgrade head
 Миграция `0006` добавляет индекс `actions (account_id, created_at)` — по нему идёт лента журнала API.
 Миграция `0007` добавляет в `scenario_runs` поля ручного запуска из админки: `requested_by` (логин),
 `idempotency_key` (уникален в пределах аккаунта) и `requested_params` (присланные параметры до
-слияния с реестром); у запусков планировщика все три `NULL`.
+слияния с реестром); у запусков планировщика все три `NULL`. Миграция `0008` добавляет индексы под
+внешние ключи `unrecognized.message_id`, `scenario_runs.decision_id` и `metro_runs.scenario_run_id`:
+без них каждое удаление сообщения, решения или запуска (ретеншн) проверяло бы `ON DELETE` полным
+просмотром ссылающейся таблицы. Тест миграций (`tests/db/test_migrations.py`) после `upgrade head`
+сверяет схему с моделями (`compare_metadata` пуст).
 
 Пул соединений (`app/db/base.py`) задаёт asyncpg `command_timeout=30` — ни один запрос не висит
 дольше 30 секунд; проверка single-instance лока (`SingleInstanceLock.check`) ограничена 5 секундами,

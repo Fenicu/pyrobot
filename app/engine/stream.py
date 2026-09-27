@@ -58,10 +58,6 @@ class EventStream:
     def subscribers(self) -> int:
         return len(self._subs)
 
-    @property
-    def position(self) -> str:
-        return self.event_id(self._seq)
-
     def event_id(self, seq: int) -> str:
         return f"{self.epoch}:{seq}"
 
