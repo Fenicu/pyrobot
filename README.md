@@ -900,11 +900,11 @@ backoff с 429 и `Retry-After`. Истёкшие `auth_sessions` удаляет
 час (`Runtime.session_purge_s`, `AuthRepo.purge_expired`). Смена пароля (`POST
 /api/v1/auth/password`, новый пароль не короче 12 и не длиннее 1024 символов, текущий — не длиннее
 1024) отзывает все сессии админа, включая текущую. `GET /healthz` — проверка живости, без
-авторизации. Swagger UI, ReDoc и `/openapi.json` отключены (404): схема не публикуется, а
-выгружается офлайн — `uv run python tools/openapi.py [файл]` (по умолчанию `openapi.json` в корне
-репозитория, `build_schema` в `app/api/openapi.py` собирает приложение без БД и движка); из неё
-генерируются TS-типы админки. `openapi.json` лежит в репозитории, тест `tests/test_openapi.py`
-падает, если он отстал от кода.
+авторизации (снаружи, через Caddy, `/healthz` и `/readyz` закрыты — см. «Образ и деплой»). Swagger
+UI, ReDoc и `/openapi.json` отключены (404): схема не публикуется, а выгружается офлайн — `uv run
+python tools/openapi.py [файл]` (по умолчанию `openapi.json` в корне репозитория, `build_schema` в
+`app/api/openapi.py` собирает приложение без БД и движка); из неё генерируются TS-типы админки.
+`openapi.json` лежит в репозитории, тест `tests/test_openapi.py` падает, если он отстал от кода.
 
 `EngineFacade` (`app/engine/facade.py`) — фасад над `ActionGateway`, `Pipeline` и `TgAuthManager`:
 `status()` отдаёт режим, kill switch, блок трат, статус Telegram, длину очереди, текущее действие,
@@ -1117,9 +1117,14 @@ Caddy с web), `PYROBOT_FORWARDED_ALLOW_IPS` по умолчанию `10.10.40.3
 а не соседей по apps, и `restart` поднимает его заново); `migrate` — тот же образ, профиль
 `migrate`, `alembic upgrade head`, запускается только явно (`docker compose run --rm migrate`);
 `postgres` — `postgres:17`, том `pgdata`, healthcheck `pg_isready`; `backup` — `pg_dump
---format=custom` при старте и дальше раз в сутки в `${PYROBOT_BACKUP_DIR:-./backups}/pyrobot-<дата>.dump`, файлы старше 14 дней удаляются
-(восстановление — `pg_restore`). `PYROBOT_DATABASE_URL` собирается в compose из `POSTGRES_PASSWORD`
-(пароль — без символов, требующих URL-экранирования, например hex), остальное — из `.env`.
+--format=custom` при старте и дальше раз в сутки в
+`${PYROBOT_BACKUP_DIR:-./backups}/pyrobot-<дата>.dump`, файлы старше 14 дней удаляются. Дампы
+пишутся с `umask 077` — `0600`, владелец root контейнера `backup` (в дампе хэши паролей и
+CSRF-токены сессий админки); читать и восстанавливать — из этого же контейнера, у него есть том и
+параметры подключения: при остановленном боте (`docker compose stop pyrobot`) `docker compose exec
+backup pg_restore --clean --if-exists --dbname pyrobot /backups/pyrobot-<дата>.dump`.
+`PYROBOT_DATABASE_URL` собирается в compose из `POSTGRES_PASSWORD` (пароль — без символов,
+требующих URL-экранирования, например hex), остальное — из `.env`.
 Проверка локально:
 
 ```bash
@@ -1128,15 +1133,24 @@ docker compose -f compose.yml config          # нужен .env рядом (см
 
 **CI/CD** (`.forgejo/workflows/ci.yml`, Forgejo Actions): на каждый push — `lint` (ruff, mypy) и
 `test` (pytest с сервисом Postgres) в контейнере uv, затем `image` на хостовом раннере
-(`self-hosted`) собирает образ — поломка `Dockerfile` видна сразу. По тегу `vX.Y.Z` `image`
-публикует образ в registry Forgejo как `git.fenicu.com/fenicu/pyrobot:<тег>` и `:latest` (тег другого
-вида — ошибка), и `deploy` выкатывает его на apps: пишет `.env` из секретов, копирует по ssh
-`compose.yml` и `deploy/remote-deploy.sh` в `~/pyrobot` и запускает скрипт — `docker compose pull
-pyrobot` → `docker compose run --rm migrate` (ошибка миграции останавливает выкат, старый бот работает
-дальше) → `docker compose up -d --remove-orphans` → ожидание `/readyz` до 5 минут (`python -m
-app.healthcheck /readyz` внутри контейнера), не дождался — вывод `docker compose ps` и хвоста логов,
-job красный. Выкаты не идут параллельно (`concurrency: deploy-pyrobot`). apps должен быть залогинен
-в `git.fenicu.com` (как для остальных сервисов на apps).
+(`self-hosted`) собирает образ — поломка `Dockerfile` видна сразу. Сборка — `docker buildx build`
+своим builder'ом `builder-pyrobot` (драйвер `docker-container`: BuildKit независимо от настроек
+демона; без `--use`, чтобы не переключать общий builder хоста), `--platform linux/amd64
+--provenance=false`, как у соседних проектов. Без тега результат остаётся только в кэше builder'а
+(`--output type=cacheonly`); по тегу `vX.Y.Z` тот же вызов с `--push` публикует образ в registry
+Forgejo как `git.fenicu.com/fenicu/pyrobot:<тег>` и `:latest` (тег другого вида — ошибка), локальных
+образов на раннере не остаётся. `deploy` выкатывает его на apps: пишет `.env` из секретов,
+копирует по ssh `compose.yml` и `deploy/remote-deploy.sh` в `~/pyrobot` и запускает скрипт —
+`docker compose pull pyrobot` → `docker compose run --rm migrate` (ошибка миграции останавливает
+выкат, старый бот работает дальше) → `docker compose up -d --remove-orphans` → ожидание `/readyz`
+до 5 минут (`python -m app.healthcheck /readyz` внутри контейнера), не дождался — вывод `docker
+compose ps` и хвоста логов, job красный. Выкаты не идут параллельно (`concurrency:
+deploy-pyrobot`). apps должен быть залогинен в `git.fenicu.com` (как для остальных сервисов на
+apps).
+
+Каждый выкат перезаписывает `~/pyrobot/.env` на apps целиком: ручная правка там живёт только до
+следующего выката. Постоянное значение — секрет или переменная репозитория плюс строка в шаге
+`deploy` в `ci.yml` (переменная в `env` шага и её имя в вызове `render-env.sh`).
 
 Секреты репозитория (`secrets.*`):
 
@@ -1158,9 +1172,11 @@ kill switch или блоком трат `/readyz` тоже 503 — выкат �
 **Caddy на web** — `deploy/Caddyfile.sw.fenicu.com`: блок `sw.fenicu.com` → `http://10.10.40.20:8090`
 без Authelia (у админки своя авторизация), `flush_interval -1` для SSE, тело запроса не больше 1 МБ
 (`request_body { max_size 1MB }`: запросы API — килобайты, большее тело Caddy отклоняет, не
-передавая боту); добавляется в `/home/fenicu/caddy/Caddyfile` на 10.10.40.3, проверка `caddy
-validate` и перезапуск контейнера `caddy`. Caddy сам ставит `X-Forwarded-For` с адресом клиента,
-бот доверяет ему только от `10.10.40.3` (`PYROBOT_FORWARDED_ALLOW_IPS`).
+передавая боту), `/healthz` и `/readyz` — 404 от самого Caddy (состояние сервиса наружу не
+раскрывается; деплой и `HEALTHCHECK` проверяют их изнутри контейнера); добавляется в
+`/home/fenicu/caddy/Caddyfile` на 10.10.40.3, проверка `caddy validate` и перезапуск контейнера
+`caddy`. Caddy сам ставит `X-Forwarded-For` с адресом клиента, бот доверяет ему только от
+`10.10.40.3` (`PYROBOT_FORWARDED_ALLOW_IPS`).
 
 `.env` деплой пишет скриптом `deploy/render-env.sh` из переменных окружения шага: каждое значение —
 в литеральной форме Compose (`ИМЯ='значение'`, одинарная кавычка внутри — `\'`), поэтому `$` в
@@ -1190,5 +1206,7 @@ uv run python tools/login.py https://sw.fenicu.com   # или http://10.10.40.20
 
 Первый выкат: завести секреты и `PYROBOT_SKIP_READY=true` → тег `vX.Y.Z` (выкат ждёт только
 `/healthz`) → добавить блок в Caddy → `tools/login.py` (вход админа и в Telegram) → проверить `GET
-/readyz` = 200 → убрать `PYROBOT_SKIP_READY` (следующие выкаты ждут `/readyz`). Режим после выката —
+/readyz` = 200 изнутри (через Caddy он закрыт): `http://10.10.40.20:8090/readyz` из VLAN или
+`docker compose exec pyrobot python -m app.healthcheck /readyz` на apps → убрать
+`PYROBOT_SKIP_READY` (следующие выкаты ждут `/readyz`). Режим после выката —
 `dry_run` (дефолт настроек), переход в `live` — отдельным решением (спека, «Катовер»).

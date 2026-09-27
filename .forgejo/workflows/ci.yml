@@ -84,28 +84,26 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - name: Сборка образа
-        run: |
-          docker build --build-arg APT_PROXY=http://10.10.40.23:3142 \
-            -t "$IMAGE:ci-${{ github.sha }}" .
-      - name: Публикация в registry
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Сборка образа, по тегу — публикация в registry
         env:
+          PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') }}
           TAG: ${{ github.ref_name }}
           REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
         run: |
-          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag $TAG is not vX.Y.Z"; exit 1; }
-          echo "$REGISTRY_TOKEN" | docker login git.fenicu.com -u "$REGISTRY_USER" --password-stdin
-          docker tag "$IMAGE:ci-${{ github.sha }}" "$IMAGE:$TAG"
-          docker tag "$IMAGE:ci-${{ github.sha }}" "$IMAGE:latest"
-          docker push "$IMAGE:$TAG"
-          docker push "$IMAGE:latest"
-      - name: Убрать локальные теги
-        if: always()
-        run: |
-          docker image rm "$IMAGE:ci-${{ github.sha }}" "$IMAGE:${{ github.ref_name }}" \
-            "$IMAGE:latest" 2>/dev/null || true
+          B="builder-pyrobot"
+          # Свой builder на BuildKit, не зависящий от настроек демона; без --use, чтобы не
+          # переключать общий для хоста текущий builder.
+          docker buildx create --name "$B" --driver docker-container 2>/dev/null || true
+          # Без тега результат остаётся только в кэше builder'а: проверка, что образ собирается.
+          OUTPUT=(--output type=cacheonly)
+          if [ "$PUBLISH" = "true" ]; then
+            [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag $TAG is not vX.Y.Z"; exit 1; }
+            echo "$REGISTRY_TOKEN" | docker login git.fenicu.com -u "$REGISTRY_USER" --password-stdin
+            OUTPUT=(--push -t "$IMAGE:$TAG" -t "$IMAGE:latest")
+          fi
+          docker buildx build --builder "$B" --platform linux/amd64 --provenance=false \
+            --build-arg APT_PROXY=http://10.10.40.23:3142 "${OUTPUT[@]}" .
 
   # Выкатка на apps по тегу: compose.yml, .env из секретов и скрипт выкатки по ssh, дальше на apps
   # pull → migrate → up → ожидание /readyz (deploy/remote-deploy.sh).

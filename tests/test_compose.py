@@ -27,3 +27,9 @@ def _config(tmp_path: Path) -> dict[str, Any]:
 def test_bot_memory_is_limited(tmp_path: Path) -> None:
     bot = _config(tmp_path)["services"]["pyrobot"]
     assert int(bot["mem_limit"]) == 1024**3
+
+
+def test_backups_readable_only_by_owner(tmp_path: Path) -> None:
+    script = "\n".join(_config(tmp_path)["services"]["backup"]["command"])
+    assert "umask 077" in script
+    assert script.index("umask 077") < script.index("pg_dump")

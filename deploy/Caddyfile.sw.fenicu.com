@@ -8,6 +8,9 @@ sw.fenicu.com {
 	request_body {
 		max_size 1MB
 	}
+	# Пробы живости и готовности наружу не отдаются: деплой и HEALTHCHECK проверяют их изнутри.
+	@probes path /healthz /readyz
+	respond @probes 404
 	reverse_proxy http://10.10.40.20:8090 {
 		# SSE (/api/v1/events): каждое событие уходит клиенту сразу, без буферизации.
 		flush_interval -1

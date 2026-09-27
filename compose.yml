@@ -53,6 +53,7 @@ services:
       retries: 10
 
   # Дамп при старте и дальше раз в сутки, хранятся последние 14 (custom-формат, pg_restore).
+  # Файлы — только для владельца (root контейнера): в дампе хэши паролей и сессии админки.
   backup:
     image: postgres:17
     restart: unless-stopped
@@ -69,6 +70,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
+        umask 077
         while true; do
           file="/backups/pyrobot-$$(date +%F).dump"
           if pg_dump --format=custom --file="$$file.tmp"; then
