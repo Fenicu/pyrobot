@@ -9,6 +9,13 @@ from app.engine.events import Unrecognized
 from app.engine.parsing import default_parser
 from app.engine.parsing.common import parse_rewards
 from app.engine.parsing.daily import DailyTasksScreen, TaskCompleted, recognize_daily
+from app.engine.parsing.lottery import (
+    LotteryBought,
+    LotteryCurrency,
+    LotteryOff,
+    LotteryScreen,
+    recognize_lottery,
+)
 from app.engine.parsing.screens import LotteryWin
 from app.engine.parsing.smoothie import SmoothieRecipe
 from app.engine.parsing.swinfo import BattleSummary
@@ -112,3 +119,26 @@ def test_every_daily_tasks_message_in_search_parsed() -> None:
                 assert parse_rewards(text).personal_task is not None, rec["id"]
     assert seen["daily_tasks_screen"] > 5000 and seen["task_completed"] > 1000
     assert seen["line"] > 5000
+
+
+@pytest.mark.skipif(not SEARCH.exists(), reason="no search export in ~/pyrobot-research")
+def test_every_lottery_message_parsed() -> None:
+    """Экраны тиража, ответы «Купить все» и экраны покупки за валюту за 2019–2026 — целиком."""
+    kinds = (
+        ("Лотерея - ", (LotteryScreen, LotteryBought)),
+        ("Покупка билетов за ", (LotteryCurrency,)),
+        ("❌Лотерея пока не проводится", (LotteryOff,)),
+    )
+    seen: Counter[str] = Counter()
+    for path in (SEARCH, HISTORY):
+        for rec in _records(path):
+            text = str(rec.get("text") or "")
+            if rec.get("out") or rec.get("chat") != 227859379:
+                continue
+            for prefix, allowed in kinds:
+                if text.startswith(prefix):
+                    events = recognize_lottery(record_message(rec))
+                    assert len(events) == 1 and isinstance(events[0], allowed), rec["id"]
+                    seen[events[0].kind] += 1
+    assert seen["lottery_bought"] > 2000 and seen["lottery_screen"] > 20
+    assert seen["lottery_currency"] >= 2 and seen["lottery_off"] >= 5

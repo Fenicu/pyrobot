@@ -146,6 +146,7 @@ async def test_scenario_catalog(container: Container, api_client: AsyncClient) -
     assert items["bulls_join"]["required"] == {
         "code": {"type": "string", "pattern": "^join_fight_[A-Za-z0-9_-]{11}$"}
     }
+    assert (items["lottery_buy"]["certified"], items["lottery_buy"]["required"]) == (True, {})
     recipe = items["smoothie"]["required"]["recipe"]
     assert recipe["type"] == "string" and recipe["pattern"].endswith("){5}$")
 

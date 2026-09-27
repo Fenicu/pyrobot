@@ -59,7 +59,7 @@ class FeaturesSection(BaseModel):
     stocks_dump: bool = True
     smoothie: bool = True
     tangerine: bool = True
-    lottery: bool = False
+    lottery: bool = True
     casino: bool = False
     arena: bool = False
     pet_feast: bool = False
@@ -167,6 +167,31 @@ class DailySection(BaseModel):
     )
 
 
+# Сколько билетов брать за тираж: число или `max` — до лимита тиража (лимит даёт экран).
+TicketCount = Annotated[int, Field(ge=0, strict=True)] | Literal["max"]
+
+
+class LotteryTickets(BaseModel):
+    money: TicketCount = "max"
+    knowledge: TicketCount = "max"
+    raw: TicketCount = "max"
+    details: TicketCount = "max"
+
+
+class LotteryKeep(BaseModel):
+    """Сколько ресурса не тратить на билеты (к 💵 ещё резервы билета Горбушки и отеля)."""
+
+    money: int = Field(default=0, ge=0)
+    knowledge: int = Field(default=0, ge=0)
+    raw: int = Field(default=0, ge=0)
+    details: int = Field(default=0, ge=0)
+
+
+class LotterySection(BaseModel):
+    tickets: LotteryTickets = Field(default_factory=LotteryTickets)
+    keep: LotteryKeep = Field(default_factory=LotteryKeep)
+
+
 class RetentionSection(BaseModel):
     # Журнал: сообщения (с нераспознанными), действия, запуски сценариев, уведомления.
     messages_days: int = Field(default=90, ge=1)
@@ -189,6 +214,7 @@ class Settings(BaseModel):
     tangerine: TangerineSection = Field(default_factory=TangerineSection)
     metro: MetroSection = Field(default_factory=MetroSection)
     daily: DailySection = Field(default_factory=DailySection)
+    lottery: LotterySection = Field(default_factory=LotterySection)
     retention: RetentionSection = Field(default_factory=RetentionSection)
 
 

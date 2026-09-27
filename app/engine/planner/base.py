@@ -76,6 +76,7 @@ FEATURE = {
     "metro": "metro",
     "daily_refresh": "daily_tasks",
     "daily_pick": "daily_tasks",
+    "lottery_buy": "lottery",
 }
 
 Step = Callable[[BusyState | None], Decision | None]

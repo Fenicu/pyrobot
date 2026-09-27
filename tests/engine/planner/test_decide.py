@@ -28,6 +28,7 @@ QUIET = {
     "smoothie": False,
     "metro": False,
     "daily_tasks": False,
+    "lottery": False,
 }
 
 

@@ -188,6 +188,54 @@ async def test_prod_settings_with_weight_team_load_patch_and_history(
     ]
 
 
+def _prod_v020() -> dict[str, object]:
+    """Полный дамп настроек прода v0.2.0: явный `features.lottery=false`, без флага
+    `robbery_defense` и без секции `lottery`."""
+    data = Settings().model_dump(mode="json")
+    data["features"]["lottery"] = False
+    del data["features"]["robbery_defense"]
+    del data["lottery"]
+    return data
+
+
+async def test_prod_v020_settings_load_patch_and_history(
+    container: Container, clean_db: Database, api_client: AsyncClient
+) -> None:
+    prod = _prod_v020()
+    async with clean_db.sessions() as s, s.begin():
+        s.add(SettingsRow(account_id=1, version=1, data=prod))
+        s.add(SettingsHistory(account_id=1, version=1, data=prod, changed_by="admin"))
+    store = DbSettingsStore(clean_db, 1)
+    await store.load()
+    container.facade = build(settings=store)
+    h = await _csrf(api_client)
+    got = (await api_client.get("/api/v1/settings")).json()
+    features = got["values"]["features"]
+    assert (features["lottery"], features["robbery_defense"]) == (False, True)
+    assert got["values"]["lottery"] == {
+        "tickets": {"money": "max", "knowledge": "max", "raw": "max", "details": "max"},
+        "keep": {"money": 0, "knowledge": 0, "raw": 0, "details": 0},
+    }
+    patch = {
+        "version": 1,
+        "changes": {"features": {"lottery": True}, "lottery": {"keep": {"money": 300}}},
+    }
+    r = await api_client.patch("/api/v1/settings", headers=h, json=patch)
+    assert r.status_code == 200, r.text
+    assert r.json()["changed"] == {
+        "features.lottery": [False, True],
+        "lottery.keep.money": [0, 300],
+    }
+    bad = {"version": 2, "changes": {"lottery": {"tickets": {"money": "all"}}}}
+    assert (await api_client.patch("/api/v1/settings", headers=h, json=bad)).status_code == 422
+    items = (await api_client.get("/api/v1/settings/history")).json()["items"]
+    assert [(i["version"], i["changes"]) for i in items] == [
+        (2, {"features.lottery": [False, True], "lottery.keep.money": [0, 300]}),
+        # Первая версия — к нынешним умолчаниям: флаг лотереи у неё явный.
+        (1, {"features.lottery": [True, False]}),
+    ]
+
+
 async def test_settings_need_engine(container: Container, api_client: AsyncClient) -> None:
     await login(api_client)
     assert (await api_client.get("/api/v1/settings")).status_code == 503

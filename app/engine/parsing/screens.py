@@ -78,10 +78,6 @@ _BATTLE_MENU = re.compile(
 _BATTLE_REPORT = re.compile(
     r"\A[^\n]+ \(\d+\)\n🔨\d+[^\n]*\nТвои результаты в битве на (?P<hour>\d+) часов"
 )
-_LOTTERY = (
-    ("tickets", re.compile(r"\AЛотерея - \d+ тираж\n")),
-    ("off", re.compile(r"\A❌Лотерея пока не проводится")),
-)
 # Ответы с изменением ресурсов в формате наград: обмен символа, подарок за 🍊, итог акулы.
 _RESULTS = (
     ("symbol_exchange", re.compile(r"\AТы обменял символ \S+")),
@@ -132,12 +128,6 @@ class BattleReport(Event):
 
     kind: ClassVar[str] = "battle_report"
     hour: int
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class LotteryScreen(Event):
-    kind: ClassVar[str] = "lottery_screen"
-    screen: str
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -216,9 +206,6 @@ def recognize_screens(msg: IncomingMessage) -> list[Event]:
         return [BattleMenu(battle_in_s=dur(m["t"]))]
     if m := _BATTLE_REPORT.match(text):
         return [BattleReport(hour=int(m["hour"]))]
-    for screen, pattern in _LOTTERY:
-        if pattern.match(text):
-            return [LotteryScreen(screen=screen)]
     if text.startswith(_LOTTERY_WIN):
         return [_lottery_win(text)]
     if m := _SKILLS_EXPIRED.match(text):

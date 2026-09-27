@@ -35,6 +35,9 @@ NOTHING_RETRY = timedelta(minutes=1)
 NOTHING_HOLD: dict[tuple[str, str], timedelta] = {
     ("stocks_dump", "market_closed"): timedelta(minutes=30),
     ("metro", "entry_cost_changed"): timedelta(hours=2),
+    # Тиража нет или продажа закрыта — до конца окна продажи не изменится.
+    ("lottery_buy", "no_draw"): timedelta(minutes=30),
+    ("lottery_buy", "lottery_closed"): timedelta(hours=2),
 }
 # Подавленное действие (dry_run) состояние не меняет: сценарий откладывается, решаются остальные.
 SUPPRESSED_HOLD = timedelta(minutes=10)

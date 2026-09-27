@@ -273,6 +273,19 @@ def test_feature_names_exist_in_settings() -> None:
     assert names <= set(FeaturesSection.model_fields)
 
 
+def test_lottery_commands() -> None:
+    assert classify_text("/tickets") is N and feature_of_text("/tickets") is None
+    assert classify_text("/tickets_all") is A and feature_of_text("/tickets_all") == "lottery"
+    assert classify_text("⚙️ => 🤑") is A and feature_of_text("⚙️ => 🤑") == "lottery"
+    # Кнопка экрана, а не глобальная команда: сценарий шлёт /tickets_all.
+    assert classify_text("🤑Купить все") is F
+    # Кнопки количества экрана валюты; «🚫Отменить» — nav.
+    assert classify_callback("tickets_money_10") is A
+    assert feature_of_callback("tickets_money_1") == "lottery"
+    assert classify_callback("tickets_money_") is F
+    assert classify_callback("cancel_inline") is N
+
+
 def test_only_wake_click_spends_nothing() -> None:
     assert spends_nothing_callback("rob_awake_1106993")
     for data in ("rob_awake_", "gorbushka_fight", "sleep_Bridge", "t_x_hard_confirm"):

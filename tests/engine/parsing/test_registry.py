@@ -20,6 +20,7 @@ FAMILIES = (
     "stocks",
     "smoothie",
     "tangerine",
+    "lottery",
     "screens",
     "swinfo",
 )

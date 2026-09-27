@@ -183,6 +183,7 @@ TEXT_RULES: tuple[Rule, ...] = (
         "🍹Смузийная",
         "/smoothie",
         "🤑Лотерея",
+        "/tickets",
         "🎮Арена",
         "⏳Дела",
         "🍴Еда",
@@ -323,6 +324,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"spring_roll_smiles\Z",
         r"t_\w+_confirm\Z",
         r"rob_awake_\d+\Z",
+        r"tickets_\w+_\d+\Z",
     ),
 )
 
@@ -383,6 +385,7 @@ _FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"spring_roll_smiles\Z", "seasonal"),
         (r"t_\w+_confirm\Z", "daily_tasks"),
         (r"rob_awake_\d+\Z", "robbery_defense"),
+        (r"tickets_\w+_\d+\Z", "lottery"),
     )
 )
 # Не тратят ничего: блок трат (неизвестный исход, рестарт до сверки) их не держит. Проснуться при

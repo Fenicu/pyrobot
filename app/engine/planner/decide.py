@@ -38,6 +38,7 @@ class _Planner(DailyTasks):
             self.factory,
             # Выбор задания занимает секунды, а ночной сон отодвинул бы его на утро.
             self.daily,
+            self.lottery,
             self.sleep,
             self.book,
             self.fastfood,

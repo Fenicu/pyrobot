@@ -134,6 +134,20 @@ class MetroRunRef(_Frozen):
     battle_at: Obs[datetime] | None = None
 
 
+class LotteryState(_Frozen):
+    """Снимок одного тиража: по валютам (`money`, `knowledge`, `raw`, `details`) куплено, лимит и
+    цена; None — неизвестно (ответ покупки без экрана этого тиража). `until` — закрытие продажи.
+    `short` — валюты, на которые при последней попытке не хватило, и сколько ресурса было после неё
+    (None — неизвестно)."""
+
+    draw: int
+    until: datetime
+    bought: dict[str, int] | None = None
+    limits: dict[str, int] | None = None
+    prices: dict[str, int] | None = None
+    short: dict[str, int | None] = {}
+
+
 class ActivityStat(_Frozen):
     """Скользящее среднее наград одного дела (без его цены)."""
 
@@ -227,6 +241,7 @@ class CharacterState(_Frozen):
     metro_ready_at: Obs[datetime] | None = None
     # Идущий забег метро (None — вышел); момент — последний экран забега.
     metro_message: Obs[MetroRunRef | None] | None = None
+    lottery: Obs[LotteryState] | None = None
     activity_stats: dict[str, ActivityStat] = {}
     # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
     # правка итога не начисляет повторно (горизонт хранения — в редьюсере).
@@ -284,6 +299,7 @@ TIMERS = frozenset(
         "tangerine_not_player",
         "metro_ready_at",
         "metro_message",
+        "lottery",
     }
 )
 # Значения за день заданий: устаревают сменой дня (её проверяет планировщик), а не возрастом.

@@ -38,6 +38,7 @@ from app.engine.parsing.items import (
     PrizeboxOpened,
 )
 from app.engine.parsing.levelup import LevelUpStep
+from app.engine.parsing.lottery import LotteryBought, LotteryCurrency, LotteryScreen
 from app.engine.parsing.metro import (
     METRO_COOLDOWN,
     MetroBuffs,
@@ -92,6 +93,7 @@ from app.engine.state.model import (
     ChosenTaskState,
     FoodStockState,
     GorbushkaState,
+    LotteryState,
     MetroRunRef,
     Obs,
     PersonalTask,
@@ -116,6 +118,12 @@ AWAKE_LIMIT = timedelta(hours=72)
 SLEEP_COOLDOWN = timedelta(hours=12)
 FASTFOOD_COOLDOWN = timedelta(minutes=30)
 GORBUSHKA_FIGHT_GAP = timedelta(hours=1)
+# Продажа билетов закрывается за 10 минут до розыгрыша.
+LOTTERY_SALE_ENDS = timedelta(minutes=10)
+# На экране покупки за валюту номера тиража нет: тот же тираж — если срок продажи по его отсчёту
+# совпадает с известным (отсчёт округлён до минуты).
+LOTTERY_SAME_DRAW = timedelta(minutes=2)
+LOTTERY_CURRENCIES = ("money", "knowledge", "raw", "details")
 # Бой с биржевиками: итог приходит через ~5 мин после присоединения (медиана 292 с).
 BULLS_FIGHT = timedelta(minutes=5)
 FOOD_KINDS = ("hotdog", "pizza", "burger", "banana")
@@ -229,6 +237,12 @@ class _Patch:
     def delta(self, name: str, diff: int, *, since: datetime | None = None) -> None:
         if diff != 0:
             self.change(name, lambda v: v + diff, since=since)
+
+    def doubt(self, name: str) -> None:
+        """Событие изменило значение на неизвестную величину: не трогаем, но не доверяем."""
+        current: Obs[Any] | None = self.get(name)
+        if current is not None and current.at <= self.at:
+            self.updates[name] = current.model_copy(update={"src": "doubtful"})
 
     def price(self, key: str, value: PriceState) -> None:
         prices: dict[str, Obs[PriceState]] = dict(self.get("prices"))
@@ -941,6 +955,97 @@ def _metro_finished(p: _Patch, e: MetroFinished) -> None:
         p.change("food_stock", found)
     p.snap("metro_ready_at", p.at + METRO_COOLDOWN, src="derived")
     p.snap("metro_message", None)
+
+
+def _sale_ends(p: _Patch, draw_in_s: int) -> datetime:
+    return p.at + timedelta(seconds=draw_in_s) - LOTTERY_SALE_ENDS
+
+
+def _seen_value(p: _Patch, name: str) -> int | None:
+    obs: Obs[int] | None = p.get(name)
+    return obs.value if obs is not None and obs.src != "doubtful" else None
+
+
+@_on(LotteryScreen)
+def _lottery_screen(p: _Patch, e: LotteryScreen) -> None:
+    known: Obs[LotteryState] | None = p.get("lottery")
+    short = known.value.short if known is not None and known.value.draw == e.draw else {}
+    state = LotteryState(
+        draw=e.draw,
+        until=_sale_ends(p, e.draw_in_s),
+        bought=dict(e.bought),
+        limits=dict(e.limits),
+        prices=dict(e.prices),
+        short=short,
+    )
+    p.snap("lottery", state)
+    for name, value in e.resources.items():
+        p.snap(name, value)
+
+
+@_on(LotteryBought)
+def _lottery_bought(p: _Patch, e: LotteryBought) -> None:
+    """«Купить все» — приращение к снимку того же тиража и трата по его ценам; валюты ниже лимита
+    после покупки — нехватка (игра покупает сколько может)."""
+    known: Obs[LotteryState] | None = p.get("lottery")
+    spent = [c for c, n in e.bought.items() if n]
+    if known is None or known.value.draw != e.draw or known.value.bought is None:
+        # Другой тираж: прежний снимок не про него, сколько куплено всего — неизвестно.
+        p.snap(
+            "lottery", LotteryState(draw=e.draw, until=_sale_ends(p, e.draw_in_s)), src="derived"
+        )
+        for name in spent:
+            p.doubt(name)
+        return
+    mode = p._increment_mode("lottery")
+    if mode == "skip":
+        return
+    if mode == "doubt":
+        p.updates["lottery"] = known.model_copy(update={"src": "doubtful"})
+        for name in spent:
+            p.doubt(name)
+        return
+    snap = known.value
+    prices = snap.prices or {}
+    for name in spent:
+        if name in prices:
+            p.delta(name, -e.bought[name] * prices[name])
+        else:
+            p.doubt(name)
+    bought = {c: (snap.bought or {}).get(c, 0) + e.bought.get(c, 0) for c in LOTTERY_CURRENCIES}
+    limits = snap.limits or {}
+    short = {
+        c: _seen_value(p, c) for c in LOTTERY_CURRENCIES if c in limits and bought[c] < limits[c]
+    }
+    src: Src = "doubtful" if known.src == "doubtful" else "derived"
+    value = snap.model_copy(update={"bought": bought, "short": short})
+    p.updates["lottery"] = Obs(value=value, at=p.at, src=src)
+
+
+@_on(LotteryCurrency)
+def _lottery_currency(p: _Patch, e: LotteryCurrency) -> None:
+    known: Obs[LotteryState] | None = p.get("lottery")
+    if known is None or known.value.bought is None or p.at < known.at:
+        return
+    snap = known.value
+    if abs(_sale_ends(p, e.draw_in_s) - snap.until) > LOTTERY_SAME_DRAW:
+        return
+    before = (snap.bought or {}).get(e.currency)
+    if before is not None and e.bought > before:
+        # Правка после клика по количеству: куплено больше известного — списываем разницу.
+        p.delta(e.currency, -(e.bought - before) * e.price)
+    short = dict(snap.short)
+    if e.short:
+        short[e.currency] = _seen_value(p, e.currency)
+    else:
+        short.pop(e.currency, None)
+    update = {
+        "bought": {**(snap.bought or {}), e.currency: e.bought},
+        "limits": {**(snap.limits or {}), e.currency: e.limit},
+        "prices": {**(snap.prices or {}), e.currency: e.price},
+        "short": short,
+    }
+    p.snap("lottery", snap.model_copy(update=update), src=known.src)
 
 
 @_on(ResourcesChanged)

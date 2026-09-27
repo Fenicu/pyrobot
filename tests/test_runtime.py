@@ -223,6 +223,7 @@ def _without_windows(s: Settings) -> Settings:
             "sleep",
             "metro",
             "daily_tasks",
+            "lottery",
         ),
         False,
     )

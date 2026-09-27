@@ -95,6 +95,7 @@ QUIET = LIVE.model_copy(
                 "sleep": False,
                 "metro": False,
                 "daily_tasks": False,
+                "lottery": False,
             }
         ),
         "strategy": LIVE.strategy.model_copy(update={"focus": ()}),
@@ -293,6 +294,24 @@ async def test_wrong_tasks_screen_backs_off_and_notifies_once(world: World) -> N
         spans.append(rig.loop._cooldowns["daily_pick"] - at)
     assert spans == [timedelta(minutes=m) for m in (5, 10, 20)]
     assert rig.notes.codes == ["scenario_failed"]
+
+
+@pytest.mark.parametrize(
+    ("reason", "hold"),
+    [
+        ("lottery_closed", timedelta(hours=2)),
+        ("no_draw", timedelta(minutes=30)),
+        ("cant_afford", NOTHING_RETRY),
+    ],
+)
+async def test_lottery_nothing_holds(world: World, reason: str, hold: timedelta) -> None:
+    # Нет тиража или продажа закрыта: повтор раз в минуту только читал бы экран до конца окна.
+    rig = Rig(world)
+    at = moment()
+    await rig.loop._after(
+        Act("lottery_buy", {}, "lottery money"), ScenarioResult("nothing", reason), at, at
+    )
+    assert rig.loop._cooldowns == {"lottery_buy": at + hold}
 
 
 async def test_closed_market_holds_dump_longer(world: World) -> None:

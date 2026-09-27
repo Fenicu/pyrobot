@@ -16,6 +16,7 @@ from app.engine.parsing import (
     gorbushka,
     items,
     levelup,
+    lottery,
     metro,
     profile,
     refusals,
@@ -118,6 +119,7 @@ def game_recognizers() -> tuple[Recognizer, ...]:
         *smoothie.RECOGNIZERS,
         *tangerine.RECOGNIZERS,
         *metro.RECOGNIZERS,
+        *lottery.RECOGNIZERS,
         *screens.RECOGNIZERS,
     )
 

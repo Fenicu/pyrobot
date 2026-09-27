@@ -4,7 +4,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import datetime, time, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from app.engine.gametime import MSK, to_msk
 from app.engine.market import pick_stock
@@ -20,7 +20,8 @@ from app.engine.planner.base import (
     battle_hour,
 )
 from app.engine.planner.types import Decision
-from app.engine.state.model import BusyState, MetroRunRef, StockLimits
+from app.engine.state.model import BusyState, LotteryState, MetroRunRef, StockLimits
+from app.engine.state.reducer import LOTTERY_CURRENCIES
 
 # Деньги на отель дела не тратят за столько до начала сна.
 HOTEL_RESERVE_AHEAD = timedelta(hours=3)
@@ -36,6 +37,8 @@ FACTORY_OPEN, FACTORY_CLOSE, FACTORY_BATTLE = time(18, 0), time(18, 15), time(18
 NIGHT_START, NIGHT_END = time(22, 0), time(8, 0)
 SLEEP_NIGHT_OPEN, SLEEP_AFTER_BULLS, SLEEP_WAKE_BY = time(22, 5), time(0, 30), time(12, 45)
 SMOOTHIE_RESET = time(3, 0)
+# Тираж стартует в 19:17, продажа закрыта с 21:07; сценарий стартует не позже 21:05.
+LOTTERY_OPEN, LOTTERY_LAST_START = time(19, 17), time(21, 5)
 # 2🔥 на вход в метро держатся от дел, если спуск станет доступен в ближайший час.
 METRO_RESERVE_AHEAD = timedelta(hours=1)
 METRO_SAFETY = 1.5
@@ -266,6 +269,81 @@ class Obligations(PlannerBase):
             return None
         return self.act("smoothie", {"recipe": recipe.value.recipe}, "smoothie_recipe")
 
+    # --- лотерея
+
+    def lottery_params(self) -> dict[str, Any]:
+        cfg = self.cfg.lottery
+        params: dict[str, Any] = {"reserve": self.ticket_reserve() + self.hotel_reserve()}
+        for c in LOTTERY_CURRENCIES:
+            params[f"tickets_{c}"] = getattr(cfg.tickets, c)
+            params[f"keep_{c}"] = getattr(cfg.keep, c)
+        return params
+
+    def lottery(self, busy: BusyState | None) -> Decision | None:
+        """Билеты тиража: в окне продажи, пока куплено меньше цели и хватает хотя бы на билет
+        недостающей валюты; во время дела покупка идёт, во сне — нет (шаг во сне не решается)."""
+        if not self.feature_on("lottery_buy"):
+            return None
+        opens, last = msk_at(self.now, LOTTERY_OPEN), msk_at(self.now, LOTTERY_LAST_START)
+        if self.now < opens:
+            self.wake(opens, "lottery_open")
+            return None
+        if self.now > last:
+            return None
+        params = self.lottery_params()
+        seen = self.s.lottery
+        snap = seen.value if seen is not None else None
+        # Снимок до старта тиража — прошлого тиража: его данные неизвестны.
+        if seen is None or seen.at < opens or seen.src == "doubtful" or not _complete(snap):
+            return self.act("lottery_buy", params, "lottery_unknown")
+        assert snap is not None
+        missing = self.lottery_missing(snap)
+        verdicts = {c: self.lottery_affordable(snap, c) for c in missing}
+        ready = [c for c, v in verdicts.items() if v == "ok"]
+        if ready:
+            return self.act("lottery_buy", params, "lottery " + ",".join(ready))
+        # Нехватка при прошлой попытке: повтор — только по новому наблюдению ресурса (профиль),
+        # а не по экрану лотереи.
+        if (observe := next((c for c, v in verdicts.items() if v == "observe"), None)) is not None:
+            return self.refresh("lottery_buy", observe)
+        if missing:
+            self.reject("lottery_buy", params, "cant_afford")
+        return None
+
+    def lottery_missing(self, snap: LotteryState) -> list[str]:
+        tickets = self.cfg.lottery.tickets
+        missing = []
+        for c in LOTTERY_CURRENCIES:
+            limit = (snap.limits or {})[c]
+            wanted = getattr(tickets, c)
+            want = limit if wanted == "max" else min(wanted, limit)
+            if (snap.bought or {})[c] < want:
+                missing.append(c)
+        return missing
+
+    def lottery_affordable(
+        self, snap: LotteryState, currency: str
+    ) -> Literal["ok", "wait", "observe"]:
+        """`ok` — хватает на билет сверх запаса или ресурс неизвестен (экран лотереи покажет);
+        валюта, на которую при прошлой попытке не хватило, ждёт роста ресурса: `observe` —
+        ресурс неизвестен или устарел, нужно новое наблюдение, `wait` — не вырос."""
+        have: int | None = self.value(currency)
+        stale = have is None or currency in self.stale
+        if currency in snap.short:
+            if stale:
+                return "observe"
+            waited = snap.short[currency]
+            if waited is not None and have is not None and have <= waited:
+                return "wait"
+        elif stale:
+            return "ok"
+        assert have is not None
+        keep: int = getattr(self.cfg.lottery.keep, currency)
+        free = have - keep
+        if currency == "money":
+            free -= self.ticket_reserve() + self.hotel_reserve()
+        return "ok" if free >= (snap.prices or {})[currency] else "wait"
+
     # --- метро
 
     def metro_run(self) -> timedelta:
@@ -444,3 +522,10 @@ class Obligations(PlannerBase):
         if self.now >= window and cost is not None and self.hotel():
             return cost
         return 0
+
+
+def _complete(snap: LotteryState | None) -> bool:
+    return snap is not None and all(
+        v is not None and set(v) >= set(LOTTERY_CURRENCIES)
+        for v in (snap.bought, snap.limits, snap.prices)
+    )

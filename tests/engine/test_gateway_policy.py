@@ -71,8 +71,8 @@ async def test_feature_off_rejects_all_but_manual(rig: Rig) -> None:
 
 
 async def test_disabled_by_default_features_rejected(rig: Rig) -> None:
-    res = await rig.gw.submit(send("/tickets_all", expect=expect_text("x")))
-    assert res.status is ActionStatus.REJECTED and res.reason == "feature_off:lottery"
+    res = await rig.gw.submit(send("/capitalization", expect=expect_text("x")))
+    assert res.status is ActionStatus.REJECTED and res.reason == "feature_off:paid_info"
 
 
 async def test_simulated_step_suppressed_in_live_nav_sent(rig: Rig) -> None:
