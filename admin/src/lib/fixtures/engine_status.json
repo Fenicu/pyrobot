@@ -1,0 +1,22 @@
+{
+ "mode": "live",
+ "paused": false,
+ "scenario": null,
+ "next_wake": "2026-09-28T02:05:12+00:00",
+ "killed": false,
+ "kill_reason": null,
+ "spending_blocked": null,
+ "tg": {
+  "state": "online",
+  "user_id": 267519921,
+  "attempt_id": null,
+  "error": null
+ },
+ "queue": 0,
+ "in_flight": null,
+ "pipeline_backlog": 0,
+ "pipeline_healthy": true,
+ "workers_ok": true,
+ "lock_ok": true,
+ "loop_lag_ms": 1.4137430116534233
+}

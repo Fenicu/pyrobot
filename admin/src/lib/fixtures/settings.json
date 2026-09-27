@@ -1,0 +1,1105 @@
+{
+ "version": 13,
+ "values": {
+  "engine": {
+   "mode": "live",
+   "killed": false,
+   "kill_reason": null,
+   "min_request_interval_s": 1.6,
+   "antiflood_retry_max": 2,
+   "antiflood_pause_s": 10.0,
+   "action_ttl_s": 60.0,
+   "default_expect_timeout_s": 20.0,
+   "click_answer_timeout_s": 4.0,
+   "recovered_react_max_age_min": 10,
+   "refresh_min_interval_s": 120.0,
+   "state_stale_after_min": 15,
+   "paused": false,
+   "urgent_while_paused": true,
+   "manual_while_paused": true
+  },
+  "telegram": {
+   "expected_user_id": 267519921
+  },
+  "chats": {
+   "game_chat_id": 227859379,
+   "swinfo_chat_id": -1001109615116,
+   "swinfo_user_id": 376592453,
+   "smoothie_channel_id": -1001356300612,
+   "tangerine_chat_id": -1001377961602,
+   "tangerine_reply_to": 927136,
+   "bulls_invite_chat_id": null
+  },
+  "features": {
+   "deeds": true,
+   "books": true,
+   "fastfood": true,
+   "cards_containers": true,
+   "gorbushka": true,
+   "sleep": true,
+   "levelup": true,
+   "metro": true,
+   "battle": true,
+   "factory": true,
+   "bulls": true,
+   "stocks_dump": true,
+   "smoothie": true,
+   "tangerine": true,
+   "lottery": true,
+   "casino": false,
+   "arena": false,
+   "pet_feast": false,
+   "daily_tasks": true,
+   "robbery_defense": true,
+   "paid_info": false,
+   "seasonal": false
+  },
+  "strategy": {
+   "weight_xp": 1.0,
+   "weight_money": 1.0,
+   "weight_resources": 0.5,
+   "exp_scale": 200.0,
+   "money_scale": 30.0,
+   "resource_scale": 10.0,
+   "focus": [
+    "harvest",
+    "dconv"
+   ],
+   "deeds": [
+    "harvest",
+    "job",
+    "learn",
+    "dconv",
+    "walk",
+    "confa"
+   ]
+  },
+  "food": {
+   "order": [
+    "hotdog",
+    "pizza",
+    "burger"
+   ],
+   "banana_reserve": 50
+  },
+  "sleep": {
+   "duration_h": 7,
+   "lead_min": 120,
+   "hotel_if_cash_after_reserve_ge": null
+  },
+  "levelup": {
+   "policy": "balanced"
+  },
+  "battle": {
+   "target": "📯Pied Piper",
+   "overrides": {}
+  },
+  "stocks": {
+   "cash_floor": 150,
+   "min_dump": 200,
+   "sell_cap_margin": 5,
+   "dump_lead_min": 5
+  },
+  "tangerine": {
+   "interval_h": 20
+  },
+  "metro": {
+   "min_budget_min": 60,
+   "battle_margin_min": 15,
+   "extra_margin_min": 10,
+   "buffs": [
+    "fastMove",
+    "strong",
+    "firstAid"
+   ],
+   "heal_at": 50,
+   "heal_before_exit": true,
+   "chest_min_packs": 2,
+   "npc_low_enabled": true,
+   "npc_high_enabled": false,
+   "npc_min_stamina": 30
+  },
+  "daily": {
+   "personal_order": [
+    "convDets",
+    "robPro",
+    "jobMoney",
+    "materials",
+    "learnKnows",
+    "walkMoney",
+    "confKnows"
+   ]
+  },
+  "lottery": {
+   "tickets": {
+    "money": "max",
+    "knowledge": "max",
+    "raw": "max",
+    "details": "max"
+   },
+   "keep": {
+    "money": 0,
+    "knowledge": 0,
+    "raw": 0,
+    "details": 0
+   }
+  },
+  "retention": {
+   "messages_days": 90,
+   "decisions_days": 30,
+   "metrics_days": 365
+  }
+ },
+ "defaults": {
+  "engine": {
+   "mode": "dry_run",
+   "killed": false,
+   "kill_reason": null,
+   "min_request_interval_s": 1.6,
+   "antiflood_retry_max": 2,
+   "antiflood_pause_s": 10.0,
+   "action_ttl_s": 60.0,
+   "default_expect_timeout_s": 20.0,
+   "click_answer_timeout_s": 4.0,
+   "recovered_react_max_age_min": 10,
+   "refresh_min_interval_s": 120.0,
+   "state_stale_after_min": 15,
+   "paused": false,
+   "urgent_while_paused": true,
+   "manual_while_paused": true
+  },
+  "telegram": {
+   "expected_user_id": 267519921
+  },
+  "chats": {
+   "game_chat_id": 227859379,
+   "swinfo_chat_id": -1001109615116,
+   "swinfo_user_id": 376592453,
+   "smoothie_channel_id": -1001356300612,
+   "tangerine_chat_id": -1001377961602,
+   "tangerine_reply_to": 927136,
+   "bulls_invite_chat_id": null
+  },
+  "features": {
+   "deeds": true,
+   "books": true,
+   "fastfood": true,
+   "cards_containers": true,
+   "gorbushka": true,
+   "sleep": true,
+   "levelup": true,
+   "metro": true,
+   "battle": true,
+   "factory": true,
+   "bulls": true,
+   "stocks_dump": true,
+   "smoothie": true,
+   "tangerine": true,
+   "lottery": true,
+   "casino": false,
+   "arena": false,
+   "pet_feast": false,
+   "daily_tasks": true,
+   "robbery_defense": true,
+   "paid_info": false,
+   "seasonal": false
+  },
+  "strategy": {
+   "weight_xp": 1.0,
+   "weight_money": 1.0,
+   "weight_resources": 0.5,
+   "exp_scale": 200.0,
+   "money_scale": 30.0,
+   "resource_scale": 10.0,
+   "focus": [
+    "harvest",
+    "dconv"
+   ],
+   "deeds": [
+    "harvest",
+    "job",
+    "learn",
+    "dconv",
+    "walk"
+   ]
+  },
+  "food": {
+   "order": [
+    "hotdog",
+    "pizza",
+    "burger"
+   ],
+   "banana_reserve": 50
+  },
+  "sleep": {
+   "duration_h": 7,
+   "lead_min": 120,
+   "hotel_if_cash_after_reserve_ge": null
+  },
+  "levelup": {
+   "policy": "balanced"
+  },
+  "battle": {
+   "target": "📯Pied Piper",
+   "overrides": {}
+  },
+  "stocks": {
+   "cash_floor": 150,
+   "min_dump": 200,
+   "sell_cap_margin": 5,
+   "dump_lead_min": 5
+  },
+  "tangerine": {
+   "interval_h": 20
+  },
+  "metro": {
+   "min_budget_min": 60,
+   "battle_margin_min": 15,
+   "extra_margin_min": 10,
+   "buffs": [
+    "fastMove",
+    "strong",
+    "firstAid"
+   ],
+   "heal_at": 50,
+   "heal_before_exit": true,
+   "chest_min_packs": 2,
+   "npc_low_enabled": true,
+   "npc_high_enabled": false,
+   "npc_min_stamina": 30
+  },
+  "daily": {
+   "personal_order": [
+    "convDets",
+    "robPro",
+    "jobMoney",
+    "materials",
+    "learnKnows",
+    "walkMoney",
+    "confKnows"
+   ]
+  },
+  "lottery": {
+   "tickets": {
+    "money": "max",
+    "knowledge": "max",
+    "raw": "max",
+    "details": "max"
+   },
+   "keep": {
+    "money": 0,
+    "knowledge": 0,
+    "raw": 0,
+    "details": 0
+   }
+  },
+  "retention": {
+   "messages_days": 90,
+   "decisions_days": 30,
+   "metrics_days": 365
+  }
+ },
+ "schema": {
+  "$defs": {
+   "BattleSection": {
+    "properties": {
+     "target": {
+      "default": "📯Pied Piper",
+      "enum": [
+       "📯Pied Piper",
+       "🤖Hooli",
+       "⚡️Stark Ind.",
+       "☂️Umbrella",
+       "🎩Wayne Ent.",
+       "🛡Защита"
+      ],
+      "title": "Target",
+      "type": "string"
+     },
+     "overrides": {
+      "additionalProperties": {
+       "enum": [
+        "📯Pied Piper",
+        "🤖Hooli",
+        "⚡️Stark Ind.",
+        "☂️Umbrella",
+        "🎩Wayne Ent.",
+        "🛡Защита"
+       ],
+       "type": "string"
+      },
+      "title": "Overrides",
+      "type": "object"
+     }
+    },
+    "title": "BattleSection",
+    "type": "object"
+   },
+   "ChatsSection": {
+    "properties": {
+     "game_chat_id": {
+      "default": 227859379,
+      "title": "Game Chat Id",
+      "type": "integer"
+     },
+     "swinfo_chat_id": {
+      "default": -1001109615116,
+      "title": "Swinfo Chat Id",
+      "type": "integer"
+     },
+     "swinfo_user_id": {
+      "default": 376592453,
+      "title": "Swinfo User Id",
+      "type": "integer"
+     },
+     "smoothie_channel_id": {
+      "default": -1001356300612,
+      "title": "Smoothie Channel Id",
+      "type": "integer"
+     },
+     "tangerine_chat_id": {
+      "default": -1001377961602,
+      "title": "Tangerine Chat Id",
+      "type": "integer"
+     },
+     "tangerine_reply_to": {
+      "default": 927136,
+      "title": "Tangerine Reply To",
+      "type": "integer"
+     },
+     "bulls_invite_chat_id": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Bulls Invite Chat Id"
+     }
+    },
+    "title": "ChatsSection",
+    "type": "object"
+   },
+   "DailySection": {
+    "properties": {
+     "personal_order": {
+      "default": [
+       "convDets",
+       "robPro",
+       "jobMoney",
+       "materials",
+       "learnKnows",
+       "walkMoney",
+       "confKnows"
+      ],
+      "items": {
+       "enum": [
+        "convDets",
+        "robPro",
+        "jobMoney",
+        "materials",
+        "learnKnows",
+        "walkMoney",
+        "confKnows"
+       ],
+       "type": "string"
+      },
+      "title": "Personal Order",
+      "type": "array"
+     }
+    },
+    "title": "DailySection",
+    "type": "object"
+   },
+   "EngineSection": {
+    "properties": {
+     "mode": {
+      "default": "dry_run",
+      "enum": [
+       "dry_run",
+       "live"
+      ],
+      "title": "Mode",
+      "type": "string"
+     },
+     "killed": {
+      "default": false,
+      "readOnly": true,
+      "title": "Killed",
+      "type": "boolean"
+     },
+     "kill_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "readOnly": true,
+      "title": "Kill Reason"
+     },
+     "min_request_interval_s": {
+      "default": 1.6,
+      "minimum": 0,
+      "title": "Min Request Interval S",
+      "type": "number"
+     },
+     "antiflood_retry_max": {
+      "default": 2,
+      "minimum": 0,
+      "title": "Antiflood Retry Max",
+      "type": "integer"
+     },
+     "antiflood_pause_s": {
+      "default": 10.0,
+      "minimum": 0,
+      "title": "Antiflood Pause S",
+      "type": "number"
+     },
+     "action_ttl_s": {
+      "default": 60.0,
+      "exclusiveMinimum": 0,
+      "title": "Action Ttl S",
+      "type": "number"
+     },
+     "default_expect_timeout_s": {
+      "default": 20.0,
+      "exclusiveMinimum": 0,
+      "title": "Default Expect Timeout S",
+      "type": "number"
+     },
+     "click_answer_timeout_s": {
+      "default": 4.0,
+      "exclusiveMinimum": 0,
+      "maximum": 30,
+      "title": "Click Answer Timeout S",
+      "type": "number"
+     },
+     "recovered_react_max_age_min": {
+      "default": 10,
+      "minimum": 0,
+      "title": "Recovered React Max Age Min",
+      "type": "integer"
+     },
+     "refresh_min_interval_s": {
+      "default": 120.0,
+      "exclusiveMinimum": 0,
+      "title": "Refresh Min Interval S",
+      "type": "number"
+     },
+     "state_stale_after_min": {
+      "default": 15,
+      "minimum": 1,
+      "title": "State Stale After Min",
+      "type": "integer"
+     },
+     "paused": {
+      "default": false,
+      "readOnly": true,
+      "title": "Paused",
+      "type": "boolean"
+     },
+     "urgent_while_paused": {
+      "default": true,
+      "title": "Urgent While Paused",
+      "type": "boolean"
+     },
+     "manual_while_paused": {
+      "default": true,
+      "title": "Manual While Paused",
+      "type": "boolean"
+     }
+    },
+    "title": "EngineSection",
+    "type": "object"
+   },
+   "FeaturesSection": {
+    "description": "Включённые механики: планировщик их выбирает, шлюз пропускает их команды не вручную.",
+    "properties": {
+     "deeds": {
+      "default": true,
+      "title": "Deeds",
+      "type": "boolean"
+     },
+     "books": {
+      "default": true,
+      "title": "Books",
+      "type": "boolean"
+     },
+     "fastfood": {
+      "default": true,
+      "title": "Fastfood",
+      "type": "boolean"
+     },
+     "cards_containers": {
+      "default": true,
+      "title": "Cards Containers",
+      "type": "boolean"
+     },
+     "gorbushka": {
+      "default": true,
+      "title": "Gorbushka",
+      "type": "boolean"
+     },
+     "sleep": {
+      "default": true,
+      "title": "Sleep",
+      "type": "boolean"
+     },
+     "levelup": {
+      "default": true,
+      "title": "Levelup",
+      "type": "boolean"
+     },
+     "metro": {
+      "default": true,
+      "title": "Metro",
+      "type": "boolean"
+     },
+     "battle": {
+      "default": true,
+      "title": "Battle",
+      "type": "boolean"
+     },
+     "factory": {
+      "default": true,
+      "title": "Factory",
+      "type": "boolean"
+     },
+     "bulls": {
+      "default": true,
+      "title": "Bulls",
+      "type": "boolean"
+     },
+     "stocks_dump": {
+      "default": true,
+      "title": "Stocks Dump",
+      "type": "boolean"
+     },
+     "smoothie": {
+      "default": true,
+      "title": "Smoothie",
+      "type": "boolean"
+     },
+     "tangerine": {
+      "default": true,
+      "title": "Tangerine",
+      "type": "boolean"
+     },
+     "lottery": {
+      "default": true,
+      "title": "Lottery",
+      "type": "boolean"
+     },
+     "casino": {
+      "default": false,
+      "title": "Casino",
+      "type": "boolean"
+     },
+     "arena": {
+      "default": false,
+      "title": "Arena",
+      "type": "boolean"
+     },
+     "pet_feast": {
+      "default": false,
+      "title": "Pet Feast",
+      "type": "boolean"
+     },
+     "daily_tasks": {
+      "default": true,
+      "title": "Daily Tasks",
+      "type": "boolean"
+     },
+     "robbery_defense": {
+      "default": true,
+      "title": "Robbery Defense",
+      "type": "boolean"
+     },
+     "paid_info": {
+      "default": false,
+      "title": "Paid Info",
+      "type": "boolean"
+     },
+     "seasonal": {
+      "default": false,
+      "title": "Seasonal",
+      "type": "boolean"
+     }
+    },
+    "title": "FeaturesSection",
+    "type": "object"
+   },
+   "FoodSection": {
+    "properties": {
+     "order": {
+      "default": [
+       "hotdog",
+       "pizza",
+       "burger"
+      ],
+      "items": {
+       "enum": [
+        "hotdog",
+        "pizza",
+        "burger",
+        "banana"
+       ],
+       "type": "string"
+      },
+      "title": "Order",
+      "type": "array"
+     },
+     "banana_reserve": {
+      "default": 50,
+      "minimum": 0,
+      "title": "Banana Reserve",
+      "type": "integer"
+     }
+    },
+    "title": "FoodSection",
+    "type": "object"
+   },
+   "LevelupSection": {
+    "properties": {
+     "policy": {
+      "const": "balanced",
+      "default": "balanced",
+      "title": "Policy",
+      "type": "string"
+     }
+    },
+    "title": "LevelupSection",
+    "type": "object"
+   },
+   "LotteryKeep": {
+    "description": "Сколько ресурса не тратить на билеты (к 💵 ещё резервы билета Горбушки и отеля).",
+    "properties": {
+     "money": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Money",
+      "type": "integer"
+     },
+     "knowledge": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Knowledge",
+      "type": "integer"
+     },
+     "raw": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Raw",
+      "type": "integer"
+     },
+     "details": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Details",
+      "type": "integer"
+     }
+    },
+    "title": "LotteryKeep",
+    "type": "object"
+   },
+   "LotterySection": {
+    "properties": {
+     "tickets": {
+      "$ref": "#/$defs/LotteryTickets"
+     },
+     "keep": {
+      "$ref": "#/$defs/LotteryKeep"
+     }
+    },
+    "title": "LotterySection",
+    "type": "object"
+   },
+   "LotteryTickets": {
+    "properties": {
+     "money": {
+      "anyOf": [
+       {
+        "minimum": 0,
+        "type": "integer"
+       },
+       {
+        "const": "max",
+        "type": "string"
+       }
+      ],
+      "default": "max",
+      "title": "Money"
+     },
+     "knowledge": {
+      "anyOf": [
+       {
+        "minimum": 0,
+        "type": "integer"
+       },
+       {
+        "const": "max",
+        "type": "string"
+       }
+      ],
+      "default": "max",
+      "title": "Knowledge"
+     },
+     "raw": {
+      "anyOf": [
+       {
+        "minimum": 0,
+        "type": "integer"
+       },
+       {
+        "const": "max",
+        "type": "string"
+       }
+      ],
+      "default": "max",
+      "title": "Raw"
+     },
+     "details": {
+      "anyOf": [
+       {
+        "minimum": 0,
+        "type": "integer"
+       },
+       {
+        "const": "max",
+        "type": "string"
+       }
+      ],
+      "default": "max",
+      "title": "Details"
+     }
+    },
+    "title": "LotteryTickets",
+    "type": "object"
+   },
+   "MetroSection": {
+    "properties": {
+     "min_budget_min": {
+      "default": 60,
+      "minimum": 1,
+      "title": "Min Budget Min",
+      "type": "integer"
+     },
+     "battle_margin_min": {
+      "default": 15,
+      "minimum": 15,
+      "title": "Battle Margin Min",
+      "type": "integer"
+     },
+     "extra_margin_min": {
+      "default": 10,
+      "minimum": 0,
+      "title": "Extra Margin Min",
+      "type": "integer"
+     },
+     "buffs": {
+      "default": [
+       "fastMove",
+       "strong",
+       "firstAid"
+      ],
+      "items": {
+       "enum": [
+        "fastMove",
+        "strong",
+        "firstAid"
+       ],
+       "type": "string"
+      },
+      "title": "Buffs",
+      "type": "array"
+     },
+     "heal_at": {
+      "default": 50,
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Heal At",
+      "type": "integer"
+     },
+     "heal_before_exit": {
+      "default": true,
+      "title": "Heal Before Exit",
+      "type": "boolean"
+     },
+     "chest_min_packs": {
+      "default": 2,
+      "minimum": 0,
+      "title": "Chest Min Packs",
+      "type": "integer"
+     },
+     "npc_low_enabled": {
+      "default": true,
+      "title": "Npc Low Enabled",
+      "type": "boolean"
+     },
+     "npc_high_enabled": {
+      "default": false,
+      "title": "Npc High Enabled",
+      "type": "boolean"
+     },
+     "npc_min_stamina": {
+      "default": 30,
+      "minimum": 0,
+      "title": "Npc Min Stamina",
+      "type": "integer"
+     }
+    },
+    "title": "MetroSection",
+    "type": "object"
+   },
+   "RetentionSection": {
+    "properties": {
+     "messages_days": {
+      "default": 90,
+      "minimum": 1,
+      "title": "Messages Days",
+      "type": "integer"
+     },
+     "decisions_days": {
+      "default": 30,
+      "minimum": 1,
+      "title": "Decisions Days",
+      "type": "integer"
+     },
+     "metrics_days": {
+      "default": 365,
+      "minimum": 1,
+      "title": "Metrics Days",
+      "type": "integer"
+     }
+    },
+    "title": "RetentionSection",
+    "type": "object"
+   },
+   "SleepSection": {
+    "properties": {
+     "duration_h": {
+      "default": 7,
+      "maximum": 12,
+      "minimum": 7,
+      "title": "Duration H",
+      "type": "integer"
+     },
+     "lead_min": {
+      "default": 120,
+      "minimum": 10,
+      "title": "Lead Min",
+      "type": "integer"
+     },
+     "hotel_if_cash_after_reserve_ge": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Hotel If Cash After Reserve Ge"
+     }
+    },
+    "title": "SleepSection",
+    "type": "object"
+   },
+   "StocksSection": {
+    "properties": {
+     "cash_floor": {
+      "default": 150,
+      "minimum": 0,
+      "title": "Cash Floor",
+      "type": "integer"
+     },
+     "min_dump": {
+      "default": 200,
+      "minimum": 1,
+      "title": "Min Dump",
+      "type": "integer"
+     },
+     "sell_cap_margin": {
+      "default": 5,
+      "minimum": 0,
+      "title": "Sell Cap Margin",
+      "type": "integer"
+     },
+     "dump_lead_min": {
+      "default": 5,
+      "minimum": 1,
+      "title": "Dump Lead Min",
+      "type": "integer"
+     }
+    },
+    "title": "StocksSection",
+    "type": "object"
+   },
+   "StrategySection": {
+    "properties": {
+     "weight_xp": {
+      "default": 1.0,
+      "minimum": 0,
+      "title": "Weight Xp",
+      "type": "number"
+     },
+     "weight_money": {
+      "default": 1.0,
+      "minimum": 0,
+      "title": "Weight Money",
+      "type": "number"
+     },
+     "weight_resources": {
+      "default": 0.5,
+      "minimum": 0,
+      "title": "Weight Resources",
+      "type": "number"
+     },
+     "exp_scale": {
+      "default": 200.0,
+      "exclusiveMinimum": 0,
+      "title": "Exp Scale",
+      "type": "number"
+     },
+     "money_scale": {
+      "default": 30.0,
+      "exclusiveMinimum": 0,
+      "title": "Money Scale",
+      "type": "number"
+     },
+     "resource_scale": {
+      "default": 10.0,
+      "exclusiveMinimum": 0,
+      "title": "Resource Scale",
+      "type": "number"
+     },
+     "focus": {
+      "default": [
+       "harvest",
+       "dconv"
+      ],
+      "items": {
+       "enum": [
+        "harvest",
+        "job",
+        "learn",
+        "dconv",
+        "walk",
+        "confa",
+        "rob"
+       ],
+       "type": "string"
+      },
+      "title": "Focus",
+      "type": "array"
+     },
+     "deeds": {
+      "default": [
+       "harvest",
+       "job",
+       "learn",
+       "dconv",
+       "walk"
+      ],
+      "items": {
+       "enum": [
+        "harvest",
+        "job",
+        "learn",
+        "dconv",
+        "walk",
+        "confa",
+        "rob"
+       ],
+       "type": "string"
+      },
+      "title": "Deeds",
+      "type": "array"
+     }
+    },
+    "title": "StrategySection",
+    "type": "object"
+   },
+   "TangerineSection": {
+    "properties": {
+     "interval_h": {
+      "default": 20,
+      "minimum": 20,
+      "title": "Interval H",
+      "type": "integer"
+     }
+    },
+    "title": "TangerineSection",
+    "type": "object"
+   },
+   "TelegramSection": {
+    "properties": {
+     "expected_user_id": {
+      "default": 267519921,
+      "title": "Expected User Id",
+      "type": "integer"
+     }
+    },
+    "title": "TelegramSection",
+    "type": "object"
+   }
+  },
+  "properties": {
+   "engine": {
+    "$ref": "#/$defs/EngineSection"
+   },
+   "telegram": {
+    "$ref": "#/$defs/TelegramSection"
+   },
+   "chats": {
+    "$ref": "#/$defs/ChatsSection"
+   },
+   "features": {
+    "$ref": "#/$defs/FeaturesSection"
+   },
+   "strategy": {
+    "$ref": "#/$defs/StrategySection"
+   },
+   "food": {
+    "$ref": "#/$defs/FoodSection"
+   },
+   "sleep": {
+    "$ref": "#/$defs/SleepSection"
+   },
+   "levelup": {
+    "$ref": "#/$defs/LevelupSection"
+   },
+   "battle": {
+    "$ref": "#/$defs/BattleSection"
+   },
+   "stocks": {
+    "$ref": "#/$defs/StocksSection"
+   },
+   "tangerine": {
+    "$ref": "#/$defs/TangerineSection"
+   },
+   "metro": {
+    "$ref": "#/$defs/MetroSection"
+   },
+   "daily": {
+    "$ref": "#/$defs/DailySection"
+   },
+   "lottery": {
+    "$ref": "#/$defs/LotterySection"
+   },
+   "retention": {
+    "$ref": "#/$defs/RetentionSection"
+   }
+  },
+  "title": "Settings",
+  "type": "object"
+ }
+}

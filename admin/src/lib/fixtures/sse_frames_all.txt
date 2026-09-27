@@ -1,0 +1,66 @@
+id: 1790538450815:1
+event: decision
+data: {"id": 344, "at": "2026-09-27T19:47:42.870014+00:00", "kind": "wait", "scenario": null, "reason": "busy", "until": "2026-09-28T02:05:12+00:00"}
+
+id: 1790538450815:2
+event: settings
+data: {"version": 13, "mode": "live", "paused": false, "killed": false}
+
+id: 1790538450815:3
+event: action
+data: {"id": 475, "status": "intent", "reason": "", "source": "manual", "kind": "send", "chat_id": 227859379, "text": "/inv", "data": null, "command_class": "nav"}
+
+id: 1790538450815:4
+event: action
+data: {"id": 475, "status": "sent", "reason": ""}
+
+id: 1790538450815:5
+event: action
+data: {"id": 475, "status": "confirmed", "reason": "sent"}
+
+id: 1790538450815:6
+event: message
+data: {"journal_id": 779, "chat_id": 227859379, "msg_id": 3626317, "revision": 0, "kind": "new", "date": "2026-09-27T20:28:36+00:00", "outgoing": false, "text": "Гаджеты при тебе: (снять)\n⚫️26 🕶Хиджаб (+85🎓, +55🐢, +30🔨, 🧶) /unwear_h18\n⚫️25 👞Хулитопы (+84🔨, +54🐿, +30🎓, 🧶) /unwear_l18\n⚫️25 👖Чулочки (+21🎓, +30🐢, 🧶) /unwear_s19\n⚫️25 👕M-Zhilетka (+137🐿, +51🔨, 📿) /unwear_c18\n⚫️25 📱iBlackM (+100🔨, +51🎓, 💎) /unwear_p18\n⚫️25 💻WeBook (+88🎓, +88🐿, 💎) /unwear_b18\n⚫️25 💍RedRing (+88🔨, +88🐢, 💎) /unwear_r18\n⚫️25 ⌚️SM-art (+100🎓, +51🔨, 💎) /unwear_w18\n⚫️25 🪫SWpower (+21🔨, +30🐿, 💎) /unwear_k19\n⚫️25 👔PA’ltishCo (+137🐢, +51🎓, 📿) /unwear_t18\n\n⚫️Сет VIP\n🗳Сет Логистик\n🗺Сет Кладоискатель\n🦉Сет Сова\nБонусы - /bonuses\n\nГаджеты в рюкзаке: (надеть)\n👔Жилетка LoRat (+63🐢, +23🎓) /wear_1_t501\n👔Жилетка LoRat (+63🐢, +23🎓) /wear_2_t501\n👕Майка LoRat (+63🐿, +23🔨) /wear_3_c501\n👕Майка LoRat (+63🐿, +23🔨) /wear_4_c501\n👕Майка LoRat (+63🐿, +23🔨) /wear_5_c501\n⚫️25 👔Жилетка LoRat (+110🐢, +40🎓) /wear_6_t501\n👔Жилетка LoRat (+63🐢, +23🎓) /wear_7_t501\n👕Майка LoRat (+63🐿, +23🔨) /wear_8_c501\n👔Жилетка LoRat (+63🐢, +23🎓) /wear_9_t501\n👔Жилетка LoRat (+63🐢, +23🎓) /wear_10_t501\n\nТвои ресурсы - 77943 шт.\nПосмотреть - /bag\n\n📒Книга опыта: 866 /read_exp\n\n💳Подарочная карта: 4 /use_card\n\nАртефакты: - /artefacts\n📦Странная коробочка\n📕Букварь Стартапера 100 ур. (100%)\n📠SW факs 100 ур. (62%)\n🔦Фонарь Sw-ет 100 ур. (50%)\n🗜SW грейд 100 ур. (20%)\n💡Идея Стартапера 100 ур. (35%)\n😮Золотой жетон 100 ур. (100%)\n📝Отличный план 100 ур. (25%)\n🎓Диплом 100 ур. (10%)\n⌨️Турбо-Клава 100 ур. (100%)\n🔌Фича 100 ур. (29💡)\n🪆SW-Трёшка 94 ур. (+2🔵)\n\nЗанято 10 из 24", "events": [{"kind": "inventory", "books": 866, "books_in_s": null, "cards": 4, "cards_in_s": null, "prizebox": false, "prizebox_in_s": null, "bag": 10, "bag_cap": 24}]}
+
+id: 1790538450815:7
+event: state
+data: {"version": 639, "changed": {"factory_signed": {"value": true, "at": "2026-09-27T15:00:42Z", "src": "screen"}, "food_stock": {"value": {"pizza": {"count": 5154, "low": 70, "high": 160}, "banana": {"count": 11, "low": 150, "high": 275}, "burger": {"count": 3721, "low": 90, "high": 180}, "hotdog": {"count": 8684, "low": 50, "high": 140}}, "at": "2026-09-27T19:01:09Z", "src": "derived"}, "team_tag": {"value": "SU", "at": "2026-09-27T18:45:08Z", "src": "screen"}, "factory_wins": {"value": 247, "at": "2026-09-27T18:45:08Z", "src": "screen"}, "activity_stats": {"job": {"count": 65, "exp": 120.94930037529736, "money": 25.332471409547118, "knowledge": 0.0, "details": 2.2412721464242815, "raw": 0.9356359381844577}, "dconv": {"count": 25, "exp": 201.86752248390837, "money": 0.0, "knowledge": 0.0, "details": 0.0, "raw": 8.393384723833957}}, "busy": {"value": {"activity": "sleep_hotel", "until": "2026-09-28T02:05:09Z"}, "at": "2026-09-27T19:05:09Z", "src": "screen"}, "book_ready_at": {"value": "2026-09-27T20:28:36Z", "at": "2026-09-27T20:28:36Z", "src": "screen"}, "metro_ready_at": {"value": "2026-09-28T02:20:22Z", "at": "2026-09-27T10:20:22Z", "src": "derived"}, "exp_next": {"value": 18155142, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "stock_quotes": {"value": {"bmesa": 10, "hooli": 10, "piper": 10, "stark": 31, "umbrl": 100, "wayne": 10}, "at": "2026-09-27T18:56:09Z", "src": "screen"}, "bag_cap": {"value": 24, "at": "2026-09-27T20:28:36Z", "src": "screen"}, "gorbushka": {"value": {"state": "done", "won": null, "total": null, "ticket_until": null, "next_fight_at": null, "comeback_at": "2026-09-28T10:10:29Z", "fight_cost": null}, "at": "2026-09-27T14:12:29Z", "src": "screen"}, "knowledge": {"value": 21946, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "bag": {"value": 10, "at": "2026-09-27T20:28:36Z", "src": "screen"}, "level": {"value": 71, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "schema_version": 1, "containers_medium": {"value": 0, "at": "2026-09-27T16:02:03Z", "src": "screen"}, "stock_holdings": {"value": {"bmesa": 10, "hooli": 1838, "piper": 3762, "stark": 293, "umbrl": 1232, "wayne": 75}, "at": "2026-09-27T18:56:11Z", "src": "screen"}, "motivation": {"value": 0, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "prices": {"hotel": {"value": {"motivation": 0, "money": 213, "minutes": 0, "details": 0, "white": 0, "blue": 0, "knowledge": 0}, "at": "2026-09-27T19:05:04Z", "src": "screen"}, "gorbushka_ticket": {"value": {"motivation": 0, "money": 120, "minutes": 0, "details": 0, "white": 0, "blue": 0, "knowledge": 20}, "at": "2026-09-27T10:10:34Z", "src": "screen"}}, "raw": {"value": 21578, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "metro_message": {"value": null, "at": "2026-09-27T10:20:22Z", "src": "screen"}, "battle_at": {"value": "2026-09-28T09:59:06Z", "at": "2026-09-27T19:01:06Z", "src": "screen"}, "stamina": {"value": 110, "at": "2026-09-27T19:01:09Z", "src": "screen"}, "last_refusal": {"value": {"reason": "unknown_command", "need": null}, "at": "2026-09-27T15:00:03Z", "src": "screen"}, "battle_target": {"value": "📯Pied Piper", "at": "2026-09-27T19:01:06Z", "src": "screen"}, "factory_call_at": {"value": "2026-09-27T15:00:39Z", "at": "2026-09-27T15:00:39Z", "src": "screen"}, "daily_personal": {"value": {"day": "2026-09-27", "status": "done", "offers": [], "chosen": {"type": "jobMoney", "level": "hard", "goal": 132, "resource": "💵", "activities": ["job"]}, "current": 132}, "at": "2026-09-27T18:45:09Z", "src": "screen"}, "battle_target_set": {"value": {"target": "📯Pied Piper", "battle_at": "2026-09-28T09:59:06Z"}, "at": "2026-09-27T19:01:06Z", "src": "screen"}, "stock_limits": {"value": {"min_buy": 11, "max_sell": 80, "reserve": 100, "open_hour": 8, "close_hour": 22}, "at": "2026-09-27T18:56:09Z", "src": "screen"}, "motivation_next_at": {"value": "2026-09-27T19:05:00Z", "at": "2026-09-27T19:01:03Z", "src": "screen"}, "cards": {"value": 4, "at": "2026-09-27T20:28:36Z", "src": "screen"}, "prizebox_ready_at": {"value": null, "at": "2026-09-27T20:28:36Z", "src": "screen"}, "books": {"value": 866, "at": "2026-09-27T20:28:36Z", "src": "screen"}, "containers_small": {"value": 0, "at": "2026-09-27T16:02:03Z", "src": "screen"}, "exp": {"value": 17520102, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "tangerines": {"value": 2, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "skills": {"value": {"practice": 461, "theory": 460, "cunning": 345, "wisdom": 345}, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "prizebox": {"value": false, "at": "2026-09-27T20:28:36Z", "src": "screen"}, "money": {"value": 47, "at": "2026-09-27T19:05:09Z", "src": "derived"}, "details": {"value": 136625, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "sleep_deadline": {"value": null, "at": "2026-09-27T19:05:09Z", "src": "derived"}, "motivation_max": {"value": 85, "at": "2026-09-27T19:01:03Z", "src": "screen"}, "fastfood_ready_at": {"value": "2026-09-27T19:31:09Z", "at": "2026-09-27T19:01:09Z", "src": "derived"}, "card_ready_at": {"value": "2026-09-27T20:28:36Z", "at": "2026-09-27T20:28:36Z", "src": "screen"}, "team_task": {"value": {"current": 120, "goal": 120, "resource": "🔩", "day": "2026-09-27", "status": "done", "activities": []}, "at": "2026-09-27T18:45:09Z", "src": "screen"}, "sleep_allowed_at": {"value": "2026-09-27T15:01:03Z", "at": "2026-09-27T19:01:03Z", "src": "derived"}}}
+
+id: 1790538450815:8
+event: scenario_run
+data: {"id": 198, "scenario": "refresh", "status": "queued", "reason": ""}
+
+id: 1790538450815:9
+event: scenario_run
+data: {"id": 198, "scenario": null, "status": "running", "reason": ""}
+
+id: 1790538450815:10
+event: action
+data: {"id": 476, "status": "intent", "reason": "", "source": "manual", "kind": "send", "chat_id": 227859379, "text": "😎Я", "data": null, "command_class": "nav"}
+
+id: 1790538450815:11
+event: action
+data: {"id": 476, "status": "sent", "reason": ""}
+
+id: 1790538450815:12
+event: message
+data: {"journal_id": 780, "chat_id": 227859379, "msg_id": 3626319, "revision": 0, "kind": "new", "date": "2026-09-27T20:28:40+00:00", "outgoing": false, "text": "Битва через 13ч. 31 мин.!\n\n☣️[SU] Fenicu 🐀\n🎚71   🧵16 (🪡)\n💡17 520 131 из 18 155 142\n💵$55 🔋110% /to_eat\n📚21 947   🔩21 579   ⚙️136 625\n🔥3 из 85 (/pr) (36 мин.)\n🎒10 из 24 /inv\n🍊2 /gifts\n\n🔨 461    🎓 460\n🐿 345    🐢 345\n⭐️⭐️⭐️ /cool\n⚔️Взлом 📯Pied Piper\n🛌Спишь в отеле (5ч. 36 мин.)\nПолный профиль /full", "events": [{"kind": "profile_compact", "battle_in_s": 48660, "level": 71, "exp": 17520131, "exp_next": 18155142, "money": 55, "stamina": 110, "knowledge": 21947, "raw": 21579, "details": 136625, "motivation": 3, "motivation_max": 85, "motivation_next_in_s": 2160, "bag": 10, "bag_cap": 24, "tangerines": 2, "practice": 461, "theory": 460, "cunning": 345, "wisdom": 345, "battle_target": "📯Pied Piper", "sleep_in_s": null, "busy_kind": "sleep_hotel", "busy_left_s": 20160}]}
+
+id: 1790538450815:13
+event: state
+data: {"version": 640, "changed": {"busy": {"value": {"activity": "sleep_hotel", "until": "2026-09-28T02:04:40Z"}, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "exp_next": {"value": 18155142, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "bag_cap": {"value": 24, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "knowledge": {"value": 21947, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "bag": {"value": 10, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "level": {"value": 71, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "motivation": {"value": 3, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "raw": {"value": 21579, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "battle_at": {"value": "2026-09-28T09:59:40Z", "at": "2026-09-27T20:28:40Z", "src": "screen"}, "stamina": {"value": 110, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "battle_target": {"value": "📯Pied Piper", "at": "2026-09-27T20:28:40Z", "src": "screen"}, "motivation_next_at": {"value": "2026-09-27T21:04:40Z", "at": "2026-09-27T20:28:40Z", "src": "screen"}, "exp": {"value": 17520131, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "tangerines": {"value": 2, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "skills": {"value": {"practice": 461, "theory": 460, "cunning": 345, "wisdom": 345}, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "money": {"value": 55, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "details": {"value": 136625, "at": "2026-09-27T20:28:40Z", "src": "screen"}, "motivation_max": {"value": 85, "at": "2026-09-27T20:28:40Z", "src": "screen"}}}
+
+id: 1790538450815:14
+event: action
+data: {"id": 476, "status": "confirmed", "reason": "profile_compact"}
+
+id: 1790538450815:15
+event: scenario_run
+data: {"id": 198, "scenario": null, "status": "done", "reason": "profile_compact"}
+
+id: 1790538450815:16
+event: decision
+data: {"id": 345, "at": "2026-09-27T20:28:40.091625+00:00", "kind": "wait", "scenario": null, "reason": "busy", "until": "2026-09-28T02:04:43+00:00"}
+
+: ping
+

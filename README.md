@@ -3,7 +3,8 @@
 Userbot для автоматической игры в StartupWars (@StartupWarsBot). Боты в игре официально разрешены.
 
 Один процесс: kurigram (MTProto) + движок + FastAPI в одном asyncio-цикле, Postgres.
-Админка (Svelte) — отдельный проект поверх API этого сервиса.
+Админка (SvelteKit, каталог `admin/`) — SPA поверх `/api/v1` этого сервиса, собранную статику отдаёт
+тот же FastAPI с того же домена (см. «Админка»).
 
 ## Оглавление
 
@@ -55,6 +56,9 @@ Userbot для автоматической игры в StartupWars (@StartupWar
   - [Справочные эндпоинты](#справочные-эндпоинты)
   - [Поток событий (SSE)](#поток-событий-sse)
   - [Отдача админки](#отдача-админки)
+- [Админка](#админка)
+  - [Разработка админки](#разработка-админки)
+  - [Устройство](#устройство)
 - [Образ и деплой](#образ-и-деплой)
   - [Образ](#образ)
   - [Compose на apps](#compose-на-apps)
@@ -1613,7 +1617,64 @@ no-cache` и `X-Accel-Buffering: no` отключают буферизацию �
 `default-src 'self'; script-src 'self' 'sha256-…'; img-src 'self' data:; style-src 'self'
 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
 где `sha256-…` — хеш содержимого каждого встроенного `<script>` без `src` (стартовый скрипт
-SvelteKit). Тесты — `tests/api/test_admin_static.py` на временном каталоге.
+SvelteKit). Тесты — `tests/api/test_admin_static.py` на временном каталоге и на стартовой странице
+настоящей сборки (`tests/fixtures/admin/index.html`).
+
+## Админка
+
+Веб-админка владельца бота (`admin/`): SvelteKit 2 SPA (`@sveltejs/adapter-static`, `fallback:
+'index.html'`, `ssr = false`), Svelte 5 на рунах, TypeScript strict, Tailwind v4
+(`@tailwindcss/vite`), иконки `@lucide/svelte`, графики uPlot. Одинаково рассчитана на телефон и
+ПК: на ПК меню слева, на телефоне нижняя панель (Главная, Журнал, Управление, Метро, «Ещё» —
+Метрики, Настройки, Уведомления, Telegram, смена пароля, выход). Тема тёмная по умолчанию,
+переключатель тёмная/светлая/системная (выбор — в `localStorage`).
+
+### Разработка админки
+
+```bash
+cd admin
+npm ci                      # реестр — verdaccio хоумлаба (admin/.npmrc), package-lock.json в git
+npm run dev                 # Vite с прокси /api → PYROBOT_DEV_API (по умолчанию http://127.0.0.1:8080)
+PYROBOT_DEV_API=https://sw.fenicu.com npm run dev   # или прямо на прод
+npm run gen:api             # TS-типы из ../openapi.json → src/lib/api/schema.d.ts (файл в git)
+npm run check               # svelte-check, предупреждения — ошибка
+npm run test                # vitest + @testing-library/svelte (jsdom) на реальных фикстурах
+npm run build               # статика в admin/build
+```
+
+Типы API генерируются `openapi-typescript` из `openapi.json` в корне (его выгружает `uv run python
+tools/openapi.py`): поменяли API — перевыгрузить схему и `npm run gen:api`, закоммитить оба файла;
+CI сверяет, что `schema.d.ts` актуален. Сборка в Docker берёт закоммиченный `schema.d.ts`.
+Локально собранную админку отдаёт и dev-сервер бэкенда: `PYROBOT_ADMIN_DIR=admin/build`.
+
+### Устройство
+
+- `src/lib/api/` — клиент `openapi-fetch` (`createApi`): базовый адрес — одно место (`API_ORIGIN`,
+  тот же origin), `credentials: 'same-origin'`; на изменяющие запросы middleware ставит
+  `X-CSRF-Token`; 401 (кроме входа и `/auth/me`) — сброс сессии и переход на `/login`; 403 `csrf
+  token mismatch` — перечитать `/auth/me` и повторить запрос один раз (копия запроса снимается до
+  отправки). Ошибки приводятся к одному виду (`normalizeError`, `errors.ts`) по реальным оболочкам:
+  строковый `detail`, `{"detail": {"code": "confirm_required", …}}`, `{"detail": {"code":
+  "version_conflict", "version"}}`, список ошибок валидации 422; 403 CSRF отличается от 403
+  `forbidden`/`donate`, 503 недоступного движка — от 503 `store_failed`, 429 несёт `Retry-After`.
+- Сессия (`stores/session.svelte.ts`): cookie `pyrobot_session` httpOnly ставит сервер, CSRF-токен
+  живёт только в памяти вкладки (не в `localStorage`/URL), после перезагрузки его отдаёт `GET
+  /auth/me`; очищается после выхода, 401 и смены пароля. Выход считается выполненным только при
+  204 (или 401 — сессии и так нет): при сбое сети или 403 сессия и токен остаются, окно «Выход не
+  выполнен» предлагает повторить (после 403 токен перечитан).
+- Поток событий (`live/`): один `EventSource('/api/v1/events')` на вкладку; кадры разбираются в
+  дискриминированные типы (`decodeEvent`: `message`, `state`, `action` — создание или обновление,
+  `decision`, `scenario_run`, `notification`, `settings`, `reset`), незнакомые и битые кадры
+  отбрасываются. Сетевой обрыв браузер переподключает сам (с `Last-Event-ID`); закрытый поток —
+  `GET /auth/me`: 401 — выход на `/login`, иначе «нет связи» и новое соединение с растущей паузой
+  1 → 30 с. Индикатор связи: зелёный / переподключение / нет связи. На `reset` каждый потребитель
+  перечитывает своё.
+- Общие компоненты: окно (`Modal` — фокус внутри, Tab по кругу, Esc закрывает, фон на время
+  окна — `inert`, кроме всплывающих сообщений), окно подтверждения (`dialogs.confirm`/`prompt`),
+  всплывающие сообщения (`toasts`).
+- Внешний текст (сообщения игры, уведомления, подписи кнопок, ошибки) выводится только текстом
+  Svelte с `white-space: pre-wrap` (`.ext-text`); `{@html}` и присваивание `innerHTML` запрещены —
+  это проверяет тест `src/lib/no-html.test.ts`.
 
 ## Образ и деплой
 

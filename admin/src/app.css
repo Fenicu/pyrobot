@@ -1,0 +1,166 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Цвета — переменные темы: тёмная по умолчанию, светлая — класс .light на <html>. */
+:root {
+	--bg: #121214;
+	--surface: #1b1b1f;
+	--surface-2: #232329;
+	--line: #34343c;
+	--line-soft: #2a2a30;
+	--fg: #e6e6ea;
+	--fg-muted: #a0a0aa;
+	--fg-faint: #74747e;
+	--accent: #4f8cff;
+	--accent-fg: #ffffff;
+	--accent-soft: #22304d;
+	--ok-bg: #1f5f3a;
+	--ok-fg: #bff5d0;
+	--warn-bg: #6b5310;
+	--warn-fg: #ffe9a8;
+	--bad-bg: #6b1f1f;
+	--bad-fg: #ffc9c9;
+	--muted-bg: #33333a;
+	--muted-fg: #cfcfd6;
+	--dec-bg: #243b6b;
+	--dec-fg: #cfe0ff;
+	--msg-bg: #3a2a55;
+	--msg-fg: #e3d4ff;
+	--map-bg: #0e0e11;
+	--map-wall: #2b2b33;
+	--map-floor: #55607a;
+	--map-seen: #7d8aa8;
+	color-scheme: dark;
+}
+
+:root.light {
+	--bg: #f4f5f7;
+	--surface: #ffffff;
+	--surface-2: #eef0f3;
+	--line: #d5d8de;
+	--line-soft: #e5e7eb;
+	--fg: #17181c;
+	--fg-muted: #555a66;
+	--fg-faint: #80848f;
+	--accent: #2f6fe4;
+	--accent-soft: #dbe6fb;
+	--ok-bg: #d3f2de;
+	--ok-fg: #185c34;
+	--warn-bg: #fbecc0;
+	--warn-fg: #6a4d00;
+	--bad-bg: #fad4d4;
+	--bad-fg: #7c1d1d;
+	--muted-bg: #e6e7ea;
+	--muted-fg: #3b3e46;
+	--dec-bg: #dce7fb;
+	--dec-fg: #1d3b73;
+	--msg-bg: #ebe0fa;
+	--msg-fg: #4a2a78;
+	--map-bg: #f0f1f4;
+	--map-wall: #c9ccd4;
+	--map-floor: #8d97ad;
+	--map-seen: #5b6886;
+	color-scheme: light;
+}
+
+@theme inline {
+	--color-bg: var(--bg);
+	--color-surface: var(--surface);
+	--color-surface-2: var(--surface-2);
+	--color-line: var(--line);
+	--color-line-soft: var(--line-soft);
+	--color-fg: var(--fg);
+	--color-fg-muted: var(--fg-muted);
+	--color-fg-faint: var(--fg-faint);
+	--color-accent: var(--accent);
+	--color-accent-fg: var(--accent-fg);
+	--color-accent-soft: var(--accent-soft);
+	--color-ok-bg: var(--ok-bg);
+	--color-ok-fg: var(--ok-fg);
+	--color-warn-bg: var(--warn-bg);
+	--color-warn-fg: var(--warn-fg);
+	--color-bad-bg: var(--bad-bg);
+	--color-bad-fg: var(--bad-fg);
+	--color-muted-bg: var(--muted-bg);
+	--color-muted-fg: var(--muted-fg);
+	--color-dec-bg: var(--dec-bg);
+	--color-dec-fg: var(--dec-fg);
+	--color-msg-bg: var(--msg-bg);
+	--color-msg-fg: var(--msg-fg);
+	--font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-mono: ui-monospace, 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace;
+}
+
+html,
+body {
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Внешний текст (игра, уведомления, ошибки) — только текстом, с переносами как есть. */
+.ext-text {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+@layer components {
+	.card {
+		@apply rounded-lg border border-line bg-surface p-3;
+	}
+	.card-title {
+		@apply mb-2 text-xs font-semibold tracking-wide text-fg-muted uppercase;
+	}
+	.btn {
+		@apply inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-line bg-surface-2 px-3 text-sm font-medium text-fg transition-colors hover:border-fg-faint disabled:cursor-not-allowed disabled:opacity-50;
+	}
+	.btn-primary {
+		@apply border-accent bg-accent text-accent-fg hover:brightness-110;
+	}
+	.btn-danger {
+		@apply border-bad-bg bg-bad-bg text-bad-fg hover:brightness-110;
+	}
+	.btn-ghost {
+		@apply border-transparent bg-transparent hover:bg-surface-2;
+	}
+	.input {
+		@apply min-h-9 w-full rounded-md border border-line bg-bg px-2.5 text-sm text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none;
+	}
+	.pill {
+		@apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+	}
+	.pill-ok {
+		@apply bg-ok-bg text-ok-fg;
+	}
+	.pill-warn {
+		@apply bg-warn-bg text-warn-fg;
+	}
+	.pill-bad {
+		@apply bg-bad-bg text-bad-fg;
+	}
+	.pill-muted {
+		@apply bg-muted-bg text-muted-fg;
+	}
+	.pill-dec {
+		@apply bg-dec-bg text-dec-fg;
+	}
+	.pill-msg {
+		@apply bg-msg-bg text-msg-fg;
+	}
+	.chip {
+		@apply inline-flex min-h-8 items-center gap-1 rounded-full border border-line px-3 text-xs text-fg-muted hover:border-fg-faint;
+	}
+	.chip[aria-pressed='true'] {
+		@apply border-accent bg-accent text-accent-fg;
+	}
+	.label {
+		@apply text-xs text-fg-muted;
+	}
+}

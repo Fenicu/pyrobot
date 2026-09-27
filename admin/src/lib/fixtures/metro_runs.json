@@ -1,0 +1,50 @@
+{
+ "items": [
+  {
+   "id": 1,
+   "scenario_run_id": 34,
+   "started_at": "2026-09-27T10:11:23.154453Z",
+   "finished_at": "2026-09-27T10:20:26.650728Z",
+   "status": "done",
+   "outcome": "finished",
+   "steps": 197,
+   "duration_s": 543.496275,
+   "step_s": 2.3941065,
+   "buffs": [
+    "fastMove",
+    "strong",
+    "firstAid"
+   ],
+   "result": {
+    "raw": 14,
+    "money": 349,
+    "pizza": 15,
+    "burger": 6,
+    "hotdog": 12,
+    "tokens": 53,
+    "details": 27,
+    "knowledge": 11,
+    "upgrades_blue": 1,
+    "upgrades_white": 3
+   },
+   "summary": {
+    "pos": [
+     14,
+     1
+    ],
+    "exit": [
+     14,
+     1
+    ],
+    "mode": "leave",
+    "packs": 6,
+    "alerts": [],
+    "tokens": 9961,
+    "stamina": 100,
+    "message_id": 3625707,
+    "leave_reason": "explored"
+   }
+  }
+ ],
+ "next_before": null
+}

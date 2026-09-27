@@ -1,0 +1,266 @@
+[
+ {
+  "name": "refresh",
+  "certified": true,
+  "params": {},
+  "required": {
+   "source": {
+    "type": "enum",
+    "values": [
+     "food",
+     "gifts",
+     "gorbushka",
+     "inventory",
+     "profile"
+    ]
+   }
+  }
+ },
+ {
+  "name": "fastfood",
+  "certified": true,
+  "params": {},
+  "required": {
+   "food": {
+    "type": "enum",
+    "values": [
+     "banana",
+     "burger",
+     "hotdog",
+     "pizza"
+    ]
+   }
+  }
+ },
+ {
+  "name": "levelup",
+  "certified": true,
+  "params": {},
+  "required": {}
+ },
+ {
+  "name": "gorbushka",
+  "certified": true,
+  "params": {},
+  "required": {}
+ },
+ {
+  "name": "sleep",
+  "certified": true,
+  "params": {},
+  "required": {
+   "hours": {
+    "type": "int",
+    "min": 7,
+    "max": 12
+   }
+  }
+ },
+ {
+  "name": "battle_target",
+  "certified": true,
+  "params": {},
+  "required": {
+   "target": {
+    "type": "enum",
+    "values": [
+     "☂️Umbrella",
+     "⚡️Stark Ind.",
+     "🎩Wayne Ent.",
+     "📯Pied Piper",
+     "🛡Защита",
+     "🤖Hooli"
+    ]
+   }
+  }
+ },
+ {
+  "name": "stocks_dump",
+  "certified": true,
+  "params": {},
+  "required": {
+   "keep": {
+    "type": "int",
+    "min": 0
+   },
+   "margin": {
+    "type": "int",
+    "min": 0
+   }
+  }
+ },
+ {
+  "name": "factory_signup",
+  "certified": true,
+  "params": {},
+  "required": {}
+ },
+ {
+  "name": "bulls_join",
+  "certified": true,
+  "params": {},
+  "required": {
+   "code": {
+    "type": "string",
+    "pattern": "^join_fight_[A-Za-z0-9_-]{11}$"
+   }
+  }
+ },
+ {
+  "name": "tangerine",
+  "certified": true,
+  "params": {},
+  "required": {
+   "chat": {
+    "type": "int"
+   },
+   "reply_to": {
+    "type": "int"
+   }
+  }
+ },
+ {
+  "name": "smoothie",
+  "certified": true,
+  "params": {},
+  "required": {
+   "recipe": {
+    "type": "string",
+    "pattern": "^(?:🍋|🍇|🍏|🥕|🍅){5}$"
+   }
+  }
+ },
+ {
+  "name": "metro",
+  "certified": true,
+  "params": {},
+  "required": {}
+ },
+ {
+  "name": "daily_refresh",
+  "certified": true,
+  "params": {},
+  "required": {}
+ },
+ {
+  "name": "daily_pick",
+  "certified": true,
+  "params": {},
+  "required": {
+   "task": {
+    "type": "string",
+    "pattern": "^[A-Za-z]+_(?:easy|medium|hard)$"
+   }
+  }
+ },
+ {
+  "name": "lottery_buy",
+  "certified": true,
+  "params": {},
+  "required": {}
+ },
+ {
+  "name": "book",
+  "certified": true,
+  "params": {
+   "item": "book"
+  },
+  "required": {}
+ },
+ {
+  "name": "card",
+  "certified": true,
+  "params": {
+   "item": "card"
+  },
+  "required": {}
+ },
+ {
+  "name": "prizebox",
+  "certified": true,
+  "params": {
+   "item": "prizebox"
+  },
+  "required": {}
+ },
+ {
+  "name": "container_small",
+  "certified": true,
+  "params": {
+   "item": "container_small"
+  },
+  "required": {}
+ },
+ {
+  "name": "container_medium",
+  "certified": true,
+  "params": {
+   "item": "container_medium"
+  },
+  "required": {}
+ },
+ {
+  "name": "deed:harvest",
+  "certified": true,
+  "params": {
+   "activity": "harvest"
+  },
+  "required": {}
+ },
+ {
+  "name": "deed:job",
+  "certified": true,
+  "params": {
+   "activity": "job"
+  },
+  "required": {}
+ },
+ {
+  "name": "deed:learn",
+  "certified": true,
+  "params": {
+   "activity": "learn"
+  },
+  "required": {}
+ },
+ {
+  "name": "deed:dconv",
+  "certified": true,
+  "params": {
+   "activity": "dconv"
+  },
+  "required": {}
+ },
+ {
+  "name": "deed:eat",
+  "certified": true,
+  "params": {
+   "activity": "eat"
+  },
+  "required": {}
+ },
+ {
+  "name": "deed:walk",
+  "certified": true,
+  "params": {
+   "activity": "walk"
+  },
+  "required": {}
+ },
+ {
+  "name": "deed:confa",
+  "certified": true,
+  "params": {
+   "activity": "confa"
+  },
+  "required": {}
+ },
+ {
+  "name": "deed:rob",
+  "certified": false,
+  "params": {
+   "activity": "rob"
+  },
+  "required": {}
+ }
+]

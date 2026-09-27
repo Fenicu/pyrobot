@@ -1,0 +1,145 @@
+{
+ "items": [
+  {
+   "version": 13,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T19:47:58.673082Z",
+   "changes": {
+    "features.lottery": [
+     false,
+     true
+    ]
+   }
+  },
+  {
+   "version": 12,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T16:21:22.725548Z",
+   "changes": {
+    "engine.paused": [
+     true,
+     false
+    ]
+   }
+  },
+  {
+   "version": 11,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T16:20:06.079395Z",
+   "changes": {
+    "engine.paused": [
+     false,
+     true
+    ]
+   }
+  },
+  {
+   "version": 10,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T15:00:42.487192Z",
+   "changes": {
+    "engine.paused": [
+     true,
+     false
+    ]
+   }
+  },
+  {
+   "version": 9,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T15:00:38.863685Z",
+   "changes": {
+    "engine.paused": [
+     false,
+     true
+    ]
+   }
+  },
+  {
+   "version": 8,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T14:11:46.505101Z",
+   "changes": {
+    "features.daily_tasks": [
+     false,
+     true
+    ],
+    "strategy.deeds": [
+     [
+      "harvest",
+      "job",
+      "learn",
+      "dconv"
+     ],
+     [
+      "harvest",
+      "job",
+      "learn",
+      "dconv",
+      "walk",
+      "confa"
+     ]
+    ]
+   }
+  },
+  {
+   "version": 7,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T11:09:35.261779Z",
+   "changes": {
+    "strategy.deeds": [
+     [
+      "job"
+     ],
+     [
+      "harvest",
+      "job",
+      "learn",
+      "dconv"
+     ]
+    ]
+   }
+  },
+  {
+   "version": 6,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T10:40:14.611556Z",
+   "changes": {
+    "strategy.deeds": [
+     [
+      "harvest",
+      "job",
+      "learn",
+      "dconv"
+     ],
+     [
+      "job"
+     ]
+    ]
+   }
+  },
+  {
+   "version": 5,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T10:40:14.564063Z",
+   "changes": {
+    "engine.paused": [
+     true,
+     false
+    ]
+   }
+  },
+  {
+   "version": 4,
+   "changed_by": "admin",
+   "changed_at": "2026-09-27T10:40:12.817075Z",
+   "changes": {
+    "engine.paused": [
+     false,
+     true
+    ]
+   }
+  }
+ ],
+ "next_before": 4
+}

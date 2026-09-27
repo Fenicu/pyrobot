@@ -1,0 +1,1460 @@
+{
+ "items": [
+  {
+   "type": "decision",
+   "id": 344,
+   "at": "2026-09-27T19:47:42.870014Z",
+   "kind": "wait",
+   "scenario": null,
+   "reason": "busy",
+   "until": "2026-09-28T02:05:12Z"
+  },
+  {
+   "type": "decision",
+   "id": 343,
+   "at": "2026-09-27T19:05:12.661599Z",
+   "kind": "wait",
+   "scenario": null,
+   "reason": "busy",
+   "until": "2026-09-28T02:05:12Z"
+  },
+  {
+   "type": "message",
+   "id": 778,
+   "at": "2026-09-27T19:05:09.177135Z",
+   "chat_id": 227859379,
+   "msg_id": 3626304,
+   "revision": 1790535909,
+   "kind": "edit",
+   "date": "2026-09-27T19:05:09Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Ты отправился спать красиво в отель на 7 часов за 213 💵",
+   "markup": null,
+   "events": [
+    {
+     "cost": 213,
+     "kind": "fell_asleep",
+     "hours": 7,
+     "where": "hotel",
+     "forced": false
+    }
+   ]
+  },
+  {
+   "type": "message",
+   "id": 777,
+   "at": "2026-09-27T19:05:09.094522Z",
+   "chat_id": 227859379,
+   "msg_id": 3626305,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T19:05:08Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Ты потратился на отель и надеешься на хорошее обслуживание и прекрасный сон.\n\nОтменить: /decline",
+   "markup": null,
+   "events": [
+    {
+     "kind": "acknowledged",
+     "topic": "hotel_ack"
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 474,
+   "at": "2026-09-27T19:05:08.641107Z",
+   "source": "scenario",
+   "kind": "click",
+   "chat_id": 227859379,
+   "command_class": "action",
+   "status": "confirmed",
+   "reason": "fell_asleep",
+   "text": null,
+   "data": "sleep_Hotel",
+   "finished_at": "2026-09-27T19:05:12.651348Z"
+  },
+  {
+   "type": "message",
+   "id": 776,
+   "at": "2026-09-27T19:05:04.869090Z",
+   "chat_id": 227859379,
+   "msg_id": 3626304,
+   "revision": 1790535904,
+   "kind": "edit",
+   "date": "2026-09-27T19:05:04Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Все мы рано или поздно нуждаемся во сне. И пока ты спишь, твой персонаж также может спать.\n\n- Сон длится от 7 до 12 часов (на твой выбор).\n- Если не спать 3 суток, то персонаж сам уходит в сон на 12 часов. Спит под мостом.\n- Пока спишь, не теряешь деньги при взломе твоей компании.\n- Но тебя могут ограбить, если спишь под мостом. В гостинице не грабят.\n- Если тебя грабят под мостом, ты можешь проснуться и дать отпор (возможно, пограбить в ответ и забрать 50% 💵 грабителя).\n- При грабеже у тебя забирают 30% 💵.\n- Если спишь в сете 🧸Соня и не проснулся при грабеже, один раз можешь нажать кнопку \"Найдите меня еще раз\".\n- Ты можешь отправиться спать снова не ранее чем через 12 часов после пробуждения.\n- Сон под мостом - 0 💵. 🔋Выносливость: 100%\n- Сон в отеле - 213 💵. 🔋Выносливость: 150% и немного больше опыта, чем под мостом.\n\nТребования: 0 или 213 💵, от 7 до 12 ч. ⏰\n\nТы проспишь: 7 часов.\n\nПосле выбора места ты не сможешь отменить сон. Где собираешься спать?",
+   "markup": {
+    "inline": [
+     [
+      "Под мостом - 0 💵",
+      0,
+      0,
+      "sleep_Bridge",
+      null,
+      null
+     ],
+     [
+      "В отеле - 213 💵",
+      1,
+      0,
+      "sleep_Hotel",
+      null,
+      null
+     ]
+    ]
+   },
+   "events": [
+    {
+     "kind": "sleep_place",
+     "hours": 7,
+     "hotel_cost": 213
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 473,
+   "at": "2026-09-27T19:05:03.474049Z",
+   "source": "scenario",
+   "kind": "click",
+   "chat_id": 227859379,
+   "command_class": "action",
+   "status": "confirmed",
+   "reason": "sleep_place",
+   "text": null,
+   "data": "sleep_7",
+   "finished_at": "2026-09-27T19:05:08.634543Z"
+  },
+  {
+   "type": "message",
+   "id": 775,
+   "at": "2026-09-27T19:05:03.456398Z",
+   "chat_id": 227859379,
+   "msg_id": 3626304,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T19:05:03Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Все мы рано или поздно нуждаемся во сне. И пока ты спишь, твой персонаж также может спать.\n\n- Сон длится от 7 до 12 часов (на твой выбор).\n- Если не спать 3 суток, то персонаж сам уходит в сон на 12 часов. Спит под мостом.\n- Пока спишь, не теряешь деньги при взломе твоей компании.\n- Но тебя могут ограбить, если спишь под мостом. В гостинице не грабят.\n- Если тебя грабят под мостом, ты можешь проснуться и дать отпор (возможно, пограбить в ответ и забрать 50% 💵 грабителя).\n- При грабеже у тебя забирают 30% 💵.\n- Если спишь в сете 🧸Соня и не проснулся при грабеже, один раз можешь нажать кнопку \"Найдите меня еще раз\".\n- Ты можешь отправиться спать снова не ранее чем через 12 часов после пробуждения.\n- Сон под мостом - 0 💵. 🔋Выносливость: 100%\n- Сон в отеле - 213 💵. 🔋Выносливость: 150% и немного больше опыта, чем под мостом.\n\nТребования: 0 или 213 💵, от 7 до 12 ч. ⏰\n\nВыбери, сколько часов будешь спать.",
+   "markup": {
+    "inline": [
+     [
+      "7",
+      0,
+      0,
+      "sleep_7",
+      null,
+      null
+     ],
+     [
+      "8",
+      0,
+      1,
+      "sleep_8",
+      null,
+      null
+     ],
+     [
+      "9",
+      0,
+      2,
+      "sleep_9",
+      null,
+      null
+     ],
+     [
+      "10",
+      0,
+      3,
+      "sleep_10",
+      null,
+      null
+     ],
+     [
+      "11",
+      0,
+      4,
+      "sleep_11",
+      null,
+      null
+     ],
+     [
+      "12",
+      0,
+      5,
+      "sleep_12",
+      null,
+      null
+     ]
+    ]
+   },
+   "events": [
+    {
+     "kind": "sleep_menu",
+     "short_of": null,
+     "hotel_cost": 213
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 472,
+   "at": "2026-09-27T19:05:03.023238Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "nav",
+   "status": "confirmed",
+   "reason": "sleep_menu",
+   "text": "🛌Спать",
+   "data": null,
+   "finished_at": "2026-09-27T19:05:03.467934Z"
+  },
+  {
+   "type": "decision",
+   "id": 342,
+   "at": "2026-09-27T19:05:03.005598Z",
+   "kind": "act",
+   "scenario": "sleep",
+   "reason": "sleep_deadline",
+   "until": null
+  },
+  {
+   "type": "decision",
+   "id": 341,
+   "at": "2026-09-27T19:01:09.797709Z",
+   "kind": "wait",
+   "scenario": null,
+   "reason": "motivation",
+   "until": "2026-09-27T19:05:03Z"
+  },
+  {
+   "type": "message",
+   "id": 774,
+   "at": "2026-09-27T19:01:09.776282Z",
+   "chat_id": 227859379,
+   "msg_id": 3626302,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T19:01:09Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Ты съел 🌭 Хот-дог и восстановился до 110% 🔋.",
+   "markup": {
+    "reply": [
+     [
+      "🌭Хот-дог",
+      "🍕Пицца",
+      "🍔Бургер",
+      "🍌Банан"
+     ],
+     [
+      "🍴Есть",
+      "⏳Дела",
+      "◀️Назад"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "food": "hotdog",
+     "kind": "fastfood_eaten",
+     "stamina": 110,
+     "motivation": 0
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 471,
+   "at": "2026-09-27T19:01:08.333042Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "action",
+   "status": "confirmed",
+   "reason": "fastfood_eaten",
+   "text": "🌭Хот-дог",
+   "data": null,
+   "finished_at": "2026-09-27T19:01:09.789288Z"
+  },
+  {
+   "type": "message",
+   "id": 773,
+   "at": "2026-09-27T19:01:08.314571Z",
+   "chat_id": 227859379,
+   "msg_id": 3626300,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T19:01:08Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "🍴Меню\n🔋Выносливость: 0%\n\n🍴Есть - восстановить 🔋 до 100%.\n- С небольшой вероятностью может уйти в 0 (отравился)\n- Но также может стать 200% (поел в удовольствие)\nТребования: 5 💵, 5 ⏰\n\nФастфуд\nСъесть мгновенно. Можно есть раз в 30 минут. В сете 🧑‍🍳Кулинар - 15 мин.\n\n🌭 Хот-дог (🔋 50-140%): 8685 шт.\n🍕 Пицца (🔋 70-160%): 5154 шт.\n🍔 Бургер (🔋 90-180%): 3721 шт.\n🍌Банан (🔋 150-275%): 11 шт. Может восстановить 1🔥\n\n🍌Бананы пропадут 31-го декабря. Не восстанавливает 🔥, если ты собираешь артефакт.",
+   "markup": {
+    "reply": [
+     [
+      "🌭Хот-дог",
+      "🍕Пицца",
+      "🍔Бургер",
+      "🍌Банан"
+     ],
+     [
+      "🍴Есть",
+      "⏳Дела",
+      "◀️Назад"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "kind": "food_menu",
+     "stock": {
+      "pizza": {
+       "low": 70,
+       "high": 160,
+       "count": 5154
+      },
+      "banana": {
+       "low": 150,
+       "high": 275,
+       "count": 11
+      },
+      "burger": {
+       "low": 90,
+       "high": 180,
+       "count": 3721
+      },
+      "hotdog": {
+       "low": 50,
+       "high": 140,
+       "count": 8685
+      }
+     },
+     "stamina": 0,
+     "fastfood_in_s": null
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 470,
+   "at": "2026-09-27T19:01:06.540584Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "nav",
+   "status": "confirmed",
+   "reason": "food_menu",
+   "text": "/to_eat",
+   "data": null,
+   "finished_at": "2026-09-27T19:01:08.326613Z"
+  },
+  {
+   "type": "decision",
+   "id": 340,
+   "at": "2026-09-27T19:01:06.530307Z",
+   "kind": "act",
+   "scenario": "fastfood",
+   "reason": "stamina 0",
+   "until": null
+  },
+  {
+   "type": "message",
+   "id": 772,
+   "at": "2026-09-27T19:01:06.510417Z",
+   "chat_id": 227859379,
+   "msg_id": 3626298,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T19:01:06Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Ты решил взломать 📯Pied Piper. Следующая Битва через 14ч. 58 мин.!\n\nТвоя 🔋Выносливость на нуле. Сходи поешь (/to_eat), восстановись перед битвой.",
+   "markup": {
+    "reply": [
+     [
+      "😎Я",
+      "⚔Битва",
+      "🏢Офис"
+     ],
+     [
+      "🎒Рюкзак",
+      "🧬Вирусы",
+      "🐾Петы"
+     ],
+     [
+      "🕸Сеть",
+      "⏳Дела",
+      "👫Команда"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "kind": "battle_target_set",
+     "target": "📯Pied Piper",
+     "battle_in_s": 53880,
+     "zero_stamina": true
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 469,
+   "at": "2026-09-27T19:01:05.116221Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "action",
+   "status": "confirmed",
+   "reason": "battle_target_set",
+   "text": "📯Pied Piper",
+   "data": null,
+   "finished_at": "2026-09-27T19:01:06.521601Z"
+  },
+  {
+   "type": "message",
+   "id": 771,
+   "at": "2026-09-27T19:01:05.098210Z",
+   "chat_id": 227859379,
+   "msg_id": 3626296,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T19:01:05Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Твои результаты в предыдущей битве - /battle\nИ в более ранних битвах: /battle19, /battle16\n\nБоевые дополнения\n👨‍💻Белый хакер /class\n🐜Мураш (30) /viruses\n\nСледующая битва через 14ч. 58 мин.\nКакую компанию будешь взламывать? Или встань на 🛡защиту своей компании.",
+   "markup": {
+    "reply": [
+     [
+      "📯Pied Piper",
+      "🤖Hooli"
+     ],
+     [
+      "⚡️Stark Ind.",
+      "☂️Umbrella"
+     ],
+     [
+      "🎩Wayne Ent.",
+      "🛡Защита"
+     ],
+     [
+      "◀️Назад"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "kind": "battle_menu",
+     "battle_in_s": 53880
+    }
+   ]
+  },
+  {
+   "type": "message",
+   "id": 770,
+   "at": "2026-09-27T19:01:05.028307Z",
+   "chat_id": 227859379,
+   "msg_id": 3626295,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T19:01:04Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "👨‍💻☣️[SU] Fenicu (71)\n🔨918 🎓460 🐿666 🐢345 🐜30\nТвои результаты в битве на 22 часов: @startupwarsreport\n\n⚔Ты взламывал 📯Pied Piper\n\nТебе не удалось никого вынести в своей лиге Синиоров.\n\n\nТы пал внутри своей лиги Синиоров.\n\n💡Опыт: +1\n💵Деньги: -$111\n🏆Твой вклад: 0\n🔋Выносливость: 108% → 0% /to_eat",
+   "markup": null,
+   "events": [
+    {
+     "hour": 22,
+     "kind": "battle_report"
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 468,
+   "at": "2026-09-27T19:01:03.602569Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "nav",
+   "status": "confirmed",
+   "reason": "battle_menu",
+   "text": "⚔Битва",
+   "data": null,
+   "finished_at": "2026-09-27T19:01:05.109983Z"
+  },
+  {
+   "type": "decision",
+   "id": 339,
+   "at": "2026-09-27T19:01:03.591779Z",
+   "kind": "act",
+   "scenario": "battle_target",
+   "reason": "battle_target",
+   "until": null
+  },
+  {
+   "type": "message",
+   "id": 769,
+   "at": "2026-09-27T19:01:03.566575Z",
+   "chat_id": 227859379,
+   "msg_id": 3626293,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T19:01:03Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Битва через 14ч. 58 мин.!\n\n☣️[SU] Fenicu 🐀\n🎚71   🧵16 (🪡)\n💡17 520 102 из 18 155 142\n💵$260 🔋0% /to_eat\n📚21 946   🔩21 578   ⚙️136 625\n🔥0 из 85 (/pr) (3 мин. 57 сек.)\n🎒10 из 24 /inv\n🍊2 /gifts\n\n🔨 461    🎓 460\n🐿 345    🐢 345\n⭐️⭐️⭐️ /cool\n\n🛌 Через 2д. 8ч.\nПолный профиль /full",
+   "markup": {
+    "reply": [
+     [
+      "😎Я",
+      "⚔Битва",
+      "🏢Офис"
+     ],
+     [
+      "🎒Рюкзак",
+      "🧬Вирусы",
+      "🐾Петы"
+     ],
+     [
+      "🕸Сеть",
+      "⏳Дела",
+      "👫Команда"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "bag": 10,
+     "exp": 17520102,
+     "raw": 21578,
+     "kind": "profile_compact",
+     "level": 71,
+     "money": 260,
+     "theory": 460,
+     "wisdom": 345,
+     "bag_cap": 24,
+     "cunning": 345,
+     "details": 136625,
+     "stamina": 0,
+     "exp_next": 18155142,
+     "practice": 461,
+     "busy_kind": null,
+     "knowledge": 21946,
+     "motivation": 0,
+     "sleep_in_s": 201600,
+     "tangerines": 2,
+     "battle_in_s": 53880,
+     "busy_left_s": null,
+     "battle_target": null,
+     "motivation_max": 85,
+     "motivation_next_in_s": 237
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 467,
+   "at": "2026-09-27T19:01:03.027915Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "nav",
+   "status": "confirmed",
+   "reason": "profile_compact",
+   "text": "😎Я",
+   "data": null,
+   "finished_at": "2026-09-27T19:01:03.583030Z"
+  },
+  {
+   "type": "decision",
+   "id": 338,
+   "at": "2026-09-27T19:01:03.005940Z",
+   "kind": "act",
+   "scenario": "refresh",
+   "reason": "state needs busy",
+   "until": null
+  },
+  {
+   "type": "decision",
+   "id": 337,
+   "at": "2026-09-27T18:56:11.528330Z",
+   "kind": "wait",
+   "scenario": null,
+   "reason": "battle",
+   "until": "2026-09-27T19:01:03Z"
+  },
+  {
+   "type": "message",
+   "id": 768,
+   "at": "2026-09-27T18:56:11.504632Z",
+   "chat_id": 227859379,
+   "msg_id": 3626290,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:56:11Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Покупаем акции ⚡️Stark Ind.\nЦена 31 💵 за шт.\n\n💵Деньги: $371\n📈Акции: 293\nТы можешь купить от 1 до 8 акций\n\nКуплено акций ⚡️Stark Ind.: 12",
+   "markup": {
+    "inline": [
+     [
+      "1",
+      0,
+      0,
+      "buys_stark_1",
+      null,
+      null
+     ],
+     [
+      "2",
+      0,
+      1,
+      "buys_stark_2",
+      null,
+      null
+     ],
+     [
+      "4",
+      0,
+      2,
+      "buys_stark_4",
+      null,
+      null
+     ],
+     [
+      "6",
+      0,
+      3,
+      "buys_stark_6",
+      null,
+      null
+     ],
+     [
+      "8",
+      0,
+      4,
+      "buys_stark_8",
+      null,
+      null
+     ],
+     [
+      "🚫Отменить",
+      1,
+      0,
+      "cancel_inline",
+      null,
+      null
+     ]
+    ]
+   },
+   "events": [
+    {
+     "n": 12,
+     "kind": "stock_bought",
+     "money": 371,
+     "price": 31,
+     "shares": 293,
+     "company": "stark"
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 466,
+   "at": "2026-09-27T18:56:09.940779Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "action",
+   "status": "confirmed",
+   "reason": "stock_bought",
+   "text": "/buys_stark_12",
+   "data": null,
+   "finished_at": "2026-09-27T18:56:11.519813Z"
+  },
+  {
+   "type": "message",
+   "id": 767,
+   "at": "2026-09-27T18:56:09.920051Z",
+   "chat_id": 227859379,
+   "msg_id": 3626288,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:56:09Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Акции - /help_stock\n❗️За покупку/продажу акций взимается комиссия брокера - 1 💵 за шт.\n❕У тебя должно оставаться не менее 100 💵 после покупки акций.\n❕Акции дешевле 11 💵 нельзя купить. Только продать.\n❕Акции дороже 80 💵 нельзя продать. Только купить.\n⏱Биржа работает с 8 до 22 по Москве. \n\nТекущие котировки: /buys\n📯Pied Piper - 10 💵 за шт.\n🤖Hooli - 10 💵 за шт.\n⚡️Stark Ind. - 31 💵 за шт.\n☂️Umbrella - 100 💵 за шт.\n🎩Wayne Ent. - 10 💵 за шт.\n☣️Black Mesa - 10 💵 за шт.\n\nАкции у тебя: /sells\n📯Pied Piper - 3 762 шт. на $37 620 💵\n🤖Hooli - 1 838 шт. на $18 380 💵\n⚡️Stark Ind. - 281 шт. на $8 711 💵\n☂️Umbrella - 1 232 шт. на $123 200 💵\n🎩Wayne Ent. - 75 шт. на $750 💵\n☣️Black Mesa - 10 шт. на $100 💵\n\n💵Деньги: $755\n\nПосмотреть капитализацию всех компаний за 10 💵 - /capitalization\nПосмотреть дневной доход всех компаний за 10 💵 - /daily_income\nПосмотреть коэффициент P/E всех компаний за 10 💵 - /index_pe\n\n💵Стоимость всех твоих акций: $181 563\nПродать все /sells_all",
+   "markup": {
+    "reply": [
+     [
+      "📈Купить",
+      "📉Продать"
+     ],
+     [
+      "🕸Сеть",
+      "📈Акции",
+      "◀️Назад"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "kind": "stock_screen",
+     "money": 755,
+     "closed": false,
+     "quotes": {
+      "bmesa": 10,
+      "hooli": 10,
+      "piper": 10,
+      "stark": 31,
+      "umbrl": 100,
+      "wayne": 10
+     },
+     "screen": "main",
+     "min_buy": 11,
+     "reserve": 100,
+     "holdings": {
+      "bmesa": 10,
+      "hooli": 1838,
+      "piper": 3762,
+      "stark": 281,
+      "umbrl": 1232,
+      "wayne": 75
+     },
+     "max_sell": 80,
+     "open_hour": 8,
+     "close_hour": 22
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 465,
+   "at": "2026-09-27T18:56:08.399424Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "nav",
+   "status": "confirmed",
+   "reason": "stock_screen",
+   "text": "/stock",
+   "data": null,
+   "finished_at": "2026-09-27T18:56:09.933325Z"
+  },
+  {
+   "type": "decision",
+   "id": 336,
+   "at": "2026-09-27T18:56:08.385127Z",
+   "kind": "act",
+   "scenario": "stocks_dump",
+   "reason": "battle_soon",
+   "until": null
+  },
+  {
+   "type": "message",
+   "id": 766,
+   "at": "2026-09-27T18:56:08.362389Z",
+   "chat_id": 227859379,
+   "msg_id": 3626286,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:56:08Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Ты воспользовался 💳Подарочной картой и получил:\n💵: +369$\n\nСледующую карту можно использовать через 50 минут",
+   "markup": null,
+   "events": [
+    {
+     "kind": "card_used",
+     "money": 369,
+     "next_in_s": 3000
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 464,
+   "at": "2026-09-27T18:56:08.020878Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "action",
+   "status": "confirmed",
+   "reason": "card_used",
+   "text": "/use_card",
+   "data": null,
+   "finished_at": "2026-09-27T18:56:08.375683Z"
+  },
+  {
+   "type": "decision",
+   "id": 335,
+   "at": "2026-09-27T18:56:08.006636Z",
+   "kind": "act",
+   "scenario": "card",
+   "reason": "card_ready",
+   "until": null
+  },
+  {
+   "type": "decision",
+   "id": 334,
+   "at": "2026-09-27T18:56:04.025321Z",
+   "kind": "wait",
+   "scenario": null,
+   "reason": "card_ready",
+   "until": "2026-09-27T18:56:08Z"
+  },
+  {
+   "type": "message",
+   "id": 765,
+   "at": "2026-09-27T18:56:03.994899Z",
+   "chat_id": 227859379,
+   "msg_id": 3626284,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:56:03Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Ты прочёл 📒Книгу и получил:\n💡Опыт: +501\n\nСледующую книгу можно прочесть через 50 минут",
+   "markup": null,
+   "events": [
+    {
+     "exp": 501,
+     "kind": "book_read",
+     "next_in_s": 3000
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 463,
+   "at": "2026-09-27T18:56:03.023773Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "action",
+   "status": "confirmed",
+   "reason": "book_read",
+   "text": "/read_exp",
+   "data": null,
+   "finished_at": "2026-09-27T18:56:04.013431Z"
+  },
+  {
+   "type": "decision",
+   "id": 333,
+   "at": "2026-09-27T18:56:03.005418Z",
+   "kind": "act",
+   "scenario": "book",
+   "reason": "book_ready",
+   "until": null
+  },
+  {
+   "type": "decision",
+   "id": 332,
+   "at": "2026-09-27T18:45:09.700136Z",
+   "kind": "wait",
+   "scenario": null,
+   "reason": "book_ready",
+   "until": "2026-09-27T18:56:03Z"
+  },
+  {
+   "type": "message",
+   "id": 764,
+   "at": "2026-09-27T18:45:09.678215Z",
+   "chat_id": 227859379,
+   "msg_id": 3626281,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:45:09Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "⏳Ежедневные задания\n\nЗа выполнение личных и командных заданий ты получаешь ресурсы себе и 🏆славу для команды.\nМожно выполнить одно личное и одно командное задание ежедневно. Выполнить нужно до 24:00 по московскому времени.\n\nЛичное задание\n⏳Заработать на Работе $132💵.\n🎖Награда: 60💵 и 90🏆.\n✅Завершено\n\nКомандное задание\n⏳Добыть силами команды на Работе или Прогулке 120🔩сырья.\n🎖Награда: 900🏆.\n✅Завершено\n\n👥Вклад в командное задание\n# 1 Fenicu - 43🔩\n# 2 mkin - 26🔩\n# 3 Defeat - 18🔩\n# 4 mrachnj Strazh - 16🔩\n# 5 Васисуалий - 9🔩\n# 6 Миска риса - 8🔩",
+   "markup": {
+    "reply": [
+     [
+      "⏳Задания",
+      "👫Команда"
+     ],
+     [
+      "◀️Назад"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "kind": "daily_tasks_screen",
+     "team": {
+      "done": true,
+      "goal": 120,
+      "type": null,
+      "level": null,
+      "current": 120,
+      "resource": "🔩",
+      "activities": []
+     },
+     "chosen": {
+      "done": true,
+      "goal": 132,
+      "type": "jobMoney",
+      "level": "hard",
+      "current": 132,
+      "resource": "💵",
+      "activities": [
+       "job"
+      ]
+     },
+     "offers": []
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 462,
+   "at": "2026-09-27T18:45:08.304811Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "nav",
+   "status": "confirmed",
+   "reason": "daily_tasks_screen",
+   "text": "⏳Задания",
+   "data": null,
+   "finished_at": "2026-09-27T18:45:09.691064Z"
+  },
+  {
+   "type": "message",
+   "id": 763,
+   "at": "2026-09-27T18:45:08.287489Z",
+   "chat_id": 227859379,
+   "msg_id": 3626279,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:45:08Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "О команде\n👫Мстители\n™️Тег: SU\n👥Работяги: 30 из 30\n⚔Побед на фабрике: 247\n🏆Слава: 8 511 424 /crewtop\n🏆Твоя слава: 45 180\n\nРесурсы команды:\n💵Деньги: $242 233\n📚Знания: 70 297\n🔩Сырьё: 30 096\n\n🗣Чат команды\n\nСправка по командам - /help_crew.\n\nРезультат битвы за фабрику - /fb.",
+   "markup": {
+    "reply": [
+     [
+      "⏳Задания",
+      "👥Работяги",
+      "📊Ресурсы"
+     ],
+     [
+      "🏵Улучшения",
+      "◀️Назад"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "tag": "SU",
+     "kind": "crew_screen",
+     "signup_open": false,
+     "factory_wins": 247
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 461,
+   "at": "2026-09-27T18:45:06.517825Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "nav",
+   "status": "confirmed",
+   "reason": "crew_screen",
+   "text": "/crew",
+   "data": null,
+   "finished_at": "2026-09-27T18:45:08.298561Z"
+  },
+  {
+   "type": "decision",
+   "id": 331,
+   "at": "2026-09-27T18:45:06.507420Z",
+   "kind": "act",
+   "scenario": "daily_refresh",
+   "reason": "team progress stale",
+   "until": null
+  },
+  {
+   "type": "message",
+   "id": 762,
+   "at": "2026-09-27T18:45:06.486622Z",
+   "chat_id": 227859379,
+   "msg_id": 3626277,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:45:06Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Покупаем акции ⚡️Stark Ind.\nЦена 31 💵 за шт.\n\n💵Деньги: $386\n📈Акции: 281\nТы можешь купить от 1 до 8 акций\n\nКуплено акций ⚡️Stark Ind.: 159",
+   "markup": {
+    "inline": [
+     [
+      "1",
+      0,
+      0,
+      "buys_stark_1",
+      null,
+      null
+     ],
+     [
+      "2",
+      0,
+      1,
+      "buys_stark_2",
+      null,
+      null
+     ],
+     [
+      "4",
+      0,
+      2,
+      "buys_stark_4",
+      null,
+      null
+     ],
+     [
+      "6",
+      0,
+      3,
+      "buys_stark_6",
+      null,
+      null
+     ],
+     [
+      "8",
+      0,
+      4,
+      "buys_stark_8",
+      null,
+      null
+     ],
+     [
+      "🚫Отменить",
+      1,
+      0,
+      "cancel_inline",
+      null,
+      null
+     ]
+    ]
+   },
+   "events": [
+    {
+     "n": 159,
+     "kind": "stock_bought",
+     "money": 386,
+     "price": 31,
+     "shares": 281,
+     "company": "stark"
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 460,
+   "at": "2026-09-27T18:45:04.951659Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "action",
+   "status": "confirmed",
+   "reason": "stock_bought",
+   "text": "/buys_stark_159",
+   "data": null,
+   "finished_at": "2026-09-27T18:45:06.498942Z"
+  },
+  {
+   "type": "message",
+   "id": 761,
+   "at": "2026-09-27T18:45:04.932346Z",
+   "chat_id": 227859379,
+   "msg_id": 3626275,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:45:04Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Акции - /help_stock\n❗️За покупку/продажу акций взимается комиссия брокера - 1 💵 за шт.\n❕У тебя должно оставаться не менее 100 💵 после покупки акций.\n❕Акции дешевле 11 💵 нельзя купить. Только продать.\n❕Акции дороже 80 💵 нельзя продать. Только купить.\n⏱Биржа работает с 8 до 22 по Москве. \n\nТекущие котировки: /buys\n📯Pied Piper - 10 💵 за шт.\n🤖Hooli - 10 💵 за шт.\n⚡️Stark Ind. - 31 💵 за шт.\n☂️Umbrella - 100 💵 за шт.\n🎩Wayne Ent. - 10 💵 за шт.\n☣️Black Mesa - 10 💵 за шт.\n\nАкции у тебя: /sells\n📯Pied Piper - 3 762 шт. на $37 620 💵\n🤖Hooli - 1 838 шт. на $18 380 💵\n⚡️Stark Ind. - 122 шт. на $3 782 💵\n☂️Umbrella - 1 232 шт. на $123 200 💵\n🎩Wayne Ent. - 75 шт. на $750 💵\n☣️Black Mesa - 10 шт. на $100 💵\n\n💵Деньги: $5 474\n\nПосмотреть капитализацию всех компаний за 10 💵 - /capitalization\nПосмотреть дневной доход всех компаний за 10 💵 - /daily_income\nПосмотреть коэффициент P/E всех компаний за 10 💵 - /index_pe\n\n💵Стоимость всех твоих акций: $176 793\nПродать все /sells_all",
+   "markup": {
+    "reply": [
+     [
+      "📈Купить",
+      "📉Продать"
+     ],
+     [
+      "🕸Сеть",
+      "📈Акции",
+      "◀️Назад"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "kind": "stock_screen",
+     "money": 5474,
+     "closed": false,
+     "quotes": {
+      "bmesa": 10,
+      "hooli": 10,
+      "piper": 10,
+      "stark": 31,
+      "umbrl": 100,
+      "wayne": 10
+     },
+     "screen": "main",
+     "min_buy": 11,
+     "reserve": 100,
+     "holdings": {
+      "bmesa": 10,
+      "hooli": 1838,
+      "piper": 3762,
+      "stark": 122,
+      "umbrl": 1232,
+      "wayne": 75
+     },
+     "max_sell": 80,
+     "open_hour": 8,
+     "close_hour": 22
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 459,
+   "at": "2026-09-27T18:45:03.564578Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "nav",
+   "status": "confirmed",
+   "reason": "stock_screen",
+   "text": "/stock",
+   "data": null,
+   "finished_at": "2026-09-27T18:45:04.945266Z"
+  },
+  {
+   "type": "decision",
+   "id": 330,
+   "at": "2026-09-27T18:45:03.552006Z",
+   "kind": "act",
+   "scenario": "stocks_dump",
+   "reason": "battle_soon",
+   "until": null
+  },
+  {
+   "type": "message",
+   "id": 760,
+   "at": "2026-09-27T18:45:03.525272Z",
+   "chat_id": 227859379,
+   "msg_id": 3626273,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:45:03Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Битва через 14 мин.!\n\n☣️[SU] Fenicu 🐀\n🎚71   🧵16 (🪡)\n💡17 519 600 из 18 155 142\n💵$5 474 🔋108% /to_eat\n📚21 946   🔩21 578   ⚙️136 625\n🔥0 из 85 (/pr) (19 мин.)\n🎒10 из 24 /inv\n🍊2 /gifts\n\n🔨 461    🎓 460\n🐿 345    🐢 345\n⭐️⭐️⭐️ /cool\n\n🛌 Через 2д. 8ч.\n⚔️Взлом 📯Pied Piper\nПолный профиль /full",
+   "markup": {
+    "reply": [
+     [
+      "😎Я",
+      "⚔Битва",
+      "🏢Офис"
+     ],
+     [
+      "🎒Рюкзак",
+      "🧬Вирусы",
+      "🐾Петы"
+     ],
+     [
+      "🕸Сеть",
+      "⏳Дела",
+      "👫Команда"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "bag": 10,
+     "exp": 17519600,
+     "raw": 21578,
+     "kind": "profile_compact",
+     "level": 71,
+     "money": 5474,
+     "theory": 460,
+     "wisdom": 345,
+     "bag_cap": 24,
+     "cunning": 345,
+     "details": 136625,
+     "stamina": 108,
+     "exp_next": 18155142,
+     "practice": 461,
+     "busy_kind": null,
+     "knowledge": 21946,
+     "motivation": 0,
+     "sleep_in_s": 201600,
+     "tangerines": 2,
+     "battle_in_s": 840,
+     "busy_left_s": null,
+     "battle_target": "📯Pied Piper",
+     "motivation_max": 85,
+     "motivation_next_in_s": 1140
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 458,
+   "at": "2026-09-27T18:45:03.019433Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "nav",
+   "status": "confirmed",
+   "reason": "profile_compact",
+   "text": "😎Я",
+   "data": null,
+   "finished_at": "2026-09-27T18:45:03.543031Z"
+  },
+  {
+   "type": "decision",
+   "id": 329,
+   "at": "2026-09-27T18:45:03.001570Z",
+   "kind": "act",
+   "scenario": "refresh",
+   "reason": "state needs busy",
+   "until": null
+  },
+  {
+   "type": "message",
+   "id": 759,
+   "at": "2026-09-27T18:17:04.768399Z",
+   "chat_id": 227859379,
+   "msg_id": 3626271,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:17:04Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "🎉Поздравляю, ты выиграл в лотерею!🎉\n\n+1 к навыку 🐿Хитрость",
+   "markup": null,
+   "events": [
+    {
+     "kind": "lottery_win",
+     "skills": {
+      "cunning": 1
+     },
+     "rewards": {
+      "exp": 0,
+      "raw": 0,
+      "money": 0,
+      "details": 0,
+      "stamina": null,
+      "prizebox": false,
+      "knowledge": 0,
+      "team_task": null,
+      "upgrades_red": 0,
+      "personal_task": null,
+      "upgrades_blue": 0,
+      "upgrades_white": 0
+     },
+     "motivation": 0,
+     "containers_small": 0,
+     "containers_medium": 0
+    }
+   ]
+  },
+  {
+   "type": "decision",
+   "id": 328,
+   "at": "2026-09-27T18:08:10.187966Z",
+   "kind": "wait",
+   "scenario": null,
+   "reason": "stocks_dump",
+   "until": "2026-09-27T18:45:03Z"
+  },
+  {
+   "type": "message",
+   "id": 758,
+   "at": "2026-09-27T18:08:10.170346Z",
+   "chat_id": 227859379,
+   "msg_id": 3626270,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:08:10Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Отмахнувшись от очередного коллеги с фразой \"У меня много дел\", ты задумался. А ведь точно. Ксерокопировать ксерокопии, кататься по коридору на офисных креслах, стучать лбом по клавиатуре, раскладывать пасьянс \"Косынка\", придумывать отчёты... Решил отдохнуть.\n\nТы получил:\n💡Опыт: +150\n💵Деньги: +$29 (сработал 📠SW факs)\n💵Деньги: +$12 (с помощью 🐀)\n⚙️Детали: +4\n🔩Сырьё: +2\n🧀 для 🐀Аля: +1\n💳Подарочная карта: +1\n\nПродолжить 💻Работать - /job\n\n🔜Командное задание: 116 из 120🔩.",
+   "markup": null,
+   "events": [
+    {
+     "kind": "activity_finished",
+     "failed": false,
+     "rewards": {
+      "exp": 150,
+      "raw": 2,
+      "money": 41,
+      "details": 4,
+      "stamina": null,
+      "prizebox": false,
+      "knowledge": 0,
+      "team_task": [
+       116,
+       120,
+       "🔩"
+      ],
+      "upgrades_red": 0,
+      "personal_task": null,
+      "upgrades_blue": 0,
+      "upgrades_white": 0
+     },
+     "activity": "job",
+     "motivation_refund": 0
+    }
+   ]
+  },
+  {
+   "type": "decision",
+   "id": 327,
+   "at": "2026-09-27T18:06:09.939539Z",
+   "kind": "wait",
+   "scenario": null,
+   "reason": "busy",
+   "until": "2026-09-27T18:08:12Z"
+  },
+  {
+   "type": "message",
+   "id": 757,
+   "at": "2026-09-27T18:06:09.920508Z",
+   "chat_id": 227859379,
+   "msg_id": 3626269,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:06:09Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Ты отправился работать, прихватив любимую 🐀. Будешь работать 2 мин.\n\nОтменить: /decline",
+   "markup": {
+    "reply": [
+     [
+      "😎Я",
+      "⚔Битва",
+      "🏢Офис"
+     ],
+     [
+      "🎒Рюкзак",
+      "🧬Вирусы",
+      "🐾Петы"
+     ],
+     [
+      "🕸Сеть",
+      "⏳Дела",
+      "👫Команда"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "kind": "activity_started",
+     "money": 0,
+     "details": 0,
+     "activity": "job",
+     "duration_s": 120
+    }
+   ]
+  },
+  {
+   "type": "action",
+   "id": 457,
+   "at": "2026-09-27T18:06:08.342279Z",
+   "source": "scenario",
+   "kind": "send",
+   "chat_id": 227859379,
+   "command_class": "action",
+   "status": "confirmed",
+   "reason": "activity_started",
+   "text": "/job",
+   "data": null,
+   "finished_at": "2026-09-27T18:06:09.931117Z"
+  },
+  {
+   "type": "decision",
+   "id": 326,
+   "at": "2026-09-27T18:06:08.328316Z",
+   "kind": "act",
+   "scenario": "deed:job",
+   "reason": "team job 112/120",
+   "until": null
+  },
+  {
+   "type": "message",
+   "id": 756,
+   "at": "2026-09-27T18:06:08.307798Z",
+   "chat_id": 227859379,
+   "msg_id": 3626267,
+   "revision": 0,
+   "kind": "new",
+   "date": "2026-09-27T18:06:08Z",
+   "outgoing": false,
+   "recovered": false,
+   "text": "Битва через 53 мин.!\n\n☣️[SU] Fenicu 🐀\n🎚71   🧵16 (🪡)\n💡17 518 653 из 18 155 142\n💵$5 425 🔋108% /to_eat\n📚21 946   🔩21 576   ⚙️136 620\n🔥1 из 85 (/pr) (58 мин.)\n🎒10 из 24 /inv\n🍊2 /gifts\n\n🔨 461    🎓 460\n🐿 344    🐢 345\n⭐️⭐️⭐️ /cool\n\n🛌 Через 2д. 9ч.\n⚔️Взлом 📯Pied Piper\nПолный профиль /full",
+   "markup": {
+    "reply": [
+     [
+      "😎Я",
+      "⚔Битва",
+      "🏢Офис"
+     ],
+     [
+      "🎒Рюкзак",
+      "🧬Вирусы",
+      "🐾Петы"
+     ],
+     [
+      "🕸Сеть",
+      "⏳Дела",
+      "👫Команда"
+     ]
+    ]
+   },
+   "events": [
+    {
+     "bag": 10,
+     "exp": 17518653,
+     "raw": 21576,
+     "kind": "profile_compact",
+     "level": 71,
+     "money": 5425,
+     "theory": 460,
+     "wisdom": 345,
+     "bag_cap": 24,
+     "cunning": 344,
+     "details": 136620,
+     "stamina": 108,
+     "exp_next": 18155142,
+     "practice": 461,
+     "busy_kind": null,
+     "knowledge": 21946,
+     "motivation": 1,
+     "sleep_in_s": 205200,
+     "tangerines": 2,
+     "battle_in_s": 3180,
+     "busy_left_s": null,
+     "battle_target": "📯Pied Piper",
+     "motivation_max": 85,
+     "motivation_next_in_s": 3480
+    }
+   ]
+  }
+ ],
+ "next_cursor": "WyIyMDI2LTA5LTI3VDE4OjA2OjA4LjMwNzc5OCswMDowMCIsMCw3NTZd"
+}

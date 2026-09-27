@@ -1,0 +1,24 @@
+{
+ "id": 474,
+ "created_at": "2026-09-27T19:05:08.641107Z",
+ "source": "scenario",
+ "kind": "click",
+ "chat_id": 227859379,
+ "payload": {
+  "data": "sleep_Hotel",
+  "text": null,
+  "reply_to": null,
+  "message_id": 3626304,
+  "expect_content": null,
+  "expect_revision": null
+ },
+ "command_class": "action",
+ "status": "confirmed",
+ "reason": "fell_asleep",
+ "attempts": 1,
+ "answer": null,
+ "match_detail": "fell_asleep",
+ "sent_at": "2026-09-27T19:05:12.645381Z",
+ "finished_at": "2026-09-27T19:05:12.651348Z",
+ "reconciled_at": null
+}

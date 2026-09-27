@@ -1,0 +1,380 @@
+{
+ "version": 638,
+ "now": "2026-09-27T20:27:51.274593+00:00",
+ "state": {
+  "bag": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 10
+  },
+  "exp": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 17520102
+  },
+  "raw": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 21578
+  },
+  "busy": {
+   "at": "2026-09-27T19:05:09Z",
+   "src": "screen",
+   "value": {
+    "until": "2026-09-28T02:05:09Z",
+    "activity": "sleep_hotel"
+   }
+  },
+  "books": {
+   "at": "2026-09-27T18:56:03Z",
+   "src": "derived",
+   "value": 866
+  },
+  "cards": {
+   "at": "2026-09-27T18:56:08Z",
+   "src": "derived",
+   "value": 3
+  },
+  "level": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 71
+  },
+  "money": {
+   "at": "2026-09-27T19:05:09Z",
+   "src": "derived",
+   "value": 47
+  },
+  "prices": {
+   "hotel": {
+    "at": "2026-09-27T19:05:04Z",
+    "src": "screen",
+    "value": {
+     "blue": 0,
+     "money": 213,
+     "white": 0,
+     "details": 0,
+     "minutes": 0,
+     "knowledge": 0,
+     "motivation": 0
+    }
+   },
+   "gorbushka_ticket": {
+    "at": "2026-09-27T10:10:34Z",
+    "src": "screen",
+    "value": {
+     "blue": 0,
+     "money": 120,
+     "white": 0,
+     "details": 0,
+     "minutes": 0,
+     "knowledge": 20,
+     "motivation": 0
+    }
+   }
+  },
+  "skills": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": {
+    "theory": 460,
+    "wisdom": 345,
+    "cunning": 345,
+    "practice": 461
+   }
+  },
+  "bag_cap": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 24
+  },
+  "details": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 136625
+  },
+  "stamina": {
+   "at": "2026-09-27T19:01:09Z",
+   "src": "screen",
+   "value": 110
+  },
+  "woke_at": null,
+  "exp_next": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 18155142
+  },
+  "prizebox": {
+   "at": "2026-09-27T16:21:24Z",
+   "src": "screen",
+   "value": false
+  },
+  "team_tag": {
+   "at": "2026-09-27T18:45:08Z",
+   "src": "screen",
+   "value": "SU"
+  },
+  "upgrades": null,
+  "battle_at": {
+   "at": "2026-09-27T19:01:06Z",
+   "src": "screen",
+   "value": "2026-09-28T09:59:06Z"
+  },
+  "gorbushka": {
+   "at": "2026-09-27T14:12:29Z",
+   "src": "screen",
+   "value": {
+    "won": null,
+    "state": "done",
+    "total": null,
+    "fight_cost": null,
+    "comeback_at": "2026-09-28T10:10:29Z",
+    "ticket_until": null,
+    "next_fight_at": null
+   }
+  },
+  "knowledge": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 21946
+  },
+  "team_task": {
+   "at": "2026-09-27T18:45:09Z",
+   "src": "screen",
+   "value": {
+    "day": "2026-09-27",
+    "goal": 120,
+    "status": "done",
+    "current": 120,
+    "resource": "🔩",
+    "activities": []
+   }
+  },
+  "food_stock": {
+   "at": "2026-09-27T19:01:09Z",
+   "src": "derived",
+   "value": {
+    "pizza": {
+     "low": 70,
+     "high": 160,
+     "count": 5154
+    },
+    "banana": {
+     "low": 150,
+     "high": 275,
+     "count": 11
+    },
+    "burger": {
+     "low": 90,
+     "high": 180,
+     "count": 3721
+    },
+    "hotdog": {
+     "low": 50,
+     "high": 140,
+     "count": 8684
+    }
+   }
+  },
+  "motivation": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 0
+  },
+  "tangerines": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 2
+  },
+  "bulls_invite": null,
+  "bulls_won_at": null,
+  "factory_skip": null,
+  "factory_wins": {
+   "at": "2026-09-27T18:45:08Z",
+   "src": "screen",
+   "value": 247
+  },
+  "last_refusal": {
+   "at": "2026-09-27T15:00:03Z",
+   "src": "screen",
+   "value": {
+    "need": null,
+    "reason": "unknown_command"
+   }
+  },
+  "stock_limits": {
+   "at": "2026-09-27T18:56:09Z",
+   "src": "screen",
+   "value": {
+    "min_buy": 11,
+    "reserve": 100,
+    "max_sell": 80,
+    "open_hour": 8,
+    "close_hour": 22
+   }
+  },
+  "stock_quotes": {
+   "at": "2026-09-27T18:56:09Z",
+   "src": "screen",
+   "value": {
+    "bmesa": 10,
+    "hooli": 10,
+    "piper": 10,
+    "stark": 31,
+    "umbrl": 100,
+    "wayne": 10
+   }
+  },
+  "battle_target": {
+   "at": "2026-09-27T19:01:06Z",
+   "src": "screen",
+   "value": "📯Pied Piper"
+  },
+  "book_ready_at": {
+   "at": "2026-09-27T18:56:03Z",
+   "src": "screen",
+   "value": "2026-09-27T19:46:03Z"
+  },
+  "card_ready_at": {
+   "at": "2026-09-27T18:56:08Z",
+   "src": "screen",
+   "value": "2026-09-27T19:46:08Z"
+  },
+  "metro_message": {
+   "at": "2026-09-27T10:20:22Z",
+   "src": "screen",
+   "value": null
+  },
+  "activity_stats": {
+   "job": {
+    "exp": 120.94930037529736,
+    "raw": 0.9356359381844577,
+    "count": 65,
+    "money": 25.332471409547118,
+    "details": 2.2412721464242815,
+    "knowledge": 0.0
+   },
+   "dconv": {
+    "exp": 201.86752248390837,
+    "raw": 8.393384723833957,
+    "count": 25,
+    "money": 0.0,
+    "details": 0.0,
+    "knowledge": 0.0
+   }
+  },
+  "daily_personal": {
+   "at": "2026-09-27T18:45:09Z",
+   "src": "screen",
+   "value": {
+    "day": "2026-09-27",
+    "chosen": {
+     "goal": 132,
+     "type": "jobMoney",
+     "level": "hard",
+     "resource": "💵",
+     "activities": [
+      "job"
+     ]
+    },
+    "offers": [],
+    "status": "done",
+    "current": 132
+   }
+  },
+  "factory_signed": {
+   "at": "2026-09-27T15:00:42Z",
+   "src": "screen",
+   "value": true
+  },
+  "factory_won_at": null,
+  "metro_ready_at": {
+   "at": "2026-09-27T10:20:22Z",
+   "src": "derived",
+   "value": "2026-09-28T02:20:22Z"
+  },
+  "motivation_max": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": 85
+  },
+  "schema_version": 1,
+  "sleep_deadline": {
+   "at": "2026-09-27T19:05:09Z",
+   "src": "derived",
+   "value": null
+  },
+  "smoothie_bonus": null,
+  "stock_holdings": {
+   "at": "2026-09-27T18:56:11Z",
+   "src": "screen",
+   "value": {
+    "bmesa": 10,
+    "hooli": 1838,
+    "piper": 3762,
+    "stark": 293,
+    "umbrl": 1232,
+    "wayne": 75
+   }
+  },
+  "factory_call_at": {
+   "at": "2026-09-27T15:00:39Z",
+   "src": "screen",
+   "value": "2026-09-27T15:00:39Z"
+  },
+  "levelup_pending": null,
+  "smoothie_recipe": null,
+  "containers_small": {
+   "at": "2026-09-27T16:02:03Z",
+   "src": "screen",
+   "value": 0
+  },
+  "sleep_allowed_at": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "derived",
+   "value": "2026-09-27T15:01:03Z"
+  },
+  "battle_target_set": {
+   "at": "2026-09-27T19:01:06Z",
+   "src": "screen",
+   "value": {
+    "target": "📯Pied Piper",
+    "battle_at": "2026-09-28T09:59:06Z"
+   }
+  },
+  "containers_medium": {
+   "at": "2026-09-27T16:02:03Z",
+   "src": "screen",
+   "value": 0
+  },
+  "fastfood_ready_at": {
+   "at": "2026-09-27T19:01:09Z",
+   "src": "derived",
+   "value": "2026-09-27T19:31:09Z"
+  },
+  "prizebox_ready_at": {
+   "at": "2026-09-27T16:21:24Z",
+   "src": "screen",
+   "value": null
+  },
+  "motivation_next_at": {
+   "at": "2026-09-27T19:01:03Z",
+   "src": "screen",
+   "value": "2026-09-27T19:05:00Z"
+  },
+  "tangerine_ready_at": null,
+  "smoothie_ingredients": null,
+  "tangerine_not_player": null
+ },
+ "stale": [
+  "exp",
+  "money",
+  "stamina",
+  "knowledge",
+  "raw",
+  "details",
+  "motivation",
+  "busy",
+  "gorbushka"
+ ]
+}

@@ -143,3 +143,11 @@ async def test_without_build_root_is_404(tmp_path: Path, admin_dir: str | None) 
         assert (await c.get("/")).status_code == 404
         assert (await c.get("/journal")).status_code == 404
         assert (await c.get("/healthz")).status_code == 200
+
+
+def test_real_build_index_hashes() -> None:
+    # Стартовая страница настоящей сборки админки (`npm run build`, adapter-static).
+    html = (Path(__file__).parent.parent / "fixtures" / "admin" / "index.html").read_text()
+    start = html.index("<script>") + len("<script>")
+    assert inline_script_hashes(html) == [_sha(html[start : html.index("</script>", start)])]
+    assert "__sveltekit_" in html
