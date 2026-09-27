@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 from dataclasses import replace
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -11,6 +12,7 @@ from sqlalchemy import func, select
 from app.config import AppConfig
 from app.db.actions import DbActionStore
 from app.db.base import Database
+from app.db.journal import DbJournal
 from app.db.models import DecisionRow, MessageRow, ScenarioRunRow
 from app.db.planner import DbPlannerStore
 from app.engine.commands import CommandClass
@@ -289,3 +291,40 @@ async def test_runtime_streams_engine_events(clean_db: Database) -> None:
     assert {"settings", "notification", "action", "message"} <= set(kinds)
     paused = next(e for e in runtime.stream.history() if e.type == "settings")
     assert paused.data["paused"] is True
+
+
+async def test_retention_task_purges_old_journal(clean_db: Database) -> None:
+    old = now() - timedelta(days=91)
+    await DbJournal(clean_db, 1).append(make_msg("old", msg_id=1, received_at=old), [], None, 0)
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    runtime.retention_first_s = 0.0
+
+    async def journal_size() -> int:
+        async with clean_db.sessions() as s:
+            return int(await s.scalar(select(func.count()).select_from(MessageRow)) or 0)
+
+    async with app.router.lifespan_context(app):
+        for _ in range(200):
+            if await journal_size() == 0:
+                break
+            await asyncio.sleep(0.01)
+        assert await journal_size() == 0
+
+
+async def test_retention_failure_notifies_once(clean_db: Database) -> None:
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    runtime.retention_first_s = 0.0
+    runtime.retention_s = 0.01
+    calls = [0]
+
+    async def broken(*args: object) -> dict[str, int]:
+        calls[0] += 1
+        raise ConnectionError("db down")
+
+    runtime.retention.purge = broken
+    async with app.router.lifespan_context(app):
+        await until(lambda: calls[0] >= 3)
+        assert await _notified(runtime, "retention_failed") == 1
+        assert "retention" not in runtime.supervisor._backoff

@@ -20,6 +20,7 @@ from app.db.models import NotificationRow
 from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
 from app.db.reads import DbReads
+from app.db.retention import DbRetention
 from app.db.settings_store import DbSettingsStore
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
@@ -88,6 +89,9 @@ PIPELINE_DRAIN_S = 10.0
 SESSION_PURGE_S = 3600.0
 RECONCILE_POLL_S = 5.0
 PLANNER_POLL_S = 5.0
+# Ретеншн: первый проход не в момент старта (там догон пропусков), дальше — раз в 6 часов.
+RETENTION_FIRST_S = 300.0
+RETENTION_S = 6 * 3600.0
 
 
 class Runtime:
@@ -113,6 +117,9 @@ class Runtime:
         self.session_purge_s = SESSION_PURGE_S
         self.reconcile_poll_s = RECONCILE_POLL_S
         self.planner_poll_s = PLANNER_POLL_S
+        self.retention = DbRetention(self.db, config.account_id)
+        self.retention_first_s = RETENTION_FIRST_S
+        self.retention_s = RETENTION_S
         self.pipeline: Pipeline | None = None
         self.gateway: ActionGateway | None = None
         self.tg: TgAuthManager | None = None
@@ -250,6 +257,7 @@ class Runtime:
         self.supervisor.start("lag", lag.run)
         self.supervisor.start("lock-watch", self._watch_lock)
         self.supervisor.start("session-purge", self._purge_sessions)
+        self.supervisor.start("retention", self._retention)
         if self._kurigram is not None:
             self.supervisor.start("tg-probe", self._probe_tg)
         await self.tg.boot()
@@ -335,6 +343,27 @@ class Runtime:
                 continue
             if purged:
                 log.info("purged %d expired admin sessions", purged)
+
+    async def _retention(self) -> None:
+        # Сбой не роняет задачу (иначе супервизор слал бы task_failed на каждом рестарте):
+        # одно уведомление на серию неудач, следующая попытка — по расписанию.
+        failing = False
+        await asyncio.sleep(self.retention_first_s)
+        while True:
+            try:
+                purged = await self.retention.purge(
+                    SystemClock().now(), self.settings.current.retention
+                )
+            except Exception:
+                log.exception("retention failed")
+                if not failing:
+                    await self.notifier.notify("warn", "retention_failed", "old rows not purged")
+                failing = True
+            else:
+                failing = False
+                if any(purged.values()):
+                    log.info("retention purged %s", purged)
+            await asyncio.sleep(self.retention_s)
 
     async def stop(self) -> None:
         # Планировщик — первым: новый шаг сценария не должен уйти в закрывающийся шлюз.

@@ -146,6 +146,14 @@ class MetroSection(BaseModel):
         return self.battle_margin_min + self.extra_margin_min
 
 
+class RetentionSection(BaseModel):
+    # Журнал: сообщения (с нераспознанными), действия, запуски сценариев, уведомления.
+    messages_days: int = Field(default=90, ge=1)
+    decisions_days: int = Field(default=30, ge=1)
+    # Долгая статистика: ряды метрик и забеги метро.
+    metrics_days: int = Field(default=365, ge=1)
+
+
 class Settings(BaseModel):
     engine: EngineSection = Field(default_factory=EngineSection)
     telegram: TelegramSection = Field(default_factory=TelegramSection)
@@ -159,6 +167,7 @@ class Settings(BaseModel):
     stocks: StocksSection = Field(default_factory=StocksSection)
     tangerine: TangerineSection = Field(default_factory=TangerineSection)
     metro: MetroSection = Field(default_factory=MetroSection)
+    retention: RetentionSection = Field(default_factory=RetentionSection)
 
 
 class SettingsConflict(Exception):

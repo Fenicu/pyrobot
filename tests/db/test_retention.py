@@ -1,0 +1,148 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import func, select
+
+from app.db.base import Database
+from app.db.journal import DbJournal
+from app.db.metro import DbMetroRunStore
+from app.db.models import (
+    ActionRow,
+    DecisionRow,
+    MessageRow,
+    MetricRow,
+    MetroRunRow,
+    NotificationRow,
+    ScenarioRunRow,
+    UnrecognizedRow,
+)
+from app.db.planner import DbPlannerStore
+from app.db.retention import DbRetention
+from app.engine.events import Unrecognized
+from app.engine.metro.store import METRO_HISTORY
+from app.engine.planner.types import Wait
+from app.engine.settings import RetentionSection
+from tests.engine.helpers import make_msg
+
+pytestmark = pytest.mark.db
+NOW = datetime(2026, 9, 27, 12, 0, tzinfo=UTC)
+
+
+def _ago(days: float) -> datetime:
+    return NOW - timedelta(days=days)
+
+
+def _action(
+    days: float,
+    status: str,
+    cls: str = "action",
+    reconciled: bool = False,
+    key: str | None = None,
+) -> ActionRow:
+    return ActionRow(
+        account_id=1,
+        created_at=_ago(days),
+        kind="send",
+        chat_id=1,
+        payload={"text": "/job"},
+        command_class=cls,
+        status=status,
+        reason="",
+        reconciled_at=_ago(days) if reconciled else None,
+        idempotency_key=key,
+        source="manual" if key else "planner",
+    )
+
+
+async def _count(db: Database, model: type) -> int:
+    async with db.sessions() as s:
+        return int(await s.scalar(select(func.count()).select_from(model)) or 0)
+
+
+async def test_retention_defaults() -> None:
+    policy = RetentionSection()
+    assert (policy.messages_days, policy.decisions_days, policy.metrics_days) == (90, 30, 365)
+
+
+async def test_purge_keeps_recent_and_open_obligations(clean_db: Database) -> None:
+    journal = DbJournal(clean_db, 1)
+    for i, days in enumerate((91, 91, 89)):
+        await journal.append(
+            make_msg(f"m{i}", msg_id=i, received_at=_ago(days)),
+            [Unrecognized(first_line=f"m{i}")],
+            None,
+            0,
+        )
+    planner = DbPlannerStore(clean_db, 1)
+    old_decision = await planner.record(_ago(31), Wait(None, "old"))
+    await planner.record(_ago(29), Wait(None, "fresh"))
+    done_run = await planner.run_started(old_decision, "book", {}, _ago(91))
+    await planner.run_finished(done_run, "done", "", _ago(91))
+    await planner.run_started(old_decision, "book", {}, _ago(91))
+    manual_run, _ = await planner.run_requested(
+        "book", {"item": "book"}, requested={}, key="old-key", by="admin", at=_ago(91)
+    )
+    await planner.run_finished(manual_run, "done", "", _ago(91))
+    metro = DbMetroRunStore(clean_db, 1)
+    await metro.save(None, "stopped", {"started_at": _ago(366).isoformat()})
+    await metro.save(None, "done", {"started_at": _ago(10).isoformat()})
+    async with clean_db.sessions() as s, s.begin():
+        s.add_all(
+            [
+                _action(91, "confirmed"),
+                _action(91, "outcome_unknown"),
+                _action(91, "outcome_unknown", reconciled=True),
+                _action(91, "outcome_unknown", cls="nav"),
+                _action(91, "suppressed", key="manual:old"),
+                _action(1, "confirmed"),
+                MetricRow(account_id=1, ts=_ago(366), key="money", value=1),
+                MetricRow(account_id=1, ts=_ago(1), key="money", value=2),
+                NotificationRow(
+                    account_id=1, created_at=_ago(91), level="info", code="a", text=""
+                ),
+                NotificationRow(account_id=1, created_at=_ago(1), level="info", code="b", text=""),
+            ]
+        )
+    purged = await DbRetention(clean_db, 1, batch=1).purge(NOW, RetentionSection())
+    assert purged == {
+        "messages": 2,
+        "actions": 3,
+        "scenario_runs": 1,
+        "notifications": 1,
+        "decisions": 1,
+        "metrics": 1,
+        "metro_runs": 1,
+    }
+    assert await _count(clean_db, MessageRow) == 1
+    # Нераспознанные уходят каскадом вместе с сообщениями.
+    assert await _count(clean_db, UnrecognizedRow) == 1
+    async with clean_db.sessions() as s:
+        left = {
+            (a.status, a.command_class, a.reconciled_at is None)
+            for a in await s.scalars(select(ActionRow))
+        }
+        runs = sorted(r.status for r in await s.scalars(select(ScenarioRunRow)))
+        decisions = [d.reason for d in await s.scalars(select(DecisionRow))]
+    # Несверенный исход траты — обязательство сверки, его не удалить; ручные с ключом — журнал
+    # ключей идемпотентности, их тоже.
+    assert left == {
+        ("outcome_unknown", "action", True),
+        ("confirmed", "action", True),
+        ("suppressed", "action", True),
+    }
+    assert runs == ["done", "running"] and decisions == ["fresh"]
+    assert await _count(clean_db, MetroRunRow) == 1 and await _count(clean_db, MetricRow) == 1
+    assert await _count(clean_db, NotificationRow) == 1
+    again = await DbRetention(clean_db, 1).purge(NOW, RetentionSection())
+    assert set(again.values()) == {0}
+
+
+async def test_purge_keeps_last_completed_metro_runs(clean_db: Database) -> None:
+    metro = DbMetroRunStore(clean_db, 1)
+    for i in range(METRO_HISTORY + 2):
+        await metro.save(None, "done", {"started_at": _ago(1000 - i).isoformat(), "duration_s": i})
+    await metro.save(None, "stopped", {"started_at": _ago(500).isoformat()})
+    purged = await DbRetention(clean_db, 1).purge(NOW, RetentionSection())
+    # Для p90 бюджета остаются последние 20 завершённых забегов, даже старше года.
+    assert purged["metro_runs"] == 3
+    assert await metro.durations() == [float(i) for i in range(2, METRO_HISTORY + 2)]
