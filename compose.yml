@@ -1,0 +1,83 @@
+# Боевой compose на apps (10.10.40.20): бот, одноразовые миграции, Postgres и ежесуточный дамп.
+# Рядом лежит .env (пишет деплой из секретов Forgejo, см. README «Образ и деплой»).
+name: pyrobot
+
+x-app: &app
+  image: ${PYROBOT_IMAGE:-git.fenicu.com/fenicu/pyrobot:latest}
+  env_file: .env
+  environment:
+    PYROBOT_DATABASE_URL: postgresql+asyncpg://pyrobot:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/pyrobot
+    PYROBOT_FORWARDED_ALLOW_IPS: ${PYROBOT_FORWARDED_ALLOW_IPS:-10.10.40.3}
+  depends_on:
+    postgres:
+      condition: service_healthy
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "5"
+
+services:
+  pyrobot:
+    <<: *app
+    restart: unless-stopped
+    # Один процесс на аккаунт: второй экземпляр не возьмёт advisory lock и не запустит движок.
+    ports:
+      - "${PYROBOT_BIND:-10.10.40.20}:${PYROBOT_PORT:-8090}:8080"
+    volumes:
+      - pyrobot-data:/data
+    stop_grace_period: 30s
+
+  # Одноразовый шаг деплоя: docker compose run --rm migrate
+  migrate:
+    <<: *app
+    profiles: ["migrate"]
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pyrobot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: pyrobot
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pyrobot -d pyrobot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Дамп при старте и дальше раз в сутки, хранятся последние 14 (custom-формат, pg_restore).
+  backup:
+    image: postgres:17
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: pyrobot
+      PGDATABASE: pyrobot
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - ${PYROBOT_BACKUP_DIR:-./backups}:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          file="/backups/pyrobot-$$(date +%F).dump"
+          if pg_dump --format=custom --file="$$file.tmp"; then
+            mv "$$file.tmp" "$$file" && echo "backup written: $$file"
+          else
+            rm -f "$$file.tmp"; echo "backup failed" >&2
+          fi
+          find /backups -name 'pyrobot-*.dump' -mtime +13 -delete
+          sleep 86400
+        done
+
+volumes:
+  pyrobot-data: {}
+  pgdata: {}

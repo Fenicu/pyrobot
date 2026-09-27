@@ -1083,3 +1083,20 @@ app`, миграции — `alembic upgrade head` в том же образе. �
 ```bash
 docker build --build-arg APT_PROXY=http://10.10.40.23:3142 -t pyrobot:local .
 ```
+
+**Compose на apps** (`compose.yml`, каталог `/home/fenicu/pyrobot` на 10.10.40.20, рядом `.env`):
+`pyrobot` — бот из образа `PYROBOT_IMAGE` (по умолчанию `git.fenicu.com/fenicu/pyrobot:latest`,
+деплой подставляет тег), том `pyrobot-data` → `/data` (сессия Telegram), порт
+`${PYROBOT_BIND:-10.10.40.20}:${PYROBOT_PORT:-8090}` → 8080 (только адрес apps в VLAN — к нему ходит
+Caddy с web), `PYROBOT_FORWARDED_ALLOW_IPS` по умолчанию `10.10.40.3`, `restart: unless-stopped`,
+ротация логов 5×10 МБ; `migrate` — тот же образ, профиль `migrate`, `alembic upgrade head`,
+запускается только явно (`docker compose run --rm migrate`); `postgres` — `postgres:17`, том
+`pgdata`, healthcheck `pg_isready`; `backup` — `pg_dump --format=custom` при старте и дальше раз в
+сутки в `${PYROBOT_BACKUP_DIR:-./backups}/pyrobot-<дата>.dump`, файлы старше 14 дней удаляются
+(восстановление — `pg_restore`). `PYROBOT_DATABASE_URL` собирается в compose из `POSTGRES_PASSWORD`
+(пароль — без символов, требующих URL-экранирования, например hex), остальное — из `.env`.
+Проверка локально:
+
+```bash
+docker compose -f compose.yml config          # нужен .env рядом (см. .env.example + POSTGRES_PASSWORD)
+```
