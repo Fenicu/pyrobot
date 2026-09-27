@@ -2,11 +2,62 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, and_, or_, select
 
 from app.db.base import Database
-from app.db.models import SettingsHistory
+from app.db.models import (
+    ActionRow,
+    DecisionRow,
+    MessageRow,
+    MetroRunRow,
+    ScenarioRunRow,
+    SettingsHistory,
+)
 from app.engine.settings import Settings, settings_diff
+
+# Порядок типов записей на одном моменте: сообщение, потом действие, потом решение.
+FEED_TYPES = ("message", "action", "decision")
+FeedRow = MessageRow | ActionRow | DecisionRow
+_FEED_MODELS: dict[str, Any] = {
+    "message": (MessageRow, MessageRow.received_at),
+    "action": (ActionRow, ActionRow.created_at),
+    "decision": (DecisionRow, DecisionRow.at),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class FeedKey:
+    """Позиция записи в ленте: момент, ранг типа, id — лента идёт по убыванию ключа."""
+
+    at: datetime
+    rank: int
+    id: int
+
+
+@dataclass(frozen=True, slots=True)
+class FeedFilter:
+    types: tuple[str, ...] = FEED_TYPES
+    since: datetime | None = None
+    until: datetime | None = None
+    chat_id: int | None = None
+    status: str | None = None
+    source: str | None = None
+
+    def narrowed(self) -> tuple[str, ...]:
+        types = self.types
+        # Статус и источник есть только у действий, чат — у сообщений и действий.
+        if self.status is not None or self.source is not None:
+            types = tuple(t for t in types if t == "action")
+        if self.chat_id is not None:
+            types = tuple(t for t in types if t != "decision")
+        return types
+
+
+@dataclass(frozen=True, slots=True)
+class FeedItem:
+    type: str
+    key: FeedKey
+    row: FeedRow
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +74,56 @@ class DbReads:
     def __init__(self, db: Database, account_id: int) -> None:
         self._db = db
         self._account_id = account_id
+
+    async def feed(self, flt: FeedFilter, limit: int, after: FeedKey | None) -> list[FeedItem]:
+        """До `limit` записей ленты старше `after`, от новых к старым (слияние трёх таблиц)."""
+        items: list[FeedItem] = []
+        async with self._db.sessions() as session:
+            for kind in flt.narrowed():
+                rank = FEED_TYPES.index(kind)
+                model, at = _FEED_MODELS[kind]
+                query: Select[Any] = (
+                    select(model)
+                    .where(model.account_id == self._account_id)
+                    .order_by(at.desc(), model.id.desc())
+                    .limit(limit)
+                )
+                query = _feed_where(query, model, at, rank, flt, after)
+                for row in await session.scalars(query):
+                    moment = getattr(row, at.key)
+                    items.append(FeedItem(kind, FeedKey(moment, rank, row.id), row))
+        items.sort(key=lambda i: (i.key.at, i.key.rank, i.key.id), reverse=True)
+        return items[:limit]
+
+    async def decision(self, decision_id: int) -> tuple[DecisionRow, list[ScenarioRunRow]] | None:
+        async with self._db.sessions() as session:
+            row = await session.get(DecisionRow, decision_id)
+            if row is None or row.account_id != self._account_id:
+                return None
+            runs = await session.scalars(
+                select(ScenarioRunRow)
+                .where(ScenarioRunRow.decision_id == decision_id)
+                .order_by(ScenarioRunRow.id)
+            )
+            return row, list(runs)
+
+    async def action(self, action_id: int) -> ActionRow | None:
+        async with self._db.sessions() as session:
+            row = await session.get(ActionRow, action_id)
+        return row if row is not None and row.account_id == self._account_id else None
+
+    async def scenario_run(self, run_id: int) -> tuple[ScenarioRunRow, int | None] | None:
+        async with self._db.sessions() as session:
+            row = await session.get(ScenarioRunRow, run_id)
+            if row is None or row.account_id != self._account_id:
+                return None
+            metro = await session.scalar(
+                select(MetroRunRow.id)
+                .where(MetroRunRow.scenario_run_id == run_id)
+                .order_by(MetroRunRow.id.desc())
+                .limit(1)
+            )
+            return row, metro
 
     async def settings_history(self, limit: int, before: int | None) -> list[SettingsVersion]:
         query = (
@@ -46,3 +147,43 @@ class DbReads:
                 )
             )
         return out
+
+
+def _feed_where(
+    query: Select[Any],
+    model: Any,
+    at: Any,
+    rank: int,
+    flt: FeedFilter,
+    after: FeedKey | None,
+) -> Select[Any]:
+    conds: list[Any] = []
+    if flt.since is not None:
+        conds.append(at >= flt.since)
+    if flt.until is not None:
+        conds.append(at < flt.until)
+    if flt.chat_id is not None:
+        conds.append(model.chat_id == flt.chat_id)
+    if flt.status is not None:
+        conds.append(model.status == flt.status)
+    if flt.source is not None:
+        conds.append(model.source == flt.source)
+    if after is not None:
+        # (at, rank, id) < after при постоянном rank таблицы.
+        if rank < after.rank:
+            conds.append(at <= after.at)
+        elif rank > after.rank:
+            conds.append(at < after.at)
+        else:
+            conds.append(or_(at < after.at, and_(at == after.at, model.id < after.id)))
+    return query.where(*conds) if conds else query
+
+
+def feed_types(raw: str | None) -> tuple[str, ...]:
+    if not raw:
+        return FEED_TYPES
+    types = tuple(t.strip() for t in raw.split(",") if t.strip())
+    unknown = [t for t in types if t not in FEED_TYPES]
+    if unknown or not types:
+        raise ValueError(f"unknown journal types: {unknown}")
+    return tuple(t for t in FEED_TYPES if t in types)

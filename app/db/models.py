@@ -103,7 +103,10 @@ class MessageRow(Base):
 
 class ActionRow(Base):
     __tablename__ = "actions"
-    __table_args__ = (UniqueConstraint("account_id", "idempotency_key"),)
+    __table_args__ = (
+        UniqueConstraint("account_id", "idempotency_key"),
+        Index("ix_actions_account_created", "account_id", "created_at"),
+    )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
     created_at: Mapped[datetime] = _now_col()

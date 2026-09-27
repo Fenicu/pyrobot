@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from app.api.container import Container
 from app.api.routes_auth import router as auth_router
 from app.api.routes_engine import router as engine_router
+from app.api.routes_journal import router as journal_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_state import router as state_router
 
@@ -17,6 +18,7 @@ def create_api(container: Container) -> FastAPI:
     app.include_router(engine_router)
     app.include_router(state_router)
     app.include_router(settings_router)
+    app.include_router(journal_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
