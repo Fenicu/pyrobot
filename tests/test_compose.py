@@ -33,3 +33,11 @@ def test_backups_readable_only_by_owner(tmp_path: Path) -> None:
     script = "\n".join(_config(tmp_path)["services"]["backup"]["command"])
     assert "umask 077" in script
     assert script.index("umask 077") < script.index("pg_dump")
+
+
+def test_bot_published_on_free_port_of_apps(tmp_path: Path) -> None:
+    # На apps заняты 8080–8088 и 8090 (qBittorrent).
+    ports = _config(tmp_path)["services"]["pyrobot"]["ports"]
+    assert [(p["host_ip"], p["published"], p["target"]) for p in ports] == [
+        ("10.10.40.20", "8089", 8080)
+    ]

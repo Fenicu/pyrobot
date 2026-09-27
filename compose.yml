@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     # Один процесс на аккаунт: второй экземпляр не возьмёт advisory lock и не запустит движок.
     ports:
-      - "${PYROBOT_BIND:-10.10.40.20}:${PYROBOT_PORT:-8090}:8080"
+      - "${PYROBOT_BIND:-10.10.40.20}:${PYROBOT_PORT:-8089}:8080"
     volumes:
       - pyrobot-data:/data
     stop_grace_period: 30s

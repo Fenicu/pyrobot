@@ -1111,11 +1111,12 @@ docker build --build-arg APT_PROXY=http://10.10.40.23:3142 -t pyrobot:local .
 **Compose на apps** (`compose.yml`, каталог `/home/fenicu/pyrobot` на 10.10.40.20, рядом `.env`):
 `pyrobot` — бот из образа `PYROBOT_IMAGE` (по умолчанию `git.fenicu.com/fenicu/pyrobot:latest`,
 деплой подставляет тег), том `pyrobot-data` → `/data` (сессия Telegram), порт
-`${PYROBOT_BIND:-10.10.40.20}:${PYROBOT_PORT:-8090}` → 8080 (только адрес apps в VLAN — к нему ходит
-Caddy с web), `PYROBOT_FORWARDED_ALLOW_IPS` по умолчанию `10.10.40.3`, `restart: unless-stopped`,
-ротация логов 5×10 МБ, лимит памяти `mem_limit: 1g` (предохранитель: при утечке OOM убивает бота,
-а не соседей по apps, и `restart` поднимает его заново); `migrate` — тот же образ, профиль
-`migrate`, `alembic upgrade head`, запускается только явно (`docker compose run --rm migrate`);
+`${PYROBOT_BIND:-10.10.40.20}:${PYROBOT_PORT:-8089}` → 8080 (только адрес apps в VLAN — к нему ходит
+Caddy с web; 8080–8088 и 8090 на apps заняты другими сервисами), `PYROBOT_FORWARDED_ALLOW_IPS` по
+умолчанию `10.10.40.3`, `restart: unless-stopped`, ротация логов 5×10 МБ, лимит памяти `mem_limit:
+1g` (предохранитель: при утечке OOM убивает бота, а не соседей по apps, и `restart` поднимает его
+заново); `migrate` — тот же образ, профиль `migrate`, `alembic upgrade head`, запускается только
+явно (`docker compose run --rm migrate`);
 `postgres` — `postgres:17`, том `pgdata`, healthcheck `pg_isready`; `backup` — `pg_dump
 --format=custom` при старте и дальше раз в сутки в
 `${PYROBOT_BACKUP_DIR:-./backups}/pyrobot-<дата>.dump`, файлы старше 14 дней удаляются. Дампы
@@ -1169,7 +1170,7 @@ Telegram делается через API уже работающего серв�
 убрать. С включённым
 kill switch или блоком трат `/readyz` тоже 503 — выкат будет красным, пока их не снять.
 
-**Caddy на web** — `deploy/Caddyfile.sw.fenicu.com`: блок `sw.fenicu.com` → `http://10.10.40.20:8090`
+**Caddy на web** — `deploy/Caddyfile.sw.fenicu.com`: блок `sw.fenicu.com` → `http://10.10.40.20:8089`
 без Authelia (у админки своя авторизация), `flush_interval -1` для SSE, тело запроса не больше 1 МБ
 (`request_body { max_size 1MB }`: запросы API — килобайты, большее тело Caddy отклоняет, не
 передавая боту), `/healthz` и `/readyz` — 404 от самого Caddy (состояние сервиса наружу не
@@ -1187,7 +1188,7 @@ kill switch или блоком трат `/readyz` тоже 503 — выкат �
 **Первый вход** (админки ещё нет) — `tools/login.py`, интерактивно по API сервиса:
 
 ```bash
-uv run python tools/login.py https://sw.fenicu.com   # или http://10.10.40.20:8090 внутри сети
+uv run python tools/login.py https://sw.fenicu.com   # или http://10.10.40.20:8089 внутри сети
 ```
 
 Скрипт спрашивает логин и пароль админа (`PYROBOT_ADMIN_LOGIN`/`PYROBOT_ADMIN_PASSWORD`), входит
@@ -1206,7 +1207,7 @@ uv run python tools/login.py https://sw.fenicu.com   # или http://10.10.40.20
 
 Первый выкат: завести секреты и `PYROBOT_SKIP_READY=true` → тег `vX.Y.Z` (выкат ждёт только
 `/healthz`) → добавить блок в Caddy → `tools/login.py` (вход админа и в Telegram) → проверить `GET
-/readyz` = 200 изнутри (через Caddy он закрыт): `http://10.10.40.20:8090/readyz` из VLAN или
+/readyz` = 200 изнутри (через Caddy он закрыт): `http://10.10.40.20:8089/readyz` из VLAN или
 `docker compose exec pyrobot python -m app.healthcheck /readyz` на apps → убрать
 `PYROBOT_SKIP_READY` (следующие выкаты ждут `/readyz`). Режим после выката —
 `dry_run` (дефолт настроек), переход в `live` — отдельным решением (спека, «Катовер»).

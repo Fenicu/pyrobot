@@ -11,7 +11,7 @@ sw.fenicu.com {
 	# Пробы живости и готовности наружу не отдаются: деплой и HEALTHCHECK проверяют их изнутри.
 	@probes path /healthz /readyz
 	respond @probes 404
-	reverse_proxy http://10.10.40.20:8090 {
+	reverse_proxy http://10.10.40.20:8089 {
 		# SSE (/api/v1/events): каждое событие уходит клиенту сразу, без буферизации.
 		flush_interval -1
 	}
