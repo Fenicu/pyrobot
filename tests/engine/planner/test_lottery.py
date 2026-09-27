@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.engine.planner.base import TIMER_MARGIN
-from app.engine.planner.decide import decide
+from app.engine.planner.decide import decide, lottery_params
 from app.engine.planner.types import Wait
 from app.engine.settings import Settings
 from app.engine.state.model import BusyState, GorbushkaState, LotteryState, Obs
@@ -91,6 +91,15 @@ def test_keep_and_reserves_limit_money() -> None:
     rich = state(EVENING, lottery=part, money=500, gorbushka=ticket)
     decision = decide(rich, cfg(), EVENING)
     assert act(decision) == ("lottery_buy", {**PARAMS, "reserve": 120})
+
+
+def test_manual_run_gets_planner_params() -> None:
+    ticket = GorbushkaState(state="need_ticket")
+    reserved = state(EVENING, money=500, gorbushka=ticket)
+    settings = cfg(tickets={"raw": 2}, keep={"money": 50})
+    expected = {**PARAMS, "tickets_raw": 2, "keep_money": 50, "reserve": 120}
+    assert lottery_params(reserved, settings, EVENING) == expected
+    assert act(decide(reserved, settings, EVENING)) == ("lottery_buy", expected)
 
 
 def test_hotel_reserve_before_night_sleep() -> None:

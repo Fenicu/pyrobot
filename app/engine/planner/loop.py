@@ -5,17 +5,18 @@ import logging
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
-from app.engine.gametime import tasks_day
+from app.engine.gametime import tasks_day, to_msk
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import Source
 from app.engine.metro.store import METRO_HISTORY, MetroRunStore
 from app.engine.notify import NotifierPort
-from app.engine.planner.decide import decide
+from app.engine.planner.decide import decide, lottery_params
+from app.engine.planner.obligations import LOTTERY_OPEN
 from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Act, Wait
 from app.engine.scenarios.context import History, Reread, ScenarioContext
@@ -39,6 +40,10 @@ NOTHING_HOLD: dict[tuple[str, str], timedelta] = {
     ("lottery_buy", "no_draw"): timedelta(minutes=30),
     ("lottery_buy", "lottery_closed"): timedelta(hours=2),
 }
+# Тираж мог открыться на секунды позже 19:17: «тиража нет» в начале окна продажи, до 19:30,
+# повторяется через 2 минуты.
+LOTTERY_LATE_OPEN = time(19, 30)
+LOTTERY_LATE_OPEN_HOLD = timedelta(minutes=2)
 # Подавленное действие (dry_run) состояние не меняет: сценарий откладывается, решаются остальные.
 SUPPRESSED_HOLD = timedelta(minutes=10)
 # Подавление остановкой движка к сценарию не относится.
@@ -122,6 +127,8 @@ class PlannerLoop:
         # из хранилища, дальше — по итогам своих запусков.
         self._done_today: tuple[date, dict[str, int]] | None = None
         self._last_wait: DecisionRecord | None = None
+        # Нехватка, которую последний запуск лотереи увидел сверх запасов: (тираж, валюты).
+        self._lottery_short: tuple[int, dict[str, int]] | None = None
         self.current: str | None = None
         self.next_wake: datetime | None = None
 
@@ -178,7 +185,7 @@ class PlannerLoop:
             return
         try:
             await self._perform(
-                Act(item.scenario, item.params, "manual"),
+                Act(item.scenario, self._manual_params(item, started), "manual"),
                 item.run_id,
                 started,
                 manual=True,
@@ -186,6 +193,16 @@ class PlannerLoop:
             )
         except Exception:
             log.exception("manual run %d of %s failed", item.run_id, item.scenario)
+
+    def _manual_params(self, item: ManualRun, now: datetime) -> dict[str, Any]:
+        """Недостающие параметры ручной лотереи — как у запуска планировщика: без них «все
+        билеты без запаса» потратили бы запасы и резервы."""
+        if item.scenario != "lottery_buy":
+            return item.params
+        settings = self._settings.current
+        certified = CERTIFIED if settings.engine.mode == "live" else None
+        planned = lottery_params(self._state(), settings, now, certified=certified)
+        return {**planned, **item.params}
 
     async def _close_failed(self, run_id: int, reason: str) -> None:
         try:
@@ -216,7 +233,7 @@ class PlannerLoop:
             self._held.clear()
             self._mode = settings.engine.mode
         decision = decide(
-            self._state(),
+            self._observed(),
             settings,
             now,
             certified=CERTIFIED if settings.engine.mode == "live" else None,
@@ -234,6 +251,17 @@ class PlannerLoop:
         # Режим запуска — тот, в котором принято решение.
         await self._execute(decision, decision_id, dry_run=settings.engine.mode == "dry_run")
         return None
+
+    def _observed(self) -> CharacterState:
+        """Состояние с нехваткой, которую последний запуск лотереи увидел сверх запасов и
+        резервов: снимок тиража её не знает, а без неё устаревший ресурс снова открывал бы экран
+        лотереи вместо профиля."""
+        state = self._state()
+        seen, noted = state.lottery, self._lottery_short
+        if seen is None or noted is None or seen.value.draw != noted[0]:
+            return state
+        snap = seen.value.model_copy(update={"short": {**seen.value.short, **noted[1]}})
+        return state.model_copy(update={"lottery": seen.model_copy(update={"value": snap})})
 
     def _blocked(self) -> dict[str, datetime]:
         blocked = dict(self._cooldowns)
@@ -293,6 +321,8 @@ class PlannerLoop:
             self.current = None
         if result.reason == "paused":
             result = replace(result, status="stopped")
+        if act.scenario == "lottery_buy":
+            self._lottery_short = _lottery_short(result)
         finished = self._clock.now()
         try:
             # Подавленный ручной запуск о планах ничего не говорит: откладывать сценарий незачем.
@@ -377,6 +407,9 @@ class PlannerLoop:
             return
         if result.status == "nothing" or result.reason == "busy":
             hold = NOTHING_HOLD.get((name, result.reason), NOTHING_RETRY)
+            if (name, result.reason) == ("lottery_buy", "no_draw"):
+                if LOTTERY_OPEN <= to_msk(finished).time() < LOTTERY_LATE_OPEN:
+                    hold = LOTTERY_LATE_OPEN_HOLD
             self._cooldowns[key] = finished + hold
             return
         shared = is_deed and result.reason in SHARED_REFUSALS
@@ -393,3 +426,10 @@ class PlannerLoop:
             await self._notifier.notify(
                 "warn", "scenario_failed", f"{key}: {result.status} {result.reason}"
             )
+
+
+def _lottery_short(result: ScenarioResult) -> tuple[int, dict[str, int]] | None:
+    note = (result.details or {}).get("lottery")
+    if note is None:
+        return None
+    return int(note["draw"]), {str(c): int(v) for c, v in note["short"].items()}

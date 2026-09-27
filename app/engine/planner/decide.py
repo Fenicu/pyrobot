@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
+from typing import Any
 
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, Step
 from app.engine.planner.daily import DailyTasks
@@ -333,3 +334,15 @@ def decide(
         done_today,
     )
     return planner.decide()
+
+
+def lottery_params(
+    state: CharacterState,
+    settings: Settings,
+    now: datetime,
+    *,
+    certified: frozenset[str] | None = None,
+) -> dict[str, Any]:
+    """Параметры `lottery_buy`, с которыми его запустил бы планировщик: билеты и запасы из
+    настроек, резерв 💵 на билет Горбушки и отель на момент `now`."""
+    return _Planner(state, settings, now, certified, {}, {}, {}).lottery_params()

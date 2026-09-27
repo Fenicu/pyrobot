@@ -165,9 +165,20 @@ async def test_currency_screen_recounts_goal_by_its_bought(world: World) -> None
 
 @certifies("lottery_buy")
 async def test_currency_already_at_goal_buys_nothing(world: World) -> None:
+    # Пока шёл экран валюты, с телефона докупили до цели: не нехватка, а цель достигнута.
     world.game.on_text("/tickets", LIVE_SCREEN)
     world.game.on_text("💵 => 🤑", money_frame(3, (1, 3, 5, 7), MONEY_SCREEN))
-    assert await buy(world, {**NOTHING, "tickets_money": 3}) == ("nothing", "cant_afford")
+    assert await buy(world, {**NOTHING, "tickets_money": 3}) == ("nothing", "target_reached")
+    assert world.game.payloads() == ["/tickets", "💵 => 🤑"]
+
+
+@certifies("lottery_buy")
+async def test_no_fitting_quantity_button_fails(world: World) -> None:
+    # Экран валюты без кнопок количества: покупать нечем — неудача (пауза повтора растёт,
+    # уведомление одно), а не «нечего делать» каждую минуту.
+    world.game.on_text("/tickets", LIVE_SCREEN)
+    world.game.on_text("💵 => 🤑", replace(game_msg(*MONEY_SCREEN), inline=()))
+    assert await buy(world, ONLY_MONEY) == ("failed", "no_quantity_button")
     assert world.game.payloads() == ["/tickets", "💵 => 🤑"]
 
 
@@ -217,20 +228,22 @@ async def test_pause_stops_between_currencies(world: World) -> None:
 
 @certifies("lottery_buy")
 @pytest.mark.parametrize(
-    ("answer", "result"),
+    ("answer", "tickets", "result"),
     [
-        # Игра считает, что 💵 не хватает: кнопок нет, покупать нечего.
-        (("lottery", 3385821), ("nothing", "cant_afford")),
-        (("lottery", 1640401), ("refused", "lottery_closed")),
-        (("refusals", 3626159), ("failed", "wrong_screen")),
+        # Игра считает, что 💵 не хватает (куплено 4, цель 10): кнопок нет, покупать нечего.
+        (("lottery", 3402013), 10, ("nothing", "cant_afford")),
+        # «Не хватает» при «Куплено: 10 из 10»: цель в 1 билет уже достигнута.
+        (("lottery", 3385821), 1, ("nothing", "target_reached")),
+        (("lottery", 1640401), 1, ("refused", "lottery_closed")),
+        (("refusals", 3626159), 1, ("failed", "wrong_screen")),
     ],
 )
 async def test_currency_screen_without_purchase(
-    world: World, answer: tuple[str, int], result: tuple[str, str]
+    world: World, answer: tuple[str, int], tickets: int, result: tuple[str, str]
 ) -> None:
     world.game.on_text("/tickets", LIVE_SCREEN)
     world.game.on_text("💵 => 🤑", answer)
-    assert await buy(world, ONLY_MONEY) == result
+    assert await buy(world, {**NOTHING, "tickets_money": tickets}) == result
     assert world.game.payloads() == ["/tickets", "💵 => 🤑"]
 
 
@@ -267,6 +280,29 @@ async def test_target_reached_and_cant_afford_read_screen_only(world: World) -> 
 async def test_no_draw_or_closed_sale(world: World, answer: tuple[str, int], reason: str) -> None:
     world.game.on_text("/tickets", answer)
     assert await buy(world) == ("nothing", reason)
+    assert world.game.payloads() == ["/tickets"]
+
+
+@certifies("lottery_buy")
+async def test_buy_all_that_bought_nothing_is_nothing(world: World) -> None:
+    # Живой ответ «Куплено 0 билетов.» (тираж 3041) — в тираже экрана.
+    world.game.on_text("/tickets", SCREEN)
+    world.game.on_text("/tickets_all", edited(("lottery", 3525365), ("3041 тираж", "3285 тираж")))
+    assert await buy(world) == ("nothing", "bought_none")
+    assert world.game.payloads() == ["/tickets", "/tickets_all"]
+
+
+@certifies("lottery_buy")
+async def test_cant_afford_notes_every_short_currency(world: World) -> None:
+    # Запасы не дают ни одного билета 💵 и ⚙️: обе — в нехватку с ресурсом с экрана, чтобы
+    # планировщик ждал его роста, а не открывал экран по устареванию.
+    world.game.on_text("/tickets", SCREEN)
+    params = {"tickets_knowledge": 0, "tickets_raw": 0, "keep_money": 675, "keep_details": 136_669}
+    result = await run_scenario(lottery_buy, context(world), CharacterState(), params)
+    assert (result.status, result.reason) == ("nothing", "cant_afford")
+    assert result.details == {
+        "lottery": {"draw": 3285, "short": {"money": 675, "details": 136_669}}
+    }
     assert world.game.payloads() == ["/tickets"]
 
 

@@ -1,6 +1,7 @@
 import asyncio
 import time
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 
@@ -26,8 +27,12 @@ from app.engine.planner.store import MemoryPlannerStore
 from app.engine.planner.types import Act, Decision, Wait
 from app.engine.scenarios.library import ScenarioResult
 from app.engine.scenarios.registry import ScenarioSpec
+from app.engine.settings import Settings
+from app.engine.state.model import CharacterState
 from tests.engine.fakegame import LIVE, World, running_world
 from tests.engine.helpers import until
+from tests.engine.planner.test_obligations import only, state
+from tests.fixtures import game_msg
 
 
 class ShiftClock:
@@ -312,6 +317,108 @@ async def test_lottery_nothing_holds(world: World, reason: str, hold: timedelta)
         Act("lottery_buy", {}, "lottery money"), ScenarioResult("nothing", reason), at, at
     )
     assert rig.loop._cooldowns == {"lottery_buy": at + hold}
+
+
+@pytest.mark.parametrize(
+    ("hour", "minute", "hold"),
+    [
+        # Тираж мог открыться на секунды позже 19:17: до 19:30 «тиража нет» повторяется скоро.
+        (19, 17, timedelta(minutes=2)),
+        (19, 29, timedelta(minutes=2)),
+        (19, 30, timedelta(minutes=30)),
+        (20, 45, timedelta(minutes=30)),
+        # Ручной запуск до окна продажи — прежнее удержание.
+        (19, 16, timedelta(minutes=30)),
+    ],
+)
+async def test_no_draw_at_sale_start_is_retried_soon(
+    world: World, hour: int, minute: int, hold: timedelta
+) -> None:
+    rig = Rig(world)
+    at = datetime(2026, 9, 26, hour, minute, 30, tzinfo=MSK)
+    no_draw = ScenarioResult("nothing", "no_draw")
+    await rig.loop._after(Act("lottery_buy", {}, "lottery_unknown"), no_draw, at, at)
+    assert rig.loop._cooldowns == {"lottery_buy": at + hold}
+
+
+def lottery_only(**lottery: Any) -> Settings:
+    """Из механик по часам — только лотерея (без сна: резерв отеля отдельно), движок — живой."""
+    cfg = only("lottery", lottery=lottery)
+    features = cfg.features.model_copy(update={"sleep": False})
+    return cfg.model_copy(update={"engine": LIVE.engine, "features": features})
+
+
+# Только 💵-билеты, и весь запас 💵 экрана (675) — неприкосновенный.
+MONEY_KEPT = {"tickets": {"knowledge": 0, "raw": 0, "details": 0}, "keep": {"money": 675}}
+
+
+@pytest.fixture
+async def lottery_world() -> AsyncIterator[World]:
+    async for w in running_world(lottery_only(**MONEY_KEPT)):
+        w.game.on_text("/tickets", ("lottery", 3625282))
+        w.game.on_text("/tickets_all", ("lottery", 3625321))
+        yield w
+
+
+def evening_clock() -> ShiftClock:
+    """19:30 MSK послезавтра, дальше идут настоящим ходом: часы впереди настоящих — шлюз
+    принимает ответы не раньше момента отправки."""
+    clock = ShiftClock()
+    real = datetime.now(UTC)
+    day = (real + timedelta(days=2)).astimezone(MSK)
+    clock.shift = datetime(day.year, day.month, day.day, 19, 30, tzinfo=MSK) - real
+    return clock
+
+
+async def test_lottery_cant_afford_waits_for_growth_not_staleness(lottery_world: World) -> None:
+    """Сценарий не нашёл 💵 сверх запаса: 💵 с экрана устарели — не снова экран лотереи, а
+    профиль; профиль без роста — лотерея не открывается."""
+    world = lottery_world
+    clock = evening_clock()
+    world.game.clock = clock
+    profile = game_msg("profile", 3624478)
+    poor = replace(profile, text=(profile.text or "").replace("💵$867", "💵$675"))
+    world.game.on_text("😎Я", poor)
+    seen = ("lottery", "money", "knowledge", "raw", "details")
+
+    def current() -> CharacterState:
+        # Прочее состояние свежее на каждом шаге; лотерея и ресурсы — из конвейера.
+        known = {k: v for k in seen if (v := getattr(world.state, k)) is not None}
+        return state(clock.now()).model_copy(update=known)
+
+    loop = PlannerLoop(
+        gateway=world.gateway,
+        state=current,
+        settings=world.settings,
+        clock=clock,
+        store=MemoryPlannerStore(),
+        notifier=Notes(),
+        ready=lambda: None,
+        step_timeout_s=0.3,
+    )
+    await loop.step()
+    assert world.game.payloads() == ["/tickets"]
+    clock.shift += timedelta(minutes=20)
+    await loop.step()
+    assert world.game.payloads() == ["/tickets", "😎Я"]
+    await loop.step()
+    assert world.game.payloads() == ["/tickets", "😎Я"]
+
+
+async def test_manual_lottery_without_params_keeps_settings(lottery_world: World) -> None:
+    # Без параметров ручной запуск берёт билеты, запасы и резерв, как планировщик: «все билеты
+    # без запаса» потратили бы неприкосновенные 💵.
+    world = lottery_world
+    rig = Rig(world)
+    run_id, _ = await rig.loop.request("lottery_buy", {}, key="l1", by="admin")
+    await rig.loop.run_manual()
+    run = rig.store.runs[run_id - 1]
+    assert (run.status, run.reason) == ("nothing", "cant_afford")
+    assert world.game.payloads() == ["/tickets"]
+    # Присланный параметр важнее настроек.
+    run_id, _ = await rig.loop.request("lottery_buy", {"keep_money": 0}, key="l2", by="admin")
+    await rig.loop.run_manual()
+    assert world.game.payloads()[1:3] == ["/tickets", "💵 => 🤑"]
 
 
 async def test_closed_market_holds_dump_longer(world: World) -> None:

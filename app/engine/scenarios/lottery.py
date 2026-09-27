@@ -77,6 +77,14 @@ def goals(screen: LotteryScreen, params: Params) -> dict[str, Goal]:
     return out
 
 
+def cant_afford(screen: LotteryScreen, short: Mapping[str, int]) -> ScenarioResult:
+    """Ни на один недостающий билет не хватает. Нехватку сверх запасов и резервов снимок тиража
+    не знает (запасы — в настройках): итог несёт валюты и ресурс с экрана, и планировщик ждёт
+    роста ресурса, а не только его устаревания."""
+    note = {"lottery": {"draw": screen.draw, "short": dict(short)}}
+    return ScenarioResult("nothing", "cant_afford", details=note)
+
+
 def buys_all(goals: Mapping[str, Goal]) -> bool:
     """«Купить все» — только когда по каждой валюте цель — весь остаток до лимита и на неё хватает
     сверх запасов и резервов: игра не знает ни целей, ни запасов и купит всё, на что хватит денег в
@@ -122,13 +130,16 @@ async def lottery_buy(
         if not missing:
             return ScenarioResult("nothing", "target_reached")
         if not any(g.can > 0 for g in missing.values()):
-            return ScenarioResult("nothing", "cant_afford")
+            return cant_afford(screen, {c: screen.resources[c] for c in missing})
         if not buys_all(plan):
             return await buy_each(ctx, screen, params, until)
         if ctx.clock.now() >= until:
             return ScenarioResult("nothing", "sale_closed")
         step = await ctx.send(BUY_ALL, _bought(screen.draw))
-        if step.step is Step.OK and step.first(LotteryBought) is not None:
+        bought = step.first(LotteryBought)
+        if step.step is Step.OK and bought is not None:
+            if not any(bought.bought.values()):
+                return ScenarioResult("nothing", "bought_none")
             return ScenarioResult("done", "bought_all")
         return finish(step)
 
@@ -202,8 +213,11 @@ async def buy_each(
     остановки, купленное до неё видно в состоянии."""
     plan = goals(screen, params)
     total, first = 0, True
+    short: dict[str, int] = {}
     for currency in LOTTERY_CURRENCIES:
         if plan[currency].can <= 0:
+            if plan[currency].need > 0:
+                short[currency] = screen.resources[currency]
             continue
         if not first:
             await ctx.safe_point()
@@ -213,28 +227,33 @@ async def buy_each(
             fresh, until = opened
             if fresh.draw != screen.draw:
                 return ScenarioResult("nothing", "draw_changed")
-            plan = goals(fresh, params)
+            screen, plan = fresh, goals(fresh, params)
             if plan[currency].can <= 0:
+                if plan[currency].need > 0:
+                    short[currency] = screen.resources[currency]
                 continue
         first = False
         got = await _buy_currency(ctx, currency, plan[currency].target, until)
         if isinstance(got, ScenarioResult):
             return got
-        total += got
-    return (
-        ScenarioResult("done", "bought_each")
-        if total
-        else ScenarioResult("nothing", "cant_afford")
-    )
+        bought, lacked = got
+        total += bought
+        if lacked:
+            short[currency] = screen.resources[currency]
+    if total:
+        return ScenarioResult("done", "bought_each")
+    if short:
+        return cant_afford(screen, short)
+    return ScenarioResult("nothing", "target_reached")
 
 
 async def _buy_currency(
     ctx: ScenarioContext, currency: str, target: int, until: datetime
-) -> int | ScenarioResult:
-    """Сколько билетов валюты куплено сейчас (0 — цель уже достигнута, на лимите или не хватает
-    по мнению игры) или итог, на котором сценарий останавливается. `target` — сколько должно
-    стать куплено всего: остаток считается по «Куплено» самого экрана валюты — с телефона могли
-    докупить после экрана тиража."""
+) -> tuple[int, bool] | ScenarioResult:
+    """Сколько билетов валюты куплено сейчас и не хватило ли на цель по мнению игры (0 без
+    нехватки — цель уже достигнута или на лимите) или итог, на котором сценарий останавливается.
+    `target` — сколько должно стать куплено всего: остаток считается по «Куплено» самого экрана
+    валюты — с телефона могли докупить после экрана тиража."""
     if ctx.clock.now() >= until:
         return ScenarioResult("nothing", "sale_closed")
     opened = await ctx.send(BUY_ONE[currency], _currency_screen(currency))
@@ -246,7 +265,7 @@ async def _buy_currency(
     while view.bought < target and not (view.short or view.full):
         choice = quantity(msg, target - view.bought)
         if choice is None:
-            break
+            return ScenarioResult("failed", "no_quantity_button")
         _, data = choice
         if ctx.clock.now() >= until:
             return ScenarioResult("nothing", "sale_closed")
@@ -259,9 +278,9 @@ async def _buy_currency(
         )
         after = step.first(LotteryCurrency)
         if step.step is Step.REFUSED and step.reason == "no_money":
-            break
+            return got, True
         if step.step is not Step.OK or after is None or step.delivery is None:
             return finish(step)
         got += after.bought - view.bought
         view, msg = after, step.delivery.msg
-    return got
+    return got, view.short and view.bought < target
