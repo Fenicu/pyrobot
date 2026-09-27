@@ -145,15 +145,15 @@ class ActivityStat(_Frozen):
     raw: float = 0
 
 
-# Стартовые значения — средние по корпусу (mechanics_core §2.4, живой замер переработки и
-# прогулки, конфа — среднее итогов 2025+).
+# Стартовые значения — средние по корпусу (mechanics_core §2.4, живой замер переработки; прогулка
+# и конфа — средние всех итогов 2024–2025 из серверного поиска вместе с провалами).
 DEED_PRIORS = {
     "harvest": ActivityStat(exp=203),
     "job": ActivityStat(exp=117, money=25.7, details=2.3, raw=0.8),
     "learn": ActivityStat(exp=235, knowledge=11),
     "dconv": ActivityStat(exp=253, raw=5),
-    "walk": ActivityStat(exp=253, money=4, raw=1),
-    "confa": ActivityStat(exp=310, knowledge=27),
+    "walk": ActivityStat(exp=173, money=2.6, raw=0.7),
+    "confa": ActivityStat(exp=112, knowledge=31),
 }
 DEFAULT_PRICES = {
     "harvest": PriceState(motivation=1, money=30, minutes=5),

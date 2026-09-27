@@ -411,9 +411,9 @@ def test_no_motivation_waits_for_regen() -> None:
 
 
 def test_cooldown_skips_scenario() -> None:
-    # Следующая по оценке после работы — прогулка ($4 и 🔩 за 1🔥).
+    # Следующая по оценке после работы — переработка (253💡 и 🔩5 за 1🔥 и $5).
     decision = decide(awake(), BASE, NOW, cooldowns={"deed:job": m(5)})
-    assert act(decision) == ("deed:walk", {})
+    assert act(decision) == ("deed:dconv", {})
     assert verdicts(decision)["deed:job"] == "cooldown"
 
 
@@ -421,7 +421,7 @@ def test_deed_prices_from_screen() -> None:
     state = awake().model_copy(
         update={"prices": {"job": obs(PriceState(motivation=3, minutes=2))}}
     )
-    assert act(decide(state, BASE, NOW)) == ("deed:walk", {})
+    assert act(decide(state, BASE, NOW)) == ("deed:dconv", {})
 
 
 def test_sleep_near_deadline_passes_threshold_and_reserve() -> None:

@@ -218,7 +218,7 @@ def test_rob_pro_feasible_by_gorbushka_fights_left(
 
 
 def test_feasibility_estimates_time_and_motivation_until_midnight() -> None:
-    # 23:00 MSK: до сброса час, 🔥 10 и ещё 1 приростом. Прогулке на $48 нужно 12 запусков,
+    # 23:00 MSK: до сброса час, 🔥 10 и ещё 1 приростом. Прогулке на $48 нужно 19 запусков,
     # работе на $132 — 6. Сон выключен: иначе в 23:00 бот уже ложился бы (см. тест про сон).
     walk_first = Settings.model_validate(
         {
@@ -232,6 +232,26 @@ def test_feasibility_estimates_time_and_motivation_until_midnight() -> None:
     assert picked(decision)[1] == {"task": "jobMoney_hard"}
     day = decide(tasks(variants, motivation=10), walk_first, NOW)
     assert picked(day)[1] == {"task": "walkMoney_hard"}
+
+
+def test_walk_and_confa_estimates_are_averages_with_failures() -> None:
+    # Средние всех итогов 2024–2025 вместе с провалами: прогулка даёт $2.6 — на $48 нужно 19
+    # запусков, конфа 31📚 — на 60📚 хватит двух (по 3🔥).
+    settings = Settings.model_validate(
+        {
+            "features": {**DAILY.features.model_dump(), "sleep": False},
+            "strategy": {"deeds": ["harvest", "job", "learn", "dconv", "walk", "confa"]},
+            "daily": {"personal_order": ["walkMoney", "confKnows"]},
+        }
+    )
+    variants = offers("walkMoney_hard", "confKnows_hard")
+    # 13:00: 🔥 3 и ещё 11 до полуночи — на 19 прогулок не хватит.
+    day = decide(tasks(variants, motivation=3), settings, NOW)
+    assert picked(day)[1] == {"task": "confKnows_hard"}
+    # 23:00: 🔥 5 и ещё 1 — ровно на две конфы.
+    late = datetime(2026, 9, 26, 23, 0, tzinfo=MSK)
+    night = decide(tasks(variants, at=late, motivation=5), settings, late)
+    assert picked(night)[1] == {"task": "confKnows_hard"}
 
 
 NO_SLEEP_OR_DEEDS = Settings.model_validate(
