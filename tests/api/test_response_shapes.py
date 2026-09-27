@@ -55,7 +55,8 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
         "mode": "dry_run",
         "paused": False,
         "scenario": "sleep",
-        "next_wake": "2026-09-27T18:00:05.250000Z",
+        # Прежний ответ (jsonable_encoder) отдавал даты через isoformat(), как `now` в /state.
+        "next_wake": "2026-09-27T18:00:05.250000+00:00",
         "killed": False,
         "kill_reason": None,
         "spending_blocked": None,

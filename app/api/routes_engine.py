@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PlainSerializer
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
@@ -13,6 +13,8 @@ from app.engine.tg_auth import AttemptMismatch, TgAuthError, TgBackendError, TgS
 from app.engine.transport.base import FloodWait
 
 router = APIRouter(prefix="/api/v1", tags=["engine"])
+# Даты — через isoformat(), как в прежнем ответе (jsonable_encoder) и `now` в /state: `+00:00`.
+IsoDatetime = Annotated[datetime, PlainSerializer(datetime.isoformat, when_used="json")]
 
 
 def facade(c: Annotated[Container, Depends(container)]) -> EngineFacade:
@@ -52,7 +54,7 @@ class EngineStatusOut(BaseModel):
     paused: bool
     # Сценарий, который сейчас исполняет планировщик.
     scenario: str | None
-    next_wake: datetime | None
+    next_wake: IsoDatetime | None
     killed: bool
     kill_reason: str | None
     spending_blocked: str | None

@@ -1166,7 +1166,8 @@ python tools/openapi.py [файл]` (по умолчанию `openapi.json` в �
 `app/engine/lag.py`, максимум лага за скользящее окно 60с); `ready()` — истина, когда лок и воркеры
 в порядке, Telegram в состоянии `ONLINE`, нет kill switch, нет блока трат и конвейер здоров. `GET
 /api/v1/engine/status` (сессия) отдаёт этот статус целиком (`EngineStatusOut`), включая паузу
-`paused`, текущий сценарий планировщика `scenario` и момент его следующего пробуждения `next_wake`. `POST
+`paused`, текущий сценарий планировщика `scenario` и момент его следующего пробуждения `next_wake`
+(через `isoformat()`, с `+00:00`, как в прежнем ответе и как `now` в `/state`, а не `Z`). `POST
 /api/v1/engine/pause` и `POST /api/v1/engine/resume` (CSRF) сохраняют `engine.paused`, будят
 планировщик и пишут аудит `engine_paused`/`engine_resumed` с логином. Успешные `kill`, `unkill` и `reconciled`
 пишут аудит-уведомление уровня `info` (`engine_killed`, `engine_unkilled`, `engine_reconciled`) с
