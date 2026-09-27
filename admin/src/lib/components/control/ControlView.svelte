@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { ScenarioInfo } from '$lib/api/types';
@@ -22,6 +23,13 @@
 	let refresh = $state(0);
 	const scenario = $derived(scenarios.find((s) => s.name === selected) ?? null);
 
+	// На телефоне форма — под длинным каталогом: после выбора прокрутить к ней.
+	async function pick(name: string) {
+		selected = name;
+		await tick();
+		document.getElementById('runner-title')?.scrollIntoView?.({ block: 'nearest' });
+	}
+
 	$effect(() => {
 		call(api.GET('/api/v1/scenarios'))
 			.then((list) => (scenarios = list))
@@ -31,7 +39,7 @@
 
 {#if error}<p class="card ext-text mb-3 text-sm text-bad-fg" role="alert">{error}</p>{/if}
 <div class="grid gap-3 md:grid-cols-[18rem_minmax(0,1fr)]">
-	<ScenarioCatalog {scenarios} {selected} onselect={(name) => (selected = name)} />
+	<ScenarioCatalog {scenarios} {selected} onselect={pick} />
 	<div class="space-y-3">
 		{#if scenario}
 			{#key scenario.name}

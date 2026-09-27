@@ -82,7 +82,7 @@
 	{/if}
 
 	<div class="grid gap-3 lg:grid-cols-[12rem_minmax(0,1fr)_16rem]">
-		<nav class="space-y-2" aria-label="Секции настроек">
+		<nav class="min-w-0 space-y-2" aria-label="Секции настроек">
 			<label class="relative block">
 				<span class="sr-only">Поиск настройки</span>
 				<Search class="pointer-events-none absolute top-2.5 left-2 size-4 text-fg-faint" aria-hidden="true" />

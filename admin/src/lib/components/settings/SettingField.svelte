@@ -43,7 +43,7 @@
 		<div class="min-w-0 rounded-md {changed ? 'ring-1 ring-accent ring-offset-2 ring-offset-surface' : ''}">
 			{#if field.readOnly}
 				<span class="ext-text text-sm" {id}>{fmtValue(value)}</span>
-				<span class="ml-2 text-xs text-fg-faint">только чтение</span>
+				<span class="ml-2 text-xs whitespace-nowrap text-fg-faint">только чтение</span>
 			{:else}
 				<Widget
 					kind={field.type}
