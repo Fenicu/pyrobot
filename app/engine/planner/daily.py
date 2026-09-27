@@ -81,12 +81,13 @@ class DailyTasks(Obligations):
             return act
         if personal.status != "offers":
             return None
-        offer = self.pick_personal(personal.offers)
-        if offer is None:
+        pick = self.pick_personal(personal.offers)
+        if pick is None:
             self.reject("daily_pick", {}, "no_hard_offer")
             return None
-        task = f"{offer.type}_{offer.level}"
-        return self.act("daily_pick", {"task": task}, f"personal {offer.type}")
+        offer, feasible = pick
+        reason = f"personal {offer.type}" + ("" if feasible else " (not feasible)")
+        return self.act("daily_pick", {"task": f"{offer.type}_{offer.level}"}, reason)
 
     def team_deeds_unknown(self, team: TeamTask) -> bool:
         # Дела неизвестны у задания из строки прогресса; у экранного пустая подсказка — это
@@ -115,9 +116,12 @@ class DailyTasks(Obligations):
             return None
         return self.act("daily_refresh", {}, reason)
 
-    def pick_personal(self, offers: tuple[TaskOfferState, ...]) -> TaskOfferState | None:
+    def pick_personal(
+        self, offers: tuple[TaskOfferState, ...]
+    ) -> tuple[TaskOfferState, bool] | None:
         """Только hard (у всех по 90🏆), среди них — первое по `daily.personal_order`;
-        выполнимые до 24:00 — вперёд, но и невыполнимое лучше, чем никакого."""
+        выполнимые до 24:00 — вперёд, но и невыполнимое лучше, чем никакого. Второе значение —
+        выполнимо ли выбранное."""
         order = self.cfg.daily.personal_order
         rank: dict[str, int] = {kind: i for i, kind in enumerate(order)}
         hard = sorted(
@@ -131,7 +135,7 @@ class DailyTasks(Obligations):
             if offer is not pick:
                 verdict = "ok" if offer in feasible else "not_feasible"
                 self.reject("daily_pick", {"task": f"{offer.type}_{offer.level}"}, verdict)
-        return pick
+        return pick, bool(feasible)
 
     def personal_feasible(self, kind: str, goal: int) -> bool:
         if kind == "robPro":
@@ -210,17 +214,18 @@ class DailyTasks(Obligations):
         if g.state == "need_ticket":
             if not self.ticket_affordable():
                 return 0
-            hours = int(self.awake_between(self.now, deadline) / GORBUSHKA_FIGHT_GAP)
-            return min(g.total or GORBUSHKA_DAILY, hours)
+            return min(g.total or GORBUSHKA_DAILY, self.fight_slots(self.now, deadline))
         if g.state not in ("meeting", "waiting") or g.won is None or g.total is None:
             return 0
         first = max(self.now, g.next_fight_at or self.now)
         end = min(deadline, g.ticket_until) if g.ticket_until else deadline
+        return max(0, min(g.total - g.won, self.fight_slots(first, end)))
+
+    def fight_slots(self, first: datetime, end: datetime) -> int:
+        """Бои в `first` и дальше раз в час вне сна, пока не наступил `end`: бой в сам срок —
+        уже поздно."""
         awake = self.awake_between(first, end)
-        if awake <= timedelta(0):
-            return 0
-        slots = int(awake / GORBUSHKA_FIGHT_GAP) + 1
-        return max(0, min(g.total - g.won, slots))
+        return math.ceil(awake / GORBUSHKA_FIGHT_GAP) if awake > timedelta(0) else 0
 
     # --- приоритет дел заданий
 

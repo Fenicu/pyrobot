@@ -175,7 +175,11 @@ def test_unfeasible_hard_offer_goes_after_feasible() -> None:
 def test_nothing_feasible_takes_first_by_order() -> None:
     # Конфы нет среди разрешённых дел, ⚙️ нет — ни одно не выполнимо, но задание ничего не стоит.
     state = tasks(offers("confKnows_hard", "convDets_hard"), details=0)
-    assert picked(decide(state, DAILY, NOW))[1] == {"task": "convDets_hard"}
+    assert picked(decide(state, DAILY, NOW)) == (
+        "daily_pick",
+        {"task": "convDets_hard"},
+        "personal convDets (not feasible)",
+    )
 
 
 def test_uncertified_deed_makes_task_unfeasible() -> None:
@@ -283,6 +287,16 @@ def test_waits_for_reset_to_reread_tasks() -> None:
     state = tasks(chosen("jobMoney"), gorbushka=GorbushkaState(state="done", comeback_at=m(2000)))
     reset = datetime(2026, 9, 27, 0, 2, tzinfo=MSK)
     assert decide(state, NO_SLEEP_OR_DEEDS, NOW) == Wait(reset + TIMER_MARGIN, "daily_reset", ())
+
+
+def test_task_layers_work_with_daily_tasks_off() -> None:
+    # Задание, выбранное с телефона, бот доделывает и без шага daily.
+    off = Settings.model_validate({"features": QUIET})
+    personal = decide(tasks(chosen("jobMoney")), off, NOW)
+    assert picked(personal) == ("deed:job", {}, "personal jobMoney")
+    assert "daily_refresh" not in verdicts(personal)
+    team_only = tasks(chosen("robPro"), team("dconv"))
+    assert picked(decide(team_only, off, NOW)) == ("deed:dconv", {}, "team dconv 480/720")
 
 
 def test_personal_task_deed_goes_first() -> None:
@@ -432,6 +446,36 @@ def test_rob_pro_after_midnight_counts_fights_after_sleep() -> None:
     variants = offers("convDets_hard", "robPro_hard")
     state = after_midnight(variants, gorbushka=waiting, details=0)
     assert picked(decide(state, DAILY, AFTER_MIDNIGHT))[1] == {"task": "robPro_hard"}
+
+
+@pytest.mark.parametrize(
+    ("at", "gorbushka", "task"),
+    [
+        # Билет сейчас — бои в 20:30, 21:30, 22:30 и 23:30: 4 × 12⚙️ ≥ 39.
+        (datetime(2026, 9, 26, 20, 30, tzinfo=MSK), GorbushkaState(state="need_ticket"), "robPro"),
+        # В 21:00 — только три боя до полуночи: бой в 24:00 — уже завтра.
+        (
+            datetime(2026, 9, 26, 21, 0, tzinfo=MSK),
+            GorbushkaState(state="need_ticket"),
+            "jobMoney",
+        ),
+        (
+            datetime(2026, 9, 26, 20, 50, tzinfo=MSK),
+            GorbushkaState(
+                state="waiting",
+                won=0,
+                total=4,
+                next_fight_at=datetime(2026, 9, 26, 21, 0, tzinfo=MSK),
+            ),
+            "jobMoney",
+        ),
+    ],
+)
+def test_rob_pro_counts_fight_now_and_hourly_before_deadline(
+    at: datetime, gorbushka: GorbushkaState, task: str
+) -> None:
+    state = tasks(offers("robPro_hard", "jobMoney_hard"), at=at, gorbushka=gorbushka)
+    assert picked(decide(state, NO_SLEEP, at))[1] == {"task": f"{task}_hard"}
 
 
 def test_rob_pro_ticket_fights_until_sleep_across_midnight() -> None:
