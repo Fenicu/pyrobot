@@ -3,7 +3,9 @@ from httpx import AsyncClient
 
 from app.api.container import Container
 from app.db.base import Database
+from app.db.models import SettingsHistory
 from app.db.settings_store import DbSettingsStore
+from app.engine.settings import Settings
 from tests.api.conftest import login
 from tests.engine.test_facade import build
 
@@ -111,6 +113,28 @@ async def test_history_pages_with_diffs(with_settings: Container, api_client: As
     assert [i["version"] for i in items] == [1]
     assert items[0]["changes"] == {"food.banana_reserve": [50, 40]}
     assert rest.json()["next_before"] is None
+    whole = (await api_client.get("/api/v1/settings/history", params={"limit": 3})).json()
+    assert [i["version"] for i in whole["items"]] == [3, 2, 1]
+    assert whole["next_before"] is None
+
+
+async def test_history_ignores_sections_missing_in_old_versions(
+    container: Container, clean_db: Database, api_client: AsyncClient
+) -> None:
+    # Версия, записанная до появления секции retention, не даёт ложного изменения.
+    old = Settings().model_dump(mode="json")
+    del old["retention"]
+    new = Settings().model_dump(mode="json")
+    new["food"]["banana_reserve"] = 40
+    async with clean_db.sessions() as s, s.begin():
+        s.add(SettingsHistory(account_id=1, version=1, data=old, changed_by="admin"))
+        s.add(SettingsHistory(account_id=1, version=2, data=new, changed_by="admin"))
+    await login(api_client)
+    items = (await api_client.get("/api/v1/settings/history")).json()["items"]
+    assert [(i["version"], i["changes"]) for i in items] == [
+        (2, {"food.banana_reserve": [50, 40]}),
+        (1, {}),
+    ]
 
 
 async def test_settings_need_engine(container: Container, api_client: AsyncClient) -> None:

@@ -244,7 +244,9 @@ class SettingsProvider(Protocol):
 
     async def update(
         self, change: SettingsChange, *, changed_by: str, expected_version: int | None = None
-    ) -> Settings: ...
+    ) -> tuple[Settings, int]:
+        """Новые настройки и версия, под которой они сохранены."""
+        ...
 
 
 class StaticSettings:
@@ -262,9 +264,9 @@ class StaticSettings:
 
     async def update(
         self, change: SettingsChange, *, changed_by: str, expected_version: int | None = None
-    ) -> Settings:
+    ) -> tuple[Settings, int]:
         if expected_version is not None and expected_version != self._version:
             raise SettingsConflict(f"version {self._version} != {expected_version}")
         self._settings = Settings.model_validate(change(self._settings).model_dump())
         self._version += 1
-        return self._settings
+        return self._settings, self._version

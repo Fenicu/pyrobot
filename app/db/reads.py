@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import Select, and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import distinct_on
 
@@ -284,7 +285,11 @@ class DbReads:
             )
             return len(done.all())
 
-    async def settings_history(self, limit: int, before: int | None) -> list[SettingsVersion]:
+    async def settings_history(
+        self, limit: int, before: int | None
+    ) -> tuple[list[SettingsVersion], int | None]:
+        """До `limit` версий старше `before` от новых к старым, каждая с diff к предыдущей (у
+        самой первой — к дефолтам), и курсор следующей страницы (None — страница последняя)."""
         query = (
             select(SettingsHistory)
             .where(SettingsHistory.account_id == self._account_id)
@@ -295,17 +300,23 @@ class DbReads:
             query = query.where(SettingsHistory.version < before)
         async with self._db.sessions() as session:
             rows = list(await session.scalars(query))
-        defaults = Settings().model_dump(mode="json")
-        out = []
-        # Лишняя строка — предыдущая версия последней на странице; у самой первой — дефолты.
-        for row, prev in zip(rows[:limit], [*rows[1:], None], strict=False):
-            base = prev.data if prev is not None else defaults
-            out.append(
-                SettingsVersion(
-                    row.version, row.changed_by, row.changed_at, settings_diff(base, row.data)
-                )
-            )
-        return out
+        # Лишняя строка — и база diff последней версии страницы, и признак следующей страницы.
+        data = [_settings_json(r.data) for r in rows]
+        bases = [*data[1:], Settings().model_dump(mode="json")]
+        page = [
+            SettingsVersion(r.version, r.changed_by, r.changed_at, settings_diff(base, new))
+            for r, new, base in zip(rows[:limit], data, bases, strict=False)
+        ]
+        return page, (page[-1].version if len(rows) > limit else None)
+
+
+def _settings_json(data: dict[str, Any]) -> dict[str, Any]:
+    # Версия из прошлой сборки — в текущей форме: секция, появившаяся позже, у неё со значениями
+    # по умолчанию, а не отсутствует (иначе diff показал бы её изменённой).
+    try:
+        return Settings.model_validate(data).model_dump(mode="json")
+    except ValidationError:
+        return data
 
 
 def _feed_where(

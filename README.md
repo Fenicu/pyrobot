@@ -955,15 +955,18 @@ code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/tg/logout` (�
 `type` = `unknown_field`/`read_only`/`section_expected` или тип ошибки pydantic). Переход
 `engine.mode` из `dry_run` в `live` требует `confirm_live: true`, иначе 422 с `loc` `["body",
 "confirm_live"]` и `type` `live_requires_confirm`; обратно в `dry_run` подтверждение не нужно.
-Ответ — `{version, values, changed, restart_required}`: `changed` — изменённые листья
-(`путь → [было, стало]`), `restart_required` — те из них, что читаются только при старте процесса
+Ответ — `{version, values, changed, restart_required}`: `version` — версия, под которой сохранено
+именно это изменение (её возвращает `SettingsProvider.update`; следующее изменение, успевшее следом,
+её не подменяет), `changed` — изменённые листья (`путь → [было, стало]`), `restart_required` — те из них, что читаются только при старте процесса
 (`chats.*`, `telegram.*`, `engine.recovered_react_max_age_min`). Любое изменение будит шлюз (стоящие
 в очереди действия перепроверяются по новым правилам) и планировщик (смена режима сбрасывает
 отложенные подавлением сценарии; идущий запуск доигрывает в режиме своего старта, см. «Политика
 шлюза»); смена режима пишет аудит `engine_mode` с логином. `GET
 /api/v1/settings/history?limit&before` (сессия, работает и без движка) — версии от новых к старым с
 автором, моментом и `changes` относительно предыдущей версии (у первой — относительно дефолтов);
-`next_before` — курсор следующей страницы.
+`next_before` — курсор следующей страницы. Версии сравниваются в текущей форме модели
+(`Settings.model_validate`): у версии, записанной до появления секции, секция считается со
+значениями по умолчанию, а не изменённой.
 
 `GET /api/v1/journal` (сессия, работает и без движка) — общая лента журнала: сообщения (`messages`,
 момент — `received_at`), действия (`actions`, `created_at`) и решения планировщика (`decisions`,

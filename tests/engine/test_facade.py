@@ -196,3 +196,19 @@ async def test_patch_settings_wakes_planner_and_audits_mode() -> None:
     assert f.status().mode == "dry_run"
     with pytest.raises(SettingsConflict):
         await f.patch_settings({"engine": {"action_ttl_s": 5}}, version=1, by="bob")
+
+
+async def test_patch_reports_version_it_wrote() -> None:
+    settings = StaticSettings()
+
+    class Racing(_Recorder):
+        async def notify(self, level: str, code: str, text: str) -> None:
+            await super().notify(level, code, text)
+            # Другое изменение настроек успевает, пока PATCH пишет аудит.
+            await settings.update(lambda s: s, changed_by="other")
+
+    f = build(settings=settings, notifier=Racing())
+    upd = await f.patch_settings(
+        {"engine": {"mode": "live"}}, version=0, by="admin", confirm_live=True
+    )
+    assert (upd.version, settings.version) == (1, 2)

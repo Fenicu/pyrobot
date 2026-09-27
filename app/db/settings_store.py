@@ -42,7 +42,7 @@ class DbSettingsStore:
 
     async def update(
         self, change: SettingsChange, *, changed_by: str, expected_version: int | None = None
-    ) -> Settings:
+    ) -> tuple[Settings, int]:
         async with self._lock:
             if expected_version is not None and expected_version != self._version:
                 raise SettingsConflict(f"version {self._version} != {expected_version}")
@@ -77,4 +77,4 @@ class DbSettingsStore:
                 listener(new, version)
             except Exception:
                 log.exception("settings listener failed")
-        return new
+        return new, version

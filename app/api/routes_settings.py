@@ -107,8 +107,7 @@ async def settings_history(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     before: Annotated[int | None, Query(ge=1)] = None,
 ) -> SettingsHistoryOut:
-    rows = await c.reads.settings_history(limit + 1, before)
-    page = rows[:limit]
+    page, next_before = await c.reads.settings_history(limit, before)
     return SettingsHistoryOut(
         items=[
             SettingsVersionOut(
@@ -119,5 +118,5 @@ async def settings_history(
             )
             for r in page
         ],
-        next_before=page[-1].version if len(rows) > limit else None,
+        next_before=next_before,
     )

@@ -233,7 +233,7 @@ class EngineFacade:
             before.append(s)
             return new
 
-        new = await self.settings.update(change, changed_by=by, expected_version=version)
+        new, saved = await self.settings.update(change, changed_by=by, expected_version=version)
         old = before[-1]
         await self.gateway.wake()
         if self._planner is not None:
@@ -243,7 +243,7 @@ class EngineFacade:
                 "engine_mode", f"mode {old.engine.mode} -> {new.engine.mode} by {by}"
             )
         changed = settings_diff(old.model_dump(mode="json"), new.model_dump(mode="json"))
-        return SettingsUpdate(new, self.settings.version, changed)
+        return SettingsUpdate(new, saved, changed)
 
     async def reconciled(self, *, by: str) -> None:
         log.info("spending unblocked by %s", by)

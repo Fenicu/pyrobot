@@ -19,7 +19,8 @@ async def test_persist_reload_and_history(clean_db: Database) -> None:
     store = DbSettingsStore(clean_db, account_id=1)
     await store.load()
     assert store.version == 0 and store.current.engine.mode == "dry_run"
-    await store.update(_to_live, changed_by="admin")
+    saved, version = await store.update(_to_live, changed_by="admin")
+    assert (saved.engine.mode, version) == ("live", 1)
     again = DbSettingsStore(clean_db, account_id=1)
     await again.load()
     assert again.version == 1 and again.current.engine.mode == "live"
