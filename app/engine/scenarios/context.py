@@ -232,8 +232,6 @@ class ScenarioContext:
                 matched.append(delivery)
             return match
 
-        if self._lease is not None:
-            await self._gateway.set_safe_point(self._lease, False)
         result = await self._gateway.submit(
             ActionRequest(
                 kind=kind,

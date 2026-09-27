@@ -4,11 +4,12 @@ from collections.abc import AsyncIterator
 import pytest
 
 from app.engine.events import AntiFlood
-from app.engine.gateway.types import ActionStatus, Source
+from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.settings import Settings
 from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
 from app.engine.transport.fake import Sent
-from tests.engine.gateway_rig import LIVE, Rig, expect_text, running_rig, send
+from app.engine.types import Button
+from tests.engine.gateway_rig import GAME, LIVE, Rig, expect_text, running_rig, send
 from tests.engine.helpers import make_msg, until
 
 
@@ -193,6 +194,48 @@ async def test_spending_block(rig: Rig) -> None:
     rig.reply_with("Ты отправился работать")
     res = await rig.gw.submit(send("/job", expect=expect_text("работать")))
     assert res.status is ActionStatus.CONFIRMED
+
+
+def click(data: str, **kw: object) -> ActionRequest:
+    return ActionRequest(
+        kind=ActionKind.CLICK,
+        chat_id=GAME,
+        message_id=5,
+        data=data,
+        **kw,  # type: ignore[arg-type]
+    )
+
+
+async def test_spending_block_lets_only_wake_click_through(rig: Rig) -> None:
+    buttons = (Button("Проснуться", 0, 0, "rob_awake_7"), Button("Бой", 0, 1, "gorbushka_fight"))
+    rig.latest[(GAME, 5)] = make_msg("Опа, тебя начал грабить", msg_id=5, buttons=buttons)
+    rig.gw.block_spending("reconcile_required")
+    fight = await rig.gw.submit(click("gorbushka_fight", expect=expect_text("продаван")))
+    assert (fight.status, fight.reason) == (ActionStatus.REJECTED, "blocked:reconcile_required")
+    rig.reply_with("Отлично, ты проснулся")
+    wake = await rig.gw.submit(click("rob_awake_7", expect=expect_text("проснулся")))
+    assert wake.status is ActionStatus.CONFIRMED
+    assert rig.gw.spending_blocked == "reconcile_required"
+
+
+async def test_safe_point_lasts_until_owner_step_is_picked(rig: Rig) -> None:
+    lease = await rig.gw.acquire_lease("scenario")
+    await rig.gw.set_safe_point(lease, True)
+    owner = asyncio.create_task(
+        rig.gw.submit(send("/job", expect=expect_text("работать"), lease_token=lease.token))
+    )
+    await until(lambda: len(rig.transport.sent) == 1)
+    # Шаг аренды выбран — безопасная точка закрыта: срочное ждёт следующей.
+    assert lease.safe is False
+    urgent = asyncio.create_task(rig.gw.submit(send("😎Я", source=Source.URGENT)))
+    await until(lambda: rig.gw.queue_size == 1)
+    await rig.deliver(make_msg("Ты отправился работать"))
+    await owner
+    await asyncio.sleep(0.02)
+    assert not urgent.done()
+    await rig.gw.set_safe_point(lease, True)
+    assert (await urgent).status is ActionStatus.CONFIRMED
+    await rig.gw.release_lease(lease)
 
 
 async def test_cancelled_keyed_submit_is_not_withdrawn() -> None:

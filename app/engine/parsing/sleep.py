@@ -30,6 +30,7 @@ _ROBBERY = re.compile(
     r"\AОтлично, ты проснулся и произошла схватка с грабителем (?P<robber>.+?) "
     r"\((?P<lvl>\d+)\)\nТы (?P<res>победил|проиграл) в схватке"
 )
+_ALERT = re.compile(r"\AОпа, тебя начал грабить (?P<robber>.+?) \((?P<lvl>\d+)\)\. Просыпайся!")
 _ACKS: tuple[tuple[str, str], ...] = (
     ("hotel_ack", "Ты потратился на отель"),
     ("bridge_ack", "Ты решил не тратиться на отель"),
@@ -87,6 +88,16 @@ class RobberyFight(Event):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class RobberyAlert(Event):
+    """Грабят спящего под мостом: кнопка `rob_awake_<n>` этого сообщения будит, и игра правит его
+    на итог драки (`RobberyFight`)."""
+
+    kind: ClassVar[str] = "robbery_alert"
+    robber: str
+    level: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Acknowledged(Event):
     kind: ClassVar[str] = "acknowledged"
     topic: str
@@ -124,6 +135,8 @@ def recognize_sleep(msg: IncomingMessage) -> list[Event]:
                 rewards=parse_rewards(text),
             )
         ]
+    if m := _ALERT.match(text):
+        return [RobberyAlert(robber=m["robber"], level=int(m["lvl"]))]
     for topic, prefix in _ACKS:
         if text.startswith(prefix):
             return [Acknowledged(topic=topic)]

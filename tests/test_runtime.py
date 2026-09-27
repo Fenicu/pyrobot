@@ -78,6 +78,8 @@ async def test_fake_runtime_login_to_ready(clean_db: Database) -> None:
             assert (await client.get("/readyz")).status_code == 200
             status = (await client.get("/api/v1/engine/status")).json()
             assert status["mode"] == "dry_run" and status["lock_ok"] is True
+            # Реакция на ограбление — своя задача под супервизором.
+            assert "reactions" in app.state.runtime.supervisor._tasks
 
 
 async def test_second_runtime_does_not_start_engine(clean_db: Database) -> None:

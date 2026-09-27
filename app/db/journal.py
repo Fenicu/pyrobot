@@ -1,7 +1,9 @@
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.base import Database
@@ -44,6 +46,27 @@ class DbJournal:
                 select(StateSnapshot).where(StateSnapshot.account_id == self._account_id)
             )
         return (dict(row.state), row.version) if row else ({}, 0)
+
+    async def messages_with_event(
+        self, chat_id: int, kind: str, since: datetime
+    ) -> list[IncomingMessage]:
+        """Последние записанные ревизии сообщений чата, у которых ревизия не раньше `since` дала
+        событие `kind` (тревоги ограбления, оставшиеся от прошлого процесса)."""
+        base = (MessageRow.account_id == self._account_id, MessageRow.chat_id == chat_id)
+        marked = (
+            select(MessageRow.msg_id)
+            .where(*base, MessageRow.date >= since, MessageRow.events.contains([{"kind": kind}]))
+            .scalar_subquery()
+        )
+        query = (
+            select(MessageRow)
+            .where(*base, MessageRow.msg_id.in_(marked))
+            .order_by(MessageRow.msg_id, MessageRow.id.desc())
+            .ext(distinct_on(MessageRow.msg_id))
+        )
+        async with self._db.sessions() as session:
+            rows = await session.scalars(query)
+            return [_restored(row) for row in rows]
 
     async def revisions(self, chat_id: int, msg_id: int) -> list[IncomingMessage]:
         """Все записанные правки сообщения в порядке журнала."""

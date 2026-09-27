@@ -28,6 +28,20 @@ class MemoryJournal:
     async def revisions(self, chat_id: int, msg_id: int) -> list[IncomingMessage]:
         return [m for m, _ in self.rows if (m.chat_id, m.msg_id) == (chat_id, msg_id)]
 
+    async def messages_with_event(
+        self, chat_id: int, kind: str, since: datetime
+    ) -> list[IncomingMessage]:
+        ids = {
+            m.msg_id
+            for m, events in self.rows
+            if m.chat_id == chat_id and m.date >= since and any(e.kind == kind for e in events)
+        }
+        latest: dict[int, IncomingMessage] = {}
+        for m, _ in self.rows:
+            if m.chat_id == chat_id and m.msg_id in ids:
+                latest[m.msg_id] = m
+        return [latest[i] for i in sorted(latest)]
+
     async def append(
         self,
         msg: IncomingMessage,

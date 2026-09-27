@@ -1,16 +1,19 @@
 """Команду, которую игра принимает только со своего экрана, сценарий шлёт сразу после экрана:
 безопасной точки между ними нет. Пауза (её проверяет безопасная точка) пару не разрывает."""
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 
+from app.engine.gateway.types import ActionKind, ActionRequest, ActionResult, Source
 from app.engine.scenarios.context import ScenarioContext
 from app.engine.scenarios.library import fastfood, free_item, levelup, run_scenario
 from app.engine.scenarios.metro import metro
 from app.engine.scenarios.obligations import battle_target, smoothie, stocks_dump
 from app.engine.state.model import CharacterState, Obs, Skills
+from app.engine.types import IncomingMessage
 from tests.engine.fakegame import GAME, Ref, World
 from tests.engine.metro.simgame import enter_with_real_frames
 from tests.engine.scenarios.certify import certifies
@@ -104,3 +107,27 @@ async def test_metro_button_follows_office_menu(world: World) -> None:
     result = await run_scenario(metro, ctx, CharacterState(), {})
     assert (result.status, result.reason) == ("stopped", "paused")
     assert world.game.payloads() == ["🏢Офис", "🚇Метро"]
+
+
+async def test_manual_nav_waits_out_screen_and_open_command(world: World) -> None:
+    """Ручная навигация, поданная, пока идёт открытие коробки, ждёт в очереди: между экраном
+    рюкзака и /unbox она не проходит — только после аренды."""
+    world.game.on_text("/inv", ("items", 3625715))
+    world.game.on_text("/unbox", ("items", 3625717))
+    world.game.on_text("😎Я", ("profile", 3624478))
+    queued: list[asyncio.Task[ActionResult]] = []
+    push = world.game._push
+
+    async def pushed(msg: IncomingMessage) -> None:
+        await push(msg)
+        if (msg.text or "").startswith("Гаджеты при тебе") and not queued:
+            request = ActionRequest(
+                kind=ActionKind.SEND, chat_id=GAME, text="😎Я", source=Source.MANUAL
+            )
+            queued.append(asyncio.create_task(world.gateway.submit(request)))
+
+    world.game._push = pushed  # type: ignore[method-assign]
+    result = await run_scenario(free_item, context(world), CharacterState(), {"item": "prizebox"})
+    await asyncio.gather(*queued)
+    assert result.status == "done"
+    assert world.game.payloads() == ["/inv", "/unbox", "😎Я"]

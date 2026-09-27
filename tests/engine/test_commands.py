@@ -6,6 +6,7 @@ from app.engine.commands import (
     classify_text,
     feature_of_callback,
     feature_of_text,
+    spends_nothing_callback,
 )
 
 N, A, R, F, D = (
@@ -102,6 +103,9 @@ def test_classify_text(text: str, expected: CommandClass) -> None:
         ("pet_feast_accept_mouse", A),
         ("t_jobMoney_hard_confirm", A),
         ("tasksel_decline", N),
+        ("rob_awake_1106993", A),
+        ("rob_awake_", F),
+        ("rob_awake_12x", F),
         ("mether_buy_coins", D),
         ("unknown_cb", F),
     ],
@@ -254,6 +258,7 @@ def test_feature_of_text(text: str, feature: str | None) -> None:
         ("buys_hooli", "stocks_dump"),
         ("t_convDets_hard_confirm", "daily_tasks"),
         ("tasksel_decline", None),
+        ("rob_awake_35401851", "robbery_defense"),
     ],
 )
 def test_feature_of_callback(data: str, feature: str | None) -> None:
@@ -266,3 +271,9 @@ def test_feature_names_exist_in_settings() -> None:
 
     names = {f for _, f in (*_FEATURE_TEXT, *_FEATURE_CALLBACK)}
     assert names <= set(FeaturesSection.model_fields)
+
+
+def test_only_wake_click_spends_nothing() -> None:
+    assert spends_nothing_callback("rob_awake_1106993")
+    for data in ("rob_awake_", "gorbushka_fight", "sleep_Bridge", "t_x_hard_confirm"):
+        assert not spends_nothing_callback(data)

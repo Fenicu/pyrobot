@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI
 
@@ -28,8 +28,10 @@ from app.engine.facade import EngineFacade
 from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.lag import LoopLagMonitor
 from app.engine.parsing import default_parser
+from app.engine.parsing.sleep import RobberyAlert
 from app.engine.pipeline import Pipeline
 from app.engine.planner.loop import PlannerLoop
+from app.engine.reactions import RobberyDefense
 from app.engine.reconcile import Reconciler
 from app.engine.scenarios.context import History, Reread
 from app.engine.settings import Settings
@@ -125,6 +127,7 @@ class Runtime:
         self.tg: TgAuthManager | None = None
         self.facade: EngineFacade | None = None
         self.planner: PlannerLoop | None = None
+        self.reactions: RobberyDefense | None = None
         self.transport: Transport | None = None
         self._kurigram: KurigramTransport | None = None
 
@@ -231,6 +234,20 @@ class Runtime:
             reread=live_reread(transport, pipeline),
             auto=self.config.planner,
         )
+        game_chat = settings.current.chats.game_chat_id
+
+        async def journaled_alerts(since: datetime) -> list[IncomingMessage]:
+            return await journal.messages_with_event(game_chat, RobberyAlert.kind, since)
+
+        self.reactions = RobberyDefense(
+            gateway=gateway,
+            settings=settings,
+            reread=live_reread(transport, pipeline),
+            notifier=self.notifier,
+            alerts=journaled_alerts,
+            ready=lambda: self._can_send() is None,
+        )
+        bus.subscribe(self.reactions.on_delivery, priority=20)
         bus.subscribe(self.planner.on_delivery, priority=90)
         bus.subscribe(StreamFeed(self.stream, lambda: pipeline.state).on_delivery, priority=95)
         lag = LoopLagMonitor()
@@ -252,6 +269,7 @@ class Runtime:
         self.supervisor.start("pipeline", pipeline.run)
         self.supervisor.start("gateway", self.gateway.run)
         self.supervisor.start("reconcile", reconciler.run)
+        self.supervisor.start("reactions", self.reactions.run)
         # Без PYROBOT_PLANNER цикл всё равно нужен: он исполняет ручные запуски сценариев.
         self.supervisor.start("planner", self.planner.run)
         self.supervisor.start("lag", lag.run)

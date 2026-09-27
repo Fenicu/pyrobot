@@ -61,3 +61,34 @@ async def test_revisions_of_message_in_journal_order(clean_db: Database) -> None
     assert revisions[0].inline == buttons and revisions[0].button("maze_up") is not None
     assert (revisions[1].kind, revisions[1].revision) == ("edit", 5)
     assert await journal.revisions(first.chat_id, 404) == []
+
+
+async def test_messages_with_event_give_latest_revision(clean_db: Database) -> None:
+    from datetime import timedelta
+
+    from app.engine.parsing.common import Rewards
+    from app.engine.parsing.sleep import RobberyAlert, RobberyFight
+    from app.engine.types import Button
+    from tests.engine.helpers import now
+
+    journal = DbJournal(clean_db, account_id=1)
+    wake = (Button("Проснуться", 0, 0, "rob_awake_7"),)
+    alert = RobberyAlert(robber="X", level=50)
+    fought = RobberyFight(won=True, robber="X", robber_level=50, rewards=Rewards())
+    moment = now()
+    # Тревога без итога, тревога с итогом-правкой и старая тревога.
+    open_alert = make_msg("Опа", msg_id=10, date=moment, buttons=wake)
+    await journal.append(open_alert, [alert], None, 1)
+    await journal.append(make_msg("Опа", msg_id=11, date=moment, buttons=wake), [alert], None, 1)
+    edit = make_msg("Отлично", msg_id=11, kind="edit", revision=5, date=moment)
+    await journal.append(edit, [fought], None, 1)
+    old = make_msg("Опа", msg_id=12, date=moment - timedelta(minutes=30), buttons=wake)
+    await journal.append(old, [alert], None, 1)
+    await journal.append(make_msg("другое", msg_id=13, date=moment), [], None, 1)
+    found = await journal.messages_with_event(
+        open_alert.chat_id, "robbery_alert", moment - timedelta(minutes=10)
+    )
+    assert [(m.msg_id, m.revision, bool(m.inline)) for m in found] == [
+        (10, 0, True),
+        (11, 5, False),
+    ]

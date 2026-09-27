@@ -64,6 +64,7 @@ class FeaturesSection(BaseModel):
     arena: bool = False
     pet_feast: bool = False
     daily_tasks: bool = True
+    robbery_defense: bool = True
     paid_info: bool = False
     seasonal: bool = False
 

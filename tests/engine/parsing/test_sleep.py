@@ -4,6 +4,7 @@ from app.engine.events import Event
 from app.engine.parsing.sleep import (
     Acknowledged,
     FellAsleep,
+    RobberyAlert,
     RobberyFight,
     SleepMenu,
     SleepPlace,
@@ -57,6 +58,20 @@ def test_robbery_fight() -> None:
         41,
         259,
     )
+
+
+def test_robbery_alert_with_wake_button() -> None:
+    msg = game_msg("sleep", 3420238)
+    assert recognize_sleep(msg) == [RobberyAlert(robber="🤖[HZ]\xa0Infested", level=72)]
+    assert msg.button("rob_awake_1106993") is not None
+
+
+def test_robbery_fight_without_plus_sign() -> None:
+    # Победа 18.09: «💵Деньги: $21» без знака — это прибавка.
+    [won] = _events(3621947)
+    assert isinstance(won, RobberyFight)
+    assert (won.won, won.robber, won.robber_level) == (True, "📯Stiven King", 54)
+    assert (won.rewards.exp, won.rewards.money, won.rewards.stamina) == (191, 21, 100)
 
 
 def test_live_sleep_with_place_step() -> None:

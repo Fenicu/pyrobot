@@ -214,3 +214,9 @@ def test_daily_personal_order() -> None:
         Settings.model_validate({"daily": {"personal_order": ["convDets", "lottery"]}})
     patched = apply_patch(Settings(), {"daily": {"personal_order": ["jobMoney"]}})
     assert patched.daily.personal_order == ("jobMoney",)
+
+
+def test_robbery_defense_on_by_default_and_for_saved_dumps() -> None:
+    saved = Settings().model_dump(mode="json")
+    del saved["features"]["robbery_defense"]
+    assert Settings.model_validate(saved).features.robbery_defense

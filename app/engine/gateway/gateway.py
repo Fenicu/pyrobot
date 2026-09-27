@@ -17,6 +17,7 @@ from app.engine.commands import (
     classify_text,
     feature_of_callback,
     feature_of_text,
+    spends_nothing_callback,
 )
 from app.engine.events import AntiFlood
 from app.engine.gateway.store import CANCELLED, ActionStore, DuplicateKey
@@ -101,6 +102,10 @@ def command_class(req: ActionRequest) -> CommandClass:
 def _answer_chat(req: ActionRequest) -> int:
     expect = req.expect
     return expect.chat_id if expect is not None and expect.chat_id is not None else req.chat_id
+
+
+def spends_nothing(req: ActionRequest) -> bool:
+    return req.kind is ActionKind.CLICK and spends_nothing_callback(req.data or "")
 
 
 def command_feature(req: ActionRequest) -> str | None:
@@ -386,7 +391,11 @@ class ActionGateway:
             return ActionStatus.SUPPRESSED, "dry_run"
         if req.simulate and cls is not CommandClass.NAV:
             return ActionStatus.SUPPRESSED, "uncertified"
-        if self._spend_block is not None and cls is not CommandClass.NAV:
+        if (
+            self._spend_block is not None
+            and cls is not CommandClass.NAV
+            and not spends_nothing(req)
+        ):
             return ActionStatus.REJECTED, f"blocked:{self._spend_block}"
         return None
 
@@ -471,6 +480,11 @@ class ActionGateway:
                     if ready:
                         chosen = min(ready, key=lambda p: (p.req.source, p.seq))
                         self._queue.remove(chosen)
+                        lease = self._lease
+                        if lease is not None and chosen.req.lease_token == lease.token:
+                            # Безопасная точка длится до выбора следующего шага аренды: срочное
+                            # и ручное, поданные до него, уже прошли вперёд по приоритету.
+                            lease.safe = False
                         return chosen
                     timeout = self._nearest_deadline()
                     if paused > 0:

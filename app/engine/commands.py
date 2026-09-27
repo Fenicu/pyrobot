@@ -322,6 +322,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"pet_feast_accept_\w+\Z",
         r"spring_roll_smiles\Z",
         r"t_\w+_confirm\Z",
+        r"rob_awake_\d+\Z",
     ),
 )
 
@@ -381,8 +382,12 @@ _FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"pet_feast_accept_", "pet_feast"),
         (r"spring_roll_smiles\Z", "seasonal"),
         (r"t_\w+_confirm\Z", "daily_tasks"),
+        (r"rob_awake_\d+\Z", "robbery_defense"),
     )
 )
+# Не тратят ничего: блок трат (неизвестный исход, рестарт до сверки) их не держит. Проснуться при
+# ограблении — единственный способ не потерять 30% 💵.
+_SPEND_FREE_CALLBACK = re.compile(r"rob_awake_\d+\Z")
 
 
 def feature_of_text(text: str) -> str | None:
@@ -392,3 +397,7 @@ def feature_of_text(text: str) -> str | None:
 
 def feature_of_callback(data: str) -> str | None:
     return next((f for p, f in _FEATURE_CALLBACK if p.match(data)), None)
+
+
+def spends_nothing_callback(data: str) -> bool:
+    return _SPEND_FREE_CALLBACK.match(data) is not None
