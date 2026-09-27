@@ -18,7 +18,8 @@ from app.engine.state.model import (
 )
 
 NOW = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
-# Механики календаря фазы 4 проверяются в test_obligations.py; здесь — слой 2.
+# Механики календаря фазы 4 проверяются в test_obligations.py, задания — в test_daily.py; здесь —
+# слой 2.
 QUIET = {
     "stocks_dump": False,
     "factory": False,
@@ -26,6 +27,7 @@ QUIET = {
     "tangerine": False,
     "smoothie": False,
     "metro": False,
+    "daily_tasks": False,
 }
 
 

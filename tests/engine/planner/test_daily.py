@@ -1,0 +1,416 @@
+from datetime import date, datetime, timedelta
+from typing import Any
+
+import pytest
+
+from app.engine.gametime import MSK, tasks_day
+from app.engine.parsing.daily import PERSONAL_DEEDS
+from app.engine.planner.base import TIMER_MARGIN
+from app.engine.planner.decide import decide
+from app.engine.planner.types import Act, Decision, Wait
+from app.engine.scenarios.registry import CERTIFIED
+from app.engine.settings import Settings
+from app.engine.state.model import (
+    BusyState,
+    CharacterState,
+    ChosenTaskState,
+    GorbushkaState,
+    Obs,
+    PersonalTask,
+    TaskOfferState,
+    TeamTask,
+)
+from tests.engine.planner.test_decide import NOW, QUIET, awake, m, verdicts
+
+# NOW — 13:00 MSK 26.09: до сброса заданий 11 часов.
+TODAY = tasks_day(NOW)
+YESTERDAY = TODAY - timedelta(days=1)
+DAILY = Settings.model_validate({"features": {**QUIET, "daily_tasks": True}})
+GOALS = {
+    "convDets": 72,
+    "robPro": 39,
+    "jobMoney": 132,
+    "materials": 12,
+    "learnKnows": 36,
+    "walkMoney": 48,
+    "confKnows": 60,
+}
+RESOURCES = {"convDets": "⚙️", "robPro": "⚙️", "jobMoney": "💵", "walkMoney": "💵"}
+TROPHIES = {"easy": 30, "medium": 60, "hard": 90}
+NO_TEAM = TeamTask(current=0, goal=0, resource="", day=TODAY, status="none")
+
+
+def offers(*tasks: str, day: date = TODAY) -> PersonalTask:
+    variants = []
+    for task in tasks:
+        kind, level = task.split("_")
+        goal = GOALS[kind] * TROPHIES[level] // 90
+        variants.append(
+            TaskOfferState(type=kind, level=level, goal=goal, trophies=TROPHIES[level])
+        )
+    return PersonalTask(day=day, status="offers", offers=tuple(variants))
+
+
+def chosen(kind: str, current: int = 0, status: str = "active", day: date = TODAY) -> PersonalTask:
+    task = ChosenTaskState(
+        type=kind,
+        level="hard",
+        goal=GOALS[kind],
+        resource=RESOURCES.get(kind, "📚"),
+        activities=PERSONAL_DEEDS[kind],
+    )
+    return PersonalTask.model_validate(
+        {"day": day, "status": status, "chosen": task, "current": current}
+    )
+
+
+def team(*activities: str, current: int = 480, goal: int = 720) -> TeamTask:
+    return TeamTask(current=current, goal=goal, resource="⚙️", day=TODAY, activities=activities)
+
+
+def tasks(
+    personal: PersonalTask,
+    team_task: TeamTask | Obs[TeamTask] = NO_TEAM,
+    at: datetime = NOW,
+    **over: Any,
+) -> CharacterState:
+    return awake(at, daily_personal=personal, team_task=team_task, **over)
+
+
+def picked(decision: Decision) -> tuple[str, dict[str, Any], str]:
+    assert isinstance(decision, Act), decision
+    return decision.scenario, decision.params, decision.reason
+
+
+def test_unknown_tasks_are_refreshed() -> None:
+    assert picked(decide(awake(), DAILY, NOW)) == ("daily_refresh", {}, "tasks unknown")
+    old = tasks(chosen("jobMoney", day=YESTERDAY))
+    assert picked(decide(old, DAILY, NOW))[0] == "daily_refresh"
+    no_team = awake(daily_personal=chosen("jobMoney"))
+    assert picked(decide(no_team, DAILY, NOW))[0] == "daily_refresh"
+
+
+def test_refresh_at_most_every_ten_minutes() -> None:
+    decision = decide(awake(), DAILY, NOW, last_refresh={"daily": m(-3)})
+    assert picked(decision)[0] == "deed:harvest"
+    assert verdicts(decision)["daily_refresh"] == "rate_limited"
+    idle = decide(awake(motivation=0), DAILY, NOW, last_refresh={"daily": m(-3)})
+    assert idle == Wait(m(7) + TIMER_MARGIN, "refresh:daily", idle.candidates)
+
+
+def test_failed_refresh_waits_its_cooldown() -> None:
+    decision = decide(awake(), DAILY, NOW, cooldowns={"daily_refresh": m(20)})
+    assert picked(decision)[0] == "deed:harvest"
+    assert verdicts(decision)["daily_refresh"] == "cooldown"
+
+
+def test_team_with_unknown_deeds_is_refreshed() -> None:
+    # Задание из строки прогресса: дел не знаем — экран перечитывается.
+    from_line = Obs(value=team(), at=NOW, src="derived")
+    unknown = tasks(chosen("jobMoney"), team_task=from_line)
+    assert picked(decide(unknown, DAILY, NOW)) == ("daily_refresh", {}, "team deeds unknown")
+    # Экран с незнакомой подсказкой: дела известны (их нет), перечитывать бесполезно.
+    shown = tasks(chosen("jobMoney"), team())
+    assert picked(decide(shown, DAILY, NOW))[0] == "deed:job"
+    known = tasks(chosen("jobMoney"), NO_TEAM)
+    assert picked(decide(known, DAILY, NOW))[0] == "deed:job"
+
+
+def test_daily_runs_during_deed_but_not_in_sleep() -> None:
+    busy = awake(busy=BusyState(activity="job", until=m(2)))
+    assert picked(decide(busy, DAILY, NOW))[0] == "daily_refresh"
+    sleeping = awake(busy=BusyState(activity="sleep_hotel", until=m(300)))
+    assert decide(sleeping, DAILY, NOW) == Wait(m(300) + TIMER_MARGIN, "busy", ())
+
+
+def test_feature_off_skips_daily_step() -> None:
+    off = decide(awake(), Settings.model_validate({"features": QUIET}), NOW)
+    assert picked(off)[0] == "deed:harvest"
+    assert "daily_refresh" not in verdicts(off)
+
+
+def test_hard_offer_first_by_order() -> None:
+    state = tasks(
+        offers(
+            "convDets_easy", "materials_medium", "jobMoney_hard", "convDets_hard", "materials_hard"
+        )
+    )
+    assert picked(decide(state, DAILY, NOW)) == (
+        "daily_pick",
+        {"task": "convDets_hard"},
+        "personal convDets",
+    )
+    own = Settings.model_validate(
+        {
+            "features": DAILY.features.model_dump(),
+            "daily": {"personal_order": ["materials", "jobMoney"]},
+        }
+    )
+    assert picked(decide(state, own, NOW))[1] == {"task": "materials_hard"}
+
+
+def test_types_missing_from_order_go_last() -> None:
+    own = Settings.model_validate(
+        {"features": DAILY.features.model_dump(), "daily": {"personal_order": ["learnKnows"]}}
+    )
+    state = tasks(offers("convDets_hard", "learnKnows_hard"))
+    assert picked(decide(state, own, NOW))[1] == {"task": "learnKnows_hard"}
+
+
+def test_without_hard_offer_nothing_is_taken() -> None:
+    decision = decide(tasks(offers("convDets_easy", "jobMoney_medium")), DAILY, NOW)
+    assert picked(decision)[0] == "deed:harvest"
+    assert verdicts(decision)["daily_pick"] == "no_hard_offer"
+
+
+def test_unfeasible_hard_offer_goes_after_feasible() -> None:
+    # Без ⚙️ переработать 72 нельзя: берётся следующее по порядку.
+    state = tasks(offers("convDets_hard", "jobMoney_hard"), details=0)
+    decision = decide(state, DAILY, NOW)
+    assert picked(decision)[:2] == ("daily_pick", {"task": "jobMoney_hard"})
+    rejected = [c for c in decision.candidates if c.params == {"task": "convDets_hard"}]
+    assert [c.verdict for c in rejected] == ["not_feasible"]
+
+
+def test_nothing_feasible_takes_first_by_order() -> None:
+    # Конфы нет среди разрешённых дел, ⚙️ нет — ни одно не выполнимо, но задание ничего не стоит.
+    state = tasks(offers("confKnows_hard", "convDets_hard"), details=0)
+    assert picked(decide(state, DAILY, NOW))[1] == {"task": "convDets_hard"}
+
+
+def test_uncertified_deed_makes_task_unfeasible() -> None:
+    certified = CERTIFIED - {"deed:dconv"}
+    state = tasks(offers("convDets_hard", "jobMoney_hard"))
+    decision = decide(state, DAILY, NOW, certified=certified)
+    assert picked(decision)[1] == {"task": "jobMoney_hard"}
+
+
+@pytest.mark.parametrize(
+    ("gorbushka", "feature", "task"),
+    [
+        (
+            GorbushkaState(state="waiting", won=0, total=4, next_fight_at=m(10)),
+            True,
+            "robPro_hard",
+        ),
+        # Трёх боёв по 12⚙️ на цель 39 не хватит.
+        (
+            GorbushkaState(state="waiting", won=1, total=4, next_fight_at=m(10)),
+            True,
+            "jobMoney_hard",
+        ),
+        (GorbushkaState(state="done", comeback_at=m(900)), True, "jobMoney_hard"),
+        (
+            GorbushkaState(state="waiting", won=0, total=4, next_fight_at=m(10)),
+            False,
+            "jobMoney_hard",
+        ),
+    ],
+)
+def test_rob_pro_feasible_by_gorbushka_fights_left(
+    gorbushka: GorbushkaState, feature: bool, task: str
+) -> None:
+    settings = Settings.model_validate(
+        {"features": {**DAILY.features.model_dump(), "gorbushka": feature}}
+    )
+    state = tasks(offers("robPro_hard", "jobMoney_hard"), gorbushka=gorbushka, motivation=40)
+    assert picked(decide(state, settings, NOW))[1] == {"task": task}
+
+
+def test_feasibility_estimates_time_and_motivation_until_midnight() -> None:
+    # 23:00 MSK: до сброса час, 🔥 10 и ещё 1 приростом. Прогулке на $48 нужно 12 запусков,
+    # работе на $132 — 6. Сон выключен: иначе в 23:00 бот уже ложился бы (см. тест про сон).
+    walk_first = Settings.model_validate(
+        {
+            "features": {**DAILY.features.model_dump(), "sleep": False},
+            "daily": {"personal_order": ["walkMoney", "jobMoney"]},
+        }
+    )
+    variants = offers("walkMoney_hard", "jobMoney_hard")
+    late = datetime(2026, 9, 26, 23, 0, tzinfo=MSK)
+    decision = decide(tasks(variants, at=late, motivation=10), walk_first, late)
+    assert picked(decision)[1] == {"task": "jobMoney_hard"}
+    day = decide(tasks(variants, motivation=10), walk_first, NOW)
+    assert picked(day)[1] == {"task": "walkMoney_hard"}
+
+
+NO_SLEEP_OR_DEEDS = Settings.model_validate(
+    {"features": {**DAILY.features.model_dump(), "deeds": False, "sleep": False}}
+)
+
+
+@pytest.mark.parametrize(
+    "at",
+    [
+        datetime(2026, 9, 26, 23, 58, tzinfo=MSK),
+        datetime(2026, 9, 26, 23, 59, 59, tzinfo=MSK),
+        datetime(2026, 9, 27, 0, 0, tzinfo=MSK),
+        datetime(2026, 9, 27, 0, 1, tzinfo=MSK),
+    ],
+)
+def test_midnight_window(at: datetime) -> None:
+    # В окне 23:58–00:02 задание не выбирается и экран не читается: ждём 00:02.
+    reset = datetime(2026, 9, 27, 0, 2, tzinfo=MSK)
+    far = GorbushkaState(state="done", comeback_at=at + timedelta(days=1))
+    state = tasks(offers("convDets_hard"), at=at, gorbushka=far)
+    decision = decide(state, NO_SLEEP_OR_DEEDS, at)
+    assert decision == Wait(reset + TIMER_MARGIN, "daily_midnight", decision.candidates)
+    after = reset + timedelta(seconds=1)
+    assert picked(decide(awake(after), NO_SLEEP_OR_DEEDS, after))[0] == "daily_refresh"
+
+
+def test_waits_for_reset_to_reread_tasks() -> None:
+    state = tasks(chosen("jobMoney"), gorbushka=GorbushkaState(state="done", comeback_at=m(2000)))
+    reset = datetime(2026, 9, 27, 0, 2, tzinfo=MSK)
+    assert decide(state, NO_SLEEP_OR_DEEDS, NOW) == Wait(reset + TIMER_MARGIN, "daily_reset", ())
+
+
+def test_personal_task_deed_goes_first() -> None:
+    decision = decide(tasks(chosen("jobMoney", current=29)), DAILY, NOW)
+    assert picked(decision) == ("deed:job", {}, "personal jobMoney")
+
+
+def test_materials_take_best_of_job_and_walk() -> None:
+    state = tasks(chosen("materials"))
+    assert picked(decide(state, DAILY, NOW))[0] == "deed:job"
+    held = decide(state, DAILY, NOW, cooldowns={"deed:job": m(5)})
+    assert picked(held) == ("deed:walk", {}, "personal materials")
+
+
+@pytest.mark.parametrize(
+    "personal",
+    [
+        chosen("jobMoney", status="done", current=132),
+        chosen("jobMoney", current=132),
+        # Горбушка — не дело: задание на неё порядок дел не меняет.
+        chosen("robPro"),
+        chosen("confKnows"),
+    ],
+)
+def test_personal_without_doable_deed_leaves_focus(personal: PersonalTask) -> None:
+    assert picked(decide(tasks(personal), DAILY, NOW))[:2] == ("deed:harvest", {})
+
+
+def test_team_task_before_focus() -> None:
+    state = tasks(chosen("robPro"), team("dconv"))
+    assert picked(decide(state, DAILY, NOW)) == ("deed:dconv", {}, "team dconv 480/720")
+    job = tasks(chosen("robPro"), team("job", "walk", current=18, goal=120))
+    assert picked(decide(job, DAILY, NOW)) == ("deed:job", {}, "team job 18/120")
+
+
+@pytest.mark.parametrize(
+    "team_task",
+    [
+        team("gorbushka", current=0, goal=390),
+        team("dconv", current=720, goal=720),
+        TeamTask(current=720, goal=720, resource="⚙️", day=TODAY, status="done"),
+    ],
+)
+def test_team_task_without_doable_deed_leaves_focus(team_task: TeamTask) -> None:
+    state = tasks(chosen("robPro"), team_task)
+    assert picked(decide(state, DAILY, NOW))[0] == "deed:harvest"
+
+
+def test_personal_goes_before_team_and_unavailable_personal_yields() -> None:
+    state = tasks(chosen("learnKnows"), team("job", current=748, goal=1320))
+    assert picked(decide(state, DAILY, NOW)) == ("deed:learn", {}, "personal learnKnows")
+    # Учёбе нужно 2🔥, есть одна: командное задание получает работу.
+    tired = tasks(chosen("learnKnows"), team("job", current=748, goal=1320), motivation=1)
+    decision = decide(tired, DAILY, NOW)
+    assert picked(decision) == ("deed:job", {}, "team job 748/1320")
+    assert verdicts(decision)["deed:learn"] == "no_motivation"
+
+
+def test_yesterdays_personal_is_not_prioritized() -> None:
+    state = tasks(chosen("jobMoney", day=YESTERDAY))
+    decision = decide(state, DAILY, NOW, last_refresh={"daily": m(-1)})
+    assert picked(decision)[:2] == ("deed:harvest", {})
+
+
+def test_personal_task_of_unknown_type_follows_hint() -> None:
+    task = ChosenTaskState(goal=30, resource="🔩", activities=("job",))
+    personal = PersonalTask(day=TODAY, status="active", chosen=task)
+    assert picked(decide(tasks(personal), DAILY, NOW)) == ("deed:job", {}, "personal unknown")
+
+
+def test_active_team_task_is_reread_every_half_hour() -> None:
+    # Командное закрывают и другие игроки, а сообщения о его выполнении нет.
+    old = tasks(chosen("robPro"), team_task=Obs(value=team("dconv"), at=m(-31)))
+    assert picked(decide(old, DAILY, NOW)) == ("daily_refresh", {}, "team progress stale")
+    fresh = tasks(chosen("robPro"), team_task=Obs(value=team("dconv"), at=m(-29)))
+    assert picked(decide(fresh, DAILY, NOW)) == ("deed:dconv", {}, "team dconv 480/720")
+    reached = Obs(value=team("dconv", current=720, goal=720), at=m(-90))
+    assert picked(decide(tasks(chosen("robPro"), team_task=reached), DAILY, NOW))[0] == (
+        "deed:harvest"
+    )
+    done = TeamTask(current=720, goal=720, resource="⚙️", day=TODAY, status="done")
+    assert picked(decide(tasks(chosen("robPro"), Obs(value=done, at=m(-90))), DAILY, NOW))[0] == (
+        "deed:harvest"
+    )
+
+
+def test_stale_team_reread_does_not_block_pick_when_rate_limited() -> None:
+    stale = Obs(value=team("dconv"), at=m(-31))
+    state = tasks(offers("convDets_hard"), team_task=stale)
+    decision = decide(state, DAILY, NOW, last_refresh={"daily": m(-5)})
+    assert picked(decision)[:2] == ("daily_pick", {"task": "convDets_hard"})
+
+
+def test_planned_sleep_cuts_time_for_tasks() -> None:
+    # Ложиться — за 2 ч до дедлайна, то есть через 40 мин; переработке на 72⚙️ нужно 8 × 6 мин.
+    variants = offers("convDets_hard", "jobMoney_hard")
+    sleepy = tasks(variants, sleep_deadline=m(160))
+    decision = decide(sleepy, DAILY, NOW)
+    assert picked(decision)[1] == {"task": "jobMoney_hard"}
+    assert [c.verdict for c in decision.candidates if c.params == {"task": "convDets_hard"}] == [
+        "not_feasible"
+    ]
+    assert picked(decide(tasks(variants), DAILY, NOW))[1] == {"task": "convDets_hard"}
+    # Сон выключен — отдыхать не придётся, время до полуночи целиком.
+    no_sleep = Settings.model_validate(
+        {"features": {**DAILY.features.model_dump(), "sleep": False}}
+    )
+    assert picked(decide(sleepy, no_sleep, NOW))[1] == {"task": "convDets_hard"}
+
+
+@pytest.mark.parametrize(
+    ("gorbushka", "over", "task"),
+    [
+        # Билет по карману: 4 боя до полуночи × 12⚙️ ≥ 39.
+        (GorbushkaState(state="need_ticket"), {}, "robPro_hard"),
+        # На билет ($120) не хватает.
+        (GorbushkaState(state="need_ticket"), {"money": 100}, "jobMoney_hard"),
+        # Резерв на отель перед сном: денег сверх него на билет нет.
+        (
+            GorbushkaState(state="need_ticket"),
+            {"money": 150, "sleep_deadline": m(4 * 60)},
+            "jobMoney_hard",
+        ),
+        # Дневной лимит с экрана — 3 продавана: 36 < 39.
+        (GorbushkaState(state="need_ticket", total=3), {}, "jobMoney_hard"),
+        # До сна два часа — два боя.
+        (GorbushkaState(state="need_ticket"), {"sleep_deadline": m(240)}, "jobMoney_hard"),
+    ],
+)
+def test_rob_pro_with_ticket_to_buy(
+    gorbushka: GorbushkaState, over: dict[str, Any], task: str
+) -> None:
+    hotel = Settings.model_validate(
+        {
+            "features": DAILY.features.model_dump(),
+            "sleep": {"hotel_if_cash_after_reserve_ge": 50},
+        }
+    )
+    state = tasks(offers("robPro_hard", "jobMoney_hard"), gorbushka=gorbushka, **over)
+    assert picked(decide(state, hotel, NOW))[1] == {"task": task}
+
+
+def test_first_refresh_of_new_day_ignores_rate_limit() -> None:
+    before = datetime(2026, 9, 26, 23, 57, tzinfo=MSK)
+    after = datetime(2026, 9, 27, 0, 2, tzinfo=MSK)
+    state = tasks(chosen("jobMoney"), at=before)
+    decision = decide(state, NO_SLEEP_OR_DEEDS, after, last_refresh={"daily": before})
+    assert picked(decision) == ("daily_refresh", {}, "tasks unknown")
+    later = after + timedelta(minutes=3)
+    held = decide(state, NO_SLEEP_OR_DEEDS, later, last_refresh={"daily": after})
+    assert isinstance(held, Wait) and verdicts(held)["daily_refresh"] == "rate_limited"

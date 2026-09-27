@@ -212,7 +212,17 @@ async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database
 
 def _without_windows(s: Settings) -> Settings:
     off = dict.fromkeys(
-        ("stocks_dump", "factory", "bulls", "tangerine", "smoothie", "sleep", "metro"), False
+        (
+            "stocks_dump",
+            "factory",
+            "bulls",
+            "tangerine",
+            "smoothie",
+            "sleep",
+            "metro",
+            "daily_tasks",
+        ),
+        False,
     )
     return s.model_copy(update={"features": s.features.model_copy(update=off)})
 
@@ -238,7 +248,8 @@ async def test_planner_refreshes_state_in_dry_run(clean_db: Database) -> None:
         await runtime.pipeline.submit(msg)
 
     async with app.router.lifespan_context(app):
-        # Рефреш проверяется на механиках фазы 3: окна обязательств и сна зависят от часов.
+        # Рефреш проверяется на механиках фазы 3: окна обязательств, сна и полуночи заданий
+        # зависят от часов.
         await runtime.settings.update(_without_windows, changed_by="test")
         assert runtime.transport is not None
         runtime.transport.responder = respond

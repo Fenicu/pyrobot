@@ -187,6 +187,8 @@ def test_gorbushka_flow() -> None:
     need = feed(reducer, _profiled(reducer), "gorbushka", 3520526, 1)
     assert (value(need, "money"), value(need, "knowledge")) == (104, 17627)
     assert need["prices"]["gorbushka_ticket"]["value"]["knowledge"] == 20
+    # Дневной лимит продаванов — с экрана билета.
+    assert value(need, "gorbushka")["total"] == 4
 
 
 def test_gorbushka_ticket_purchase_deducted() -> None:

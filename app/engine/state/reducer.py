@@ -257,17 +257,19 @@ class _Patch:
 
     def team_line(self, current: int, goal: int, resource: str) -> None:
         """Строка командного прогресса: к известному заданию того же дня и ресурса — только
-        прогресс; иначе новое значение без дел (план перечитает экран, чтобы их узнать)."""
+        прогресс; иначе новое значение без дел, `derived` — план перечитает экран, чтобы их
+        узнать (дела с экрана известны, даже если подсказка незнакомая)."""
         day = tasks_day(self.at)
         known: Obs[TeamTask] | None = self.get("team_task")
-        task = known.value if known is not None else None
-        if task is not None and task.day == day and task.resource == resource:
+        if known is not None and known.value.day == day and known.value.resource == resource:
+            task = known.value
             status = "done" if current >= goal else task.status
             value = task.model_copy(update={"current": current, "goal": goal, "status": status})
-        else:
-            status = "done" if current >= goal else "active"
-            value = TeamTask(current=current, goal=goal, resource=resource, day=day, status=status)
-        self.snap("team_task", value)
+            self.snap("team_task", value, src=known.src)
+            return
+        status = "done" if current >= goal else "active"
+        value = TeamTask(current=current, goal=goal, resource=resource, day=day, status=status)
+        self.snap("team_task", value, src="derived")
 
     def personal_line(self, current: int, goal: int, resource: str) -> None:
         """Строка личного прогресса обновляет только прогресс выбранного задания того же дня и

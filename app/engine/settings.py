@@ -147,6 +147,25 @@ class MetroSection(BaseModel):
         return self.battle_margin_min + self.extra_margin_min
 
 
+PersonalTaskType = Literal[
+    "convDets", "robPro", "jobMoney", "materials", "learnKnows", "walkMoney", "confKnows"
+]
+
+
+class DailySection(BaseModel):
+    # Среди hard-вариантов личного задания берётся первый по этому порядку — от самого дешёвого
+    # для бота: переработка — основное дело, Горбушка идёт и так, дальше по росту лишнего 🔥.
+    personal_order: tuple[PersonalTaskType, ...] = (
+        "convDets",
+        "robPro",
+        "jobMoney",
+        "materials",
+        "learnKnows",
+        "walkMoney",
+        "confKnows",
+    )
+
+
 class RetentionSection(BaseModel):
     # Журнал: сообщения (с нераспознанными), действия, запуски сценариев, уведомления.
     messages_days: int = Field(default=90, ge=1)
@@ -168,6 +187,7 @@ class Settings(BaseModel):
     stocks: StocksSection = Field(default_factory=StocksSection)
     tangerine: TangerineSection = Field(default_factory=TangerineSection)
     metro: MetroSection = Field(default_factory=MetroSection)
+    daily: DailySection = Field(default_factory=DailySection)
     retention: RetentionSection = Field(default_factory=RetentionSection)
 
 

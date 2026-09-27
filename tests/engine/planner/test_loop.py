@@ -94,6 +94,7 @@ QUIET = LIVE.model_copy(
                 "smoothie": False,
                 "sleep": False,
                 "metro": False,
+                "daily_tasks": False,
             }
         ),
         "strategy": LIVE.strategy.model_copy(update={"focus": ()}),
@@ -265,6 +266,20 @@ async def test_refusal_cooldowns(world: World) -> None:
     await rig.loop._after(job, ScenarioResult("refused", "no_money"), at, at)
     assert rig.loop._cooldowns == {"deed:job": at + RETRY_AFTER}
     assert rig.notes.codes == []
+
+
+async def test_daily_refresh_marks_last_refresh_even_on_failure(world: World) -> None:
+    rig = Rig(world)
+    at = moment()
+    refresh = Act("daily_refresh", {}, "tasks unknown")
+    await rig.loop._after(refresh, ScenarioResult("failed", "timeout"), at, at)
+    assert rig.loop._last_refresh == {"daily": at}
+    later = at + timedelta(minutes=11)
+    await rig.loop._after(refresh, ScenarioResult("done", "screen"), later, later)
+    assert rig.loop._last_refresh == {"daily": later}
+    pick = Act("daily_pick", {"task": "convDets_hard"}, "personal convDets")
+    await rig.loop._after(pick, ScenarioResult("nothing", "already_chosen"), later, later)
+    assert rig.loop._cooldowns["daily_pick"] == later + NOTHING_RETRY
 
 
 async def test_closed_market_holds_dump_longer(world: World) -> None:

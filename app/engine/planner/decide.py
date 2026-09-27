@@ -5,7 +5,7 @@ from dataclasses import replace
 from datetime import datetime
 
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, Step
-from app.engine.planner.obligations import Obligations
+from app.engine.planner.daily import DailyTasks
 from app.engine.planner.types import Act, Candidate, Decision
 from app.engine.settings import Settings
 from app.engine.state.model import (
@@ -17,7 +17,7 @@ from app.engine.state.model import (
 )
 
 
-class _Planner(Obligations):
+class _Planner(DailyTasks):
     def decide(self) -> Decision:
         busy = self.busy()
         # Идущее дело (в т.ч. многочасовой сон) известно до `until` — старым не считается.
@@ -36,6 +36,8 @@ class _Planner(Obligations):
             self.battle_stamina,
             self.stocks_dump,
             self.factory,
+            # Выбор задания занимает секунды, а ночной сон отодвинул бы его на утро.
+            self.daily,
             self.sleep,
             self.book,
             self.fastfood,
@@ -177,9 +179,7 @@ class _Planner(Obligations):
         elif g.state == "need_ticket":
             if (field := self.stale_of("money", "knowledge")) is not None:
                 return self.refresh(name, field)
-            ticket = self.ticket()
-            money = self.value("money") - self.hotel_reserve()
-            if money < ticket.money or self.value("knowledge") < ticket.knowledge:
+            if not self.ticket_affordable():
                 self.reject(name, {"buy": True}, "cant_afford")
                 return None
             buy, reason = True, "buy_ticket"
@@ -227,7 +227,12 @@ class _Planner(Obligations):
         ok = self.doable_deeds()
         if not ok:
             return None
-        chosen, reason = self.focus_deed(ok) or self.best_deed(ok)
+        chosen, reason = (
+            self.personal_deed(ok)
+            or self.team_deed(ok)
+            or self.focus_deed(ok)
+            or self.best_deed(ok)
+        )
         for candidate in ok:
             verdict = "chosen" if candidate is chosen else "ok"
             self.candidates.append(replace(candidate, verdict=verdict))

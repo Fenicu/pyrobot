@@ -36,7 +36,7 @@ def msk(hour: int, minute: int = 0, day: int = 26) -> datetime:
 def only(*features: str, **sections: Any) -> Settings:
     """Настройки, где из механик фазы 4 включены только `features`."""
     flags = {name: name in features for name in PHASE4}
-    return Settings.model_validate({**sections, "features": flags})
+    return Settings.model_validate({**sections, "features": {**flags, "daily_tasks": False}})
 
 
 def state(now: datetime, **over: Any) -> CharacterState:
@@ -567,7 +567,15 @@ def test_long_sleep_must_end_before_battle() -> None:
 METRO = only("metro")
 # Только метро: без дел и сна решение — либо метро, либо ожидание.
 METRO_ALONE = Settings.model_validate(
-    {"features": {**dict.fromkeys(PHASE4, False), "metro": True, "deeds": False, "sleep": False}}
+    {
+        "features": {
+            **dict.fromkeys(PHASE4, False),
+            "metro": True,
+            "deeds": False,
+            "sleep": False,
+            "daily_tasks": False,
+        }
+    }
 )
 BATTLE_EVENING = msk(22)
 DAY = timedelta(days=1)

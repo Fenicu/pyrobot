@@ -22,6 +22,8 @@ _NEED_TICKET = re.compile(
     r"\$(?P<have_money>" + NUM + r")💵 и (?P<have_knowledge>" + NUM + r")📚",
     re.S,
 )
+# Правило на каждом экране Горбушки; у экрана билета это единственный источник числа продаванов.
+_DAILY_LIMIT = re.compile(r"определённым количеством продаванов: (?P<n>\d+)")
 _SHORT = re.compile(r"❌Не хватает \$(?P<need>" + NUM + r")[\xa0 ]?💵 для входа")
 _NEXT = re.compile(r"Ты встретишь следующего 👨Продавана через (?P<t>" + DURATION + r")")
 _MEETING = re.compile(
@@ -74,9 +76,11 @@ def _screen(text: str) -> list[Event]:
         return [GorbushkaScreen(state="done", comeback_in_s=dur(m["t"]))]
     if m := _NEED_TICKET.search(text):
         short = _SHORT.search(text)
+        limit = _DAILY_LIMIT.search(text)
         return [
             GorbushkaScreen(
                 state="need_ticket",
+                total=int(limit["n"]) if limit else None,
                 ticket_money=int(m["money"]),
                 ticket_knowledge=int(m["knowledge"]),
                 money=num(m["have_money"]),

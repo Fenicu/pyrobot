@@ -39,6 +39,7 @@ def _events(msg_id: int) -> list[Event]:
             3528135,
             GorbushkaScreen(
                 state="need_ticket",
+                total=4,
                 ticket_money=120,
                 ticket_knowledge=20,
                 money=53,
@@ -49,6 +50,7 @@ def _events(msg_id: int) -> list[Event]:
             3537930,
             GorbushkaScreen(
                 state="need_ticket",
+                total=4,
                 ticket_money=120,
                 ticket_knowledge=20,
                 money=1544,
@@ -59,6 +61,7 @@ def _events(msg_id: int) -> list[Event]:
             3520526,
             GorbushkaScreen(
                 state="need_ticket",
+                total=4,
                 ticket_money=120,
                 ticket_knowledge=20,
                 money=104,

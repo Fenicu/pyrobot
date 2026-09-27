@@ -198,3 +198,19 @@ def test_weight_team_is_gone_from_patch() -> None:
     with pytest.raises(SettingsPatchError) as err:
         apply_patch(Settings(), {"strategy": {"weight_team": 1.0}})
     assert (err.value.code, err.value.path) == ("unknown_field", "strategy.weight_team")
+
+
+def test_daily_personal_order() -> None:
+    assert Settings().daily.personal_order == (
+        "convDets",
+        "robPro",
+        "jobMoney",
+        "materials",
+        "learnKnows",
+        "walkMoney",
+        "confKnows",
+    )
+    with pytest.raises(ValidationError):
+        Settings.model_validate({"daily": {"personal_order": ["convDets", "lottery"]}})
+    patched = apply_patch(Settings(), {"daily": {"personal_order": ["jobMoney"]}})
+    assert patched.daily.personal_order == ("jobMoney",)

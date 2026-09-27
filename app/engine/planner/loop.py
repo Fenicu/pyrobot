@@ -344,6 +344,8 @@ class PlannerLoop:
         key = cooldown_key(act)
         if name == "refresh":
             self._last_refresh[str(act.params["source"])] = started
+        elif name == "daily_refresh":
+            self._last_refresh["daily"] = started
         if result.reason == "paused":
             return
         is_deed = name.startswith("deed:")

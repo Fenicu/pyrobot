@@ -427,6 +427,14 @@ class Obligations(PlannerBase):
             return 0
         return max(self.hotel_cost() or 0, self.hotel_threshold() or 0)
 
+    def ticket_affordable(self) -> bool:
+        """Билет Горбушки по карману: деньги сверх резерва на отель и знания."""
+        money, knowledge = self.value("money"), self.value("knowledge")
+        if money is None or knowledge is None:
+            return False
+        ticket = self.ticket()
+        return bool(money - self.hotel_reserve() >= ticket.money and knowledge >= ticket.knowledge)
+
     def hotel_reserve(self) -> int:
         deadline: datetime | None = self.value("sleep_deadline")
         if not self.sleep_runs() or deadline is None:

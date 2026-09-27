@@ -161,6 +161,7 @@ def test_team_line_keeps_status_and_activities() -> None:
     reducer = StateReducer()
     state = feed(reducer, {}, "daily", 3625786, 1)
     state = feed(reducer, state, "activities", 3625689, 5)
+    assert state["team_task"]["src"] == "screen"
     team = _team(state)
     assert (team["current"], team["goal"], team["status"], team["activities"]) == (
         18,
@@ -173,6 +174,7 @@ def test_team_line_keeps_status_and_activities() -> None:
 def test_team_line_without_known_task_creates_active_without_activities() -> None:
     reducer = StateReducer()
     state = feed(reducer, {}, "activities", 3625689, 5)
+    assert state["team_task"]["src"] == "derived"
     assert _team(state) == {
         "current": 18,
         "goal": 120,
