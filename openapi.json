@@ -2425,7 +2425,6 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/ActivityStat"
             },
-            "default": {},
             "title": "Activity Stats",
             "type": "object"
           },
@@ -2803,7 +2802,6 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/Observed_PriceState_"
             },
-            "default": {},
             "title": "Prices",
             "type": "object"
           },
@@ -2838,7 +2836,6 @@
             ]
           },
           "schema_version": {
-            "default": 1,
             "title": "Schema Version",
             "type": "integer"
           },

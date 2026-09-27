@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from app.api.admin_static import install_admin
 from app.api.container import Container
 from app.api.routes_auth import router as auth_router
 from app.api.routes_commands import router as commands_router
@@ -37,4 +38,6 @@ def create_api(container: Container) -> FastAPI:
             return JSONResponse({"status": "ready"})
         return JSONResponse({"status": "not_ready"}, status_code=503)
 
+    # Последним: маршрут админки забирает все прочие GET-пути, кроме /api и проб.
+    install_admin(app, container.config.admin_dir)
     return app

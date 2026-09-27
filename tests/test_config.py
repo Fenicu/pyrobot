@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -32,3 +34,10 @@ def test_kurigram_requires_api_credentials(monkeypatch: pytest.MonkeyPatch) -> N
     with pytest.raises(ValidationError, match="tg_api_hash"):
         AppConfig(_env_file=None, tg_api_id=1)
     assert AppConfig(_env_file=None, transport="fake").tg_api_id == 0
+
+
+def test_admin_dir_default_and_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PYROBOT_ADMIN_DIR", raising=False)
+    assert AppConfig(_env_file=None, transport="fake").admin_dir == Path("/app/admin")
+    monkeypatch.setenv("PYROBOT_ADMIN_DIR", "/srv/admin")
+    assert AppConfig(_env_file=None, transport="fake").admin_dir == Path("/srv/admin")

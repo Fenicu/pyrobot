@@ -27,6 +27,9 @@ class AppConfig(DbConfig):
     log_level: str = "INFO"
     account_id: int = 1
     planner: bool = True
+    # Собранная админка (SvelteKit, `admin/build`): её отдаёт то же приложение; каталога нет —
+    # `/` отвечает 404 (разработка, тесты).
+    admin_dir: Path | None = Path("/app/admin")
 
     @model_validator(mode="after")
     def _kurigram_credentials(self) -> Self:

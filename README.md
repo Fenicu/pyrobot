@@ -54,6 +54,7 @@ Userbot для автоматической игры в StartupWars (@StartupWar
   - [Ручной запуск сценариев](#ручной-запуск-сценариев)
   - [Справочные эндпоинты](#справочные-эндпоинты)
   - [Поток событий (SSE)](#поток-событий-sse)
+  - [Отдача админки](#отдача-админки)
 - [Образ и деплой](#образ-и-деплой)
   - [Образ](#образ)
   - [Compose на apps](#compose-на-apps)
@@ -161,6 +162,7 @@ uv run mypy
 | `PYROBOT_HTTP_PORT` | Порт для HTTP API. |
 | `PYROBOT_FORWARDED_ALLOW_IPS` | Адреса обратного прокси через запятую, чьим `X-Forwarded-For`/`X-Forwarded-Proto` доверяет uvicorn (`--proxy-headers`), по умолчанию `127.0.0.1`; в боевой — Caddy `10.10.40.3`. Без этого лимитер входа видит всех клиентов одним адресом прокси, а заголовок от чужого адреса игнорируется. |
 | `PYROBOT_ACCOUNT_ID` | Внутренний `accounts.id` в базе pyrobot (по умолчанию 1), не ID игрока в игре. |
+| `PYROBOT_ADMIN_DIR` | Каталог собранной админки (`admin/build`), её отдаёт тот же FastAPI (по умолчанию `/app/admin` — так в образе). Нет каталога или `index.html` в нём — `/` отвечает 404 (разработка, тесты). |
 | `PYROBOT_PLANNER` | Планировщик принимает решения сам (по умолчанию `true`); `false` — движок только принимает сообщения и выполняет ручные команды и ручные запуски сценариев (цикл планировщика работает без собственных решений). |
 
 ## База данных
@@ -1591,6 +1593,27 @@ reason}`), `decision` (решение планировщика без канди
 по себе не держит сессию живой. В тишине раз в тот же
 интервал уходит комментарий `: ping`. Заголовки `Cache-Control:
 no-cache` и `X-Accel-Buffering: no` отключают буферизацию на прокси.
+
+### Отдача админки
+
+Собранную админку (SPA на SvelteKit, `admin/build`) отдаёт то же приложение с того же домена
+(`app/api/admin_static.py`, `install_admin` в конце `create_api`): каталог — `PYROBOT_ADMIN_DIR`
+(по умолчанию `/app/admin`, в образе туда кладётся сборка); нет каталога или `index.html` —
+маршрут не подключается и `/` отвечает 404. Маршрут один и последний (`/{path:path}`, в OpenAPI не
+входит), только `GET`/`HEAD`: существующий файл каталога — файл, отсутствующий файл с расширением
+(`/_app/immutable/x.js`, `/robots.txt`) — 404 `{"detail": "Not Found"}`, путь без расширения
+(навигация SPA: `/journal`, `/metro/1`) — `index.html`. Выход за каталог (`..`) — 404. Пути `/api`,
+`/api/…`, `/healthz`, `/readyz` маршрут не обслуживает (`_AdminRoute.matches` для них не
+совпадает): неизвестный путь API — прежний 404 JSON, чужой метод известного пути — прежний 405;
+изменяющие методы на путях SPA — прежний 404. Кеш: `_app/immutable/*` (имена с хешем содержимого) —
+`Cache-Control: public, max-age=31536000, immutable`, `index.html` и прочие файлы — `no-cache`
+(браузер перепроверяет по `ETag`/`Last-Modified`). Заголовки на всех ответах админки:
+`Content-Security-Policy`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`. CSP
+считается при старте по собранному `index.html` (он читается один раз и отдаётся ровно он):
+`default-src 'self'; script-src 'self' 'sha256-…'; img-src 'self' data:; style-src 'self'
+'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
+где `sha256-…` — хеш содержимого каждого встроенного `<script>` без `src` (стартовый скрипт
+SvelteKit). Тесты — `tests/api/test_admin_static.py` на временном каталоге.
 
 ## Образ и деплой
 

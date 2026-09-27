@@ -6,7 +6,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.engine.state.model import (
     SCHEMA_VERSION,
@@ -46,7 +46,9 @@ class PublicState(BaseModel):
     """Снимок персонажа (`CharacterState` без служебного `applied`)."""
 
     model_config = ConfigDict(extra="forbid")
-    schema_version: int = SCHEMA_VERSION
+    # Необязательные поля без значений по умолчанию в схеме (default_factory): у ключа с default
+    # openapi-typescript снимает `?`, а в пустом снимке ключей нет.
+    schema_version: int = Field(default_factory=lambda: SCHEMA_VERSION)
     level: Observed[int] | None = None
     exp: Observed[int] | None = None
     exp_next: Observed[int] | None = None
@@ -70,7 +72,7 @@ class PublicState(BaseModel):
     woke_at: Observed[datetime] | None = None
     sleep_allowed_at: Observed[datetime | None] | None = None
     levelup_pending: Observed[bool] | None = None
-    prices: dict[str, Observed[PriceState]] = {}
+    prices: dict[str, Observed[PriceState]] = Field(default_factory=dict)
     food_stock: Observed[dict[str, FoodStockState]] | None = None
     fastfood_ready_at: Observed[datetime] | None = None
     books: Observed[int] | None = None
@@ -105,4 +107,4 @@ class PublicState(BaseModel):
     metro_ready_at: Observed[datetime] | None = None
     metro_message: Observed[MetroRunRefOut | None] | None = None
     lottery: Observed[LotteryState] | None = None
-    activity_stats: dict[str, ActivityStat] = {}
+    activity_stats: dict[str, ActivityStat] = Field(default_factory=dict)
