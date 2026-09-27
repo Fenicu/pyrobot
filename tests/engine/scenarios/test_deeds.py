@@ -62,18 +62,80 @@ async def test_uncertified_is_suppressed(world: World) -> None:
 ITEMS = {
     "book": ("/read_exp", ("items", 3516680)),
     "card": ("/use_card", ("items", 3516678)),
-    "prizebox": ("/unbox", ("items", 3517262)),
-    "container_small": ("/unbox_ls", ("items", 3517971)),
 }
 
 
-@certifies("book", "card", "prizebox", "container_small")
+@certifies("book", "card")
 @pytest.mark.parametrize("item", sorted(ITEMS))
 async def test_free_item_done(world: World, item: str) -> None:
     command, ref = ITEMS[item]
     world.game.on_text(command, ref)
     result = await run_scenario(free_item, context(world), CharacterState(), {"item": item})
     assert (result.status, world.game.payloads()) == ("done", [command])
+
+
+@certifies("prizebox")
+async def test_prizebox_opens_from_inventory_screen(world: World) -> None:
+    # Инвентарь без таймера у коробки — игра принимает /unbox только с этого экрана.
+    world.game.on_text("/inv", ("items", 3625715))
+    world.game.on_text("/unbox", ("items", 3625717))
+    result = await run_scenario(free_item, context(world), CharacterState(), {"item": "prizebox"})
+    assert (result.status, world.game.payloads()) == ("done", ["/inv", "/unbox"])
+    assert world.gateway.lease is None
+
+
+@certifies("container_small")
+async def test_container_small_opens_from_gifts_screen(world: World) -> None:
+    world.game.on_text("/gifts", ("items", 3623585))
+    world.game.on_text("/unbox_ls", ("items", 3517971))
+    result = await run_scenario(
+        free_item, context(world), CharacterState(), {"item": "container_small"}
+    )
+    assert (result.status, world.game.payloads()) == ("done", ["/gifts", "/unbox_ls"])
+    assert world.gateway.lease is None
+
+
+@certifies("prizebox")
+@pytest.mark.parametrize(
+    ("fixture", "reason"),
+    [
+        (3516676, "no_prizebox"),
+        (3625102, "prizebox_locked"),
+    ],
+)
+async def test_prizebox_screen_early_exit(world: World, fixture: int, reason: str) -> None:
+    world.game.on_text("/inv", ("items", fixture))
+    result = await run_scenario(free_item, context(world), CharacterState(), {"item": "prizebox"})
+    assert (result.status, result.reason, world.game.payloads()) == ("nothing", reason, ["/inv"])
+    assert world.gateway.lease is None
+
+
+@certifies("container_small")
+async def test_container_small_screen_early_exit(world: World) -> None:
+    world.game.on_text("/gifts", ("items", 3516682))
+    result = await run_scenario(
+        free_item, context(world), CharacterState(), {"item": "container_small"}
+    )
+    assert (result.status, result.reason, world.game.payloads()) == (
+        "nothing",
+        "no_containers",
+        ["/gifts"],
+    )
+    assert world.gateway.lease is None
+
+
+OPEN_COMMANDS = {
+    "book": "/read_exp",
+    "card": "/use_card",
+    "prizebox": "/unbox",
+    "container_small": "/unbox_ls",
+}
+# Предметы, открытие которых игра принимает только с определённого экрана: экран
+# показывается заранее и не выглядит противоречащим последующему отказу игры.
+OPEN_SCREENS: dict[str, tuple[str, int]] = {
+    "prizebox": ("/inv", 3625715),
+    "container_small": ("/gifts", 3623585),
+}
 
 
 @certifies("card", "prizebox", "container_small", "book")
@@ -87,7 +149,10 @@ async def test_free_item_done(world: World, item: str) -> None:
     ],
 )
 async def test_free_item_refused(world: World, item: str, fixture: int, reason: str) -> None:
-    world.game.on_text(ITEMS[item][0], ("refusals", fixture))
+    if item in OPEN_SCREENS:
+        screen_command, screen_fixture = OPEN_SCREENS[item]
+        world.game.on_text(screen_command, ("items", screen_fixture))
+    world.game.on_text(OPEN_COMMANDS[item], ("refusals", fixture))
     result = await run_scenario(free_item, context(world), CharacterState(), {"item": item})
     assert (result.status, result.reason) == ("refused", reason)
 

@@ -5,11 +5,19 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from app.engine.bus import Delivery
+from app.engine.events import Event
 from app.engine.gateway.types import Match, Verdict
 from app.engine.parsing.activities import ActivityStarted
 from app.engine.parsing.food import FastfoodEaten, FoodMenu
 from app.engine.parsing.gorbushka import GorbushkaFight, GorbushkaNotice, GorbushkaScreen
-from app.engine.parsing.items import BookRead, CardUsed, ContainerOpened, PrizeboxOpened
+from app.engine.parsing.items import (
+    BookRead,
+    CardUsed,
+    ContainerOpened,
+    GiftsScreen,
+    Inventory,
+    PrizeboxOpened,
+)
 from app.engine.parsing.levelup import LevelUpStep
 from app.engine.parsing.sleep import FellAsleep, SleepMenu, SleepPlace
 from app.engine.reconcile import FOOD, GIFTS, GORBUSHKA, INVENTORY, PROFILE
@@ -88,18 +96,54 @@ async def deed(ctx: ScenarioContext, state: CharacterState, params: Params) -> S
     return finish(step)
 
 
-_SIMPLE = {
+_SIMPLE: dict[str, tuple[str, type[Event]]] = {
     "book": ("/read_exp", BookRead),
     "card": ("/use_card", CardUsed),
-    "prizebox": ("/unbox", PrizeboxOpened),
-    "container_small": ("/unbox_ls", ContainerOpened),
-    "container_medium": ("/unbox_lm", ContainerOpened),
+}
+_CONTAINERS = {
+    "container_small": "/unbox_ls",
+    "container_medium": "/unbox_lm",
 }
 
 
 async def free_item(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
-    command, event = _SIMPLE[str(params["item"])]
-    return finish(await ctx.send(command, expect_events(event)))
+    item = str(params["item"])
+    if item in _SIMPLE:
+        command, event = _SIMPLE[item]
+        return finish(await ctx.send(command, expect_events(event)))
+    if item == "prizebox":
+        return await _open_prizebox(ctx)
+    return await _open_container(ctx, item)
+
+
+async def _open_prizebox(ctx: ScenarioContext) -> ScenarioResult:
+    # Игра принимает /unbox только с экрана рюкзака, иначе общая справка «Если жаждешь общения…».
+    async with ctx.lease("free_item"):
+        inv = require(await ctx.send(INVENTORY.command, expect_events(Inventory))).first(Inventory)
+        if inv is None:
+            raise ScenarioStopped("unexpected_screen")
+        if not inv.prizebox:
+            return ScenarioResult("nothing", "no_prizebox")
+        if (inv.prizebox_in_s or 0) > 0:
+            return ScenarioResult("nothing", "prizebox_locked")
+        await ctx.safe_point()
+        return finish(await ctx.send("/unbox", expect_events(PrizeboxOpened)))
+
+
+async def _open_container(ctx: ScenarioContext, item: str) -> ScenarioResult:
+    # Игра принимает /unbox_ls и /unbox_lm только с экрана подарков.
+    command = _CONTAINERS[item]
+    async with ctx.lease("free_item"):
+        gifts = require(await ctx.send(GIFTS.command, expect_events(GiftsScreen))).first(
+            GiftsScreen
+        )
+        if gifts is None:
+            raise ScenarioStopped("unexpected_screen")
+        count = gifts.containers_small if item == "container_small" else gifts.containers_medium
+        if count == 0:
+            return ScenarioResult("nothing", "no_containers")
+        await ctx.safe_point()
+        return finish(await ctx.send(command, expect_events(ContainerOpened)))
 
 
 async def refresh(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:

@@ -119,6 +119,8 @@ async def test_run_without_required_params_is_422(world: World, api_client: Asyn
 
 
 async def test_uncertified_run_is_simulated(world: World, api_client: AsyncClient) -> None:
+    # /gifts — nav, уходит даже несертифицированным; подавляется только сама команда открытия.
+    world.game.on_text("/gifts", ("items", 3573852))
     h = {"X-CSRF-Token": await login(api_client)}
     code, body = await _run(api_client, h, "container_medium", "u1")
     assert code == 202
@@ -129,7 +131,7 @@ async def test_uncertified_run_is_simulated(world: World, api_client: AsyncClien
             break
         await asyncio.sleep(0.01)
     assert (run["status"], run["reason"]) == ("suppressed", "uncertified")
-    assert world.game.sent == []
+    assert world.game.payloads() == ["/gifts"]
 
 
 async def test_scenario_catalog(container: Container, api_client: AsyncClient) -> None:
