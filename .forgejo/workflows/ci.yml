@@ -2,7 +2,7 @@ name: Проверки, сборка и выкатка pyrobot
 
 on:
   push:
-    branches: [master, rewrite]
+    branches: [master]
     tags: ['*']
   workflow_dispatch:
 
