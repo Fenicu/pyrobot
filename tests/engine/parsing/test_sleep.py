@@ -6,6 +6,7 @@ from app.engine.parsing.sleep import (
     FellAsleep,
     RobberyAlert,
     RobberyFight,
+    RobberyLoss,
     SleepMenu,
     SleepPlace,
     SleepWarning,
@@ -72,6 +73,24 @@ def test_robbery_fight_without_plus_sign() -> None:
     assert isinstance(won, RobberyFight)
     assert (won.won, won.robber, won.robber_level) == (True, "📯Stiven King", 54)
     assert (won.rewards.exp, won.rewards.money, won.rewards.stamina) == (191, 21, 100)
+
+
+@pytest.mark.parametrize(
+    ("msg_id", "robber", "level", "exp", "money"),
+    [
+        (2424246, "🎩mrShadow", 39, 113, -59),
+        (2437394, "☂️Олег Май", 26, 71, -600),
+        (2814717, "🤖[HZ]\xa0Робомозг", 64, 108, -215),
+        # С 2023 потеря — отдельным блоком «Ты потерял:», перед ним — перевод строки.
+        (3038498, "🤖Хук", 37, 161, -650),
+        (3420239, "🤖[HZ]\xa0Infested", 72, 118, -38),
+    ],
+)
+def test_robbed_while_asleep(msg_id: int, robber: str, level: int, exp: int, money: int) -> None:
+    [loss] = _events(msg_id)
+    assert isinstance(loss, RobberyLoss)
+    assert (loss.robber, loss.level, loss.pct) == (robber, level, 30)
+    assert (loss.rewards.exp, loss.rewards.money, loss.rewards.stamina) == (exp, money, None)
 
 
 def test_live_sleep_with_place_step() -> None:

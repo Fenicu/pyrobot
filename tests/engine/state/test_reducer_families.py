@@ -60,6 +60,29 @@ def test_robbery_fight_wakes_up() -> None:
     assert (value(state, "money"), value(state, "stamina")) == (863, 0)
 
 
+def test_robbed_asleep_loses_money_once_and_keeps_sleeping() -> None:
+    # Не проснулся: итог — отдельное сообщение, потеря в нём — точной суммой.
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "sleep", 3517441, 1)
+    state = feed(reducer, state, "sleep", 3420239, 30)
+    again = feed(reducer, state, "sleep", 3420239, 30)
+    for s in (state, again):
+        assert value(s, "busy")["activity"] == "sleep_bridge"
+        assert (value(s, "money"), value(s, "exp")) == (867 - 38, 17496049 + 118)
+        assert s["money"]["src"] == "derived"
+
+
+def test_robbed_without_money_line_doubts_money() -> None:
+    reducer = StateReducer()
+    state = _profiled(reducer)
+    msg = fixture_at("sleep", 3420239, 30)
+    text = (msg.text or "").split("\n\nТы потерял:")[0]
+    lost = replace(msg, text=text)
+    state = reducer.apply(state, lost, PARSER.parse(lost))
+    assert (value(state, "money"), state["money"]["src"]) == (867, "doubtful")
+    assert value(state, "exp") == 17496049 + 118
+
+
 def test_sleep_warning_sets_deadline() -> None:
     reducer = StateReducer()
     state = feed(reducer, _profiled(reducer), "sleep", 3517243, 1)

@@ -31,6 +31,9 @@ _ROBBERY = re.compile(
     r"\((?P<lvl>\d+)\)\nТы (?P<res>победил|проиграл) в схватке"
 )
 _ALERT = re.compile(r"\AОпа, тебя начал грабить (?P<robber>.+?) \((?P<lvl>\d+)\)\. Просыпайся!")
+_LOSS = re.compile(
+    r"\AТебя ограбил (?P<robber>.+?) \((?P<lvl>\d+)\)\.\s+Ты потерял (?P<pct>\d+)% 💵"
+)
 _ACKS: tuple[tuple[str, str], ...] = (
     ("hotel_ack", "Ты потратился на отель"),
     ("bridge_ack", "Ты решил не тратиться на отель"),
@@ -98,6 +101,19 @@ class RobberyAlert(Event):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class RobberyLoss(Event):
+    """Не проснулся: грабитель забрал `pct`% 💵 — отдельное сообщение через ~4 мин после тревоги,
+    сама тревога не правится. Потерю игра пишет строкой «💵Деньги: -$N»."""
+
+    kind: ClassVar[str] = "robbery_loss"
+    outcome: ClassVar[bool] = True
+    robber: str
+    level: int
+    pct: int
+    rewards: Rewards
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Acknowledged(Event):
     kind: ClassVar[str] = "acknowledged"
     topic: str
@@ -137,6 +153,15 @@ def recognize_sleep(msg: IncomingMessage) -> list[Event]:
         ]
     if m := _ALERT.match(text):
         return [RobberyAlert(robber=m["robber"], level=int(m["lvl"]))]
+    if m := _LOSS.match(text):
+        return [
+            RobberyLoss(
+                robber=m["robber"],
+                level=int(m["lvl"]),
+                pct=int(m["pct"]),
+                rewards=parse_rewards(text),
+            )
+        ]
     for topic, prefix in _ACKS:
         if text.startswith(prefix):
             return [Acknowledged(topic=topic)]

@@ -35,6 +35,11 @@ FIGHT_TIMEOUT_S = 30.0
 # Грабитель 4 минуты ищет жертву и 4 минуты грабит: клик, простоявший в очереди дольше, уже
 # ничего не спасёт.
 CLICK_TTL_S = 240.0
+# Не проснулся — итог «Тебя ограбил …» приходит отдельным сообщением через ~238 с после тревоги, а
+# кнопка тревоги так и висит: окно считается от создания самой тревоги, с запасом на доставку.
+ROBBERY_WINDOW_S = 230.0
+# Отказ шлюза по кадру: последняя ревизия тревоги уже другая.
+STALE = frozenset({"stale_button", "stale_revision", "stale_content"})
 QUEUE_SIZE = 32
 
 
@@ -154,7 +159,7 @@ class RobberyDefense:
             await asyncio.sleep(self._ready_poll_s)
         journaled = await self._alerts(self._clock.now() - window)
         for msg in journaled:
-            if wake_button(msg) is None:
+            if wake_button(msg) is None or self._expired(msg):
                 continue
             fresh = await self._reread(msg.chat_id, msg.msg_id) if self._reread else None
             if fresh is None:
@@ -168,6 +173,8 @@ class RobberyDefense:
         if not self._settings.current.features.robbery_defense:
             log.info("robbery alert %s ignored: robbery_defense off", msg.msg_id)
             return
+        if self._expired(msg):
+            return
         if msg.recovered and not alert.verified:
             # Тревога из догона: её могли уже прокликать с телефона или игра могла её переписать.
             fresh = await self._reread(msg.chat_id, msg.msg_id) if self._reread else None
@@ -179,6 +186,8 @@ class RobberyDefense:
         if button is None:
             log.info("robbery alert %s already resolved", msg.msg_id)
             return
+        if self._expired(msg):
+            return
         result = await self._gateway.submit(
             ActionRequest(
                 kind=ActionKind.CLICK,
@@ -187,7 +196,7 @@ class RobberyDefense:
                 data=button,
                 source=Source.URGENT,
                 expect=Expectation(fight_in(msg.msg_id), self._timeout_s),
-                ttl_s=self._ttl_s,
+                ttl_s=min(self._ttl_s, self._left_s(msg)),
                 idempotency_key=wake_key(msg),
                 expect_revision=msg.revision,
                 expect_content=msg.content_hash(),
@@ -196,7 +205,24 @@ class RobberyDefense:
         if result.status is ActionStatus.CONFIRMED:
             log.info("robbery alert %s: woke up and fought", msg.msg_id)
             return
+        if result.reason in STALE and self._resolved(msg):
+            log.info("robbery alert %s resolved before click (%s)", msg.msg_id, result.reason)
+            return
         await self._warn(msg, f"wake click {result.status.value} {result.reason}")
+
+    def _left_s(self, msg: IncomingMessage) -> float:
+        return ROBBERY_WINDOW_S - (self._clock.now() - msg.origin).total_seconds()
+
+    def _expired(self, msg: IncomingMessage) -> bool:
+        if self._left_s(msg) > 0:
+            return False
+        log.info("robbery alert %s skipped: older than %.0fs", msg.msg_id, ROBBERY_WINDOW_S)
+        return True
+
+    def _resolved(self, msg: IncomingMessage) -> bool:
+        """В последней ревизии кнопки уже нет: прокликали с телефона или игра сменила итог."""
+        latest = self._gateway.latest(msg.chat_id, msg.msg_id)
+        return latest is not None and wake_button(latest) is None
 
     async def _warn(self, msg: IncomingMessage, what: str) -> None:
         text = f"robbery alert {msg.msg_id}: {what}"

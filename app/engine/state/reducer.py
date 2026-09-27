@@ -69,6 +69,7 @@ from app.engine.parsing.screens import (
 from app.engine.parsing.sleep import (
     FellAsleep,
     RobberyFight,
+    RobberyLoss,
     SleepMenu,
     SleepPlace,
     SleepWarning,
@@ -469,6 +470,14 @@ def _woke_up(p: _Patch, e: WokeUp) -> None:
 @_on(RobberyFight)
 def _robbery(p: _Patch, e: RobberyFight) -> None:
     _woke(p, e.rewards)
+
+
+@_on(RobberyLoss)
+def _robbery_loss(p: _Patch, e: RobberyLoss) -> None:
+    # Сон продолжается. Без строки потери деньги изменились на неизвестную сумму.
+    p.rewards(e.rewards)
+    if e.rewards.money == 0:
+        p.doubt("money")
 
 
 @_on(DeedsMenu)

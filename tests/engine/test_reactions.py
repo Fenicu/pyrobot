@@ -1,6 +1,7 @@
 """Защита от ограбления на эмуляторе игры: тревога из поиска, итог драки из выгрузки."""
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -13,7 +14,7 @@ from app.engine.gateway.types import ActionStatus, Source
 from app.engine.memory import MemoryJournal
 from app.engine.notify import Level
 from app.engine.parsing.sleep import RobberyAlert
-from app.engine.reactions import RobberyDefense, wake_key
+from app.engine.reactions import CLICK_TTL_S, ROBBERY_WINDOW_S, RobberyDefense, wake_key
 from app.engine.scenarios.library import run_scenario, sleep
 from app.engine.scenarios.obligations import factory_signup
 from app.engine.settings import Settings
@@ -30,6 +31,19 @@ WON = ("sleep", 3621947)
 SLEEP = 3625590
 
 
+class Frozen:
+    """Часы реакции стоят (их переставляет тест): возраст тревоги — ровно заданный."""
+
+    def __init__(self) -> None:
+        self.at = datetime.now(UTC)
+
+    def now(self) -> datetime:
+        return self.at
+
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+
 class Notes:
     def __init__(self) -> None:
         self.codes: list[str] = []
@@ -42,6 +56,7 @@ class Rig:
     def __init__(self, world: World) -> None:
         self.world = world
         self.notes = Notes()
+        self.clock = Frozen()
         self.rereads = 0
 
         async def reread(chat_id: int, msg_id: int) -> IncomingMessage | None:
@@ -58,22 +73,21 @@ class Rig:
             settings=world.settings,
             reread=reread,
             notifier=self.notes,
+            clock=self.clock,
             timeout_s=0.3,
         )
         world.bus.subscribe(self.defense.on_delivery, priority=20)
 
+    def fresh(self, age: timedelta = timedelta(0)) -> IncomingMessage:
+        """Тревога возрастом `age`: часы реакции — на настоящий момент доставки."""
+        self.clock.at = datetime.now(UTC)
+        moment = self.clock.at - age
+        return replace(game_msg(*ALERT), date=moment, created_at=moment, received_at=self.clock.at)
+
     async def alert(
         self, *, age: timedelta = timedelta(0), recovered: bool = False, fought: bool = False
     ) -> int:
-        received = datetime.now(UTC)
-        moment = received - age
-        msg = replace(
-            game_msg(*ALERT),
-            date=moment,
-            created_at=moment,
-            received_at=received,
-            recovered=recovered,
-        )
+        msg = replace(self.fresh(age), recovered=recovered)
         if fought:
             # С телефона уже прокликали: в Telegram сообщение — итог драки.
             self.world.game.messages[msg.msg_id] = msg
@@ -163,6 +177,82 @@ async def test_recovered_alert_is_reread_then_clicked(rig: Rig) -> None:
     )
 
 
+async def test_recovered_alert_older_than_window_is_skipped_silently(rig: Rig) -> None:
+    # Итог «Тебя ограбил» приходит через ~238 с после тревоги: тревога пятиминутной давности уже
+    # отыграна, кнопка висит, но клик ничего не спасёт.
+    rig.world.game.on_click(BUTTON, edit=WON)
+    await rig.alert(age=timedelta(minutes=5), recovered=True)
+    await rig.settled()
+    assert (rig.clicks(), rig.rereads, rig.notes.codes) == ([], 0, [])
+    assert rig.world.store.rows == {}
+
+
+@pytest.mark.parametrize(
+    ("age", "ttl"),
+    [
+        (timedelta(0), ROBBERY_WINDOW_S),
+        (timedelta(seconds=60), ROBBERY_WINDOW_S - 60),
+        (timedelta(seconds=200), ROBBERY_WINDOW_S - 200),
+    ],
+)
+async def test_click_ttl_is_what_is_left_of_robbery_window(
+    rig: Rig, age: timedelta, ttl: float
+) -> None:
+    rig.world.game.on_click(BUTTON, edit=WON)
+    await rig.alert(age=age)
+    await rig.settled()
+    assert rig.clicks() == [BUTTON]
+    [row] = rig.world.store.rows.values()
+    assert row.status is ActionStatus.CONFIRMED
+    assert row.req.ttl_s == pytest.approx(ttl) and row.req.ttl_s <= CLICK_TTL_S
+
+
+async def test_click_ttl_is_not_longer_than_configured(world: World) -> None:
+    clock = Frozen()
+    defense = RobberyDefense(
+        gateway=world.gateway, settings=world.settings, clock=clock, timeout_s=0.3, ttl_s=30.0
+    )
+    world.bus.subscribe(defense.on_delivery, priority=20)
+    task = asyncio.create_task(defense.run())
+    try:
+        world.game.on_click(BUTTON, edit=WON)
+        await world.game.show(replace(game_msg(*ALERT), date=clock.at, created_at=clock.at))
+        await until(lambda: len(world.store.rows) == 1, 3.0)
+        await world.game.settle()
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    [row] = world.store.rows.values()
+    assert row.req.ttl_s == 30.0
+
+
+@pytest.mark.parametrize("gone", [True, False])
+async def test_stale_click_warns_only_while_button_is_still_there(rig: Rig, gone: bool) -> None:
+    """Клик ждёт аренду сценария, а тревогу тем временем прокликали с телефона: последняя
+    ревизия — итог драки, кнопки нет, предупреждать не о чем. Кнопка на месте, но ревизия
+    другая — предупреждение."""
+    world = rig.world
+    lease = await world.gateway.acquire_lease("scenario")
+    msg_id = await rig.alert()
+    await until(lambda: rig.defense._queue.empty() and bool(rig.defense._queued), 3.0)
+    shown = world.game.messages[msg_id]
+    later = shown.revision + 10_000
+    edit = (
+        replace(game_msg(*WON), msg_id=msg_id, chat_id=shown.chat_id)
+        if gone
+        else replace(shown, text=(shown.text or "") + " ")
+    )
+    await world.game._push(
+        replace(edit, kind="edit", revision=later, date=datetime.now(UTC), created_at=shown.origin)
+    )
+    await world.gateway.release_lease(lease)
+    await rig.settled()
+    assert rig.clicks() == []
+    [row] = world.store.rows.values()
+    assert row.status is ActionStatus.REJECTED
+    assert rig.notes.codes == ([] if gone else ["robbery_defense_failed"])
+
+
 async def test_recovered_alert_already_fought_is_not_clicked(rig: Rig) -> None:
     world = rig.world
     await asleep_under_bridge(world)
@@ -247,7 +337,7 @@ async def test_feature_off_ignores_alert(rig: Rig) -> None:
 
 async def test_subscriber_does_not_wait_for_click(rig: Rig) -> None:
     # Без ответа игры клик ждёт итога до тайм-аута, а шина — нет.
-    msg = replace(game_msg(*ALERT), date=datetime.now(UTC), received_at=datetime.now(UTC))
+    msg = rig.fresh()
     delivery = Delivery(
         msg=msg, events=tuple(rig.world.pipeline._parser.parse(msg)), state_version=0, journal_id=0
     )
@@ -269,10 +359,7 @@ async def test_click_waits_for_scenario_safe_point(rig: Rig) -> None:
         await push(msg)
         if (msg.text or "").startswith("Все мы рано или поздно") and not fired:
             fired.append(1)
-            alert = replace(
-                game_msg(*ALERT), date=datetime.now(UTC), received_at=datetime.now(UTC)
-            )
-            await push(alert)
+            await push(rig.fresh())
 
     world.game._push = pushed  # type: ignore[method-assign]
     result = await run_scenario(
@@ -297,10 +384,7 @@ async def test_click_does_not_split_factory_signup(rig: Rig) -> None:
         await push(msg)
         if (msg.text or "").startswith("О команде") and not fired:
             fired.append(1)
-            alert = replace(
-                game_msg(*ALERT), date=datetime.now(UTC), received_at=datetime.now(UTC)
-            )
-            await push(alert)
+            await push(rig.fresh())
 
     world.game._push = pushed  # type: ignore[method-assign]
     result = await run_scenario(factory_signup, context(world), CharacterState(), {})
@@ -312,7 +396,9 @@ async def test_click_does_not_split_factory_signup(rig: Rig) -> None:
 class Restart:
     """Процесс, поднятый после рестарта: тревога уже в журнале, реакция стартует заново."""
 
-    def __init__(self, world: World, ready: list[bool] | None = None) -> None:
+    def __init__(
+        self, world: World, ready: list[bool] | None = None, clock: Frozen | None = None
+    ) -> None:
         self.world = world
         self.rereads = 0
         journal = world.pipeline._journal
@@ -336,6 +422,7 @@ class Restart:
             reread=reread,
             alerts=alerts,
             ready=lambda: self.ready[-1],
+            clock=clock or Frozen(),
             timeout_s=0.3,
             ready_poll_s=0.01,
         )
@@ -352,9 +439,11 @@ class Restart:
             await asyncio.gather(task, return_exceptions=True)
 
 
-async def journaled_alert(world: World, age: timedelta = timedelta(minutes=2)) -> int:
+async def journaled_alert(
+    world: World, age: timedelta = timedelta(minutes=2), now: datetime | None = None
+) -> int:
     """Тревога, записанная прошлым процессом: доставлена и в журнале, клика не было."""
-    moment = datetime.now(UTC) - age
+    moment = (now or datetime.now(UTC)) - age
     msg = replace(game_msg(*ALERT), date=moment, created_at=moment, received_at=moment)
     await world.game.show(msg)
     return msg.msg_id
@@ -398,6 +487,15 @@ async def test_alert_already_fought_in_telegram_is_not_clicked(world: World) -> 
 async def test_old_alert_in_journal_is_ignored(world: World) -> None:
     await journaled_alert(world, age=timedelta(minutes=15))
     restart = Restart(world)
+    await restart.run_until_idle()
+    assert world.game.sent == [] and restart.rereads == 0
+
+
+async def test_alert_in_journal_older_than_window_is_skipped(world: World) -> None:
+    clock = Frozen()
+    await journaled_alert(world, age=timedelta(minutes=5), now=clock.at)
+    world.game.on_click(BUTTON, edit=WON)
+    restart = Restart(world, clock=clock)
     await restart.run_until_idle()
     assert world.game.sent == [] and restart.rereads == 0
 
