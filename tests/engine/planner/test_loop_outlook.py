@@ -1,11 +1,15 @@
+import asyncio
 import time
 from datetime import date, datetime
 from typing import Any
+
+import pytest
 
 from app.engine.metro.store import MemoryMetroRunStore
 from app.engine.planner.loop import PlannerLoop
 from app.engine.planner.store import DecisionRecord, MemoryPlannerStore
 from app.engine.planner.types import Act, Wait
+from app.engine.scenarios.library import ScenarioResult
 from app.engine.settings import Settings, StaticSettings
 from app.engine.state.model import CharacterState
 from tests.engine.planner.test_decide import BASE, NOW, awake, config, m, w
@@ -72,19 +76,90 @@ def rig(
     return loop, store, metro
 
 
-async def test_outlook_loads_caches_once_and_writes_nothing() -> None:
+async def test_outlook_reads_empty_caches_without_filling_them() -> None:
     loop, store, metro = rig(awake())
     first = await loop.outlook()
-    started = time.perf_counter()
-    again = await loop.outlook()
-    elapsed = time.perf_counter() - started
-    assert again.outlook == first.outlook
-    # Кеши цикла — по одному чтению на весь процесс; сам проход — без БД и без записи.
-    assert store.reads == ["last_done", "done_on_day"] and metro.reads == 1
-    assert store.decisions == [] and store.runs == []
     assert first.now == NOW
-    # Порядок величин для README: проход — доли миллисекунды; порог с запасом на медленный CI.
-    assert elapsed < 0.1
+    # Пустые кеши план читает из хранилища, но не заполняет: их грузит и ведёт только step().
+    assert store.reads == ["last_done", "done_on_day"] and metro.reads == 1
+    assert (loop._last_done, loop._metro_durations, loop._done_today) == (None, None, None)
+    assert store.decisions == [] and store.runs == []
+
+    async def execute(act: Act, decision_id: int, *, dry_run: bool) -> None:
+        pass
+
+    loop._execute = execute  # type: ignore[method-assign]
+    await loop.step()
+    store.reads.clear()
+    again = await loop.outlook()
+    # Кеши есть — чтений БД нет.
+    assert store.reads == [] and metro.reads == 2
+    assert again.outlook.decision == first.outlook.decision
+
+
+class SlowStore(CountingStore):
+    """Первые чтения кешей ждут, пока тест их не отпустит: порядок завершения задаёт тест."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.gate = asyncio.Event()
+        self.slow = 1
+
+    async def _maybe_wait(self) -> None:
+        if self.slow > 0:
+            self.slow -= 1
+            await self.gate.wait()
+
+    async def last_done(self) -> dict[str, datetime]:
+        await self._maybe_wait()
+        return await super().last_done()
+
+
+async def test_late_outlook_read_does_not_overwrite_loop_caches() -> None:
+    loop, _, _ = rig(awake())
+    store = SlowStore()
+    loop._store = store
+    executed: list[Act] = []
+
+    async def execute(act: Act, decision_id: int, *, dry_run: bool) -> None:
+        executed.append(act)
+
+    loop._execute = execute  # type: ignore[method-assign]
+    # GET начал читать last_done и ждёт; тем временем цикл загрузил кеш и учёл успешное дело.
+    pending = asyncio.create_task(loop.outlook())
+    await asyncio.sleep(0)
+    await loop.step()
+    job = Act("deed:job", {}, "best")
+    await loop._after(job, ScenarioResult("done", "activity_started"), NOW, NOW)
+    assert loop._last_done == {"deed:job": NOW}
+    store.gate.set()
+    await pending
+    # Позднее чтение плана кеш цикла не трогает.
+    assert loop._last_done == {"deed:job": NOW}
+    assert executed
+
+
+async def test_running_only_while_loop_task_runs() -> None:
+    loop, _, _ = rig(awake(), auto=False)
+    assert not loop.running
+    task = asyncio.create_task(loop.run())
+    await asyncio.sleep(0)
+    assert loop.running
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert not loop.running
+
+
+async def test_crashed_loop_is_not_running(monkeypatch: pytest.MonkeyPatch) -> None:
+    loop, _, _ = rig(awake())
+
+    async def crash() -> float | None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(loop, "step", crash)
+    with pytest.raises(RuntimeError):
+        await loop.run()
+    assert not loop.running
 
 
 async def test_outlook_decides_like_step() -> None:

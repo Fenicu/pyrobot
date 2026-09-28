@@ -1,9 +1,14 @@
+import asyncio
+from collections.abc import AsyncIterator
+from datetime import datetime
+
 import pytest
 from httpx import AsyncClient
 
 from app.api.container import Container
 from app.engine.facade import OUTLOOK_TTL_S, EngineFacade
-from app.engine.planner.loop import PlannerLoop, PlanView
+from app.engine.planner.decide import Outlook
+from app.engine.planner.loop import PlannerLoop
 from tests.api.conftest import login
 from tests.engine.planner.test_decide import awake
 from tests.engine.planner.test_loop_outlook import CountingStore, rig
@@ -23,26 +28,35 @@ class Tick:
 
 class Planned:
     def __init__(self) -> None:
-        self.loop, self.store, _ = rig(awake())
+        # Цикл без своих решений: задача идёт, но ничего не исполняет и не пишет в журнал.
+        self.loop, self.store, _ = rig(awake(), auto=False)
+        self.ready: str | None = None
+        self.loop._ready = lambda: self.ready
         self.tick = Tick()
         self.passes = 0
-        original = self.loop.outlook
+        original = self.loop.plan
 
-        async def counted() -> PlanView:
+        async def counted() -> tuple[datetime, Outlook]:
             self.passes += 1
             return await original()
 
-        self.loop.outlook = counted  # type: ignore[method-assign]
+        self.loop.plan = counted  # type: ignore[method-assign]
         self.facade: EngineFacade = build(
             settings=self.loop._settings, planner=self.loop, monotonic=self.tick
         )
 
 
 @pytest.fixture
-def planned(container: Container) -> Planned:
+async def planned(container: Container) -> AsyncIterator[Planned]:
     p = Planned()
     container.facade = p.facade
-    return p
+    task = asyncio.create_task(p.loop.run())
+    await asyncio.sleep(0)
+    try:
+        yield p
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
 
 async def test_outlook_requires_session(planned: Planned, api_client: AsyncClient) -> None:
@@ -58,6 +72,11 @@ async def test_outlook_without_engine_or_planner(
     container.facade = build()
     resp = await api_client.get(URL)
     assert (resp.status_code, resp.json()) == (503, {"detail": "planner not started"})
+    # Цикл создан, но его задача не идёт (до старта или в перезапуске после падения).
+    loop, _, _ = rig(awake())
+    container.facade = build(planner=loop)
+    resp = await api_client.get(URL)
+    assert (resp.status_code, resp.json()) == (503, {"detail": "planner not started"})
 
 
 async def test_outlook_reads_without_writing(planned: Planned, api_client: AsyncClient) -> None:
@@ -71,7 +90,7 @@ async def test_outlook_reads_without_writing(planned: Planned, api_client: Async
     assert body["loop"] == {
         "paused": False,
         "ready": None,
-        "auto": True,
+        "auto": False,
         "current": None,
         "manual_queue": 0,
         "next_wake": None,
@@ -101,3 +120,15 @@ async def test_outlook_cached_by_versions_and_ttl(
     planned.tick.at += OUTLOOK_TTL_S
     await api_client.get(URL)
     assert planned.passes == 4
+
+
+async def test_loop_state_is_fresh_over_cached_pass(
+    planned: Planned, api_client: AsyncClient
+) -> None:
+    await login(api_client)
+    first = (await api_client.get(URL)).json()
+    planned.ready = "tg_offline"
+    again = (await api_client.get(URL)).json()
+    assert planned.passes == 1
+    assert again["decision"] == first["decision"]
+    assert (first["loop"]["ready"], again["loop"]["ready"]) == (None, "tg_offline")

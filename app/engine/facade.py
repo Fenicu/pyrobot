@@ -14,6 +14,8 @@ from app.engine.lag import LoopLagMonitor
 from app.engine.manual import Fingerprint, KeyReused, fingerprint, manual_key
 from app.engine.notify import NotifierPort
 from app.engine.pipeline import Pipeline
+from app.engine.planner.decide import Outlook
+from app.engine.planner.loop import PlanView
 from app.engine.settings import (
     Settings,
     SettingsPatchError,
@@ -24,7 +26,7 @@ from app.engine.settings import (
 from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
 
 if TYPE_CHECKING:
-    from app.engine.planner.loop import PlannerLoop, PlanView
+    from app.engine.planner.loop import PlannerLoop
     from app.engine.reconcile import Reconciler
     from app.engine.stream import EventStream
 
@@ -104,7 +106,7 @@ class EngineFacade:
         self._inflight: dict[str, Fingerprint] = {}
         self.stream = stream
         self._monotonic = monotonic
-        self._outlook: tuple[tuple[int, int, int], float, PlanView] | None = None
+        self._outlook: tuple[tuple[int, int, int], float, datetime, Outlook] | None = None
 
     def state(self) -> tuple[int, dict[str, Any]]:
         return self.pipeline.version, self.pipeline.state
@@ -218,19 +220,22 @@ class EngineFacade:
         return await self._planner.request(name, params, key=key, by=by)
 
     async def outlook(self) -> PlanView:
-        """«План бота». Ответ живёт до `OUTLOOK_TTL_S` при той же версии состояния, версии
-        настроек и отметке цикла. PlannerUnavailable — цикла планировщика нет."""
+        """«План бота». Проход планировщика живёт до `OUTLOOK_TTL_S` при той же версии
+        состояния, версии настроек и отметке цикла; состояние цикла (пауза, готовность, очередь)
+        — всегда свежее. PlannerUnavailable — задача цикла не идёт (ещё не запущена или
+        перезапускается после падения)."""
         planner = self._planner
-        if planner is None:
+        if planner is None or not planner.running:
             raise PlannerUnavailable
         key = (self.pipeline.version, self.settings.version, planner.revision)
         at = self._monotonic()
         cached = self._outlook
         if cached is not None and cached[0] == key and at - cached[1] < OUTLOOK_TTL_S:
-            return cached[2]
-        view = await planner.outlook()
-        self._outlook = (key, at, view)
-        return view
+            now, view = cached[2], cached[3]
+        else:
+            now, view = await planner.plan()
+            self._outlook = (key, at, now, view)
+        return PlanView(now, view, planner.loop_view())
 
     def manual_pending(self, key: str) -> bool:
         return self.gateway.pending_key(manual_key(key))

@@ -154,6 +154,8 @@ class PlannerLoop:
         self.next_wake: datetime | None = None
         # Отметка цикла: растёт при каждом изменении его входов (решение, запуск, очередь).
         self.revision = 0
+        # Задача цикла идёт: до старта и в паузе супервизора после падения — нет.
+        self.running = False
 
     async def on_delivery(self, delivery: Delivery) -> None:
         self._wake.set()
@@ -186,14 +188,18 @@ class PlannerLoop:
         return run_id, created
 
     async def run(self) -> None:
-        while True:
-            self._wake.clear()
-            if self._manual:
-                await self.run_manual()
-                continue
-            pause = await self.step() if self._auto else self._max_idle_s
-            if pause is not None:
-                await self._pause(pause)
+        self.running = True
+        try:
+            while True:
+                self._wake.clear()
+                if self._manual:
+                    await self.run_manual()
+                    continue
+                pause = await self.step() if self._auto else self._max_idle_s
+                if pause is not None:
+                    await self._pause(pause)
+        finally:
+            self.running = False
 
     async def run_manual(self) -> None:
         """Следующий ручной запуск из очереди. Его сбой не роняет цикл планировщика."""
@@ -284,15 +290,23 @@ class PlannerLoop:
         return None
 
     async def outlook(self) -> PlanView:
-        """«План бота»: проход планировщика на тех же входах, что у `step()`, без решения и
-        записи в журнал; недостающие кеши подгружаются так же."""
+        """«План бота»: проход планировщика и состояние цикла."""
+        now, view = await self.plan()
+        return PlanView(now, view, self.loop_view())
+
+    async def plan(self) -> tuple[datetime, Outlook]:
+        """Проход планировщика на тех же входах, что у `step()`, без решения и записи в журнал.
+        Кеши цикла только читаются: пустой кеш читается из хранилища в локальную переменную —
+        иначе поздний ответ этого чтения затёр бы кеш, который `step()` уже загрузил и обновил."""
         now = self._clock.now()
         settings = self._settings.current
-        if self._last_done is None:
-            self._last_done = await self._store.last_done()
-        if self._metro_durations is None:
-            self._metro_durations = await self._load_metro_durations()
-        done_today = await self._deeds_today(now)
+        last_done = self._last_done
+        if last_done is None:
+            last_done = await self._store.last_done()
+        durations = self._metro_durations
+        if durations is None:
+            durations = await self._load_metro_durations()
+        done_today = await self._peek_today(now)
         # Смена режима снимет отсрочки подавления на следующем решении — план их уже не видит.
         held = settings.engine.mode == self._mode
         view = outlook(
@@ -302,19 +316,33 @@ class PlannerLoop:
             certified=CERTIFIED if settings.engine.mode == "live" else None,
             last_refresh=self._last_refresh,
             cooldowns=self._blocked() if held else dict(self._cooldowns),
-            last_done=self._last_done,
-            metro_durations=self._metro_durations,
+            last_done=last_done,
+            metro_durations=durations,
             done_today=done_today,
         )
-        loop = LoopView(
-            paused=settings.engine.paused,
+        return now, view
+
+    def loop_view(self) -> LoopView:
+        return LoopView(
+            paused=self._settings.current.engine.paused,
             ready=self._ready(),
             auto=self._auto,
             current=self.current,
             manual_queue=len(self._manual),
             next_wake=self.next_wake,
         )
-        return PlanView(now, view, loop)
+
+    async def _peek_today(self, now: datetime) -> dict[str, int]:
+        """Счётчик дел за день для плана: из кеша цикла, если он за этот день, иначе из
+        хранилища без записи в кеш."""
+        day = tasks_day(now)
+        if self._done_today is not None and self._done_today[0] == day:
+            return self._done_today[1]
+        try:
+            return await self._store.done_on_day(day)
+        except Exception:
+            log.exception("deeds done on %s not loaded for outlook", day)
+            return {}
 
     def _observed(self) -> CharacterState:
         """Состояние с нехваткой, которую последний запуск лотереи увидел сверх запасов и
