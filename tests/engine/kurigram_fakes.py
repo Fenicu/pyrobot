@@ -109,6 +109,9 @@ class FakeClient:
         return NS(message=None)
 
     async def resolve_peer(self, chat_id: int) -> Any:
+        err = self.errors.pop("ResolvePeer", None)
+        if err is not None:
+            raise err
         return NS(id=chat_id)
 
     def rnd_id(self) -> int:

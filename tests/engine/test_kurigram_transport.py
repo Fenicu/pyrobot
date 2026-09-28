@@ -329,3 +329,16 @@ async def test_forward_flood_wait_mapped(tmp_path: Path) -> None:
     t.client.errors["ForwardMessages"] = errors.FloodWait(7)
     with pytest.raises(FloodWait):
         await t.forward(GAME, 77, -1001149209877)
+
+
+@pytest.mark.parametrize("error", [KeyError("unknown peer"), OSError("network down")])
+async def test_forward_unresolved_peer_is_refusal_not_unknown(
+    tmp_path: Path, error: Exception
+) -> None:
+    # До ForwardMessages дело не дошло: пересылки точно нет — отказ, а не неясный исход.
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    t.client.errors["ResolvePeer"] = error
+    with pytest.raises(TransportRejected, match="peer"):
+        await t.forward(GAME, 77, -1001149209877)
+    assert all(name != "ForwardMessages" for name, _ in t.client.invoked)

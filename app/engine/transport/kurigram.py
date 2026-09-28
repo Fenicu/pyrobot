@@ -407,6 +407,15 @@ class KurigramTransport:
         try:
             to_peer = await client.resolve_peer(to_chat_id)
             from_peer = await client.resolve_peer(from_chat_id)
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except Exception as exc:
+            # До пересылки дело не дошло: копии точно нет — отказ, а не неясный исход.
+            raise TransportRejected(f"peer:{type(exc).__name__}") from exc
+        try:
             # Одна попытка: повтор после тайм-аута мог бы переслать дважды.
             updates = await client.invoke(
                 raw.functions.messages.ForwardMessages(
