@@ -77,6 +77,18 @@
      "default": 927136,
      "title": "Tangerine Reply To",
      "type": "integer"
+    },
+    "team_chat_id": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Team Chat Id"
     }
    },
    "title": "ChatsSection",

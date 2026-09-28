@@ -94,6 +94,8 @@ def _keyed_manual(req: ActionRequest) -> bool:
 
 
 def command_class(req: ActionRequest) -> CommandClass:
+    if req.kind is ActionKind.FORWARD:
+        return CommandClass.FORWARD
     if req.kind is ActionKind.SEND:
         return classify_text(req.text or "")
     return classify_callback(req.data or "")
@@ -105,10 +107,14 @@ def _answer_chat(req: ActionRequest) -> int:
 
 
 def spends_nothing(req: ActionRequest) -> bool:
+    if req.kind is ActionKind.FORWARD:
+        return True
     return req.kind is ActionKind.CLICK and spends_nothing_callback(req.data or "")
 
 
 def command_feature(req: ActionRequest) -> str | None:
+    if req.kind is ActionKind.FORWARD:
+        return None
     if req.kind is ActionKind.SEND:
         return feature_of_text(req.text or "")
     return feature_of_callback(req.data or "")
@@ -354,8 +360,9 @@ class ActionGateway:
 
     def _uncertain(self, p: _Pending) -> None:
         # Исход траты неизвестен: до сверки состояния новые траты запрещены. Блок ставится
-        # синхронно, до выбора следующего действия.
-        if p.cls is CommandClass.NAV:
+        # синхронно, до выбора следующего действия. Пересылка ничего в игре не тратит: её
+        # неизвестный исход не сверяется и не повторяется.
+        if p.cls in (CommandClass.NAV, CommandClass.FORWARD):
             return
         self._spend_block = RECONCILE_REASON
         if self.on_uncertain is not None:
@@ -368,6 +375,8 @@ class ActionGateway:
         eng = self._settings.current.engine
         if self._closed:
             return ActionStatus.SUPPRESSED, "shutdown"
+        if cls is CommandClass.FORWARD:
+            return self._forward_checks(req)
         if cls in (CommandClass.FORBIDDEN, CommandClass.DONATE):
             return ActionStatus.REJECTED, cls.value
         if req.chat_id not in self._allowed_chats():
@@ -397,6 +406,29 @@ class ActionGateway:
             and not spends_nothing(req)
         ):
             return ActionStatus.REJECTED, f"blocked:{self._spend_block}"
+        return None
+
+    def _forward_checks(self, req: ActionRequest) -> Blocked | None:
+        """Пересылка — только из чата игры и только в текущий чат команды (сверяется и перед
+        каждой попыткой). Kill отклоняет, dry_run подавляет; пауза и блок трат не мешают: в игре
+        пересылка ничего не меняет."""
+        current = self._settings.current
+        chats = current.chats
+        if req.message_id is None:
+            return ActionStatus.REJECTED, "forward_invalid"
+        if req.from_chat_id != chats.game_chat_id:
+            return ActionStatus.REJECTED, "forward_source"
+        if chats.team_chat_id is None:
+            return ActionStatus.REJECTED, "team_chat_off"
+        if req.chat_id != chats.team_chat_id:
+            return ActionStatus.REJECTED, "team_chat_changed"
+        if self._kill_reason is not None or current.engine.killed:
+            return ActionStatus.REJECTED, "kill_switch"
+        cannot = self._can_send()
+        if cannot is not None:
+            return ActionStatus.REJECTED, cannot
+        if current.engine.mode == "dry_run" or req.dry_run:
+            return ActionStatus.SUPPRESSED, "dry_run"
         return None
 
     def _confirm_stale(self, req: ActionRequest) -> bool:
@@ -456,7 +488,8 @@ class ActionGateway:
 
     def _eligible(self, p: _Pending) -> bool:
         lease = self._lease
-        if lease is None or p.req.lease_token == lease.token:
+        # Пересылка экран игры не трогает: шагам сценария под арендой она не мешает.
+        if lease is None or p.req.lease_token == lease.token or p.cls is CommandClass.FORWARD:
             return True
         return lease.safe and p.req.source in (Source.URGENT, Source.MANUAL)
 
@@ -626,6 +659,12 @@ class ActionGateway:
             return await self._finish(p, status, outcome.detail, answer=answer, match=outcome)
 
     async def _transmit(self, req: ActionRequest, click_timeout: float) -> str | None:
+        if req.kind is ActionKind.FORWARD:
+            # Ответ пересылки — id сообщения в чате назначения (0 — Telegram его не вернул).
+            sent = await self._transport.forward(
+                req.from_chat_id or 0, req.message_id or 0, req.chat_id
+            )
+            return str(sent) if sent else None
         if req.kind is ActionKind.SEND:
             await self._transport.send_text(req.chat_id, req.text or "", req.reply_to)
             return None

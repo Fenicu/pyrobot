@@ -142,7 +142,7 @@ class MemoryActionStore:
             Obligation(i, r.req.kind.value, r.req.text, r.req.data)
             for i, r in self.rows.items()
             if r.status is ActionStatus.OUTCOME_UNKNOWN
-            and r.cls is not CommandClass.NAV
+            and r.cls not in (CommandClass.NAV, CommandClass.FORWARD)
             and not r.reconciled
         ]
 

@@ -88,6 +88,19 @@ def to_incoming(
     )
 
 
+def _forwarded_id(updates: Any, random_id: int) -> int:
+    """Id пересланной копии: по `UpdateMessageID` своего `random_id` или из нового сообщения."""
+    from pyrogram import raw
+
+    found = 0
+    for update in getattr(updates, "updates", None) or ():
+        if isinstance(update, raw.types.UpdateMessageID) and update.random_id == random_id:
+            return int(update.id)
+        if isinstance(update, raw.types.UpdateNewMessage | raw.types.UpdateNewChannelMessage):
+            found = found or int(getattr(update.message, "id", 0) or 0)
+    return found
+
+
 @dataclass(frozen=True)
 class ChatFilter:
     game_chat_id: int
@@ -385,6 +398,32 @@ class KurigramTransport:
             raise TransportRejected(str(exc.ID or exc)) from exc
         message = getattr(answer, "message", None)
         return str(message) if message else None
+
+    async def forward(self, from_chat_id: int, message_id: int, to_chat_id: int) -> int:
+        from pyrogram import errors, raw
+
+        client = self._client
+        random_id = client.rnd_id()
+        try:
+            to_peer = await client.resolve_peer(to_chat_id)
+            from_peer = await client.resolve_peer(from_chat_id)
+            # Одна попытка: повтор после тайм-аута мог бы переслать дважды.
+            updates = await client.invoke(
+                raw.functions.messages.ForwardMessages(
+                    to_peer=to_peer, from_peer=from_peer, id=[message_id], random_id=[random_id]
+                ),
+                retries=1,
+                sleep_threshold=0,
+                retry_delay=0,
+            )
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except (errors.BadRequest, errors.Forbidden) as exc:
+            raise TransportRejected(str(exc.ID or exc)) from exc
+        return _forwarded_id(updates, random_id)
 
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         from pyrogram import errors

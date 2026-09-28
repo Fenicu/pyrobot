@@ -27,6 +27,11 @@ class Transport(Protocol):
         self, chat_id: int, message_id: int, data: str, timeout_s: float
     ) -> str | None: ...
 
+    async def forward(self, from_chat_id: int, message_id: int, to_chat_id: int) -> int:
+        """Пересылка одного сообщения одной попыткой; id копии в чате назначения (0 —
+        неизвестен)."""
+        ...
+
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         """Текущая версия сообщения из Telegram; None — сообщения нет."""
         ...

@@ -44,6 +44,8 @@ class ChatsSection(BaseModel):
     tangerine_chat_id: int = -1001377961602
     tangerine_reply_to: int = 927136
     bulls_invite_chat_id: int | None = None
+    # Чат команды для пересылки итогов задания и отчёта о фабрике; None — не пересылать.
+    team_chat_id: int | None = None
 
 
 class FeaturesSection(BaseModel):
@@ -243,8 +245,9 @@ class SettingsPatchError(ValueError):
 
 # Читаются только при старте процесса (парсер, фильтр чатов, вход в Telegram, конвейер).
 _RESTART_REQUIRED = ("chats.", "telegram.", "engine.recovered_react_max_age_min")
-# Чат мандаринов не входит ни в фильтр, ни в разбор: планировщик и шлюз читают его на лету.
-_LIVE = frozenset({"chats.tangerine_chat_id", "chats.tangerine_reply_to"})
+# Чаты мандаринов и команды не входят ни в фильтр, ни в разбор: планировщик, шлюз и реакция
+# пересылки читают их на лету.
+_LIVE = frozenset({"chats.tangerine_chat_id", "chats.tangerine_reply_to", "chats.team_chat_id"})
 
 
 def apply_patch(settings: Settings, changes: Mapping[str, Any]) -> Settings:

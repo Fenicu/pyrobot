@@ -75,6 +75,25 @@ async def test_obligations_survive_restart_until_reconciled(clean_db: Database) 
     assert await store.unreconciled() == []
 
 
+async def test_forward_unknown_after_restart_is_not_an_obligation(clean_db: Database) -> None:
+    store = DbActionStore(clean_db, account_id=1)
+    req = ActionRequest(
+        kind=ActionKind.FORWARD,
+        chat_id=-1001149209877,
+        from_chat_id=227859379,
+        message_id=5,
+        idempotency_key="forward:227859379:5",
+    )
+    forwarded = await store.create(req, CommandClass.FORWARD, ActionStatus.SENT)
+    assert await store.mark_unfinished_unknown() == [forwarded]
+    assert await store.unreconciled() == []
+    async with clean_db.sessions() as session:
+        row = await session.get(ActionRow, forwarded)
+    assert row is not None and row.payload["from_chat_id"] == 227859379
+    stored = await store.get_by_key("forward:227859379:5")
+    assert stored is not None and stored.status is ActionStatus.OUTCOME_UNKNOWN
+
+
 async def test_scenario_run_id_is_stored(clean_db: Database) -> None:
     planner = DbPlannerStore(clean_db, 1)
     decision = await planner.record(T0, Wait(None, "busy"))

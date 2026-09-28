@@ -100,6 +100,7 @@ async def test_purge_keeps_recent_and_open_obligations(clean_db: Database) -> No
                 _action(91, "outcome_unknown"),
                 _action(91, "outcome_unknown", reconciled=True),
                 _action(91, "outcome_unknown", cls="nav"),
+                _action(91, "outcome_unknown", cls="forward"),
                 _action(91, "suppressed", key="manual:old"),
                 _action(1, "confirmed"),
                 MetricRow(account_id=1, ts=_ago(366), key="money", value=1),
@@ -113,7 +114,7 @@ async def test_purge_keeps_recent_and_open_obligations(clean_db: Database) -> No
     purged = await DbRetention(clean_db, 1, batch=1).purge(NOW, RetentionSection())
     assert purged == {
         "messages": 2,
-        "actions": 3,
+        "actions": 4,
         "scenario_runs": 1,
         "notifications": 1,
         "decisions": 1,
@@ -131,7 +132,7 @@ async def test_purge_keeps_recent_and_open_obligations(clean_db: Database) -> No
         runs = sorted(r.status for r in await s.scalars(select(ScenarioRunRow)))
         decisions = [d.reason for d in await s.scalars(select(DecisionRow))]
     # Несверенный исход траты — обязательство сверки, его не удалить; ручные с ключом — журнал
-    # ключей идемпотентности, их тоже.
+    # ключей идемпотентности, их тоже. Неизвестный исход навигации и пересылки не сверяется.
     assert left == {
         ("outcome_unknown", "action", True),
         ("confirmed", "action", True),

@@ -11,6 +11,8 @@ class CommandClass(StrEnum):
     RISKY = "risky"
     FORBIDDEN = "forbidden"
     DONATE = "donate"
+    # Пересылка сообщения игры в чат команды: не игровая команда, у шлюза своя политика.
+    FORWARD = "forward"
 
 
 @dataclass(frozen=True, slots=True)

@@ -10,6 +10,8 @@ from app.engine.commands import CommandClass
 from app.engine.gateway.store import CANCELLED, DuplicateKey, Obligation, StoredAction
 from app.engine.gateway.types import ActionRequest, ActionStatus
 
+# Неизвестный исход навигации и пересылки состояние игры не меняет: их не сверяют.
+UNRECONCILED_FREE = (CommandClass.NAV.value, CommandClass.FORWARD.value)
 _FINAL = {
     ActionStatus.CONFIRMED,
     ActionStatus.REFUSED,
@@ -123,7 +125,7 @@ class DbActionStore:
                 .where(
                     ActionRow.account_id == self._account_id,
                     ActionRow.status == ActionStatus.OUTCOME_UNKNOWN.value,
-                    ActionRow.command_class != CommandClass.NAV.value,
+                    ActionRow.command_class.not_in(UNRECONCILED_FREE),
                     ActionRow.reconciled_at.is_(None),
                 )
                 .order_by(ActionRow.id)

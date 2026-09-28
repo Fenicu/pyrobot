@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import and_, delete, not_, select
 
+from app.db.actions import UNRECONCILED_FREE
 from app.db.base import Database
 from app.db.models import (
     ActionRow,
@@ -14,7 +15,6 @@ from app.db.models import (
     NotificationRow,
     ScenarioRunRow,
 )
-from app.engine.commands import CommandClass
 from app.engine.gateway.types import ActionStatus
 from app.engine.metro.store import METRO_HISTORY
 from app.engine.settings import RetentionSection
@@ -37,7 +37,7 @@ class DbRetention:
         # Несверенный неизвестный исход траты — обязательство сверки, оно живёт до сверки.
         open_obligation = and_(
             ActionRow.status == ActionStatus.OUTCOME_UNKNOWN.value,
-            ActionRow.command_class != CommandClass.NAV.value,
+            ActionRow.command_class.not_in(UNRECONCILED_FREE),
             ActionRow.reconciled_at.is_(None),
         )
         unfinished = (ActionStatus.INTENT.value, ActionStatus.SENT.value)

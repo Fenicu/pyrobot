@@ -12,7 +12,7 @@ from app.engine.types import IncomingMessage
 
 @dataclass(frozen=True, slots=True)
 class Sent:
-    kind: Literal["send", "click"]
+    kind: Literal["send", "click", "forward"]
     chat_id: int
     payload: str
     message_id: int | None
@@ -51,6 +51,11 @@ class FakeTransport:
     ) -> str | None:
         self._deliver(Sent("click", chat_id, data, message_id, time.monotonic()))
         return self.toast
+
+    async def forward(self, from_chat_id: int, message_id: int, to_chat_id: int) -> int:
+        self._deliver(Sent("forward", to_chat_id, str(from_chat_id), message_id, time.monotonic()))
+        self._next_id += 1
+        return self._next_id
 
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         return self.messages.get((chat_id, message_id))

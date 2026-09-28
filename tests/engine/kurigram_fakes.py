@@ -65,6 +65,7 @@ class FakeClient:
         self.stop_error: BaseException | None = None
         self.me: Any = None
         self.stored: dict[tuple[int, int], Any] = {}
+        self.responses: dict[str, Any] = {}
 
     async def connect(self) -> bool:
         if self.is_connected:
@@ -103,6 +104,8 @@ class FakeClient:
             raise err
         if name == "GetState":
             return NS(pts=1, qts=0, date=0, seq=0)
+        if name in self.responses:
+            return self.responses[name]
         return NS(message=None)
 
     async def resolve_peer(self, chat_id: int) -> Any:

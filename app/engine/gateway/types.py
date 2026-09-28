@@ -18,6 +18,7 @@ class Source(IntEnum):
 class ActionKind(StrEnum):
     SEND = "send"
     CLICK = "click"
+    FORWARD = "forward"
 
 
 class ActionStatus(StrEnum):
@@ -84,9 +85,11 @@ class ActionRequest:
     # Запуск сценария, шагом которого идёт действие (`actions.scenario_run_id`); у ручных
     # команд, реакций и сверки — None. В отпечаток идемпотентности (`payload`) не входит.
     scenario_run_id: int | None = None
+    # Пересылка (`FORWARD`): чат исходного сообщения `message_id`; `chat_id` — куда.
+    from_chat_id: int | None = None
 
     def payload(self) -> dict[str, object]:
-        return {
+        out: dict[str, object] = {
             "text": self.text,
             "message_id": self.message_id,
             "data": self.data,
@@ -94,6 +97,9 @@ class ActionRequest:
             "expect_revision": self.expect_revision,
             "expect_content": self.expect_content,
         }
+        if self.from_chat_id is not None:
+            out["from_chat_id"] = self.from_chat_id
+        return out
 
 
 @dataclass(frozen=True, slots=True)

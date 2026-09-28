@@ -170,6 +170,14 @@ def test_restart_required_paths() -> None:
     assert restart_required(["telegram.expected_user_id"]) == ["telegram.expected_user_id"]
     # Чат мандаринов планировщик и шлюз читают на лету.
     assert restart_required(["chats.tangerine_chat_id", "chats.tangerine_reply_to"]) == []
+    # Чат команды шлюз и реакция пересылки сверяют при каждой отправке.
+    assert restart_required(["chats.team_chat_id"]) == []
+
+
+def test_team_chat_off_by_default() -> None:
+    assert Settings().chats.team_chat_id is None
+    patched = apply_patch(Settings(), {"chats": {"team_chat_id": -1001149209877}})
+    assert patched.chats.team_chat_id == -1001149209877
 
 
 # Версия настроек прода до основных дел: командный вес и явный список дел без прогулки.

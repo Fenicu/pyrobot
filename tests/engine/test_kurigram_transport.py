@@ -273,3 +273,59 @@ async def test_fetch_unauthorized_resets_client(tmp_path: Path) -> None:
         await t.fetch(GAME, 7)
     _assert_reset(t)
     assert lost == [1]
+
+
+def _forwarded(new_id: int) -> object:
+    from pyrogram import raw
+
+    return raw.types.Updates(
+        updates=[raw.types.UpdateMessageID(id=new_id, random_id=1)],
+        users=[],
+        chats=[],
+        date=0,
+        seq=0,
+    )
+
+
+async def test_forward_single_attempt_returns_destination_id(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    t.client.responses["ForwardMessages"] = _forwarded(4242)
+    assert await t.forward(GAME, 77, -1001149209877) == 4242
+    name, kw = t.client.invoked[-1]
+    assert name == "ForwardMessages"
+    assert kw == {"retries": 1, "sleep_threshold": 0, "retry_delay": 0}
+
+
+async def test_forward_without_id_in_answer_is_zero(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    assert await t.forward(GAME, 77, -1001149209877) == 0
+
+
+@pytest.mark.parametrize(
+    ("error", "raised"),
+    [
+        ("ChatWriteForbidden", TransportRejected),
+        ("MessageIdInvalid", TransportRejected),
+        ("AuthKeyUnregistered", TransportAuthLost),
+    ],
+)
+async def test_forward_errors_classified(
+    tmp_path: Path, error: str, raised: type[Exception]
+) -> None:
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    t.client.errors["ForwardMessages"] = rpc_error(error)
+    with pytest.raises(raised):
+        await t.forward(GAME, 77, -1001149209877)
+
+
+async def test_forward_flood_wait_mapped(tmp_path: Path) -> None:
+    from pyrogram import errors
+
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    t.client.errors["ForwardMessages"] = errors.FloodWait(7)
+    with pytest.raises(FloodWait):
+        await t.forward(GAME, 77, -1001149209877)
