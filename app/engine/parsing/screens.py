@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 from app.engine.events import Event
@@ -78,6 +78,8 @@ _BATTLE_MENU = re.compile(
 _BATTLE_REPORT = re.compile(
     r"\A[^\n]+ \(\d+\)\n🔨\d+[^\n]*\nТвои результаты в битве на (?P<hour>\d+) часов"
 )
+_CONTRIBUTION = re.compile(r"^🏆Твой вклад: (?P<n>" + NUM + r")", re.M)
+_STAMINA_AFTER = re.compile(r"^🔋Выносливость: \d+% → (?P<n>\d+)%", re.M)
 # Ответы с изменением ресурсов в формате наград: обмен символа, подарок за 🍊, итог акулы.
 _RESULTS = (
     ("symbol_exchange", re.compile(r"\AТы обменял символ \S+")),
@@ -124,10 +126,13 @@ class BattleMenu(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class BattleReport(Event):
-    """Отчёт уже прошедшей битвы по запросу (/battle): в состояние не идёт."""
+    """Отчёт уже прошедшей битвы по запросу (/battle): час битвы по Москве, награды (💡, ±💵, 🔋
+    после битвы) и вклад «🏆Твой вклад». В состояние не идёт."""
 
     kind: ClassVar[str] = "battle_report"
     hour: int
+    rewards: Rewards = field(default_factory=Rewards)
+    contribution: int | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -205,7 +210,17 @@ def recognize_screens(msg: IncomingMessage) -> list[Event]:
     if m := _BATTLE_MENU.match(text):
         return [BattleMenu(battle_in_s=dur(m["t"]))]
     if m := _BATTLE_REPORT.match(text):
-        return [BattleReport(hour=int(m["hour"]))]
+        rewards = parse_rewards(text)
+        if (after := _STAMINA_AFTER.search(text)) is not None:
+            rewards = replace(rewards, stamina=int(after["n"]))
+        contribution = _CONTRIBUTION.search(text)
+        return [
+            BattleReport(
+                hour=int(m["hour"]),
+                rewards=rewards,
+                contribution=num(contribution["n"]) if contribution else None,
+            )
+        ]
     if text.startswith(_LOTTERY_WIN):
         return [_lottery_win(text)]
     if m := _SKILLS_EXPIRED.match(text):

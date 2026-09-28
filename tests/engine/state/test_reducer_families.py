@@ -198,6 +198,30 @@ def test_gifts_containers_prizebox() -> None:
     assert (value(state, "prizebox"), value(state, "money")) == (False, 1108)
 
 
+def test_container_and_prizebox_contents_applied() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "items", 3623585, 1)
+    state = feed(reducer, state, "items", 3517971, 2)
+    # Малый: 🔩 +2 (улучшения до экрана мастерской неизвестны — не трогаются).
+    assert (value(state, "raw"), value(state, "containers_small")) == (21310 + 2, 4)
+    state = feed(reducer, state, "items", 3611233, 3)
+    assert value(state, "details") == 136671 + 6
+    state = feed(reducer, state, "items", 3625717, 4)
+    assert value(state, "exp") == 17496049 + 165
+    # Деньги коробки — снимок «Стало», явная прибавка их не задваивает.
+    state = feed(reducer, state, "items", 3517262, 5)
+    assert value(state, "money") == 1108
+
+
+def test_logistic_container_from_harvest_counted() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "items", 3623585, 1)
+    state = feed(reducer, state, "activities", 3610665, 2)
+    assert value(state, "containers_small") == 6
+    state = feed(reducer, state, "activities", 3609456, 3)
+    assert value(state, "containers_medium") == 1
+
+
 def test_gorbushka_flow() -> None:
     reducer = StateReducer()
     state = feed(reducer, _profiled(reducer), "gorbushka", 3516738, 1)

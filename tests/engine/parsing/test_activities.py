@@ -178,3 +178,44 @@ def test_partial_screen_gives_nothing(msg_id: int, drop: str) -> None:
     assert msg.text is not None and drop in msg.text
     broken = replace(msg, text=msg.text.replace(drop, "…"))
     assert [e for recognize in RECOGNIZERS for e in recognize(broken)] == []
+
+
+@pytest.mark.parametrize(
+    ("msg_id", "exp", "items", "small", "medium"),
+    [
+        (3517279, 158, {"Пуговица": 1, "Нитки": 1}, 0, 0),
+        (3610659, 348, {"Кусок ткани": 1, "Пуговица": 1, "Нитки": 1}, 0, 0),
+        # Сет Логистик: «🗳М. контейнер: +1 (2)» — малый контейнер к имеющимся.
+        (3610665, 233, {"Шнурок": 1, "Льняная ткань": 1}, 1, 0),
+        (3609456, 184, {"Нитки": 1, "Шнурок": 2, "Пуговица": 1}, 0, 1),
+        # 🎓Диплом — отдельный блок награды с отступом.
+        (3624009, 250, {"Кусок ткани": 1, "Резинка": 2, "Льняная ткань": 1}, 0, 0),
+        (3517344, 0, {}, 0, 0),
+    ],
+)
+def test_harvest_craft_items_and_containers(
+    msg_id: int, exp: int, items: dict[str, int], small: int, medium: int
+) -> None:
+    r = _finished(msg_id).rewards
+    assert (r.exp, r.items, r.containers_small, r.containers_medium) == (
+        exp,
+        items,
+        small,
+        medium,
+    )
+
+
+def test_job_item_without_pet_food() -> None:
+    # «🧀 для 🐀Аля: +1» — еда пета, не предмет крафта.
+    r = _finished(3623749).rewards
+    assert (r.exp, r.money, r.raw, r.items) == (136, 27, 1, {"Флюс": 1})
+
+
+def test_walk_pet_food_is_not_an_item() -> None:
+    assert _finished(3625689).rewards.items == {}
+
+
+def test_magnet_items() -> None:
+    [magnet] = _events(3524596)
+    assert isinstance(magnet, BonusRewards)
+    assert (magnet.rewards.exp, magnet.rewards.items) == (247, {"Пуговица": 1, "Нитки": 1})

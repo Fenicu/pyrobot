@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 from app.engine.events import Event
-from app.engine.parsing.common import DURATION, NUM, dur, num
+from app.engine.parsing.common import DURATION, NUM, Rewards, dur, num, parse_rewards
 from app.engine.types import IncomingMessage
 
 _INVENTORY = "Гаджеты при тебе: (снять)"
@@ -28,6 +28,9 @@ _GIFTS = re.compile(
 )
 _GIFTS_TANGERINES = re.compile(r"🍊У тебя: (?P<n>\d+) шт")
 _CONTAINER = re.compile(r"\AТы открыл (?P<size>Малый|Средний) 🗳контейнер")
+_CONTENTS = re.compile(r"^Внутри ты обнаружил:\n(?P<body>.*?)(?:\n\n|\Z)", re.M | re.S)
+# Предмет в контейнере: «Флюс», «Пьезодинамик - 3 шт.»; строки с двоеточием — ресурсы и улучшения.
+_CONTENT_ITEM = re.compile(r"\A(?P<name>[^:]*?[^\s:])(?: - (?P<n>\d+) шт\.)?\Z")
 _PRIZEBOX_OPENED = "👍Ура! Тебе удалось наконец-то открыть призовую коробку."
 _MONEY_AFTER = re.compile(r"Стало: \$(?P<money>" + NUM + r")")
 
@@ -71,16 +74,23 @@ class GiftsScreen(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ContainerOpened(Event):
+    """Открыт контейнер: содержимое — ресурсы, улучшения и предметы крафта (`rewards.items`)."""
+
     kind: ClassVar[str] = "container_opened"
     outcome: ClassVar[bool] = True
     size: str
+    rewards: Rewards = field(default_factory=Rewards)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class PrizeboxOpened(Event):
+    """Открыта призовая коробка: явная прибавка («💵Деньги: +$300», опыт, улучшения) и снимок
+    денег после неё («Стало: $…»), если коробка дала деньги."""
+
     kind: ClassVar[str] = "prizebox_opened"
     outcome: ClassVar[bool] = True
     money_after: int | None
+    rewards: Rewards = field(default_factory=Rewards)
 
 
 def _count(m: re.Match[str] | None) -> tuple[int, int | None]:
@@ -111,6 +121,18 @@ def _inventory(text: str) -> list[Event]:
     ]
 
 
+def _contents(text: str) -> Rewards:
+    block = _CONTENTS.search(text)
+    if block is None:
+        return Rewards()
+    body = block["body"]
+    items: dict[str, int] = {}
+    for line in body.split("\n"):
+        if (m := _CONTENT_ITEM.match(line.strip())) is not None:
+            items[m["name"]] = items.get(m["name"], 0) + int(m["n"] or 1)
+    return replace(parse_rewards(body), items=items)
+
+
 def recognize_items(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     if text.startswith(_INVENTORY):
@@ -129,10 +151,15 @@ def recognize_items(msg: IncomingMessage) -> list[Event]:
             )
         ]
     if m := _CONTAINER.match(text):
-        return [ContainerOpened(size="small" if m["size"] == "Малый" else "medium")]
+        size = "small" if m["size"] == "Малый" else "medium"
+        return [ContainerOpened(size=size, rewards=_contents(text))]
     if text.startswith(_PRIZEBOX_OPENED):
         money = _MONEY_AFTER.search(text)
-        return [PrizeboxOpened(money_after=num(money["money"]) if money else None)]
+        return [
+            PrizeboxOpened(
+                money_after=num(money["money"]) if money else None, rewards=parse_rewards(text)
+            )
+        ]
     return []
 
 

@@ -24,7 +24,10 @@ from tests.fixtures import game_msg
     [
         (3622907, TopWorker(place=1)),
         (3613862, BattleMenu(battle_in_s=4 * 3600 + 13 * 60)),
-        (3613861, BattleReport(hour=22)),
+        (
+            3613861,
+            BattleReport(hour=22, rewards=Rewards(exp=1, money=-191, stamina=0), contribution=0),
+        ),
         (3610934, InfoScreen(name="pets")),
         (3559757, InfoScreen(name="pets")),
         (3624063, InfoScreen(name="network")),

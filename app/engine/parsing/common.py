@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 NUM = r"\d[\d\xa0 ]*"
 DURATION = r"(?:\d+\s*(?:д|ч|мин|сек)\S*\s*)+|пару сек\."
@@ -20,6 +20,15 @@ _UPGRADE = re.compile(
     r"\+(?P<n>\d+)",
     re.M,
 )
+# Блоки награды с предметами крафта: «Ты получил:» (с «🐀… также добыл:» внутри) и «Сработал
+# 🎓Диплом:»; предмет — «Название +N» без двоеточия (у ресурсов и еды пета оно есть).
+_ITEM_BLOCK = re.compile(
+    r"^(?:Ты получил:|Сработал 🎓Диплом:)\n(?P<body>.*?)(?:\n\n|\Z)", re.M | re.S
+)
+_ITEM = re.compile(r"^[ \t\xa0]*(?P<name>[^\n:]*[^\s:]) \+(?P<n>\d+)$", re.M)
+# Контейнер с добычи (Сет Логистик): «🗳М. контейнер: +1 (2)», «🗳Ср. контейнер: +1 (1)»; с обмена
+# символа — «🗳Малый контейнер: +1».
+_CONTAINER = re.compile(r"^🗳(?P<size>М\.|Малый|Ср\.|Средний) контейнер: \+(?P<n>\d+)", re.M)
 _TASK_LINE = r" задание: (?P<cur>" + NUM + r") из (?P<goal>" + NUM + r")(?P<res>\S+?)\."
 _TEAM_TASK = re.compile(r"🔜Командное" + _TASK_LINE)
 _PERSONAL_TASK = re.compile(r"🔜Личное" + _TASK_LINE)
@@ -79,11 +88,24 @@ class Rewards:
     # Строки прогресса заданий в итоге: (текущее, цель, ресурс).
     team_task: tuple[int, int, str] | None = None
     personal_task: tuple[int, int, str] | None = None
+    containers_small: int = 0
+    containers_medium: int = 0
+    # Предметы крафта: название → количество (в состояние не идут, только в журнал прихода).
+    items: dict[str, int] = field(default_factory=dict)
 
 
 def _task_line(pattern: re.Pattern[str], text: str) -> tuple[int, int, str] | None:
     m = pattern.search(text)
     return (num(m["cur"]), num(m["goal"]), resource(m["res"])) if m else None
+
+
+def parse_items(text: str) -> dict[str, int]:
+    """Предметы крафта из блоков награды: строки «Название +N»."""
+    items: dict[str, int] = {}
+    for block in _ITEM_BLOCK.finditer(text):
+        for m in _ITEM.finditer(block["body"]):
+            items[m["name"]] = items.get(m["name"], 0) + int(m["n"])
+    return items
 
 
 def has_money_line(text: str) -> bool:
@@ -104,6 +126,9 @@ def parse_rewards(text: str) -> Rewards:
     ups = {"⚪️": 0, "🔵": 0, "🔴": 0}
     for m in _UPGRADE.finditer(text):
         ups[m["tier"]] += int(m["n"])
+    containers = {"small": 0, "medium": 0}
+    for m in _CONTAINER.finditer(text):
+        containers["small" if m["size"] in ("М.", "Малый") else "medium"] += int(m["n"])
     return Rewards(
         exp=totals["exp"],
         money=totals["money"],
@@ -117,4 +142,7 @@ def parse_rewards(text: str) -> Rewards:
         prizebox="🎁Призовую коробку" in text,
         team_task=_task_line(_TEAM_TASK, text),
         personal_task=_task_line(_PERSONAL_TASK, text),
+        containers_small=containers["small"],
+        containers_medium=containers["medium"],
+        items=parse_items(text),
     )

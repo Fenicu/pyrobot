@@ -7,8 +7,10 @@ import pytest
 
 from app.engine.events import Unrecognized
 from app.engine.parsing import default_parser
+from app.engine.parsing.activities import ActivityFinished
 from app.engine.parsing.common import parse_rewards
 from app.engine.parsing.daily import DailyTasksScreen, TaskCompleted, recognize_daily
+from app.engine.parsing.items import ContainerOpened
 from app.engine.parsing.lottery import (
     LotteryBought,
     LotteryCurrency,
@@ -142,3 +144,44 @@ def test_every_lottery_message_parsed() -> None:
                     seen[events[0].kind] += 1
     assert seen["lottery_bought"] > 2000 and seen["lottery_screen"] > 20
     assert seen["lottery_currency"] >= 2 and seen["lottery_off"] >= 5
+
+
+@no_research
+def test_every_container_content_line_parsed() -> None:
+    """Каждая строка содержимого контейнера — ресурс, улучшения или предмет: ничего не теряется."""
+    parser = default_parser(ChatsSection())
+    opened = 0
+    for rec in _records(HISTORY):
+        text = str(rec.get("text") or "")
+        if rec.get("out") or "контейнер." not in text.split("\n", 1)[0]:
+            continue
+        if "Внутри ты обнаружил:\n" not in text:
+            continue
+        [event] = [e for e in parser.parse(record_message(rec)) if isinstance(e, ContainerOpened)]
+        lines = text.split("Внутри ты обнаружил:\n", 1)[1].split("\n\n", 1)[0].split("\n")
+        r = event.rewards
+        amounts = (r.exp, r.money, r.knowledge, r.details, r.raw)
+        tiers = (r.upgrades_white, r.upgrades_blue, r.upgrades_red)
+        assert len(lines) == len(r.items) + sum(1 for v in (*amounts, *tiers) if v), rec["id"]
+        opened += 1
+    assert opened > 100
+
+
+@no_research
+def test_every_harvest_item_line_parsed() -> None:
+    """Строки «Название +N» блока награды добычи — все в предметах, с количествами."""
+    parser = default_parser(ChatsSection())
+    seen = 0
+    for rec in _records(HISTORY):
+        text = str(rec.get("text") or "")
+        if rec.get("out") or "Продолжить ⛏Добычу - /harvest" not in text:
+            continue
+        [event] = [e for e in parser.parse(record_message(rec)) if isinstance(e, ActivityFinished)]
+        lines = [
+            line.strip()
+            for line in text.split("\n")
+            if line.strip().endswith(("+1", "+2", "+3")) and ":" not in line
+        ]
+        assert sum(event.rewards.items.values()) == sum(int(x[-1]) for x in lines), rec["id"]
+        seen += bool(lines)
+    assert seen > 1000

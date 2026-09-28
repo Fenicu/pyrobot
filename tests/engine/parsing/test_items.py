@@ -3,6 +3,7 @@ from dataclasses import replace
 import pytest
 
 from app.engine.events import Event
+from app.engine.parsing.common import Rewards
 from app.engine.parsing.items import (
     BookRead,
     CardUsed,
@@ -75,9 +76,49 @@ from tests.fixtures import game_msg
         (3516682, GiftsScreen(containers_small=0, containers_medium=0, tangerines=2)),
         (3623585, GiftsScreen(containers_small=5, containers_medium=0, tangerines=2)),
         (3611231, GiftsScreen(containers_small=0, containers_medium=1, tangerines=2)),
-        (3517971, ContainerOpened(size="small")),
-        (3611233, ContainerOpened(size="medium")),
-        (3517262, PrizeboxOpened(money_after=1108)),
+        (
+            3517971,
+            ContainerOpened(
+                size="small",
+                rewards=Rewards(
+                    raw=2,
+                    upgrades_white=3,
+                    items={
+                        "Флюс": 1,
+                        "Пьезодинамик": 3,
+                        "Датчик": 2,
+                        "Микроконтроллер": 1,
+                        "Наночип": 2,
+                    },
+                ),
+            ),
+        ),
+        (
+            # ⚙ с двойным VS16.
+            3611233,
+            ContainerOpened(
+                size="medium",
+                rewards=Rewards(
+                    details=6,
+                    upgrades_white=4,
+                    upgrades_blue=1,
+                    items={
+                        "Нитки": 4,
+                        "Пьезодинамик": 4,
+                        "Кусок ткани": 1,
+                        "Флюс": 4,
+                        "Конденсатор": 1,
+                        "Диод": 2,
+                        "Молния": 1,
+                        "Микроконтроллер": 2,
+                        "Шнурок": 3,
+                        "Мех": 1,
+                    },
+                ),
+            ),
+        ),
+        (3517262, PrizeboxOpened(money_after=1108, rewards=Rewards(money=300))),
+        (3625717, PrizeboxOpened(money_after=None, rewards=Rewards(exp=165))),
     ],
 )
 def test_items(msg_id: int, expected: Event) -> None:

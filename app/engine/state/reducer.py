@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
@@ -270,6 +271,8 @@ class _Patch:
         if r.prizebox:
             self.snap("prizebox", True, src="derived")
             self.snap("prizebox_ready_at", None, src="derived")
+        self.delta("containers_small", r.containers_small)
+        self.delta("containers_medium", r.containers_medium)
         if r.team_task is not None:
             self.team_line(*r.team_task)
         if r.personal_task is not None:
@@ -572,6 +575,7 @@ def _gifts(p: _Patch, e: GiftsScreen) -> None:
 @_on(ContainerOpened)
 def _container(p: _Patch, e: ContainerOpened) -> None:
     p.delta(f"containers_{e.size}", -1)
+    p.rewards(e.rewards)
 
 
 @_on(PrizeboxOpened)
@@ -579,7 +583,11 @@ def _prizebox(p: _Patch, e: PrizeboxOpened) -> None:
     p.snap("prizebox", False)
     p.snap("prizebox_ready_at", None)
     if e.money_after is not None:
+        # «Стало: $…» — снимок денег; явная прибавка уже в нём.
+        p.rewards(replace(e.rewards, money=0))
         p.snap("money", e.money_after)
+    else:
+        p.rewards(e.rewards)
 
 
 @_on(GorbushkaScreen)
