@@ -84,6 +84,37 @@ describe('Настройки', () => {
 		expect(help).toHaveClass('hidden');
 	});
 
+	it('поле-теги и поле-словарь связаны с описанием через aria-describedby', async () => {
+		const user = userEvent.setup();
+		await view();
+		const search = screen.getByRole('searchbox', { name: 'Поиск настройки' });
+
+		await user.type(search, 'strategy.focus');
+		const focusRow = screen
+			.getByRole('region', { name: 'Найденные настройки' })
+			.querySelector('[data-path="strategy.focus"]') as HTMLElement;
+		const focusHelp = within(focusRow).getByText(/Дела, которые бот делает/);
+		expect(within(focusRow).getByRole('combobox', { name: 'Добавить в «Основные дела»' })).toHaveAttribute(
+			'aria-describedby',
+			focusHelp.id
+		);
+
+		await user.clear(search);
+		await user.type(search, 'battle.overrides');
+		const overridesRow = screen
+			.getByRole('region', { name: 'Найденные настройки' })
+			.querySelector('[data-path="battle.overrides"]') as HTMLElement;
+		const overridesHelp = within(overridesRow).getByText(/Своя цель на битву/);
+		const newKey = within(overridesRow).getByRole('textbox', { name: 'Цели по часу битвы (МСК): новый ключ' });
+		expect(newKey).toHaveAttribute('aria-describedby', overridesHelp.id);
+		await user.type(newKey, '5');
+		await user.click(within(overridesRow).getByRole('button', { name: 'Добавить' }));
+		expect(within(overridesRow).getByRole('combobox', { name: 'Цели по часу битвы (МСК): 5' })).toHaveAttribute(
+			'aria-describedby',
+			overridesHelp.id
+		);
+	});
+
 	it('поиск находит настройку по описанию', async () => {
 		const user = userEvent.setup();
 		await view();

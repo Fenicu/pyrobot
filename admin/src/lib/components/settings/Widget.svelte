@@ -91,9 +91,9 @@
 {:else if kind.kind === 'string'}
 	<input {id} class="input" aria-label={label} aria-invalid={invalid || undefined} aria-describedby={describedby} value={String(value ?? '')} oninput={(e) => onchange(e.currentTarget.value)} />
 {:else if kind.kind === 'enum_tags'}
-	<TagsInput value={(value as string[]) ?? []} options={kind.options} {label} onchange={onchange} />
+	<TagsInput value={(value as string[]) ?? []} options={kind.options} {label} {describedby} onchange={onchange} />
 {:else if kind.kind === 'string_tags'}
-	<TagsInput value={(value as string[]) ?? []} {label} onchange={onchange} />
+	<TagsInput value={(value as string[]) ?? []} {label} {describedby} onchange={onchange} />
 {:else if kind.kind === 'max_or_int'}
 	<span class="inline-flex items-center gap-1">
 		<select
@@ -147,6 +147,7 @@
 					value={v}
 					id="{id}-{k}"
 					label="{label}: {k}"
+					{describedby}
 					onchange={(next) => onchange({ ...(value as object), [k]: next })}
 				/>
 				<button
@@ -161,7 +162,13 @@
 			</div>
 		{/each}
 		<div class="flex items-center gap-1">
-			<input class="input w-24" placeholder="ключ" aria-label="{label}: новый ключ" bind:value={mapKey} />
+			<input
+				class="input w-24"
+				placeholder="ключ"
+				aria-label="{label}: новый ключ"
+				aria-describedby={describedby}
+				bind:value={mapKey}
+			/>
 			<button
 				type="button"
 				class="btn min-h-8"

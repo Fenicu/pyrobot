@@ -9,9 +9,11 @@
 		options?: string[];
 		label: string;
 		disabled?: boolean;
+		/** id описания поля (`SettingField`, `{id}-help`): связывает поле добавления тега с ним на ПК. */
+		describedby?: string;
 		onchange: (next: string[]) => void;
 	}
-	let { value, options, label, disabled = false, onchange }: Props = $props();
+	let { value, options, label, disabled = false, describedby, onchange }: Props = $props();
 	let text = $state('');
 	const rest = $derived(options?.filter((o) => !value.includes(o)) ?? []);
 
@@ -65,6 +67,7 @@
 					class="bg-transparent text-xs focus:outline-none"
 					value=""
 					{disabled}
+					aria-describedby={describedby}
 					onchange={(e) => {
 						add(e.currentTarget.value);
 						e.currentTarget.value = '';
@@ -80,6 +83,7 @@
 			class="input min-h-7 w-32 text-xs"
 			placeholder="добавить…"
 			aria-label="Добавить в «{label}»"
+			aria-describedby={describedby}
 			bind:value={text}
 			{disabled}
 			onkeydown={(e) => {
