@@ -88,7 +88,8 @@
 			<label class="relative block">
 				<span class="sr-only">Поиск настройки</span>
 				<Search class="pointer-events-none absolute top-2.5 left-2 size-4 text-fg-faint" aria-hidden="true" />
-				<input class="input pl-8" type="search" placeholder="название, описание или путь…" bind:value={query} />
+				<input class="input pl-8" type="search" placeholder="поиск настройки…"
+					title="Ищет по названию, описанию и пути" bind:value={query} />
 			</label>
 			<ul class="flex gap-1 overflow-x-auto lg:flex-col">
 				{#each editor.sections as s (s.name)}

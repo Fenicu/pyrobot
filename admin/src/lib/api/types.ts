@@ -28,6 +28,11 @@ export type MetroRunDetail = S['MetroRunDetail'];
 export type MetricsOut = S['MetricsOut'];
 export type NotificationOut = S['NotificationOut'];
 export type UnrecognizedOut = S['UnrecognizedOut'];
+export type Outlook = S['OutlookOut'];
+export type PlanCandidate = S['PlanCandidateOut'];
+export type PlanAct = S['PlanActOut'];
+export type PlanTimer = S['PlanTimerOut'];
+export type WakeKind = PlanTimer['kind'];
 
 /** Наблюдение поля состояния: `{value, at, src}`. */
 export interface Observed<T> {
