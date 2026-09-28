@@ -21,8 +21,8 @@ class PlanCandidateOut(BaseModel):
     scenario: str
     params: dict[str, Any]
     score: float | None
-    # `chosen`, `ok` или причина отказа (`busy`, `no_motivation`, `reserved` — 🔥 хватило бы без
-    # запасов, `stale:<поле>`, …).
+    # `chosen`, `ok` или причина отказа (`busy`, `no_motivation`, `reserved` — мешает только запас
+    # 🔥, `stale:<поле>`, …).
     verdict: str
 
 

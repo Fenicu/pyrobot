@@ -389,6 +389,24 @@ def test_gorbushka_waiting_reserves_motivation() -> None:
     assert act(decide(awake(motivation=1, gorbushka=later), BASE, NOW)) == ("deed:job", {})
 
 
+def test_reserved_only_when_reserve_is_the_only_obstacle() -> None:
+    # 1🔥 под бой: работе ($0) мешает только запас, добыче ($30 при $20) — ещё и деньги,
+    # переработке (10⚙️ при 5) — детали, прогулке — отсрочка, учёбе (2🔥) — 🔥 и без запаса.
+    g = GorbushkaState(state="waiting", won=1, total=4, next_fight_at=m(30), fight_cost=1)
+    state = awake(motivation=1, money=20, details=5, gorbushka=g)
+    decision = decide(state, BASE, NOW, cooldowns={"deed:walk": m(90)})
+    assert decision == Wait(w(30), "gorbushka_next", decision.candidates)
+    assert verdicts(decision) == {
+        "deed:harvest": "no_motivation",
+        "deed:job": "reserved",
+        "deed:learn": "no_motivation",
+        "deed:dconv": "no_motivation",
+        "deed:walk": "no_motivation",
+    }
+    uncertified = decide(state, BASE, NOW, certified=frozenset({"deed:harvest", "refresh"}))
+    assert verdicts(uncertified)["deed:job"] == "no_motivation"
+
+
 @pytest.mark.parametrize(
     ("ahead", "fight_in", "reserved"),
     [

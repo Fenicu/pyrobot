@@ -436,7 +436,8 @@ class Obligations(PlannerBase):
             return self.refresh("metro", field)
         have: int = self.value("motivation")
         if have - self.motivation_reserve() < ENTRY_COST:
-            self.reject("metro", {}, "reserved" if have >= ENTRY_COST else "no_motivation")
+            alone = have >= ENTRY_COST and not self.gated("metro")
+            self.reject("metro", {}, "reserved" if alone else "no_motivation")
             self.wake(self.value("motivation_next_at"), "motivation")
             return None
         return self.act("metro", self.metro_params(battle), "metro_ready")

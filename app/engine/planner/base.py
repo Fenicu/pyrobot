@@ -161,6 +161,13 @@ class PlannerBase:
             return "cooldown"
         return None
 
+    def gated(self, scenario: str, key: str | None = None) -> bool:
+        """`gate` отказал бы — без его таймера: для вердикта, а не для решения."""
+        if self.certified is not None and scenario not in self.certified:
+            return True
+        until = self.cooldowns.get(key or scenario)
+        return until is not None and until > self.now
+
     def stale_of(self, *fields: str) -> str | None:
         for name in fields:
             if getattr(self.s, name) is None or name in self.stale:

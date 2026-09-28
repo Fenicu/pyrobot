@@ -664,6 +664,9 @@ def test_metro_needs_motivation_over_reserve() -> None:
     assert verdicts(decide(short, METRO_ALONE, NOON))["metro"] == "reserved"
     empty = metro_state(NOON, motivation=1, gorbushka=fight)
     assert verdicts(decide(empty, METRO_ALONE, NOON))["metro"] == "no_motivation"
+    # Спуск и без запаса не прошёл бы (не сертифицирован): причина — не запас.
+    closed = decide(short, METRO_ALONE, NOON, certified=frozenset({"refresh"}))
+    assert verdicts(closed)["metro"] == "no_motivation"
 
 
 def test_metro_needs_free_character_and_time_before_sleep() -> None:

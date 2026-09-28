@@ -453,7 +453,15 @@ class _Planner(DailyTasks):
             elif self.blocks_factory(end):
                 verdict = "factory_window"
             elif motivation < price.motivation:
-                verdict = "reserved" if have >= price.motivation else "no_motivation"
+                # `reserved` — мешает только запас: без него 🔥 хватило бы, прочее пройдено.
+                alone = (
+                    have >= price.motivation
+                    and money >= price.money
+                    and details >= price.details
+                    and (score > 0 or activity in focus)
+                    and not self.gated(name)
+                )
+                verdict = "reserved" if alone else "no_motivation"
                 self.wake(self.value("motivation_next_at"), "motivation")
             elif money < price.money:
                 verdict = "no_money"
