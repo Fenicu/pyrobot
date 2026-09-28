@@ -12,6 +12,8 @@ export interface JsonSchema {
 	exclusiveMinimum?: number;
 	exclusiveMaximum?: number;
 	readOnly?: boolean;
+	/** Бот настройку не читает (`UNUSED` в `app/engine/settings.py`). */
+	'x-unused'?: boolean;
 	items?: JsonSchema;
 	prefixItems?: JsonSchema[];
 	properties?: Record<string, JsonSchema>;
@@ -44,6 +46,8 @@ export interface Field {
 	title: string;
 	description?: string;
 	readOnly: boolean;
+	/** Бот её не читает: менять можно, но ни на что не влияет. */
+	unused: boolean;
 	type: FieldKind;
 }
 
@@ -116,6 +120,7 @@ export function fieldsOf(schema: JsonSchema, root: JsonSchema, base: Path = []):
 			title: prop.title ?? name,
 			description: prop.description,
 			readOnly: prop.readOnly === true,
+			unused: prop['x-unused'] === true,
 			type: classify(raw, root, path)
 		};
 	});

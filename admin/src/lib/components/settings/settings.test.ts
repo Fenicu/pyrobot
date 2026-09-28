@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApi } from '$lib/api/client';
 import type { SettingsOut } from '$lib/api/types';
 import { SettingsEditor } from '$lib/settings/editor.svelte';
+import schemaJson from '$lib/settings/settings.schema.json';
 import { toasts } from '$lib/stores/toasts.svelte';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
@@ -58,6 +59,22 @@ describe('Настройки', () => {
 			confirm_live: false
 		});
 		await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Несохранённые изменения' })).toBeNull());
+	});
+
+	it('настройка, которую бот не читает, — приглушена с пометкой, но меняется', async () => {
+		const user = userEvent.setup();
+		await view(undefined, () => ({ ...settings, schema: schemaJson }));
+		await user.click(screen.getByRole('button', { name: 'Функции' }));
+		const row = document.querySelector('[data-path="features.casino"]') as HTMLElement;
+		expect(row).toHaveClass('opacity-60');
+		const note = within(row).getByText('не используется ботом');
+		const toggle = within(row).getByRole('switch', { name: 'Казино' });
+		expect(toggle.getAttribute('aria-describedby')!.split(' ')).toContain(note.id);
+		await user.click(toggle);
+		expect(screen.getByRole('region', { name: 'Несохранённые изменения' })).toHaveTextContent('1 изменение');
+		const used = document.querySelector('[data-path="features.lottery"]') as HTMLElement;
+		expect(used).not.toHaveClass('opacity-60');
+		expect(used).not.toHaveTextContent('не используется ботом');
 	});
 
 	it('описание под полем, секции — своё; ⓘ раскрывает описание на телефоне', async () => {

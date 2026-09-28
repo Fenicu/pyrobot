@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SettingsOut } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
 import { buildChanges, changedPaths, leaves, sectionsOf, setAt, type Field, type JsonSchema } from './schema';
+import generated from './settings.schema.json';
 
 const settings = fixture<SettingsOut>('settings');
 const root = settings.schema as JsonSchema;
@@ -49,6 +50,18 @@ describe('форма по схеме настроек с прода', () => {
 			['tickets', 'group'],
 			['keep', 'group']
 		]);
+	});
+
+	it('неиспользуемые ботом настройки — по пометке x-unused в схеме бэкенда', () => {
+		const current = sectionsOf(generated as JsonSchema).flatMap((s) => leaves(s.fields));
+		// Файл схемы — с сортировкой ключей (tools/settings_schema.py).
+		expect(current.filter((f) => f.unused).map((f) => f.path.join('.'))).toEqual([
+			'features.arena',
+			'features.casino',
+			'levelup.policy'
+		]);
+		// В схеме с прода пометки ещё нет — ни одного поля.
+		expect(sections.flatMap((s) => leaves(s.fields)).some((f) => f.unused)).toBe(false);
 	});
 
 	it('diff по листьям и тело PATCH только изменённого', () => {

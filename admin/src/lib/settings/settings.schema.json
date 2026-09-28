@@ -224,7 +224,8 @@
     "arena": {
      "default": false,
      "title": "Arena",
-     "type": "boolean"
+     "type": "boolean",
+     "x-unused": true
     },
     "battle": {
      "default": true,
@@ -249,7 +250,8 @@
     "casino": {
      "default": false,
      "title": "Casino",
-     "type": "boolean"
+     "type": "boolean",
+     "x-unused": true
     },
     "daily_tasks": {
      "default": true,
@@ -371,7 +373,8 @@
      "const": "balanced",
      "default": "balanced",
      "title": "Policy",
-     "type": "string"
+     "type": "string",
+     "x-unused": true
     }
    },
    "title": "LevelupSection",

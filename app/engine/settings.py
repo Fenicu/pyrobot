@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 # Меняется только своими эндпоинтами движка (kill/unkill, pause/resume): у них latch шлюза,
 # проверка блокировки экземпляра и аудит, а PATCH настроек обошёл бы их.
 READ_ONLY: dict[str, Any] = {"readOnly": True}
+# Код настройку не читает: менять можно, но ни на что не влияет — в админке она приглушена.
+UNUSED: dict[str, Any] = {"x-unused": True}
 
 
 class EngineSection(BaseModel):
@@ -60,8 +62,8 @@ class FeaturesSection(BaseModel):
     smoothie: bool = True
     tangerine: bool = True
     lottery: bool = True
-    casino: bool = False
-    arena: bool = False
+    casino: bool = Field(default=False, json_schema_extra=UNUSED)
+    arena: bool = Field(default=False, json_schema_extra=UNUSED)
     pet_feast: bool = False
     daily_tasks: bool = True
     robbery_defense: bool = True
@@ -108,7 +110,7 @@ class SleepSection(BaseModel):
 
 
 class LevelupSection(BaseModel):
-    policy: Literal["balanced"] = "balanced"
+    policy: Literal["balanced"] = Field(default="balanced", json_schema_extra=UNUSED)
 
 
 Target = Literal["📯Pied Piper", "🤖Hooli", "⚡️Stark Ind.", "☂️Umbrella", "🎩Wayne Ent.", "🛡Защита"]

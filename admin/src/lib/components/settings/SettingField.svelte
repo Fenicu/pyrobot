@@ -17,8 +17,11 @@
 	const help = $derived(settingHelp(key) ?? field.description);
 	const id = $derived(`set-${key.replaceAll('.', '-')}`);
 	// На ПК описание видно всегда (`md:block`) и связано с полем через aria-describedby; на
-	// телефоне, пока свёрнуто (`hidden`), ссылка на скрытый элемент AT не читает.
-	const describedby = $derived(help ? `${id}-help` : undefined);
+	// телефоне, пока свёрнуто (`hidden`), ссылка на скрытый элемент AT не читает. Пометка «не
+	// используется ботом» видна всегда.
+	const describedby = $derived(
+		[field.unused ? `${id}-unused` : null, help ? `${id}-help` : null].filter(Boolean).join(' ') || undefined
+	);
 	// На телефоне описание раскрывается кнопкой ⓘ, на ПК видно всегда.
 	let open = $state(false);
 	const value = $derived(editor.value(field.path));
@@ -39,14 +42,19 @@
 	</fieldset>
 {:else}
 	<div
-		class="grid gap-1 border-b border-line-soft py-2 md:grid-cols-[16rem_minmax(0,1fr)_9rem] md:items-center md:gap-3"
+		class="grid gap-1 border-b border-line-soft py-2 md:grid-cols-[16rem_minmax(0,1fr)_9rem] md:items-center md:gap-3 {field.unused
+			? 'opacity-60'
+			: ''}"
 		data-path={key}
 	>
 		<div class="flex items-start gap-1">
-			<label for={id} class="min-w-0 flex-1 text-sm">
-				{label}
-				<span class="block font-mono text-[11px] text-fg-faint">{key}</span>
-			</label>
+			<div class="min-w-0 flex-1">
+				<label for={id} class="block text-sm">
+					{label}
+					<span class="block font-mono text-[11px] text-fg-faint">{key}</span>
+				</label>
+				{#if field.unused}<p id="{id}-unused" class="text-xs text-fg-muted">не используется ботом</p>{/if}
+			</div>
 			{#if help}
 				<button
 					type="button"
