@@ -1,9 +1,20 @@
 <!doctype html>
-<html lang="ru" class="dark">
+<html lang="ru">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="color-scheme" content="dark light" />
+		<!-- Тема до отрисовки, как в stores/theme.svelte.ts; sha256 скрипта для CSP считает бэкенд. -->
+		<script>
+			try {
+				const saved = localStorage.getItem('pyrobot.theme');
+				const light =
+					saved === 'light' || (saved === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+				document.documentElement.classList.add(light ? 'light' : 'dark');
+			} catch {
+				document.documentElement.classList.add('dark');
+			}
+		</script>
 		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
 		<title>pyrobot</title>
 		%sveltekit.head%

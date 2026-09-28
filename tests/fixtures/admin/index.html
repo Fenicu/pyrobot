@@ -1,35 +1,50 @@
 <!doctype html>
-<html lang="ru" class="dark">
+<html lang="ru">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 		<meta name="color-scheme" content="dark light" />
+		<!-- Тема до отрисовки, как в stores/theme.svelte.ts; sha256 скрипта для CSP считает бэкенд. -->
+		<script>
+			try {
+				const saved = localStorage.getItem('pyrobot.theme');
+				const light =
+					saved === 'light' || (saved === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+				document.documentElement.classList.add(light ? 'light' : 'dark');
+			} catch {
+				document.documentElement.classList.add('dark');
+			}
+		</script>
 		<link rel="icon" href="/favicon.svg" />
 		<title>pyrobot</title>
-		<link href="/_app/immutable/entry/start.C0q7oZHZ.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/BxJfp8Js.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/BdVNaLgu.js" rel="modulepreload">
-		<link href="/_app/immutable/entry/app.BjDjmMab.js" rel="modulepreload">
+		<link href="/_app/immutable/entry/start._dCec6Nh.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/Bxqm70LG.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/9I7S5To9.js" rel="modulepreload">
+		<link href="/_app/immutable/entry/app.E_YcJkFV.js" rel="modulepreload">
 		<link href="/_app/immutable/chunks/xihTtKlq.js" rel="modulepreload">
-		<link href="/_app/immutable/nodes/0.-D5K_5ch.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/C5Zm3FmP.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/TtmcA67o.js" rel="modulepreload">
+		<link href="/_app/immutable/nodes/0.D9litjLs.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/DBZbsYwp.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/jvRzVEjT.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/BRUOoE2t.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/pLRXrEjA.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/C-CRAiSx.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/BzVGzlb4.js" rel="modulepreload">
 		
-		<link href="/_app/immutable/assets/0.D6xT4UjB.css" rel="stylesheet">
+		<link href="/_app/immutable/assets/0.BgmqrTUf.css" rel="stylesheet">
 	</head>
 	<body data-sveltekit-preload-data="off">
 		<div style="display: contents">
 			<script>
 				{
-					__sveltekit_nzbxh7 = {
+					__sveltekit_yrvl2x = {
 						base: ""
 					};
 
 					const element = document.currentScript.parentElement;
 
 					Promise.all([
-						import("/_app/immutable/entry/start.C0q7oZHZ.js"),
-						import("/_app/immutable/entry/app.BjDjmMab.js")
+						import("/_app/immutable/entry/start._dCec6Nh.js"),
+						import("/_app/immutable/entry/app.E_YcJkFV.js")
 					]).then(([kit, app]) => {
 						kit.start(app, element);
 					});

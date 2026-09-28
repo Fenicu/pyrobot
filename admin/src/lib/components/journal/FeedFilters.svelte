@@ -25,7 +25,12 @@
 	}
 </script>
 
-<div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Фильтры журнала">
+<!-- На телефоне — одна строка с горизонтальной прокруткой чипов. -->
+<div
+	class="flex items-center gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] *:shrink-0 md:flex-wrap md:overflow-visible md:pb-0"
+	role="group"
+	aria-label="Фильтры журнала"
+>
 	{#each TYPES as t (t.label)}
 		<button
 			type="button"

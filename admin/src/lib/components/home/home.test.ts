@@ -51,9 +51,15 @@ describe('Главная на снимке с прода', () => {
 		render(StatusHeader, { status, error: null, live: 'open', state: prod.state, now: NOW });
 		const header = screen.getByRole('region', { name: 'Статус' });
 		expect(header).toHaveTextContent('LIVE');
-		expect(header).toHaveTextContent('TG online');
+		expect(header).toHaveTextContent('TG: online');
 		expect(header).toHaveTextContent('след. решение 28.09 05:05');
 		expect(header).toHaveTextContent('связь есть');
+	});
+
+	it('шапка: статус Telegram тем же текстом, что на экране Telegram', () => {
+		const tg = { ...status.tg, state: 'unauthorized' as const };
+		render(StatusHeader, { status: { ...status, tg }, error: null, live: 'open', state: prod.state, now: NOW });
+		expect(screen.getByRole('region', { name: 'Статус' })).toHaveTextContent('TG: не выполнен вход');
 	});
 });
 

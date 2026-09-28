@@ -3,7 +3,7 @@
 	import type { EngineStatus, PublicState } from '$lib/api/types';
 	import type { LiveStatus } from '$lib/live/connection.svelte';
 	import { fmtMoment, fmtRelative } from '$lib/util/format';
-	import { activityLabel } from '$lib/util/game';
+	import { activityLabel, tgStateLabel } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
 	import ConnectionDot from '../ConnectionDot.svelte';
 	import Pill from '../Pill.svelte';
@@ -34,7 +34,7 @@
 		{#if status.spending_blocked}
 			<Pill tone="bad"><span class="ext-text">траты заблокированы: {status.spending_blocked}</span></Pill>
 		{/if}
-		<Pill tone={status.tg.state === 'online' ? 'ok' : 'bad'}>TG {status.tg.state}</Pill>
+		<Pill tone={status.tg.state === 'online' ? 'ok' : 'bad'}>TG: {tgStateLabel(status.tg.state)}</Pill>
 		{#if !status.lock_ok}<Pill tone="bad">нет блокировки экземпляра</Pill>{/if}
 		{#if !status.pipeline_healthy}<Pill tone="bad">конвейер нездоров</Pill>{/if}
 		{#if !status.workers_ok}<Pill tone="bad">фоновая задача упала</Pill>{/if}

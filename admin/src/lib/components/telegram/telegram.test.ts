@@ -38,14 +38,16 @@ describe('Вход в Telegram', () => {
 		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+79990000000');
 		await user.click(screen.getByRole('button', { name: 'Получить код' }));
 		const code = await screen.findByLabelText('Код из Telegram');
-		expect(code).toHaveAttribute('autocomplete', 'off');
+		expect(code).toHaveAttribute('autocomplete', 'one-time-code');
+		expect(code).toHaveAttribute('inputmode', 'numeric');
 		await user.type(code, '11111');
 		await user.click(screen.getByRole('button', { name: 'Отправить код' }));
 		expect(await screen.findByText('Неверный код — попробуйте ещё раз')).toBeInTheDocument();
 		expect(screen.getByLabelText('Код из Telegram')).toHaveValue('');
 		await user.type(screen.getByLabelText('Код из Telegram'), '22222');
 		await user.click(screen.getByRole('button', { name: 'Отправить код' }));
-		await user.type(await screen.findByLabelText('Пароль 2FA'), 'secret');
+		expect(await screen.findByLabelText('Пароль 2FA')).toHaveAttribute('autocomplete', 'off');
+		await user.type(screen.getByLabelText('Пароль 2FA'), 'secret');
 		await user.click(screen.getByRole('button', { name: 'Войти' }));
 		expect(await screen.findByRole('button', { name: 'Выйти из Telegram' })).toBeInTheDocument();
 		const bodies = fetch.calls.filter((c) => c.method === 'POST').map((c) => JSON.parse(c.body));

@@ -84,7 +84,7 @@
 		{onkeydown}
 		class="relative flex max-h-[90vh] w-full flex-col border border-line bg-surface shadow-xl {variant ===
 		'sheet'
-			? 'rounded-t-xl md:max-h-none md:w-[28rem] md:rounded-none md:border-y-0 md:border-r-0'
+			? 'rounded-t-xl pb-[env(safe-area-inset-bottom)] md:max-h-none md:w-[28rem] md:rounded-none md:border-y-0 md:border-r-0 md:pb-0'
 			: 'max-w-md rounded-lg'}"
 	>
 		<div class="flex items-center justify-between gap-2 border-b border-line-soft px-4 py-3">

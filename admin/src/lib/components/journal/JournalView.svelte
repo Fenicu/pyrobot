@@ -6,7 +6,7 @@
 	import type { LiveEvent } from '$lib/live/sse';
 	import { keyOf, type JournalFeed } from '$lib/stores/journal.svelte';
 	import { clock } from '$lib/util/clock.svelte';
-	import { DESKTOP, Media } from '$lib/util/media.svelte';
+	import { DESKTOP, media } from '$lib/util/media.svelte';
 	import Modal from '../Modal.svelte';
 	import FeedFilters from './FeedFilters.svelte';
 	import FeedRow from './FeedRow.svelte';
@@ -24,7 +24,7 @@
 	const now = $derived(fixedNow ?? clock.now);
 	let selected = $state<JournalItem | null>(null);
 	let sentinel = $state<HTMLElement>();
-	const desktop = new Media(DESKTOP);
+	const desktop = media(DESKTOP);
 
 	// Выбранная строка следит за обновлениями ленты (статус действия из SSE).
 	const current = $derived(
@@ -90,7 +90,7 @@
 			</div>
 		</section>
 
-		{#if desktop.matches}
+		{#if desktop.current}
 			<aside class="card sticky top-4 max-h-[calc(100dvh-2rem)] self-start overflow-y-auto" aria-label="Разбор">
 				{#if current}
 					<JournalDetail {api} item={current} {subscribe} {confirmer} onstale={() => void feed.reload()} />
@@ -102,7 +102,7 @@
 	</div>
 </div>
 
-{#if !desktop.matches && current}
+{#if !desktop.current && current}
 	<Modal title={title(current)} variant="sheet" onclose={() => (selected = null)}>
 		<JournalDetail {api} item={current} {subscribe} {confirmer} onstale={() => void feed.reload()} />
 	</Modal>

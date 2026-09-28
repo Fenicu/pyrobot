@@ -1,13 +1,11 @@
-/** Медиазапрос как реактивное значение; без matchMedia (тесты) — false. */
-export class Media {
-	matches = $state(false);
+import { MediaQuery } from 'svelte/reactivity';
 
-	constructor(query: string) {
-		if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-		const m = window.matchMedia(query);
-		this.matches = m.matches;
-		m.addEventListener('change', (e) => (this.matches = e.matches));
-	}
+/** Медиазапрос как реактивное значение: `MediaQuery` держит слушатель `change`, только пока
+ * значение читают (после размонтирования слушатель снят); без matchMedia (jsdom) — false. */
+export function media(query: string): { readonly current: boolean } {
+	return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+		? new MediaQuery(query)
+		: { current: false };
 }
 
 /** Ширина ПК-раскладки (Tailwind md). */

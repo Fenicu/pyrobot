@@ -10,7 +10,7 @@
 </script>
 
 <div
-	class="pointer-events-none fixed inset-x-2 bottom-20 z-[60] flex flex-col items-end gap-2 md:right-4 md:bottom-4 md:left-auto"
+	class="pointer-events-none fixed inset-x-2 bottom-[calc(5rem_+_env(safe-area-inset-bottom))] z-[60] flex flex-col items-end gap-2 md:right-4 md:bottom-4 md:left-auto"
 	role="status"
 	aria-live="polite"
 	data-modal-keep

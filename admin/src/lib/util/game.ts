@@ -63,6 +63,19 @@ export const SOURCE: Record<string, string> = {
 	urgent: 'срочное'
 };
 
+/** Состояние входа в Telegram (`TgStatusOut.state`). */
+export const TG_STATE: Record<string, string> = {
+	unauthorized: 'не выполнен вход',
+	awaiting_code: 'ждёт код',
+	awaiting_password: 'ждёт пароль 2FA',
+	online: 'online',
+	error: 'ошибка'
+};
+
+export function tgStateLabel(state: string): string {
+	return TG_STATE[state] ?? state;
+}
+
 export const ACTION_STATUS: Record<string, string> = {
 	intent: 'в очереди',
 	sent: 'отправлено',

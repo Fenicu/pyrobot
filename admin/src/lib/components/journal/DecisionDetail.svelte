@@ -40,6 +40,15 @@
 	});
 
 	const candidates = $derived((decision?.candidates ?? []) as Candidate[]);
+
+	/** Вердикт: выбранный и подходящий — зелёные, отказ — приглушён (как в макете). */
+	const verdictTone = (v: string | undefined) => (v === 'chosen' || v === 'ok' ? 'ok' : 'muted');
+
+	function paramsText(params: Record<string, unknown> | undefined): string {
+		return Object.entries(params ?? {})
+			.map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+			.join(', ');
+	}
 </script>
 
 {#if error}
@@ -68,10 +77,14 @@
 			</thead>
 			<tbody>
 				{#each candidates as c, i (i)}
-					<tr class="border-t border-line-soft">
-						<td class="py-1">{c.scenario ?? '—'}</td>
+					{@const params = paramsText(c.params)}
+					<tr class="border-t border-line-soft {c.verdict === 'chosen' ? 'font-medium' : ''}">
+						<td class="py-1">
+							{c.scenario ?? '—'}
+							{#if params}<span class="ext-text block font-mono text-[11px] text-fg-faint">{params}</span>{/if}
+						</td>
 						<td class="tabular-nums">{typeof c.score === 'number' ? c.score.toFixed(2) : '—'}</td>
-						<td><Pill tone={c.verdict === 'ok' ? 'ok' : 'muted'}>{c.verdict ?? '—'}</Pill></td>
+						<td><Pill tone={verdictTone(c.verdict)}>{c.verdict ?? '—'}</Pill></td>
 					</tr>
 				{/each}
 			</tbody>

@@ -132,7 +132,7 @@
 
 	{#if count > 0}
 		<div
-			class="sticky bottom-16 z-30 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent bg-accent-soft p-2 text-sm md:bottom-2"
+			class="sticky bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-30 mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-accent bg-accent-soft p-2 text-sm md:bottom-2"
 			role="region"
 			aria-label="Несохранённые изменения"
 		>

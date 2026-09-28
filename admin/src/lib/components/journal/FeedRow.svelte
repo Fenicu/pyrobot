@@ -55,8 +55,7 @@
 		>
 		<Pill tone={view.tone}>{view.pill}</Pill>
 		<span class="min-w-0 flex-1 truncate">
-			<span class="ext-text">{view.text}</span>
-			{#if view.tail}<span class="text-fg-muted"> → <span class="ext-text">{view.tail}</span></span>{/if}
+			{view.text}{#if view.tail}{' '}<span class="text-fg-muted">→ {view.tail}</span>{/if}
 		</span>
 	</button>
 </li>

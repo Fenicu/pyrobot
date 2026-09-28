@@ -3,6 +3,7 @@
 	import { ApiFailure, errorText } from '$lib/api/errors';
 	import type { TgStatus } from '$lib/api/types';
 	import { dialogs } from '$lib/stores/confirm.svelte';
+	import { tgStateLabel } from '$lib/util/game';
 	import Pill from '../Pill.svelte';
 
 	interface Props {
@@ -32,13 +33,6 @@
 		connect_failed: 'Нет соединения с Telegram',
 		online_failed: 'Не удалось выйти в сеть после входа',
 		logout_failed: 'Выход из Telegram не удался'
-	};
-	const STATE: Record<string, string> = {
-		unauthorized: 'не выполнен вход',
-		awaiting_code: 'ждёт код',
-		awaiting_password: 'ждёт пароль 2FA',
-		online: 'online',
-		error: 'ошибка'
 	};
 
 	async function refresh() {
@@ -120,7 +114,7 @@
 		{#if status}
 			<p class="flex flex-wrap items-center gap-2 text-sm">
 				<Pill tone={status.state === 'online' ? 'ok' : status.state === 'error' ? 'bad' : 'warn'}>
-					{STATE[status.state] ?? status.state}
+					{tgStateLabel(status.state)}
 				</Pill>
 				{#if status.user_id}<span>user_id <span class="font-mono">{status.user_id}</span></span>{/if}
 			</p>
@@ -149,7 +143,14 @@
 		<form class="card space-y-2" onsubmit={sendCode}>
 			<label class="block space-y-1">
 				<span class="label">Код из Telegram</span>
-				<input class="input" inputmode="numeric" autocomplete="off" name="tg-code" bind:value={code} required />
+				<input
+					class="input"
+					inputmode="numeric"
+					autocomplete="one-time-code"
+					name="tg-code"
+					bind:value={code}
+					required
+				/>
 			</label>
 			<button type="submit" class="btn btn-primary" disabled={busy || !code.trim()}>Отправить код</button>
 		</form>

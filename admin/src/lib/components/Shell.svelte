@@ -73,7 +73,7 @@
 		</div>
 	</aside>
 
-	<main class="min-w-0 flex-1 px-3 pt-3 pb-24 md:px-6 md:pt-5 md:pb-8">
+	<main class="min-w-0 flex-1 px-3 pt-3 pb-[calc(6rem_+_env(safe-area-inset-bottom))] md:px-6 md:pt-5 md:pb-8">
 		{@render children()}
 	</main>
 

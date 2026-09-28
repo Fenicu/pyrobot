@@ -225,3 +225,42 @@ describe('Ошибки разбора', () => {
 		expect(screen.queryByText('Движок недоступен')).toBeNull();
 	});
 });
+
+describe('Разбор решения: кандидаты', () => {
+	it('выбранный — зелёный, как в макете, параметры кандидатов видны', async () => {
+		const decision = {
+			...fixture<object>('decision_detail'),
+			kind: 'act',
+			scenario: 'daily_pick',
+			candidates: [
+				{ scenario: 'daily_pick', params: { task: 'jobMoney_hard' }, score: null, verdict: 'chosen' },
+				{ scenario: 'deed:harvest', params: {}, score: 0.02, verdict: 'no_motivation' }
+			]
+		};
+		const fetch = mockFetch(() => json(decision));
+		render(DecisionDetail, {
+			api: createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch),
+			id: 344
+		});
+		const rows = await screen.findAllByRole('row');
+		const chosen = rows.find((r) => r.textContent?.includes('chosen'))!;
+		expect(chosen).toHaveTextContent('task=jobMoney_hard');
+		expect(within(chosen).getByText('chosen')).toHaveClass('pill-ok');
+		const refused = rows.find((r) => r.textContent?.includes('no_motivation'))!;
+		expect(within(refused).getByText('no_motivation')).toHaveClass('pill-muted');
+	});
+});
+
+describe('Строка ленты', () => {
+	it('в одну строку с многоточием: текст без переносов pre-wrap', async () => {
+		const fetch = mockFetch(() => json(page));
+		const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const feed = new JournalFeed(api);
+		await feed.reload();
+		render(JournalView, { api, feed, now: new Date('2026-09-27T20:27:51Z') });
+		const row = screen.getAllByRole('button', { name: /Ты отправился спать/ })[0]!;
+		const line = row.querySelector('.truncate')!;
+		expect(line).not.toBeNull();
+		expect(line.querySelector('.ext-text')).toBeNull();
+	});
+});
