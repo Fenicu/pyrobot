@@ -50,57 +50,79 @@ def marked() -> set[str]:
     return out
 
 
-def _bindings(scope: ast.AST) -> dict[str, ast.expr | Chain]:
-    """Имена, связанные с выражением (`cfg = self.cfg.metro`) или секцией по аннотации."""
-    env: dict[str, ast.expr | Chain] = {}
+type Binding = ast.expr | Chain
+type Env = dict[str, list[Binding]]
+
+
+def _bindings(scope: ast.AST) -> Env:
+    """Имена, связанные с выражением (`cfg = self.cfg.metro`) или секцией по аннотации; у имени —
+    все его присваивания: переназначение не прячет чтение через прежнее значение."""
+    env: Env = {}
     for node in ast.walk(scope):
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             if isinstance(target := node.targets[0], ast.Name):
-                env[target.id] = node.value
+                env.setdefault(target.id, []).append(node.value)
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
             if isinstance(node.target, ast.Name):
-                env[node.target.id] = node.value
+                env.setdefault(node.target.id, []).append(node.value)
         elif isinstance(node, ast.arg) and node.annotation is not None:
             names = {n.id for n in ast.walk(node.annotation) if isinstance(n, ast.Name)}
             if section := next((SECTIONS[n] for n in names if n in SECTIONS), None):
-                env[node.arg] = section
+                env.setdefault(node.arg, []).append(section)
     return env
 
 
-def _resolve(node: ast.expr, env: dict[str, ast.expr | Chain], depth: int = 0) -> Chain:
+def _getattr(node: ast.AST) -> tuple[ast.expr, ast.expr] | None:
+    """`getattr(объект, имя, …)`: объект и имя."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        if node.func.id == "getattr" and len(node.args) >= 2:
+            return node.args[0], node.args[1]
+    return None
+
+
+def _resolve(node: ast.expr, env: Env, depth: int = 0) -> set[Chain]:
+    """Все цепочки, которыми может быть выражение (по всем присваиваниям имён)."""
     if isinstance(node, ast.Attribute):
-        return (*_resolve(node.value, env, depth), node.attr)
+        return {(*head, node.attr) for head in _resolve(node.value, env, depth)}
+    if (call := _getattr(node)) is not None and isinstance(call[1], ast.Constant):
+        return {(*head, str(call[1].value)) for head in _resolve(call[0], env, depth)}
     if isinstance(node, ast.Name):
         bound = env.get(node.id)
-        if isinstance(bound, tuple):
-            return bound
-        if bound is not None and depth < 8:
-            return _resolve(bound, env, depth + 1)
-        return (node.id,)
+        if not bound or depth >= 8:
+            return {(node.id,)}
+        out: set[Chain] = set()
+        for value in bound:
+            out |= {value} if isinstance(value, tuple) else _resolve(value, env, depth + 1)
+        return out
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-        return SECTIONS.get(node.func.id, ("()",))
-    return ("?",)
+        return {SECTIONS.get(node.func.id, ("()",))}
+    return {("?",)}
 
 
 def chains(source: str) -> set[Chain]:
-    """Цепочки обращений кода: `self.cfg.metro.buffs`, через локальные имена и аннотации
-    раскрытые до пути настроек; `getattr(x, имя)` с вычисляемым именем — `x.*`."""
+    """Чтения кода: цепочки `self.cfg.metro.buffs` в контексте `Load` (присваивание полю — не
+    чтение), через локальные имена и аннотации раскрытые до пути настроек; `getattr(x, "поле")` —
+    `x.поле`, `getattr(x, имя)` с вычисляемым именем — `x.*`."""
     tree = ast.parse(source)
-    module = {k: v for k, v in _bindings(tree).items() if not isinstance(v, tuple)}
+    module: Env = {
+        k: [v for v in vs if not isinstance(v, tuple)] for k, vs in _bindings(tree).items()
+    }
     scopes = [
         tree,
         *(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)),
     ]
     out: set[Chain] = set()
     for scope in scopes:
-        env = {**module, **_bindings(scope)} if scope is not tree else module
+        env: Env = {**module, **_bindings(scope)} if scope is not tree else module
         for node in ast.walk(scope):
-            if isinstance(node, ast.Attribute):
-                out.add(_resolve(node, env))
-            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                if node.func.id == "getattr" and len(node.args) >= 2:
-                    if not isinstance(node.args[1], ast.Constant):
-                        out.add((*_resolve(node.args[0], env), "*"))
+            if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+                out |= _resolve(node, env)
+            elif isinstance(node, ast.Call) and (call := _getattr(node)) is not None:
+                obj, name = call
+                if isinstance(name, ast.Constant):
+                    out |= _resolve(node, env)
+                else:
+                    out |= {(*head, "*") for head in _resolve(obj, env)}
     return out
 
 
@@ -174,6 +196,28 @@ def test_nested_leaf_counts_only_by_its_full_path() -> None:
     assert is_read(reserve, model, via_annotation)
     dynamic = chains("tickets = self.cfg.lottery.tickets\nx = getattr(tickets, c)")
     assert is_read(("lottery", "tickets", "raw"), type(Settings().lottery.tickets), dynamic)
+
+
+def test_reads_are_loads_literal_getattr_and_every_binding() -> None:
+    reserve = ("strategy", "reserve_ahead_min", "metro")
+    model = type(Settings().strategy.reserve_ahead_min)
+    # Присваивание — не чтение.
+    assert not is_read(reserve, model, chains("self.cfg.strategy.reserve_ahead_min.metro = 5"))
+    # getattr с буквальным именем — чтение этого поля, а не всех подряд.
+    literal = chains('x = getattr(self.cfg.strategy.reserve_ahead_min, "metro")')
+    assert is_read(reserve, model, literal)
+    assert not is_read(("strategy", "reserve_ahead_min", "gorbushka"), model, literal)
+    # Переназначенное имя не прячет чтение до переназначения.
+    rebound = chains(
+        "def f(self):\n"
+        "    cfg = self.cfg.metro\n"
+        "    b = cfg.buffs\n"
+        "    cfg = self.cfg.sleep\n"
+        "    return cfg.lead_min\n"
+    )
+    metro, sleep = type(Settings().metro), type(Settings().sleep)
+    assert is_read(("metro", "buffs"), metro, rebound)
+    assert is_read(("sleep", "lead_min"), sleep, rebound)
 
 
 def test_unused_mark_reaches_schema() -> None:
