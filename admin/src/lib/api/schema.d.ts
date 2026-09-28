@@ -123,6 +123,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Daily
+         * @description Итоги дня за `days` суток МСК, сегодня первым (сегодня — на текущий момент).
+         */
+        get: operations["daily_api_v1_daily_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/decisions/{decision_id}": {
         parameters: {
             query?: never;
@@ -783,6 +803,17 @@ export interface components {
              */
             raw: number;
         };
+        /**
+         * BalanceOut
+         * @description Изменение наблюдаемого значения за сутки МСК; `delta = null` — нет данных (нет точки в
+         *     сутках или точки предыдущих суток).
+         */
+        BalanceOut: {
+            /** Covered */
+            covered: boolean;
+            /** Delta */
+            delta: number | null;
+        };
         /** BusyState */
         BusyState: {
             /** Activity */
@@ -876,6 +907,38 @@ export interface components {
         /** ConfirmRequiredOut */
         ConfirmRequiredOut: {
             detail: components["schemas"]["ConfirmRequired"];
+        };
+        /** DailyOut */
+        DailyOut: {
+            /** Days */
+            days: components["schemas"]["DayOut"][];
+            /** Ledger Since */
+            ledger_since: string | null;
+        };
+        /** DayOut */
+        DayOut: {
+            /** Balance */
+            balance: {
+                [key: string]: components["schemas"]["BalanceOut"];
+            };
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Income */
+            income: components["schemas"]["KindOut"][];
+            /** Items */
+            items: {
+                [key: string]: number;
+            };
+            level: components["schemas"]["LevelOut"] | null;
+            /** Losses */
+            losses: components["schemas"]["KindOut"][];
+            /** Partial */
+            partial: boolean;
+            /** Trophies */
+            trophies: number;
         };
         /** DecisionItem */
         DecisionItem: {
@@ -1011,6 +1074,24 @@ export interface components {
         KillIn: {
             /** Reason */
             reason: string;
+        };
+        /** KindOut */
+        KindOut: {
+            /** Amounts */
+            amounts: {
+                [key: string]: number;
+            };
+            /** Count */
+            count: number;
+            /** Kind */
+            kind: string;
+        };
+        /** LevelOut */
+        LevelOut: {
+            /** From */
+            from: number;
+            /** To */
+            to: number;
         };
         /** LoginIn */
         LoginIn: {
@@ -2655,6 +2736,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    daily_api_v1_daily_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

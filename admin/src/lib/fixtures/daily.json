@@ -1,0 +1,1403 @@
+{
+ "days": [
+  {
+   "day": "2026-09-28",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": 240,
+     "covered": true
+    },
+    "exp": {
+     "delta": 4812,
+     "covered": true
+    },
+    "knowledge": {
+     "delta": 86,
+     "covered": true
+    },
+    "details": {
+     "delta": -120,
+     "covered": true
+    },
+    "raw": {
+     "delta": 64,
+     "covered": true
+    },
+    "glory": {
+     "delta": 90,
+     "covered": true
+    }
+   },
+   "level": null,
+   "trophies": 90,
+   "items": {
+    "Пуговица": 5,
+    "Нитки": 5,
+    "Шнурок": 1,
+    "Льняная ткань": 1,
+    "Флюс": 2
+   },
+   "income": [
+    {
+     "kind": "book",
+     "count": 3,
+     "amounts": {
+      "exp": 1371
+     }
+    },
+    {
+     "kind": "card",
+     "count": 2,
+     "amounts": {
+      "money": 1194
+     }
+    },
+    {
+     "kind": "prizebox",
+     "count": 1,
+     "amounts": {
+      "money": 300
+     }
+    },
+    {
+     "kind": "gorbushka_fight",
+     "count": 2,
+     "amounts": {
+      "money": 66,
+      "exp": 448,
+      "knowledge": 12,
+      "details": 46
+     }
+    },
+    {
+     "kind": "task",
+     "count": 1,
+     "amounts": {
+      "money": 60,
+      "exp": 722,
+      "trophies": 90
+     }
+    }
+   ],
+   "losses": [
+    {
+     "kind": "robbery",
+     "count": 1,
+     "amounts": {
+      "money": -38,
+      "exp": 118
+     }
+    },
+    {
+     "kind": "deed_start",
+     "count": 6,
+     "amounts": {
+      "money": -180
+     }
+    }
+   ]
+  },
+  {
+   "day": "2026-09-27",
+   "partial": false,
+   "balance": {
+    "money": {
+     "delta": 2105,
+     "covered": true
+    },
+    "exp": {
+     "delta": 9930,
+     "covered": true
+    },
+    "knowledge": {
+     "delta": 140,
+     "covered": true
+    },
+    "details": {
+     "delta": 12,
+     "covered": true
+    },
+    "raw": {
+     "delta": 112,
+     "covered": true
+    },
+    "glory": {
+     "delta": 0,
+     "covered": true
+    }
+   },
+   "level": null,
+   "trophies": 90,
+   "items": {
+    "Пуговица": 7,
+    "Нитки": 11,
+    "Кусок ткани": 2,
+    "Резинка": 2,
+    "Льняная ткань": 1,
+    "Пьезодинамик": 4,
+    "Флюс": 4,
+    "Конденсатор": 1,
+    "Диод": 2,
+    "Молния": 1,
+    "Микроконтроллер": 2,
+    "Шнурок": 3,
+    "Мех": 1
+   },
+   "income": [
+    {
+     "kind": "book",
+     "count": 4,
+     "amounts": {
+      "exp": 1828
+     }
+    },
+    {
+     "kind": "card",
+     "count": 3,
+     "amounts": {
+      "money": 1791
+     }
+    },
+    {
+     "kind": "container",
+     "count": 1,
+     "amounts": {
+      "details": 6,
+      "upgrades_white": 4,
+      "upgrades_blue": 1
+     }
+    },
+    {
+     "kind": "gorbushka_fight",
+     "count": 4,
+     "amounts": {
+      "money": 132,
+      "exp": 896,
+      "knowledge": 24,
+      "details": 92
+     }
+    },
+    {
+     "kind": "metro",
+     "count": 1,
+     "amounts": {
+      "money": 157,
+      "knowledge": 6,
+      "details": 13,
+      "raw": 9,
+      "upgrades_white": 2
+     }
+    },
+    {
+     "kind": "task",
+     "count": 1,
+     "amounts": {
+      "money": 60,
+      "exp": 722,
+      "trophies": 90
+     }
+    },
+    {
+     "kind": "dividends",
+     "count": 1,
+     "amounts": {
+      "money": 1065
+     }
+    }
+   ],
+   "losses": [
+    {
+     "kind": "deed_start",
+     "count": 8,
+     "amounts": {
+      "money": -240
+     }
+    },
+    {
+     "kind": "hotel",
+     "count": 1,
+     "amounts": {
+      "money": -210
+     }
+    }
+   ]
+  },
+  {
+   "day": "2026-09-26",
+   "partial": false,
+   "balance": {
+    "money": {
+     "delta": -310,
+     "covered": true
+    },
+    "exp": {
+     "delta": 6004,
+     "covered": true
+    },
+    "knowledge": {
+     "delta": 58,
+     "covered": true
+    },
+    "details": {
+     "delta": -80,
+     "covered": true
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": {
+    "from": 70,
+    "to": 71
+   },
+   "trophies": 0,
+   "items": {
+    "Пуговица": 4,
+    "Нитки": 4
+   },
+   "income": [
+    {
+     "kind": "book",
+     "count": 2,
+     "amounts": {
+      "exp": 914
+     }
+    },
+    {
+     "kind": "card",
+     "count": 1,
+     "amounts": {
+      "money": 597
+     }
+    },
+    {
+     "kind": "gorbushka_fight",
+     "count": 3,
+     "amounts": {
+      "money": 99,
+      "exp": 672,
+      "knowledge": 18,
+      "details": 69
+     }
+    }
+   ],
+   "losses": [
+    {
+     "kind": "deed_start",
+     "count": 4,
+     "amounts": {
+      "money": -120
+     }
+    },
+    {
+     "kind": "hotel",
+     "count": 1,
+     "amounts": {
+      "money": -210
+     }
+    }
+   ]
+  },
+  {
+   "day": "2026-09-25",
+   "partial": false,
+   "balance": {
+    "money": {
+     "delta": 1870,
+     "covered": true
+    },
+    "exp": {
+     "delta": 8410,
+     "covered": true
+    },
+    "knowledge": {
+     "delta": 120,
+     "covered": true
+    },
+    "details": {
+     "delta": -20,
+     "covered": true
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 90,
+   "items": {
+    "Пуговица": 6,
+    "Нитки": 6
+   },
+   "income": [
+    {
+     "kind": "book",
+     "count": 4,
+     "amounts": {
+      "exp": 1828
+     }
+    },
+    {
+     "kind": "card",
+     "count": 3,
+     "amounts": {
+      "money": 1791
+     }
+    },
+    {
+     "kind": "gorbushka_fight",
+     "count": 4,
+     "amounts": {
+      "money": 132,
+      "exp": 896,
+      "knowledge": 24,
+      "details": 92
+     }
+    },
+    {
+     "kind": "metro",
+     "count": 1,
+     "amounts": {
+      "money": 157,
+      "knowledge": 6,
+      "details": 13,
+      "raw": 9,
+      "upgrades_white": 2
+     }
+    },
+    {
+     "kind": "task",
+     "count": 1,
+     "amounts": {
+      "money": 60,
+      "exp": 722,
+      "trophies": 90
+     }
+    }
+   ],
+   "losses": [
+    {
+     "kind": "deed_start",
+     "count": 6,
+     "amounts": {
+      "money": -180
+     }
+    }
+   ]
+  },
+  {
+   "day": "2026-09-24",
+   "partial": false,
+   "balance": {
+    "money": {
+     "delta": 855,
+     "covered": true
+    },
+    "exp": {
+     "delta": 7703,
+     "covered": true
+    },
+    "knowledge": {
+     "delta": 91,
+     "covered": true
+    },
+    "details": {
+     "delta": 59,
+     "covered": true
+    },
+    "raw": {
+     "delta": 52,
+     "covered": true
+    },
+    "glory": {
+     "delta": 90,
+     "covered": true
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {
+    "Пуговица": 5,
+    "Нитки": 5
+   },
+   "income": [
+    {
+     "kind": "book",
+     "count": 3,
+     "amounts": {
+      "exp": 1371
+     }
+    },
+    {
+     "kind": "gorbushka_fight",
+     "count": 2,
+     "amounts": {
+      "money": 66,
+      "exp": 448,
+      "knowledge": 12,
+      "details": 46
+     }
+    }
+   ],
+   "losses": [
+    {
+     "kind": "deed_start",
+     "count": 5,
+     "amounts": {
+      "money": -150
+     }
+    }
+   ]
+  },
+  {
+   "day": "2026-09-23",
+   "partial": false,
+   "balance": {
+    "money": {
+     "delta": -870,
+     "covered": true
+    },
+    "exp": {
+     "delta": 7592,
+     "covered": true
+    },
+    "knowledge": {
+     "delta": 80,
+     "covered": true
+    },
+    "details": {
+     "delta": 10,
+     "covered": true
+    },
+    "raw": {
+     "delta": 50,
+     "covered": true
+    },
+    "glory": {
+     "delta": 90,
+     "covered": true
+    }
+   },
+   "level": null,
+   "trophies": 90,
+   "items": {
+    "Пуговица": 6,
+    "Нитки": 6
+   },
+   "income": [
+    {
+     "kind": "book",
+     "count": 4,
+     "amounts": {
+      "exp": 1828
+     }
+    },
+    {
+     "kind": "card",
+     "count": 2,
+     "amounts": {
+      "money": 1194
+     }
+    },
+    {
+     "kind": "gorbushka_fight",
+     "count": 4,
+     "amounts": {
+      "money": 132,
+      "exp": 896,
+      "knowledge": 24,
+      "details": 92
+     }
+    },
+    {
+     "kind": "task",
+     "count": 1,
+     "amounts": {
+      "money": 60,
+      "exp": 722,
+      "trophies": 90
+     }
+    }
+   ],
+   "losses": [
+    {
+     "kind": "deed_start",
+     "count": 6,
+     "amounts": {
+      "money": -180
+     }
+    }
+   ]
+  },
+  {
+   "day": "2026-09-22",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": 450,
+     "covered": true
+    },
+    "exp": {
+     "delta": 5310,
+     "covered": true
+    },
+    "knowledge": {
+     "delta": 40,
+     "covered": true
+    },
+    "details": {
+     "delta": 50,
+     "covered": true
+    },
+    "raw": {
+     "delta": 30,
+     "covered": true
+    },
+    "glory": {
+     "delta": 90,
+     "covered": true
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {
+    "Пуговица": 2,
+    "Нитки": 2
+   },
+   "income": [
+    {
+     "kind": "book",
+     "count": 1,
+     "amounts": {
+      "exp": 457
+     }
+    }
+   ],
+   "losses": [
+    {
+     "kind": "deed_start",
+     "count": 2,
+     "amounts": {
+      "money": -60
+     }
+    }
+   ]
+  },
+  {
+   "day": "2026-09-21",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": 200,
+     "covered": true
+    },
+    "exp": {
+     "delta": 5100,
+     "covered": true
+    },
+    "knowledge": {
+     "delta": 80,
+     "covered": true
+    },
+    "details": {
+     "delta": 40,
+     "covered": true
+    },
+    "raw": {
+     "delta": 20,
+     "covered": true
+    },
+    "glory": {
+     "delta": 0,
+     "covered": true
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-20",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-19",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-18",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-17",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-16",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-15",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-14",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-13",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-12",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-11",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-10",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-09",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-08",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-07",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-06",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-05",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-04",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-03",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-02",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-09-01",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-08-31",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  },
+  {
+   "day": "2026-08-30",
+   "partial": true,
+   "balance": {
+    "money": {
+     "delta": null,
+     "covered": false
+    },
+    "exp": {
+     "delta": null,
+     "covered": false
+    },
+    "knowledge": {
+     "delta": null,
+     "covered": false
+    },
+    "details": {
+     "delta": null,
+     "covered": false
+    },
+    "raw": {
+     "delta": null,
+     "covered": false
+    },
+    "glory": {
+     "delta": null,
+     "covered": false
+    }
+   },
+   "level": null,
+   "trophies": 0,
+   "items": {},
+   "income": [],
+   "losses": []
+  }
+ ],
+ "ledger_since": "2026-09-22"
+}

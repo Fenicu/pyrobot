@@ -8,6 +8,7 @@ from app.api.security import LoginRateLimiter
 from app.config import AppConfig
 from app.db.auth_repo import AuthRepo
 from app.db.reads import DbReads
+from app.engine.clock import Clock, SystemClock
 
 if TYPE_CHECKING:
     from app.engine.facade import EngineFacade
@@ -25,3 +26,5 @@ class Container:
     command_wait_s: float = 30.0
     # Пинг SSE; на каждом пинге сессия перепроверяется (отозванная закрывает поток).
     sse_heartbeat_s: float = 15.0
+    # Часы выборок по суткам («Итоги дня»).
+    clock: Clock = field(default_factory=SystemClock)

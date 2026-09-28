@@ -1,16 +1,17 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import Select, and_, func, or_, select, update
+from sqlalchemy import Date, Select, and_, cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import distinct_on
 
 from app.db.base import Database
 from app.db.models import (
     ActionRow,
     DecisionRow,
+    LedgerRow,
     MessageRow,
     MetricRow,
     MetroRunRow,
@@ -19,6 +20,8 @@ from app.db.models import (
     SettingsHistory,
     UnrecognizedRow,
 )
+from app.engine.daily import LedgerEntry
+from app.engine.gametime import day_start
 from app.engine.settings import Settings, settings_diff
 
 # Порядок типов записей на одном моменте: сообщение, потом действие, потом решение.
@@ -233,6 +236,41 @@ class DbReads:
         async with self._db.sessions() as session:
             rows = await session.execute(query)
             return {key: (ts, value) for key, ts, value in rows.all()}
+
+    async def day_values(
+        self, keys: Sequence[str], first: date, until: datetime
+    ) -> dict[str, dict[date, float]]:
+        """Последнее значение каждого ключа в каждые сутки МСК с `first` до момента `until`."""
+        day = cast(func.timezone("Europe/Moscow", MetricRow.ts), Date)
+        query = (
+            select(MetricRow.key, day, MetricRow.value)
+            .where(
+                MetricRow.account_id == self._account_id,
+                MetricRow.key.in_(keys),
+                MetricRow.ts >= day_start(first),
+                MetricRow.ts < until,
+            )
+            .order_by(MetricRow.key, day, MetricRow.ts.desc(), MetricRow.id.desc())
+            .ext(distinct_on(MetricRow.key, day))
+        )
+        out: dict[str, dict[date, float]] = {}
+        async with self._db.sessions() as session:
+            for key, when, value in (await session.execute(query)).all():
+                out.setdefault(key, {})[when] = value
+        return out
+
+    async def ledger_entries(self, first: date) -> tuple[list[LedgerEntry], date | None]:
+        """Записи журнала прихода с суток `first` и первый день журнала (None — журнал пуст)."""
+        own = LedgerRow.account_id == self._account_id
+        query = (
+            select(LedgerRow.day, LedgerRow.kind, LedgerRow.amounts, LedgerRow.items)
+            .where(own, LedgerRow.day >= first)
+            .order_by(LedgerRow.day, LedgerRow.id)
+        )
+        async with self._db.sessions() as session:
+            rows = (await session.execute(query)).all()
+            since = await session.scalar(select(func.min(LedgerRow.day)).where(own))
+        return [LedgerEntry(d, kind, amounts, items) for d, kind, amounts, items in rows], since
 
     async def metro_runs(self, limit: int, before: int | None) -> list[MetroRunRow]:
         query = (

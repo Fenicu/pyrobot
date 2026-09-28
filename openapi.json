@@ -308,6 +308,32 @@
         "title": "ActivityStat",
         "type": "object"
       },
+      "BalanceOut": {
+        "description": "Изменение наблюдаемого значения за сутки МСК; `delta = null` — нет данных (нет точки в\nсутках или точки предыдущих суток).",
+        "properties": {
+          "covered": {
+            "title": "Covered",
+            "type": "boolean"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          }
+        },
+        "required": [
+          "delta",
+          "covered"
+        ],
+        "title": "BalanceOut",
+        "type": "object"
+      },
       "BusyState": {
         "properties": {
           "activity": {
@@ -535,6 +561,102 @@
           "detail"
         ],
         "title": "ConfirmRequiredOut",
+        "type": "object"
+      },
+      "DailyOut": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/DayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "ledger_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Since"
+          }
+        },
+        "required": [
+          "days",
+          "ledger_since"
+        ],
+        "title": "DailyOut",
+        "type": "object"
+      },
+      "DayOut": {
+        "properties": {
+          "balance": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BalanceOut"
+            },
+            "title": "Balance",
+            "type": "object"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "income": {
+            "items": {
+              "$ref": "#/components/schemas/KindOut"
+            },
+            "title": "Income",
+            "type": "array"
+          },
+          "items": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Items",
+            "type": "object"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LevelOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "losses": {
+            "items": {
+              "$ref": "#/components/schemas/KindOut"
+            },
+            "title": "Losses",
+            "type": "array"
+          },
+          "partial": {
+            "title": "Partial",
+            "type": "boolean"
+          },
+          "trophies": {
+            "title": "Trophies",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "partial",
+          "balance",
+          "level",
+          "trophies",
+          "items",
+          "income",
+          "losses"
+        ],
+        "title": "DayOut",
         "type": "object"
       },
       "DecisionItem": {
@@ -984,6 +1106,50 @@
           "reason"
         ],
         "title": "KillIn",
+        "type": "object"
+      },
+      "KindOut": {
+        "properties": {
+          "amounts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Amounts",
+            "type": "object"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "count",
+          "amounts"
+        ],
+        "title": "KindOut",
+        "type": "object"
+      },
+      "LevelOut": {
+        "properties": {
+          "from": {
+            "title": "From",
+            "type": "integer"
+          },
+          "to": {
+            "title": "To",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "LevelOut",
         "type": "object"
       },
       "LoginIn": {
@@ -5032,6 +5198,62 @@
         "summary": "Command Send",
         "tags": [
           "commands"
+        ]
+      }
+    },
+    "/api/v1/daily": {
+      "get": {
+        "description": "Итоги дня за `days` суток МСК, сегодня первым (сегодня — на текущий момент).",
+        "operationId": "daily_api_v1_daily_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Daily",
+        "tags": [
+          "daily"
         ]
       }
     },

@@ -21,6 +21,7 @@ def test_schema_covers_admin_contract() -> None:
         "/api/v1/commands/send",
         "/api/v1/scenarios/{name}/run",
         "/api/v1/metrics",
+        "/api/v1/daily",
         "/api/v1/events",
         "/readyz",
     ):
@@ -44,6 +45,7 @@ def test_engine_tg_and_state_are_typed() -> None:
         ("/api/v1/tg/logout", "post"): "TgStatusOut",
         ("/api/v1/state", "get"): "StateOut",
         ("/api/v1/planner/outlook", "get"): "OutlookOut",
+        ("/api/v1/daily", "get"): "DailyOut",
     }
     for (path, method), model in typed.items():
         assert _ok_schema(schema, path, method) == {"$ref": f"#/components/schemas/{model}"}
@@ -111,3 +113,10 @@ def test_session_routes_document_401() -> None:
 def test_plan_timer_kinds_are_closed_enum() -> None:
     kind = _schemas()["PlanTimerOut"]["properties"]["kind"]
     assert kind["enum"] == list(get_args(WakeKind))
+
+
+def test_daily_level_uses_from_to() -> None:
+    level = _schemas()["LevelOut"]
+    assert level["required"] == ["from", "to"]
+    days = build_schema()["paths"]["/api/v1/daily"]["get"]["parameters"][0]["schema"]
+    assert (days["minimum"], days["maximum"], days["default"]) == (1, 30, 30)
