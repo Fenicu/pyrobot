@@ -231,6 +231,14 @@ def test_reserve_ahead_defaults_patch_and_saved_dumps() -> None:
     assert restart_required(diff) == []
     with pytest.raises(ValidationError):
         apply_patch(Settings(), {"strategy": {"reserve_ahead_min": {"gorbushka": -1}}})
+    # Сутки — предел: большее число переполнило бы расчёт запаса и остановило цикл планировщика.
+    day = apply_patch(Settings(), {"strategy": {"reserve_ahead_min": {"gorbushka": 1440}}})
+    assert day.strategy.reserve_ahead_min.gorbushka == 1440
+    for leaf in ("gorbushka", "metro"):
+        with pytest.raises(ValidationError):
+            apply_patch(Settings(), {"strategy": {"reserve_ahead_min": {leaf: 1441}}})
+        with pytest.raises(ValidationError):
+            apply_patch(Settings(), {"strategy": {"reserve_ahead_min": {leaf: 10**13}}})
     saved = Settings().model_dump(mode="json")
     del saved["strategy"]["reserve_ahead_min"]
     assert Settings.model_validate(saved).strategy.reserve_ahead_min.gorbushka == 60

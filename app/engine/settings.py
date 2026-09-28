@@ -77,8 +77,8 @@ Deed = Literal["harvest", "job", "learn", "dconv", "walk", "confa", "rob"]
 class ReserveAhead(BaseModel):
     """За сколько минут до боя Горбушки и открытия метро дела держат под них 🔥; 0 — не держат."""
 
-    gorbushka: int = Field(default=60, ge=0)
-    metro: int = Field(default=60, ge=0)
+    gorbushka: int = Field(default=60, ge=0, le=1440)
+    metro: int = Field(default=60, ge=0, le=1440)
 
 
 class StrategySection(BaseModel):

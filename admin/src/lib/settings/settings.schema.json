@@ -565,12 +565,14 @@
    "properties": {
     "gorbushka": {
      "default": 60,
+     "maximum": 1440,
      "minimum": 0,
      "title": "Gorbushka",
      "type": "integer"
     },
     "metro": {
      "default": 60,
+     "maximum": 1440,
      "minimum": 0,
      "title": "Metro",
      "type": "integer"

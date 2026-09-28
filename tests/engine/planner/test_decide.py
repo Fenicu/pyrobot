@@ -391,7 +391,14 @@ def test_gorbushka_waiting_reserves_motivation() -> None:
 
 @pytest.mark.parametrize(
     ("ahead", "fight_in", "reserved"),
-    [(None, 59, True), (None, 61, False), (0, 30, False), (120, 119, True), (120, 121, False)],
+    [
+        (None, 59, True),
+        (None, 61, False),
+        (0, 30, False),
+        (120, 119, True),
+        (120, 121, False),
+        (1440, 1439, True),
+    ],
 )
 def test_gorbushka_reserve_horizon_from_settings(
     ahead: int | None, fight_in: int, reserved: bool
