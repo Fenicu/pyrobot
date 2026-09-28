@@ -507,7 +507,7 @@ class Obligations(PlannerBase):
             return 0
         if not self.hotel():
             return 0
-        return max(self.hotel_cost() or 0, self.hotel_threshold() or 0)
+        return self.hotel_threshold() or 0
 
     def sleep_place(self) -> Literal["hotel", "bridge"] | None:
         """Место сна по тому же правилу, что резерв на отель, на текущих деньгах; None — деньги
@@ -525,13 +525,16 @@ class Obligations(PlannerBase):
         return bool(money - self.hotel_reserve() >= ticket.money and knowledge >= ticket.knowledge)
 
     def hotel_reserve(self) -> int:
+        """💵, которые дела, лотерея и билет Горбушки не тратят за 3 часа до сна в отеле: сколько
+        сценарий сна потребует для отеля (большее из цены и порога) — трата сверх одной цены
+        увела бы сон под мост."""
         deadline: datetime | None = self.value("sleep_deadline")
         if not self.sleep_runs() or deadline is None:
             return 0
-        cost = self.hotel_cost()
+        need = self.hotel_threshold()
         window = self.sleep_start(deadline) - HOTEL_RESERVE_AHEAD
-        if self.now >= window and cost is not None and self.hotel():
-            return cost
+        if self.now >= window and need is not None and self.hotel():
+            return need
         return 0
 
 

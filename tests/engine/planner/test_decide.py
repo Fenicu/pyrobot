@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
-from app.engine.planner.decide import decide
+from app.engine.planner.decide import decide, lottery_params
 from app.engine.planner.types import Act, Candidate, Decision, Wait, Wakeup
 from app.engine.scenarios.registry import CERTIFIED
 from app.engine.settings import Settings
@@ -338,7 +338,7 @@ def test_gorbushka_ticket_and_hotel_reserve() -> None:
     assert act(decide(both, settings, NOW)) == ("gorbushka", {"buy": True})
     high = config({"sleep": {"hotel_if_cash_after_reserve_ge": 250}})
     held = awake(money=380, gorbushka=g, sleep_deadline=m(4 * 60))
-    # 380 − 120 ≥ 250 (порог выше цены): отель, резерв — его цена 210, на билет остаётся 170.
+    # 380 − 120 ≥ 250 (порог выше цены): отель, резерв — порог 250, на билет остаётся 130.
     assert act(decide(held, high, NOW)) == ("gorbushka", {"buy": True})
 
 
@@ -538,6 +538,18 @@ def test_hotel_threshold_below_price_follows_sleep_scenario() -> None:
     decision = decide(rich, settings, NOW)
     assert act(decision) == ("deed:job", {})
     assert verdicts(decision)["deed:harvest"] == "no_money"
+
+
+def test_hotel_reserve_keeps_threshold_above_price() -> None:
+    # Порог выше цены: сценарий сна возьмёт отель, только если 💵 ≥ 250, поэтому до сна
+    # держится 250, а не цена 210 — иначе лотерея или дело потратили бы разницу и сон ушёл бы под
+    # мост.
+    settings = config({"sleep": {"hotel_if_cash_after_reserve_ge": 250}})
+    priced = {"hotel": obs(PriceState(money=210))}
+    state = awake(money=300, sleep_deadline=m(4 * 60)).model_copy(update={"prices": priced})
+    assert lottery_params(state, settings, NOW)["reserve"] == 250
+    far = awake(money=300).model_copy(update={"prices": priced})
+    assert lottery_params(far, settings, NOW)["reserve"] == 0
 
 
 def test_screen_cooldown_waits_extra_minute_but_ready_screen_does_not() -> None:
