@@ -18,7 +18,9 @@
 	let { api, editor, now }: Props = $props();
 	let active = $state<string | null>(null);
 	let query = $state('');
-	let historyTick = $state(0);
+	// История перечитывается с каждой новой версией: своё сохранение, перечитывание после чужого
+	// изменения или известная чужая версия при несохранённых правках.
+	const historyKey = $derived(editor.conflict ?? editor.version ?? 0);
 
 	const section = $derived(editor.sections.find((s) => s.name === active) ?? editor.sections[0] ?? null);
 	const title = (s: Section) => SECTION_LABELS[s.name] ?? s.title;
@@ -45,17 +47,14 @@
 		);
 		if (result.ok) {
 			toasts.show(`Сохранено, версия ${result.version}`, 'ok');
-			historyTick += 1;
-		} else if ('error' in result && result.error.kind !== 'version_conflict' && result.error.kind !== 'validation') {
-			toasts.show(errorText(result.error), 'error');
 		} else if ('error' in result && result.error.kind === 'validation') {
-			toasts.show('Сервер не принял значения — поля подсвечены', 'error');
+			toasts.show(
+				editor.formErrors.length > 0 ? editor.formErrors.join('\n') : 'Сервер не принял значения — поля подсвечены',
+				'error'
+			);
+		} else if ('error' in result && result.error.kind !== 'version_conflict') {
+			toasts.show(errorText(result.error), 'error');
 		}
-	}
-
-	async function reread() {
-		await editor.load();
-		historyTick += 1;
 	}
 </script>
 
@@ -70,7 +69,7 @@
 				Настройки уже изменены (версия {editor.conflict}, у вас — {editor.version}). Перечитайте: несохранённые
 				правки пропадут.
 			</span>
-			<button type="button" class="btn" onclick={reread}>Перечитать</button>
+			<button type="button" class="btn" onclick={() => void editor.load()}>Перечитать</button>
 		</div>
 	{/if}
 	{#if editor.restartRequired.length > 0}
@@ -127,7 +126,7 @@
 		</section>
 
 		<aside class="card">
-			<SettingsHistory {api} refresh={historyTick} {now} />
+			<SettingsHistory {api} refresh={historyKey} {now} />
 		</aside>
 	</div>
 

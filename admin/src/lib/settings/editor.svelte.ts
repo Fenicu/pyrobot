@@ -1,5 +1,5 @@
 import { call, type Api } from '$lib/api/client';
-import { ApiFailure, errorText, type ApiError } from '$lib/api/errors';
+import { ApiFailure, errorText, type ApiError, type ValidationIssue } from '$lib/api/errors';
 import type { SettingsOut } from '$lib/api/types';
 import type { LiveEvent } from '$lib/live/sse';
 import { SECTION_ORDER } from './labels';
@@ -7,6 +7,7 @@ import {
 	buildChanges,
 	changedPaths,
 	getAt,
+	leaves,
 	pathKey,
 	same,
 	sectionsOf,
@@ -24,6 +25,14 @@ export type SaveResult =
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
+function longestPrefix(paths: Path[], loc: string[]): Path | null {
+	let best: Path | null = null;
+	for (const p of paths) {
+		if (p.length <= loc.length && p.every((k, i) => k === loc[i]) && p.length > (best?.length ?? 0)) best = p;
+	}
+	return best;
+}
+
 /** Редактор настроек: черновик поверх значений сервера, diff по листьям схемы, сохранение с
  * версией; 409 — «перечитать», 422 — ошибки у полей. */
 export class SettingsEditor {
@@ -34,6 +43,8 @@ export class SettingsEditor {
 	/** Версия на сервере новее нашей (409 или кадр settings при несохранённых правках). */
 	conflict = $state<number | null>(null);
 	fieldErrors = $state<Record<string, string>>({});
+	/** Ошибки 422, которые не легли ни на одно поле формы: «путь: текст». */
+	formErrors = $state<string[]>([]);
 	/** Сохранено, но читается только при старте процесса. */
 	restartRequired = $state<string[]>([]);
 	#api: Api;
@@ -66,6 +77,7 @@ export class SettingsEditor {
 			this.draft = clone(out.values);
 			this.conflict = null;
 			this.fieldErrors = {};
+			this.formErrors = [];
 			this.loadError = null;
 		} catch (e) {
 			if (e instanceof ApiFailure) this.loadError = e.error;
@@ -104,6 +116,7 @@ export class SettingsEditor {
 	discard(): void {
 		if (this.server) this.draft = clone(this.server.values);
 		this.fieldErrors = {};
+		this.formErrors = [];
 	}
 
 	/** Переход в live: черновик меняет `engine.mode` с dry_run на live. */
@@ -138,6 +151,7 @@ export class SettingsEditor {
 			this.draft = draft;
 			this.restartRequired = out.restart_required;
 			this.fieldErrors = {};
+			this.formErrors = [];
 			this.conflict = null;
 			// Кадр settings, пришедший во время запроса, новее сохранённой версии — чужое изменение.
 			const seen = this.#seenDuringSave;
@@ -147,20 +161,39 @@ export class SettingsEditor {
 			if (!(e instanceof ApiFailure)) throw e;
 			const error = e.error;
 			if (error.kind === 'version_conflict') this.conflict = error.version;
-			if (error.kind === 'validation') {
-				const errors: Record<string, string> = {};
-				for (const issue of error.issues) {
-					// loc: ["body", "changes", секция, поле…] или ["body", "confirm_live"].
-					const path = issue.loc[1] === 'changes' ? issue.loc.slice(2) : ['engine', 'mode'];
-					errors[path.join('.')] = issue.msg;
-				}
-				this.fieldErrors = errors;
-			}
+			if (error.kind === 'validation') this.#placeIssues(error.issues);
 			return { ok: false, error };
 		} finally {
 			this.saving = false;
 			this.#seenDuringSave = null;
 		}
+	}
+
+	/** Ошибка 422 — у поля с самым длинным путём, который начинает `loc` (элемент списка
+	 * `strategy.deeds.2` → `strategy.deeds`, ветка union `max_or_int` → само поле); не нашлось —
+	 * в `formErrors`. `loc`: ["body", "changes", секция, поле…] или ["body", "confirm_live"]. */
+	#placeIssues(issues: ValidationIssue[]): void {
+		const paths = this.sections.flatMap((s) => leaves(s.fields)).map((f) => f.path);
+		const fields: Record<string, string[]> = {};
+		const rest: string[] = [];
+		for (const issue of issues) {
+			const loc =
+				issue.loc[1] === 'changes'
+					? issue.loc.slice(2).map(String)
+					: issue.loc[1] === 'confirm_live'
+						? ['engine', 'mode']
+						: null;
+			const path = loc === null ? null : longestPrefix(paths, loc);
+			if (path === null) {
+				const where = issue.loc.slice(issue.loc[1] === 'changes' ? 2 : 1).join('.');
+				rest.push(where ? `${where}: ${issue.msg}` : issue.msg);
+				continue;
+			}
+			const key = pathKey(path);
+			if (!fields[key]?.includes(issue.msg)) (fields[key] ??= []).push(issue.msg);
+		}
+		this.fieldErrors = Object.fromEntries(Object.entries(fields).map(([k, msgs]) => [k, msgs.join('; ')]));
+		this.formErrors = rest;
 	}
 
 	/** Кадр `settings`: чужое изменение. Без своих правок — перечитать, с правками — предупредить. */

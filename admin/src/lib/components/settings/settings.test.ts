@@ -4,17 +4,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApi } from '$lib/api/client';
 import type { SettingsOut } from '$lib/api/types';
 import { SettingsEditor } from '$lib/settings/editor.svelte';
-import { json, mockFetch } from '$lib/test/fetch';
+import { toasts } from '$lib/stores/toasts.svelte';
+import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import SettingsView from './SettingsView.svelte';
 
 const settings = fixture<SettingsOut>('settings');
 
-async function view() {
+async function view(patch?: (c: Call) => Response, current: () => SettingsOut = () => settings) {
 	const fetch = mockFetch((c) => {
 		if (c.url.startsWith('/api/v1/settings/history')) return json(fixture('settings_history'));
+		if (c.method === 'PATCH' && patch) return patch(c);
 		if (c.method === 'PATCH') return json({ version: 14, values: JSON.parse(c.body).changes ? settings.values : {}, changed: {}, restart_required: [] });
-		return json(settings);
+		return json(current());
 	});
 	const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
 	const editor = new SettingsEditor(api);
@@ -85,5 +87,28 @@ describe('Настройки', () => {
 		await user.click(v8);
 		expect(v8).toHaveAttribute('aria-expanded', 'true');
 		expect(within(list).getByLabelText('Изменения версии 8')).toHaveTextContent('features.daily_tasks выкл → вкл');
+	});
+
+	it('чужая версия из SSE перечитывает и историю', async () => {
+		let version = 13;
+		const { fetch, editor } = await view(undefined, () => ({ ...settings, version }));
+		const history = () => fetch.calls.filter((c) => c.url.startsWith('/api/v1/settings/history')).length;
+		await vi.waitFor(() => expect(history()).toBe(1));
+		version = 14;
+		editor.onEvent({ type: 'settings', id: 'e:1', data: { version: 14, mode: 'live', paused: false, killed: false } });
+		await vi.waitFor(() => expect(editor.version).toBe(14));
+		await vi.waitFor(() => expect(history()).toBe(2));
+	});
+
+	it('422 без подходящего поля — сообщение с текстом ошибки, а не «поля подсвечены»', async () => {
+		const user = userEvent.setup();
+		toasts.items = [];
+		await view(() =>
+			json({ detail: [{ loc: ['body', 'changes', 'features'], msg: 'Value error, bad combo', type: 'value_error' }] }, 422)
+		);
+		await user.click(screen.getByRole('button', { name: 'Функции' }));
+		await user.click(screen.getByRole('switch', { name: 'Казино' }));
+		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+		await vi.waitFor(() => expect(toasts.items.map((t) => t.text)).toEqual(['features: Value error, bad combo']));
 	});
 });

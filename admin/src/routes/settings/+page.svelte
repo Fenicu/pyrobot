@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, live } from '$lib/app.svelte';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { api, live, session } from '$lib/app.svelte';
 	import SettingsView from '$lib/components/settings/SettingsView.svelte';
 	import { SettingsEditor } from '$lib/settings/editor.svelte';
+	import { leaveGuard } from '$lib/settings/leave';
+	import { dialogs } from '$lib/stores/confirm.svelte';
 
 	const editor = new SettingsEditor(api);
 
@@ -10,6 +13,23 @@
 		void editor.load();
 		return live.subscribe((e) => editor.onEvent(e));
 	});
+
+	// Несохранённые правки: уход — после подтверждения. Сессия закончилась — сохранить всё равно
+	// нельзя, переход на вход не держим.
+	beforeNavigate(
+		leaveGuard({
+			dirty: () => session.status === 'authenticated' && editor.changes.length > 0,
+			confirm: () =>
+				dialogs.confirm({
+					title: 'Уйти без сохранения?',
+					body: `Несохранённых изменений: ${editor.changes.length}. Они пропадут.`,
+					confirmText: 'Уйти',
+					cancelText: 'Остаться',
+					danger: true
+				}),
+			go: (url, unload) => (unload ? location.assign(url) : void goto(url))
+		})
+	);
 </script>
 
 <svelte:head><title>Настройки · pyrobot</title></svelte:head>

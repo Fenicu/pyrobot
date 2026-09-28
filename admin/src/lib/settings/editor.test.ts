@@ -69,6 +69,36 @@ describe('редактор настроек', () => {
 		expect(bad.e.fieldErrors).toEqual({});
 	});
 
+	it('422 вложенного поля — на самый длинный совпавший путь поля, не нашлось — общей ошибкой', async () => {
+		const issue = (loc: (string | number)[], msg: string) => ({ loc, msg, type: 'x' });
+		const bad = await editor(() =>
+			json(
+				{
+					detail: [
+						issue(['body', 'changes', 'strategy', 'deeds', 2], "Input should be 'harvest'"),
+						issue(['body', 'changes', 'lottery', 'tickets', 'money', 'constrained-int'], 'Input should be >= 0'),
+						issue(['body', 'changes', 'lottery', 'tickets', 'money', "literal['max']"], "Input should be 'max'"),
+						issue(['body', 'changes', 'strategy'], 'Value error, focus not in deeds'),
+						issue(['body', 'confirm_live'], 'live_requires_confirm')
+					]
+				},
+				422
+			)
+		);
+		bad.e.set(['strategy', 'deeds'], ['harvest', 'job', 'nope']);
+		bad.e.set(['lottery', 'tickets', 'money'], -1);
+		const res = await bad.e.save(async () => true);
+		expect(res).toMatchObject({ ok: false, error: { kind: 'validation' } });
+		expect(bad.e.fieldErrors).toEqual({
+			'strategy.deeds': "Input should be 'harvest'",
+			'lottery.tickets.money': "Input should be >= 0; Input should be 'max'",
+			'engine.mode': 'live_requires_confirm'
+		});
+		expect(bad.e.formErrors).toEqual(['strategy: Value error, focus not in deeds']);
+		bad.e.discard();
+		expect([bad.e.fieldErrors, bad.e.formErrors]).toEqual([{}, []]);
+	});
+
 	it('чужая версия из SSE: без правок — перечитать, с правками — предупредить', async () => {
 		const { e, fetch } = await editor(ok);
 		e.onEvent({ type: 'settings', id: 'e:1', data: { version: 14, mode: 'live', paused: true, killed: false } });
