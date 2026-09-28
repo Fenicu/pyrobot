@@ -7,21 +7,26 @@ NUM = r"\d[\d\xa0 ]*"
 DURATION = r"(?:\d+\s*(?:д|ч|мин|сек)\S*\s*)+|пару сек\."
 _UNIT_S = {"д": 86400, "ч": 3600, "мин": 60, "сек": 1}
 _DUR_PART = re.compile(r"(\d+)\s*(д|ч|мин|сек)")
+# ⚙ игра пишет и без VS16 (до 2023, отчёт фабрики), и с двойным (содержимое контейнера).
 _REWARD = re.compile(
-    r"^(?P<k>💡Опыт|💵[\xa0 ]?Деньги|📚[\xa0 ]?Знания|⚙️[\xa0 ]?Детали|🔩[\xa0 ]?Сырьё"
+    r"^(?P<k>💡Опыт|💵[\xa0 ]?Деньги|📚[\xa0 ]?Знания|⚙\ufe0f{0,2}[\xa0 ]?Детали|🔩[\xa0 ]?Сырьё"
     r"|🔋Выносливость|🔋Осталось выносливости)(?: за [^:\n]+)?: ?(?P<sign>[+-])?\s?\$?"
     r"(?P<v>\d[\d\xa0 ]*)%?",
     re.M,
 )
+# «⚪️ Простые улучшения: +3», «⚪️ Улучшения: +1», в отчёте фабрики — «⚪️Простые: +2».
 _UPGRADE = re.compile(
-    r"^(?P<tier>⚪️|🔵|🔴) ?(?:(?:Простые|Редкие|Уникальные) у|У)лучшения: \+(?P<n>\d+)", re.M
+    r"^(?P<tier>⚪️|🔵|🔴) ?(?:(?:Простые|Редкие|Уникальные)(?: улучшения)?|Улучшения): "
+    r"\+(?P<n>\d+)",
+    re.M,
 )
 _TASK_LINE = r" задание: (?P<cur>" + NUM + r") из (?P<goal>" + NUM + r")(?P<res>\S+?)\."
 _TEAM_TASK = re.compile(r"🔜Командное" + _TASK_LINE)
 _PERSONAL_TASK = re.compile(r"🔜Личное" + _TASK_LINE)
 # До 2023 игра писала ⚙ без VS16.
 _RESOURCE_ALIASES = {"⚙": "⚙️"}
-_REWARD_KEYS = {"💡": "exp", "💵": "money", "📚": "knowledge", "⚙️": "details", "🔩": "raw"}
+# Ресурс строки награды — по её первому символу (у ⚙ VS16 бывает любым).
+_REWARD_KEYS = {"💡": "exp", "💵": "money", "📚": "knowledge", "⚙": "details", "🔩": "raw"}
 # Компании биржи и битв: название на экранах игры → код в командах (/buys_<код>_N).
 COMPANIES = {
     "📯Pied Piper": "piper",
@@ -94,7 +99,7 @@ def parse_rewards(text: str) -> Rewards:
         if m["k"].startswith("🔋"):
             stamina = value
             continue
-        name = next(v for k, v in _REWARD_KEYS.items() if m["k"].startswith(k))
+        name = _REWARD_KEYS[m["k"][0]]
         totals[name] += -value if m["sign"] == "-" else value
     ups = {"⚪️": 0, "🔵": 0, "🔴": 0}
     for m in _UPGRADE.finditer(text):

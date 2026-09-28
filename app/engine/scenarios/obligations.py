@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from app.engine.gametime import tasks_day
 from app.engine.gateway.types import Predicate
 from app.engine.market import dump_size, pick_stock
 from app.engine.parsing.battle import BattleTargetSet
 from app.engine.parsing.bulls import BullsJoined, BullsRefused
-from app.engine.parsing.crew import CrewScreen, FactoryScreen, FactorySignup
+from app.engine.parsing.crew import CrewScreen, FactoryReport, FactoryScreen, FactorySignup
 from app.engine.parsing.refusals import Busy, Refused
 from app.engine.parsing.screens import BattleMenu
 from app.engine.parsing.smoothie import (
@@ -96,6 +97,21 @@ async def factory_signup(
         if step.step is Step.OK and signup is not None:
             return ScenarioResult("done", signup.result)
         return wrong_screen(step)
+
+
+async def factory_report(
+    ctx: ScenarioContext, state: CharacterState, params: Params
+) -> ScenarioResult:
+    """Личный отчёт о битве за фабрику: игра присылает его только в ответ на `/fb` (навигация).
+    Отчёт не за сегодня (`/fb` отдаёт последнюю битву с участием персонажа) — `nothing`: повтор
+    через паузу цикла, пересылается только сегодняшний."""
+    step = await ctx.send("/fb", expect_events(FactoryReport))
+    report = step.first(FactoryReport)
+    if step.step is not Step.OK or report is None or step.delivery is None:
+        return wrong_screen(step)
+    if report.battle_day != tasks_day(step.delivery.msg.origin):
+        return ScenarioResult("nothing", "old_report")
+    return ScenarioResult("done", "won" if report.won else "lost")
 
 
 async def bulls_join(

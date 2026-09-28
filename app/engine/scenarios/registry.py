@@ -120,6 +120,7 @@ def _specs() -> dict[str, ScenarioSpec]:
             required={"keep": _int(0), "margin": _int(0)},
         ),
         ScenarioSpec("factory_signup", obligations.factory_signup, True),
+        ScenarioSpec("factory_report", obligations.factory_report, True),
         ScenarioSpec("bulls_join", obligations.bulls_join, True, required={"code": _invite}),
         ScenarioSpec(
             "tangerine",

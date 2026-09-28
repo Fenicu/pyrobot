@@ -69,6 +69,7 @@ FEATURE = {
     "battle_stamina": "battle",
     "stocks_dump": "stocks_dump",
     "factory_signup": "factory",
+    "factory_report": "factory",
     "bulls_join": "bulls",
     "tangerine": "tangerine",
     "smoothie": "smoothie",

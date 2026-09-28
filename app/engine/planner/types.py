@@ -66,6 +66,7 @@ WakeKind = Literal[
     "daily_reset",
     "stocks_dump",
     "factory_open",
+    "factory_report",
     "tangerine_ready",
     "tangerine_not_player",
     "lottery_open",

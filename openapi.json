@@ -2109,6 +2109,37 @@
         "title": "Observed[bool]",
         "type": "object"
       },
+      "Observed_date_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "format": "date",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[date]",
+        "type": "object"
+      },
       "Observed_datetime_": {
         "additionalProperties": false,
         "properties": {
@@ -2826,6 +2857,7 @@
               "daily_reset",
               "stocks_dump",
               "factory_open",
+              "factory_report",
               "tangerine_ready",
               "tangerine_not_player",
               "lottery_open",
@@ -3081,6 +3113,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "factory_report_day": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_date_"
               },
               {
                 "type": "null"

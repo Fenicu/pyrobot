@@ -39,6 +39,8 @@ NOTHING_HOLD: dict[tuple[str, str], timedelta] = {
     # Тиража нет или продажа закрыта — до конца окна продажи не изменится.
     ("lottery_buy", "no_draw"): timedelta(minutes=30),
     ("lottery_buy", "lottery_closed"): timedelta(hours=2),
+    # /fb отдал отчёт не за сегодня: битва ещё не посчитана — повтор не чаще раза в 15 минут.
+    ("factory_report", "old_report"): timedelta(minutes=15),
 }
 # Тираж мог открыться на секунды позже 19:17: «тиража нет» в начале окна продажи, до 19:30,
 # повторяется через 2 минуты.

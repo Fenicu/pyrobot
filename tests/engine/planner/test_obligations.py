@@ -411,6 +411,80 @@ def test_factory_waits_for_busy_then_after_close_forgets() -> None:
     assert "factory_signup" not in verdicts(decide(state(late), only("factory"), late))
 
 
+SIGNED = {"factory_signup": msk(18, 1)}
+
+
+def test_factory_report_after_battle_if_signed_today() -> None:
+    now = msk(18, 40)
+    decision = decide(state(now), only("factory"), now, last_done=SIGNED)
+    assert act(decision) == ("factory_report", {})
+
+
+def test_factory_report_by_signed_screen() -> None:
+    now = msk(18, 40)
+    signed = {"factory_signed": Obs(value=True, at=msk(18, 3))}
+    assert act(decide(state(now, **signed), only("factory"), now))[0] == "factory_report"
+
+
+def test_factory_report_waits_for_battle_end() -> None:
+    now = msk(18, 20)
+    decision = decide(state(now), only("factory"), now, last_done=SIGNED)
+    assert isinstance(decision, Wait)
+    assert decision.reason == "factory_report" and decision.until == msk(18, 31) + TIMER_MARGIN
+
+
+@pytest.mark.parametrize(
+    ("now", "last_done", "over"),
+    [
+        # Не записан сегодня: запись вчера, пропуск после победы.
+        (msk(18, 40), {"factory_signup": msk(18, 1, day=25)}, {}),
+        (msk(18, 40), {}, {"factory_skip": Obs(value=True, at=msk(18, 1))}),
+        # Сегодняшний отчёт уже получен (ручной /fb тоже).
+        (msk(18, 40), SIGNED, {"factory_report_day": Obs(value=msk(18).date(), at=msk(18, 35))}),
+        # Один раз в день: сегодняшний запуск уже был.
+        (msk(19, 40), {**SIGNED, "factory_report": msk(18, 32)}, {}),
+        # После 23:59 не пытаться.
+        (msk(23, 59), SIGNED, {}),
+    ],
+)
+def test_factory_report_not_needed(
+    now: datetime, last_done: dict[str, datetime], over: dict[str, Any]
+) -> None:
+    decision = decide(state(now, **over), only("factory"), now, last_done=last_done)
+    assert "factory_report" not in verdicts(decision)
+    assert all(
+        w.kind != "factory_report"
+        for w in outlook(state(now, **over), only("factory"), now, last_done=last_done).wakeups
+    )
+
+
+def test_factory_report_off_with_factory_feature() -> None:
+    now = msk(18, 40)
+    assert "factory_report" not in verdicts(decide(state(now), only(), now, last_done=SIGNED))
+
+
+def test_factory_report_not_in_sleep() -> None:
+    now = msk(18, 40)
+    asleep = BusyState(activity="sleep_bridge", until=now + timedelta(hours=5))
+    decision = decide(state(now, busy=asleep), only("factory"), now, last_done=SIGNED)
+    assert isinstance(decision, Wait) and "factory_report" not in verdicts(decision)
+
+
+def test_factory_report_while_busy_with_deed() -> None:
+    # /fb — навигация: во время дела игра его принимает.
+    now = msk(18, 40)
+    busy = BusyState(activity="job", until=now + timedelta(minutes=5))
+    decision = decide(state(now, busy=busy), only("factory"), now, last_done=SIGNED)
+    assert act(decision) == ("factory_report", {})
+
+
+def test_factory_report_uncertified_in_live() -> None:
+    now = msk(18, 40)
+    decision = decide(state(now), only("factory"), now, last_done=SIGNED, certified=frozenset())
+    assert verdicts(decision)["factory_report"] == "uncertified"
+    assert "factory_report" in CERTIFIED
+
+
 # --- биржевики
 
 NIGHT = msk(23, 30)

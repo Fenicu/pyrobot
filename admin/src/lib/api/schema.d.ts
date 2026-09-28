@@ -1475,6 +1475,24 @@ export interface components {
             /** Value */
             value: boolean;
         };
+        /** Observed[date] */
+        Observed_date_: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Src
+             * @enum {string}
+             */
+            src: "screen" | "derived" | "doubtful";
+            /**
+             * Value
+             * Format: date
+             */
+            value: string;
+        };
         /** Observed[datetime] */
         Observed_datetime_: {
             /**
@@ -1762,7 +1780,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "busy" | "cooldown" | "refresh" | "sleep_window" | "sleep_allowed" | "book_ready" | "card_ready" | "fastfood_ready" | "prizebox_ready" | "gorbushka_next" | "gorbushka_comeback" | "motivation" | "battle" | "daily_midnight" | "daily_reset" | "stocks_dump" | "factory_open" | "tangerine_ready" | "tangerine_not_player" | "lottery_open" | "metro_kick" | "metro_ready";
+            kind: "busy" | "cooldown" | "refresh" | "sleep_window" | "sleep_allowed" | "book_ready" | "card_ready" | "fastfood_ready" | "prizebox_ready" | "gorbushka_next" | "gorbushka_comeback" | "motivation" | "battle" | "daily_midnight" | "daily_reset" | "stocks_dump" | "factory_open" | "factory_report" | "tangerine_ready" | "tangerine_not_player" | "lottery_open" | "metro_kick" | "metro_ready";
         };
         /** PriceState */
         PriceState: {
@@ -1830,6 +1848,7 @@ export interface components {
             exp?: components["schemas"]["Observed_int_"] | null;
             exp_next?: components["schemas"]["Observed_int_"] | null;
             factory_call_at?: components["schemas"]["Observed_datetime_"] | null;
+            factory_report_day?: components["schemas"]["Observed_date_"] | null;
             factory_signed?: components["schemas"]["Observed_bool_"] | null;
             factory_skip?: components["schemas"]["Observed_bool_"] | null;
             factory_wins?: components["schemas"]["Observed_int_"] | null;

@@ -1,18 +1,26 @@
+import re
+from dataclasses import replace
+from datetime import UTC, datetime
+
 import pytest
 
+from app.engine.gametime import tasks_day
 from app.engine.scenarios.library import run_scenario
 from app.engine.scenarios.obligations import (
     battle_target,
     bulls_join,
+    factory_report,
     factory_signup,
     smoothie,
     stocks_dump,
     tangerine,
 )
 from app.engine.state.model import CharacterState
+from app.engine.types import IncomingMessage
 from tests.engine.fakegame import World
 from tests.engine.scenarios.certify import certifies
 from tests.engine.scenarios.conftest import context
+from tests.fixtures import game_msg
 
 TANGERINE_CHAT, REPLY_TO = -1001377961602, 927136
 CODE = "join_fight_AaBH89kYd2J"
@@ -255,3 +263,38 @@ async def test_smoothie_stops_when_drop_not_confirmed(world: World) -> None:
     )
     assert (result.status, result.reason) == ("stopped", "timeout")
     assert world.game.payloads() == ["/smoothie", "🍹Готовить", "sm_drop_2"]
+
+
+def _report_of_today(msg_id: int) -> IncomingMessage:
+    """Отчёт корпуса с сегодняшней датой битвы: эмулятор отвечает сообщениями с датой «сейчас»."""
+    msg = game_msg("crew", msg_id)
+    today = tasks_day(datetime.now(UTC))
+    stamp = f"{today.day}.{today.month:02d}.{today.year % 100}"
+    text = re.sub(r"фабрику \d+\.\d+\.\d+:", f"фабрику {stamp}:", msg.text or "")
+    return replace(msg, text=text)
+
+
+@certifies("factory_report")
+@pytest.mark.parametrize(("report", "reason"), [(3620025, "won"), (3625108, "lost")])
+async def test_factory_report_of_today(world: World, report: int, reason: str) -> None:
+    # /fb отвечает отчётом (все отчёты корпуса пришли сразу после /fb).
+    world.game.on_text("/fb", _report_of_today(report))
+    result = await run_scenario(factory_report, context(world), CharacterState(), {})
+    assert (result.status, result.reason) == ("done", reason)
+    assert world.game.payloads() == ["/fb"]
+    seen = world.state.factory_report_day
+    assert seen is not None and seen.value == tasks_day(datetime.now(UTC))
+
+
+@certifies("factory_report")
+async def test_factory_report_of_other_day_is_nothing(world: World) -> None:
+    # 26.09 02:23 /fb отдал отчёт о битве 25.09: последняя битва с участием персонажа.
+    world.game.on_text("/fb", ("crew", 3625108))
+    result = await run_scenario(factory_report, context(world), CharacterState(), {})
+    assert (result.status, result.reason) == ("nothing", "old_report")
+
+
+@certifies("factory_report")
+async def test_factory_report_without_answer_fails(world: World) -> None:
+    result = await run_scenario(factory_report, context(world), CharacterState(), {})
+    assert (result.status, result.reason, world.game.payloads()) == ("failed", "timeout", ["/fb"])

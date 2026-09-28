@@ -96,6 +96,12 @@
   "required": {}
  },
  {
+  "name": "factory_report",
+  "certified": true,
+  "params": {},
+  "required": {}
+ },
+ {
   "name": "bulls_join",
   "certified": true,
   "params": {},

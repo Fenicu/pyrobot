@@ -10,9 +10,11 @@ from datetime import timedelta
 from app.engine.bus import Delivery
 from app.engine.clock import Clock, SystemClock
 from app.engine.events import Event
+from app.engine.gametime import tasks_day
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.notify import NotifierPort
+from app.engine.parsing.crew import FactoryReport
 from app.engine.parsing.daily import TaskCompleted
 from app.engine.settings import SettingsProvider
 from app.engine.types import IncomingMessage
@@ -29,9 +31,15 @@ DELIBERATE = frozenset({"team_chat_off", "team_chat_changed", "kill_switch"})
 
 
 def forward_key(msg: IncomingMessage, events: Sequence[Event]) -> str | None:
-    """Ключ идемпотентности пересылки сообщения в чат команды; None — не пересылается."""
-    if any(isinstance(e, TaskCompleted) for e in events):
-        return f"forward:{msg.chat_id}:{msg.msg_id}"
+    """Ключ идемпотентности пересылки сообщения в чат команды; None — не пересылается.
+
+    Итог задания — своё сообщение; отчёт о фабрике — только за сегодня (день битвы в отчёте —
+    день создания сообщения по Москве), один на день: каждый `/fb` присылает его заново."""
+    for event in events:
+        if isinstance(event, TaskCompleted):
+            return f"forward:{msg.chat_id}:{msg.msg_id}"
+        if isinstance(event, FactoryReport) and event.battle_day == tasks_day(msg.origin):
+            return f"forward:factory:{event.day}"
     return None
 
 
@@ -42,7 +50,8 @@ class _Item:
 
 
 class TeamForward:
-    """Пересылка в чат команды (`chats.team_chat_id`) итога задания.
+    """Пересылка в чат команды (`chats.team_chat_id`) итога задания и сегодняшнего отчёта о
+    фабрике (его запрашивает сценарий `factory_report` или ручной `/fb`).
 
     Подписчик шины только ставит пересылку в очередь; пересылает `run` — задача под супервизором.
     Пересылается только исходная ревизия (`revision == 0`) доставки, на которую можно реагировать,

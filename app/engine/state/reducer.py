@@ -20,7 +20,7 @@ from app.engine.parsing.activities import (
 from app.engine.parsing.battle import BattleTargetSet
 from app.engine.parsing.bulls import BullsInvite, BullsJoined, BullsRefused, BullsResult
 from app.engine.parsing.common import Rewards
-from app.engine.parsing.crew import CrewScreen, FactoryScreen, FactorySignup
+from app.engine.parsing.crew import CrewScreen, FactoryReport, FactoryScreen, FactorySignup
 from app.engine.parsing.daily import (
     ChosenTask,
     DailyTasksScreen,
@@ -764,6 +764,14 @@ def _factory_signup(p: _Patch, e: FactorySignup) -> None:
 @_on(FactoryCall)
 def _factory_call(p: _Patch, e: FactoryCall) -> None:
     p.snap("factory_call_at", p.at)
+
+
+@_on(FactoryReport)
+def _factory_report(p: _Patch, e: FactoryReport) -> None:
+    # /fb отдаёт последнюю битву с участием персонажа: день только растёт.
+    known: Obs[date] | None = p.get("factory_report_day")
+    if known is None or known.value <= e.battle_day:
+        p.snap("factory_report_day", e.battle_day)
 
 
 @_on(BullsInvite)

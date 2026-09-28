@@ -122,3 +122,21 @@ def test_rewards_json_safe() -> None:
 )
 def test_rewards_upgrade_formats(text: str, tier: str, n: int) -> None:
     assert getattr(parse_rewards(text), tier) == n
+
+
+@pytest.mark.parametrize(
+    ("line", "details"),
+    [
+        ("⚙️Детали: +4", 4),
+        # Контейнер пишет ⚙ с двойным VS16, отчёт фабрики — без VS16.
+        ("⚙️️\xa0Детали: +6", 6),
+        ("⚙Детали: +10", 10),
+    ],
+)
+def test_details_line_with_any_vs16(line: str, details: int) -> None:
+    assert parse_rewards(line).details == details
+
+
+def test_upgrades_without_word_upgrades() -> None:
+    rewards = parse_rewards("⚪️Простые: +2\n🔵Редкие: +1\n🔴Уникальные: +1\n⚪️ Улучшения: +3")
+    assert (rewards.upgrades_white, rewards.upgrades_blue, rewards.upgrades_red) == (5, 1, 1)

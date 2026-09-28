@@ -228,6 +228,8 @@ class CharacterState(_Frozen):
     factory_signed: Obs[bool] | None = None
     factory_skip: Obs[bool] | None = None
     factory_call_at: Obs[datetime] | None = None
+    # День битвы в последнем полученном личном отчёте о фабрике (/fb).
+    factory_report_day: Obs[date] | None = None
     bulls_won_at: Obs[datetime] | None = None
     bulls_invite: Obs[str] | None = None
     stock_quotes: Obs[dict[str, int]] | None = None
@@ -290,6 +292,7 @@ TIMERS = frozenset(
         "factory_signed",
         "factory_skip",
         "factory_call_at",
+        "factory_report_day",
         "bulls_won_at",
         "bulls_invite",
         "battle_target_set",

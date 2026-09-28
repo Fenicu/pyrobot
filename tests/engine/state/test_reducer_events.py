@@ -45,6 +45,17 @@ def test_factory_win_of_own_team_only() -> None:
     assert value(state, "factory_won_at") == "2026-09-26T09:04:00Z"
 
 
+def test_factory_report_day_only_grows() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "crew", 3620025, 1)
+    assert value(state, "factory_report_day") == "2026-09-09"
+    state = feed(reducer, state, "crew", 3625108, 2)
+    assert value(state, "factory_report_day") == "2026-09-25"
+    # Отчёт о более ранней битве, увиденный позже, известный день не откатывает.
+    assert feed(reducer, state, "crew", 3620025, 3) == state
+    assert value(state, "money") is None
+
+
 def test_closed_factory_screen_keeps_signup() -> None:
     reducer = StateReducer()
     state = feed(reducer, {}, "crew", 3624393, 1)

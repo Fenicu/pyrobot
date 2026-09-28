@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 from typing import ClassVar
 
 from app.engine.events import Event
+from app.engine.parsing.common import NUM, Rewards, num, parse_rewards
 from app.engine.types import IncomingMessage
 
 _CREW = re.compile(
@@ -17,7 +19,11 @@ _FACTORY_STATUS = (
     ("signed", "👍Ты уже записан!"),
     ("closed", "❗️Жди следующей битвы."),
 )
-_REPORT = re.compile(r"\A[^\n]+ \(\d+\)\n🔨[^\n]*\nБитва за фабрику \d+\.\d+\.\d+: ")
+_REPORT = re.compile(
+    r"\A[^\n]+ \(\d+\)\n🔨[^\n]*\nБитва за фабрику (?P<d>\d{1,2})\.(?P<m>\d{1,2})\.(?P<y>\d{2}): "
+)
+_TREASURY = re.compile(r"^💵[\xa0 ]?В казну: \+\$(?P<v>" + NUM + r")", re.M)
+_RAGE = re.compile(r"^😡Твоя Ярость: (?P<v>\d+)", re.M)
 _REPORT_WON = "принёс победу своей команде"
 _SIGNUPS = (
     ("signed", "👍Отлично, ты записался на битву за фабрику!"),
@@ -48,10 +54,20 @@ class FactorySignup(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class FactoryReport(Event):
-    """Личный итог прошлой битвы за фабрику по запросу (/fb)."""
+    """Личный итог последней битвы за фабрику, в которой был персонаж, — только по запросу (/fb):
+    день битвы (ISO-дата из «Битва за фабрику ДД.ММ.ГГ»), награды, взнос в казну команды («💵В
+    казну» — не личные деньги) и ярость."""
 
     kind: ClassVar[str] = "factory_report"
     won: bool
+    day: str
+    rewards: Rewards = field(default_factory=Rewards)
+    treasury: int = 0
+    rage: int | None = None
+
+    @property
+    def battle_day(self) -> date:
+        return date.fromisoformat(self.day)
 
 
 def recognize_crew(msg: IncomingMessage) -> list[Event]:
@@ -64,8 +80,22 @@ def recognize_crew(msg: IncomingMessage) -> list[Event]:
         tail = text.rsplit("\n", 1)[-1]
         status = next((s for s, prefix in _FACTORY_STATUS if tail.startswith(prefix)), None)
         return [FactoryScreen(status=status)] if status else []
-    if _REPORT.match(text):
-        return [FactoryReport(won=_REPORT_WON in text)]
+    if m := _REPORT.match(text):
+        try:
+            day = date(2000 + int(m["y"]), int(m["m"]), int(m["d"]))
+        except ValueError:
+            return []
+        treasury = _TREASURY.search(text)
+        rage = _RAGE.search(text)
+        return [
+            FactoryReport(
+                won=_REPORT_WON in text,
+                day=day.isoformat(),
+                rewards=parse_rewards(text),
+                treasury=num(treasury["v"]) if treasury else 0,
+                rage=int(rage["v"]) if rage else None,
+            )
+        ]
     for result, prefix in _SIGNUPS:
         if text.startswith(prefix):
             return [FactorySignup(result=result)]

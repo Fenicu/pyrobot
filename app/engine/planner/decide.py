@@ -10,6 +10,7 @@ from app.engine.planner.daily import DailyTasks
 from app.engine.planner.obligations import (
     DUMP_SPAN,
     FACTORY_CLOSE,
+    FACTORY_REPORT_UNTIL,
     LOTTERY_LAST_START,
     TARGET_LAST_CALL,
     msk_at,
@@ -189,6 +190,8 @@ class _Planner(DailyTasks):
             return msk_at(start, LOTTERY_LAST_START)
         if w.kind == "factory_open":
             return msk_at(start, FACTORY_CLOSE)
+        if w.kind == "factory_report":
+            return msk_at(start, FACTORY_REPORT_UNTIL)
         if w.kind == "stocks_dump":
             lead = timedelta(minutes=self.cfg.stocks.dump_lead_min)
             return start + lead + DUMP_SPAN - TARGET_LAST_CALL
@@ -225,6 +228,7 @@ class _Planner(DailyTasks):
             self.battle_stamina,
             self.stocks_dump,
             self.factory,
+            self.factory_report,
             # Выбор задания занимает секунды, а ночной сон отодвинул бы его на утро.
             self.daily,
             self.lottery,

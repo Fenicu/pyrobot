@@ -4,7 +4,7 @@
 Поля не обязательны: до первого сообщения снимок пуст, а в снимке прошлой сборки нет полей,
 появившихся позже. Ответ `/state` отдаёт снимок как есть, модель его не пересобирает."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -94,6 +94,7 @@ class PublicState(BaseModel):
     factory_signed: Observed[bool] | None = None
     factory_skip: Observed[bool] | None = None
     factory_call_at: Observed[datetime] | None = None
+    factory_report_day: Observed[date] | None = None
     bulls_won_at: Observed[datetime] | None = None
     bulls_invite: Observed[str] | None = None
     stock_quotes: Observed[dict[str, int]] | None = None

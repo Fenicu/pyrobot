@@ -293,3 +293,42 @@ async def test_through_pipeline_once(rig: ForwardRig) -> None:
     await until(lambda: len(rig.sent) == 1)
     await rig.settle()
     assert rig.sent == [("forward", TEAM, task.msg_id)]
+
+
+def _report(msg_id: int, text_day: str | None = None) -> IncomingMessage:
+    """Отчёт о фабрике из корпуса; `text_day` — подменить дату битвы в тексте («12.09.26»)."""
+    msg = game_msg("crew", msg_id)
+    if text_day is None:
+        return msg
+    import re
+
+    text = re.sub(r"фабрику \d+\.\d+\.\d+:", f"фабрику {text_day}:", msg.text or "")
+    return replace(msg, text=text)
+
+
+async def test_today_factory_report_forwarded_once_per_day(rig: ForwardRig) -> None:
+    # 3620025 пришёл 12.09 в 03:12 MSK; с датой битвы 12.09 это сегодняшний отчёт.
+    first = _report(3620025, "12.09.26")
+    rig.clock.at = first.origin + timedelta(seconds=3)
+    events = default_parser(ChatsSection()).parse(first)
+    assert forward_key(first, events) == "forward:factory:2026-09-12"
+    await rig.deliver(first)
+    await until(lambda: len(rig.sent) == 1)
+    await rig.settle()
+    # Второй /fb тем же днём — другое сообщение с тем же отчётом: ключ дня его не пускает.
+    second = replace(first, msg_id=first.msg_id + 7)
+    await rig.deliver(second)
+    await rig.settle()
+    assert rig.sent == [("forward", TEAM, first.msg_id)]
+    [row] = rig.gw.store.rows.values()
+    assert row.req.idempotency_key == "forward:factory:2026-09-12"
+
+
+async def test_factory_report_of_other_day_not_forwarded(rig: ForwardRig) -> None:
+    # 26.09 02:23 /fb отдал отчёт о битве 25.09.
+    old = _report(3625108)
+    rig.clock.at = old.origin + timedelta(seconds=3)
+    assert forward_key(old, default_parser(ChatsSection()).parse(old)) is None
+    await rig.deliver(old)
+    await rig.settle()
+    assert rig.sent == []

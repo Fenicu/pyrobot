@@ -3,10 +3,10 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import asdict
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Literal
 
-from app.engine.gametime import MSK, to_msk
+from app.engine.gametime import MSK, day_start, tasks_day, to_msk
 from app.engine.market import pick_stock
 from app.engine.metro.budget import GAME_KICK
 from app.engine.metro.solver import policy_of
@@ -34,6 +34,8 @@ DUMP_SPAN = timedelta(minutes=10)
 BULLS_INVITE_TTL = timedelta(minutes=3)
 NOT_PLAYER_PAUSE = timedelta(hours=24)
 FACTORY_OPEN, FACTORY_CLOSE, FACTORY_BATTLE = time(18, 0), time(18, 15), time(18, 30)
+# Личный отчёт о битве (/fb) — после её конца; позже 23:59 за сегодняшний не пытаться.
+FACTORY_REPORT_FROM, FACTORY_REPORT_UNTIL = time(18, 31), time(23, 59)
 NIGHT_START, NIGHT_END = time(22, 0), time(8, 0)
 SLEEP_NIGHT_OPEN, SLEEP_AFTER_BULLS, SLEEP_WAKE_BY = time(22, 5), time(0, 30), time(12, 45)
 SMOOTHIE_RESET = time(3, 0)
@@ -204,6 +206,40 @@ class Obligations(PlannerBase):
             self.reject("factory_signup", {}, "busy")
             return None
         return self.act("factory_signup", {}, "factory_window")
+
+    def factory_joined(self) -> bool:
+        """Персонаж записан на сегодняшнюю битву: запуск записи или экран фабрики после начала
+        записи; пропуск после победы команды — не записан."""
+        opens = msk_at(self.now, FACTORY_OPEN)
+        skip = self.s.factory_skip
+        if skip is not None and skip.value is True and skip.at >= opens:
+            return False
+        signup = self.last_done.get("factory_signup")
+        if signup is not None and signup >= opens:
+            return True
+        signed = self.s.factory_signed
+        return signed is not None and signed.value is True and signed.at >= opens
+
+    def factory_report(self, busy: BusyState | None) -> Decision | None:
+        """Отчёт о сегодняшней битве за фабрику (`/fb`, навигация — и во время дела): после 18:31,
+        если персонаж сегодня записан, сегодняшний отчёт ещё не получен и сегодня запуска ещё не
+        было; до 23:59. Во сне шаг не решается."""
+        if not self.feature_on("factory_report"):
+            return None
+        if self.now >= msk_at(self.now, FACTORY_REPORT_UNTIL) or not self.factory_joined():
+            return None
+        today = tasks_day(self.now)
+        seen: date | None = self.value("factory_report_day")
+        if seen is not None and seen >= today:
+            return None
+        ran = self.last_done.get("factory_report")
+        if ran is not None and ran >= day_start(today):
+            return None
+        opens = msk_at(self.now, FACTORY_REPORT_FROM)
+        if self.now < opens:
+            self.wake(opens, "factory_report")
+            return None
+        return self.act("factory_report", {}, "factory_report")
 
     def blocks_factory(self, end: datetime) -> bool:
         """Дело, заканчивающееся позже открытия записи, мешает записаться вовремя."""

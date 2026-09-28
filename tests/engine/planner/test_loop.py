@@ -470,6 +470,15 @@ async def test_changed_metro_price_holds_metro_for_hours(world: World) -> None:
     assert rig.loop._cooldowns == {"metro": at + timedelta(hours=2)}
 
 
+async def test_old_factory_report_retried_in_quarter_hour(world: World) -> None:
+    # /fb отдал отчёт прошлой битвы: сегодняшняя ещё не посчитана — не спрашивать каждую минуту.
+    rig = Rig(world)
+    at = moment()
+    report = Act("factory_report", {}, "factory_report")
+    await rig.loop._after(report, ScenarioResult("nothing", "old_report"), at, at)
+    assert rig.loop._cooldowns == {"factory_report": at + timedelta(minutes=15)}
+
+
 async def test_battle_refusal_holds_all_deeds(world: World) -> None:
     world.game.on_text("/job", ("refusals", 3520502))
     await world.feed("profile", 3624478)
