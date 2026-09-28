@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
-from app.engine.planner.decide import Outlook, decide, earliest, outlook, run_key
+from app.engine.planner.decide import Outlook, _Planner, decide, earliest, outlook, run_key
 from app.engine.planner.types import Act, Decision, Wait, Wakeup
 from app.engine.settings import Settings
 from app.engine.state.model import BusyState, CharacterState, GorbushkaState, PriceState
@@ -209,3 +209,39 @@ def test_next_focus_is_the_available_one() -> None:
     # Занятость не мешает: подсказка — что будет, когда персонаж освободится.
     busy = view_of(awake(busy=JOB, money=20), FOCUS, done_today=done)
     assert busy.hints.next_focus == "deed:dconv"
+
+
+def test_window_open_at_wake_is_shown_at_wake() -> None:
+    # Сон 13:00–19:30 МСК: продажа лотереи (19:17–21:05) при подъёме ещё идёт — она в 19:30, а
+    # запись на фабрику (18:00–18:15) к подъёму закрыта — её нет.
+    at = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
+    woke = datetime(2026, 9, 26, 16, 30, tzinfo=UTC)
+    settings = config({"features": {"lottery": True, "factory": True}})
+    state = awake(at, busy=BusyState(activity="sleep_hotel", until=woke))
+    view = outlook(state, settings, at)
+    assert view.decision == decide(state, settings, at)
+    moments = {w.reason: w.at for w in view.after_wake}
+    assert moments["lottery_open"] == woke + TIMER_MARGIN
+    assert "factory_open" not in moments
+
+
+def test_after_wake_keeps_open_windows_and_readiness() -> None:
+    woke = m(300)
+    planner = _Planner(awake(), BASE, NOW, None, {}, {}, {}, (), None)
+    timers = [
+        # Слив начался за 5 минут до подъёма: окно (−15…−1 мин до битвы) ещё открыто.
+        Wakeup(woke - timedelta(minutes=5), "stocks_dump"),
+        Wakeup(m(100), "battle"),
+        Wakeup(m(100), "metro_kick"),
+        Wakeup(m(120), "sleep_allowed"),
+        Wakeup(m(200), "book_ready"),
+        Wakeup(m(360), "card_ready"),
+    ]
+    assert [(t.reason, t.at) for t in planner.after_wake(timers, woke)] == [
+        ("book_ready", woke),
+        ("sleep_allowed", woke),
+        ("stocks_dump", woke),
+        ("card_ready", m(360)),
+    ]
+    closed = Wakeup(woke - timedelta(minutes=20), "stocks_dump")
+    assert planner.after_wake([closed], woke) == ()

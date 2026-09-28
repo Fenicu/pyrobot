@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, TIMER_MARGIN, Step
 from app.engine.planner.daily import DailyTasks
+from app.engine.planner.obligations import (
+    DUMP_SPAN,
+    FACTORY_CLOSE,
+    LOTTERY_LAST_START,
+    TARGET_LAST_CALL,
+    msk_at,
+)
 from app.engine.planner.types import Act, Candidate, Decision, WakeKind, Wakeup
 from app.engine.settings import Settings
 from app.engine.state.model import (
@@ -19,19 +26,9 @@ from app.engine.state.model import (
 from app.engine.state.reducer import LOTTERY_CURRENCIES
 
 Phase = Literal["unknown", "asleep", "busy", "free"]
-# Таймеры окон и моментов: наступившие во сне к подъёму уже прошли (битва, слив перед ней, запись
-# на фабрику, начало продажи лотереи, выброс из метро, окно сна).
-WINDOWED: frozenset[WakeKind] = frozenset(
-    {
-        "sleep_window",
-        "sleep_allowed",
-        "battle",
-        "stocks_dump",
-        "factory_open",
-        "lottery_open",
-        "metro_kick",
-    }
-)
+# Таймеры-моменты: наступившие во сне к подъёму теряют смысл — битва и выброс из метро пройдут,
+# окно сна относится к ночи, которую персонаж уже спит.
+MOMENTS: frozenset[WakeKind] = frozenset({"battle", "metro_kick", "sleep_window"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,7 +96,7 @@ class _Planner(DailyTasks):
                 later = fresh()
                 for step in later.steps():
                     step(None)
-                woke = after_wake(later.wakeups, busy.until + TIMER_MARGIN)
+                woke = self.after_wake(later.wakeups, busy.until + TIMER_MARGIN)
                 return self.view("asleep", busy, decision, (), fresh, woke)
         first: Decision | None = None
         ready: dict[str, Act] = {}
@@ -154,6 +151,33 @@ class _Planner(DailyTasks):
             sleep_place=self.sleep_place(),
             next_focus=next_focus,
         )
+
+    def after_wake(self, wakeups: Iterable[Wakeup], woke: datetime) -> tuple[Wakeup, ...]:
+        """Таймеры прохода «после пробуждения». Наступающий во сне случится при подъёме
+        (`at = woke`): готовность — всегда, окно (продажа лотереи, запись на фабрику, слив
+        налички) — если к подъёму оно ещё открыто; закрытые окна и моменты (`MOMENTS`)
+        отбрасываются."""
+        out: list[Wakeup] = []
+        for w in wakeups:
+            if w.at >= woke:
+                out.append(w)
+            elif w.kind in MOMENTS:
+                continue
+            elif (end := self.window_end(w)) is None or end > woke:
+                out.append(replace(w, at=woke))
+        return earliest(out)
+
+    def window_end(self, w: Wakeup) -> datetime | None:
+        """Конец окна, которое открывает таймер `w`; None — таймер не окно, а готовность."""
+        start = w.at - TIMER_MARGIN
+        if w.kind == "lottery_open":
+            return msk_at(start, LOTTERY_LAST_START)
+        if w.kind == "factory_open":
+            return msk_at(start, FACTORY_CLOSE)
+        if w.kind == "stocks_dump":
+            lead = timedelta(minutes=self.cfg.stocks.dump_lead_min)
+            return start + lead + DUMP_SPAN - TARGET_LAST_CALL
+        return None
 
     def next_focus(self) -> str | None:
         """Основное дело, которое шаг дел взял бы среди доступных сейчас (как `focus_deed`,
@@ -506,18 +530,6 @@ def run_key(act: Act) -> str:
     if act.scenario == "refresh":
         return f"refresh:{act.params['source']}"
     return act.scenario
-
-
-def after_wake(wakeups: Iterable[Wakeup], woke: datetime) -> tuple[Wakeup, ...]:
-    """Таймеры прохода «после пробуждения»: наступающие во сне случатся в момент подъёма
-    (`at = woke`), а окна, которые за сон пройдут (`WINDOWED`), отбрасываются."""
-    out: list[Wakeup] = []
-    for w in wakeups:
-        if w.at >= woke:
-            out.append(w)
-        elif w.kind not in WINDOWED:
-            out.append(replace(w, at=woke))
-    return earliest(out)
 
 
 def earliest(wakeups: Iterable[Wakeup]) -> tuple[Wakeup, ...]:
