@@ -72,7 +72,8 @@ class PlanHintsOut(BaseModel):
     # Билеты за тираж по настройкам: число или `max` по валютам.
     lottery_tickets: dict[str, int | Literal["max"]]
     sleep_hours: int
-    # Место сна по правилу сценария на текущих деньгах; null — деньги или цена отеля неизвестны.
+    # Место сна по правилу сценария на текущих деньгах; null — деньги неизвестны или цена отеля
+    # не видена.
     sleep_place: Literal["hotel", "bridge"] | None
 
 

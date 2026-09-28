@@ -498,11 +498,12 @@ def test_rob_pro_ticket_fights_until_sleep_across_midnight() -> None:
         (GorbushkaState(state="need_ticket"), {}, "robPro_hard"),
         # На билет ($120) не хватает.
         (GorbushkaState(state="need_ticket"), {"money": 100}, "jobMoney_hard"),
-        # Резерв на отель ($210) перед сном: денег сверх него на билет нет.
+        # Перед сном отель ($210) вместе с билетом не по карману: сон под мостом, резерва на
+        # отель нет, билет по карману.
         (
             GorbushkaState(state="need_ticket"),
             {"money": 200, "sleep_deadline": m(4 * 60)},
-            "jobMoney_hard",
+            "robPro_hard",
         ),
         # Дневной лимит с экрана — 3 продавана: 36 < 39.
         (GorbushkaState(state="need_ticket", total=3), {}, "jobMoney_hard"),

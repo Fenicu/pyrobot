@@ -510,15 +510,11 @@ class Obligations(PlannerBase):
         return max(self.hotel_cost() or 0, self.hotel_threshold() or 0)
 
     def sleep_place(self) -> Literal["hotel", "bridge"] | None:
-        """Место сна по правилу сценария на текущих деньгах: отель, если после резерва билета
-        Горбушки 💵 не меньше max(цена отеля, порог); None — деньги или цена неизвестны."""
-        money: int | None = self.value("money")
-        cost = self.hotel_cost()
-        if money is None or cost is None:
+        """Место сна по тому же правилу, что резерв на отель, на текущих деньгах; None — деньги
+        неизвестны или цена отеля не видена (оценка 3💵 за уровень для подсказки не годится)."""
+        if self.value("money") is None or "hotel" not in self.s.prices:
             return None
-        threshold = self.cfg.sleep.hotel_if_cash_after_reserve_ge
-        need = max(cost, threshold) if threshold is not None else cost
-        return "hotel" if money - self.ticket_reserve() >= need else "bridge"
+        return "hotel" if self.hotel() else "bridge"
 
     def ticket_affordable(self) -> bool:
         """Билет Горбушки по карману: деньги сверх резерва на отель и знания."""

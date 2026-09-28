@@ -258,9 +258,13 @@ class PlannerBase:
         return 3 * level if level is not None else None
 
     def hotel_threshold(self) -> int | None:
-        """Сколько 💵 (сверх билета Горбушки) нужно, чтобы спать в отеле, а не под мостом."""
+        """Сколько 💵 (сверх билета Горбушки) нужно, чтобы спать в отеле, а не под мостом: как
+        у сценария сна — большее из цены отеля и порога (порог ниже цены отель не удешевит)."""
         threshold = self.cfg.sleep.hotel_if_cash_after_reserve_ge
-        return self.hotel_cost() if threshold is None else threshold
+        cost = self.hotel_cost()
+        if threshold is None or cost is None:
+            return cost if threshold is None else threshold
+        return max(cost, threshold)
 
     def hotel(self) -> bool:
         threshold = self.hotel_threshold()

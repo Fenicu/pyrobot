@@ -327,14 +327,19 @@ def test_gorbushka_buys_ticket_when_affordable() -> None:
     assert act(decide(state, BASE, NOW)) == ("gorbushka", {"buy": True})
 
 
-def test_gorbushka_ticket_leaves_hotel_reserve() -> None:
+def test_gorbushka_ticket_and_hotel_reserve() -> None:
+    # Отель выбирается по деньгам сверх билета: либо хватает на оба, либо сон под мостом и резерва
+    # на отель нет — билет его не съедает. Отель — 3💵 за уровень (210), порог ниже цены не в счёт.
     settings = config({"sleep": {"hotel_if_cash_after_reserve_ge": 50}})
     g = GorbushkaState(state="need_ticket")
     near = awake(money=200, gorbushka=g, sleep_deadline=m(4 * 60))
-    decision = decide(near, settings, NOW)
-    assert verdicts(decision)["gorbushka"] == "cant_afford"
-    far = awake(money=200, gorbushka=g)
-    assert act(decide(far, settings, NOW)) == ("gorbushka", {"buy": True})
+    assert act(decide(near, settings, NOW)) == ("gorbushka", {"buy": True})
+    both = awake(money=330, gorbushka=g, sleep_deadline=m(4 * 60))
+    assert act(decide(both, settings, NOW)) == ("gorbushka", {"buy": True})
+    high = config({"sleep": {"hotel_if_cash_after_reserve_ge": 250}})
+    held = awake(money=380, gorbushka=g, sleep_deadline=m(4 * 60))
+    # 380 − 120 ≥ 250 (порог выше цены): отель, резерв — его цена 210, на билет остаётся 170.
+    assert act(decide(held, high, NOW)) == ("gorbushka", {"buy": True})
 
 
 def test_gorbushka_ticket_reserve_blocks_harvest() -> None:
@@ -515,6 +520,24 @@ def test_hotel_money_reserved_before_sleep_window() -> None:
     # Сертифицированный сон в live исполнится — деньги на отель держатся, как в dry_run.
     held = decide(awake(money=230, sleep_deadline=m(4 * 60)), settings, NOW, certified=CERTIFIED)
     assert act(held) == ("deed:job", {})
+
+
+def test_hotel_threshold_below_price_follows_sleep_scenario() -> None:
+    # Сценарий сна берёт отель при 💵 ≥ max(цена, порог): порог ниже цены отель не удешевляет, и
+    # резерва под отель, в который бот не ляжет, нет.
+    settings = config(
+        {
+            "strategy": {"weight_money": 0, "deeds": ["harvest", "job"]},
+            "sleep": {"hotel_if_cash_after_reserve_ge": 50},
+        }
+    )
+    priced = {"hotel": obs(PriceState(money=210))}
+    poor = awake(money=100, sleep_deadline=m(4 * 60)).model_copy(update={"prices": priced})
+    assert act(decide(poor, settings, NOW)) == ("deed:harvest", {})
+    rich = awake(money=230, sleep_deadline=m(4 * 60)).model_copy(update={"prices": priced})
+    decision = decide(rich, settings, NOW)
+    assert act(decision) == ("deed:job", {})
+    assert verdicts(decision)["deed:harvest"] == "no_money"
 
 
 def test_screen_cooldown_waits_extra_minute_but_ready_screen_does_not() -> None:

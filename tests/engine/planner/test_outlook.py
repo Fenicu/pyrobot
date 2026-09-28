@@ -4,7 +4,7 @@ from typing import Any
 from app.engine.planner.decide import Outlook, decide, earliest, outlook, run_key
 from app.engine.planner.types import Act, Decision, Wait, Wakeup
 from app.engine.settings import Settings
-from app.engine.state.model import BusyState, CharacterState, GorbushkaState
+from app.engine.state.model import BusyState, CharacterState, GorbushkaState, PriceState
 from tests.engine.planner.test_decide import BASE, FOCUS, NOW, awake, config, m, obs, r, w
 
 SLEEP = BusyState(activity="sleep_hotel", until=m(300))
@@ -148,9 +148,15 @@ def test_hints_follow_settings_and_money() -> None:
     assert hints.battle_target == "🤖Hooli"
     assert hints.lottery_tickets == dict(money=4, knowledge="max", raw="max", details="max")
     assert hints.sleep_hours == 8
-    # Отель — 3💵 за уровень, пока цена не видна: 500💵 на 70 уровне хватает.
-    assert hints.sleep_place == "hotel"
-    assert view_of(awake(money=100)).hints.sleep_place == "bridge"
-    unknown = awake().model_copy(update={"money": None})
+    # Цена отеля не видена: оценка 3💵 за уровень для подсказки места не годится.
+    assert hints.sleep_place is None
+    priced = {"hotel": obs(PriceState(money=210))}
+    assert view_of(awake().model_copy(update={"prices": priced})).hints.sleep_place == "hotel"
+    poor = awake(money=100).model_copy(update={"prices": priced})
+    assert view_of(poor).hints.sleep_place == "bridge"
+    # Порог ниже цены отель не удешевляет — как у сценария сна.
+    low = config({"sleep": {"hotel_if_cash_after_reserve_ge": 50}})
+    assert view_of(poor, low).hints.sleep_place == "bridge"
+    unknown = awake().model_copy(update={"money": None, "prices": priced})
     assert outlook(unknown, BASE, NOW).hints.sleep_place is None
     assert view_of(awake()).hints.battle_target == "📯Pied Piper"
