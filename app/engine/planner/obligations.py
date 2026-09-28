@@ -91,10 +91,14 @@ class Obligations(PlannerBase):
         battle = self.upcoming_battle()
         if battle is None or battle - self.now <= TARGET_LAST_CALL:
             return None
-        desired = self.cfg.battle.overrides.get(to_msk(battle).hour, self.cfg.battle.target)
+        desired = self.target_for(battle)
         if self.target_ready(battle, desired):
             return None
         return self.act("battle_target", {"target": desired}, "battle_target")
+
+    def target_for(self, battle: datetime) -> str:
+        """Цель на битву: своя на её час по Москве или общая."""
+        return self.cfg.battle.overrides.get(to_msk(battle).hour, self.cfg.battle.target)
 
     def target_ready(self, battle: datetime, desired: str) -> bool:
         seen, known = self.s.battle_target, self.s.battle_at
@@ -504,6 +508,17 @@ class Obligations(PlannerBase):
         if not self.hotel():
             return 0
         return max(self.hotel_cost() or 0, self.hotel_threshold() or 0)
+
+    def sleep_place(self) -> Literal["hotel", "bridge"] | None:
+        """Место сна по правилу сценария на текущих деньгах: отель, если после резерва билета
+        Горбушки 💵 не меньше max(цена отеля, порог); None — деньги или цена неизвестны."""
+        money: int | None = self.value("money")
+        cost = self.hotel_cost()
+        if money is None or cost is None:
+            return None
+        threshold = self.cfg.sleep.hotel_if_cash_after_reserve_ge
+        need = max(cost, threshold) if threshold is not None else cost
+        return "hotel" if money - self.ticket_reserve() >= need else "bridge"
 
     def ticket_affordable(self) -> bool:
         """Билет Горбушки по карману: деньги сверх резерва на отель и знания."""

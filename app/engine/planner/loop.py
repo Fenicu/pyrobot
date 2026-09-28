@@ -15,7 +15,7 @@ from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import Source
 from app.engine.metro.store import METRO_HISTORY, MetroRunStore
 from app.engine.notify import NotifierPort
-from app.engine.planner.decide import decide, lottery_params
+from app.engine.planner.decide import Outlook, decide, lottery_params, outlook
 from app.engine.planner.obligations import LOTTERY_OPEN
 from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Act, Wait
@@ -68,6 +68,27 @@ class ManualRun:
     run_id: int
     scenario: str
     params: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class LoopView:
+    """Что сейчас с исполнением: решение планировщика при паузе или неготовности — условное."""
+
+    paused: bool
+    # Причина неготовности (`paused`, `killed`, `tg_offline`, …) или None.
+    ready: str | None
+    # Планировщик принимает свои решения (иначе — только ручные запуски).
+    auto: bool
+    current: str | None
+    manual_queue: int
+    next_wake: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class PlanView:
+    now: datetime
+    outlook: Outlook
+    loop: LoopView
 
 
 def cooldown_key(act: Act) -> str:
@@ -131,6 +152,8 @@ class PlannerLoop:
         self._lottery_short: tuple[int, dict[str, int]] | None = None
         self.current: str | None = None
         self.next_wake: datetime | None = None
+        # Отметка цикла: растёт при каждом изменении его входов (решение, запуск, очередь).
+        self.revision = 0
 
     async def on_delivery(self, delivery: Delivery) -> None:
         self._wake.set()
@@ -158,6 +181,7 @@ class PlannerLoop:
         )
         if created:
             self._manual.append(ManualRun(run_id, scenario, merged))
+            self.revision += 1
             self._wake.set()
         return run_id, created
 
@@ -174,6 +198,7 @@ class PlannerLoop:
     async def run_manual(self) -> None:
         """Следующий ручной запуск из очереди. Его сбой не роняет цикл планировщика."""
         item = self._manual.popleft()
+        self.revision += 1
         started = self._clock.now()
         # Режим ручного запуска фиксируется на его старте, как у запусков плана.
         dry_run = self._settings.current.engine.mode == "dry_run"
@@ -219,6 +244,12 @@ class PlannerLoop:
 
     async def step(self) -> float | None:
         """Одно решение; возвращает, сколько ждать до следующего (None — сразу)."""
+        try:
+            return await self._step()
+        finally:
+            self.revision += 1
+
+    async def _step(self) -> float | None:
         now = self._clock.now()
         if self._ready() is not None:
             self.next_wake = None
@@ -251,6 +282,39 @@ class PlannerLoop:
         # Режим запуска — тот, в котором принято решение.
         await self._execute(decision, decision_id, dry_run=settings.engine.mode == "dry_run")
         return None
+
+    async def outlook(self) -> PlanView:
+        """«План бота»: проход планировщика на тех же входах, что у `step()`, без решения и
+        записи в журнал; недостающие кеши подгружаются так же."""
+        now = self._clock.now()
+        settings = self._settings.current
+        if self._last_done is None:
+            self._last_done = await self._store.last_done()
+        if self._metro_durations is None:
+            self._metro_durations = await self._load_metro_durations()
+        done_today = await self._deeds_today(now)
+        # Смена режима снимет отсрочки подавления на следующем решении — план их уже не видит.
+        held = settings.engine.mode == self._mode
+        view = outlook(
+            self._observed(),
+            settings,
+            now,
+            certified=CERTIFIED if settings.engine.mode == "live" else None,
+            last_refresh=self._last_refresh,
+            cooldowns=self._blocked() if held else dict(self._cooldowns),
+            last_done=self._last_done,
+            metro_durations=self._metro_durations,
+            done_today=done_today,
+        )
+        loop = LoopView(
+            paused=settings.engine.paused,
+            ready=self._ready(),
+            auto=self._auto,
+            current=self.current,
+            manual_queue=len(self._manual),
+            next_wake=self.next_wake,
+        )
+        return PlanView(now, view, loop)
 
     def _observed(self) -> CharacterState:
         """Состояние с нехваткой, которую последний запуск лотереи увидел сверх запасов и
@@ -313,6 +377,7 @@ class PlannerLoop:
             run_id=run_id,
         )
         self.current = act.scenario
+        self.revision += 1
         try:
             result = await run_scenario(spec.fn, ctx, self._state(), act.params)
         except Exception:
@@ -320,6 +385,7 @@ class PlannerLoop:
             result = ScenarioResult("failed", "crashed")
         finally:
             self.current = None
+            self.revision += 1
         if result.reason == "paused":
             result = replace(result, status="stopped")
         if act.scenario == "lottery_buy":
@@ -331,6 +397,7 @@ class PlannerLoop:
                 # Кулдаун — до записи в журнал: сбой БД не должен оставить сценарий без него.
                 await self._after(act, result, started, finished)
         finally:
+            self.revision += 1
             # Сбой учёта итога (уведомление, БД) не оставляет запуск в running.
             await self._store.run_finished(run_id, result.status, result.reason, finished)
         if result.details is not None and "metro" in result.details:

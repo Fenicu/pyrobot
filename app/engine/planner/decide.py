@@ -16,8 +16,20 @@ from app.engine.state.model import (
     CharacterState,
     PriceState,
 )
+from app.engine.state.reducer import LOTTERY_CURRENCIES
 
 Phase = Literal["unknown", "asleep", "busy", "free"]
+
+
+@dataclass(frozen=True, slots=True)
+class PlanHints:
+    """Подробности для строк плана: цель ближайшей битвы, билеты лотереи по настройкам, длина
+    сна и место сна на текущих деньгах (None — неизвестно)."""
+
+    battle_target: str | None
+    lottery_tickets: dict[str, int | Literal["max"]]
+    sleep_hours: int
+    sleep_place: Literal["hotel", "bridge"] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +51,7 @@ class Outlook:
     wakeups: tuple[Wakeup, ...]
     after_wake: tuple[Wakeup, ...]
     focus: tuple[tuple[str, int], ...]
+    hints: PlanHints
 
 
 class _Planner(DailyTasks):
@@ -110,6 +123,17 @@ class _Planner(DailyTasks):
             wakeups,
             after_wake,
             focus,
+            self.hints(),
+        )
+
+    def hints(self) -> PlanHints:
+        battle = self.battle_time()
+        tickets = self.cfg.lottery.tickets
+        return PlanHints(
+            battle_target=self.target_for(battle) if battle is not None else None,
+            lottery_tickets={c: getattr(tickets, c) for c in LOTTERY_CURRENCIES},
+            sleep_hours=self.cfg.sleep.duration_h,
+            sleep_place=self.sleep_place(),
         )
 
     def steps(self) -> tuple[Step, ...]:

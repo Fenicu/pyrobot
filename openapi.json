@@ -2266,6 +2266,86 @@
         "title": "Observed[str]",
         "type": "object"
       },
+      "OutlookOut": {
+        "properties": {
+          "also_ready": {
+            "items": {
+              "$ref": "#/components/schemas/PlanActOut"
+            },
+            "title": "Also Ready",
+            "type": "array"
+          },
+          "busy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BusyState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "considered": {
+            "items": {
+              "$ref": "#/components/schemas/PlanCandidateOut"
+            },
+            "title": "Considered",
+            "type": "array"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/PlanDecisionOut"
+          },
+          "focus": {
+            "items": {
+              "$ref": "#/components/schemas/PlanFocusOut"
+            },
+            "title": "Focus",
+            "type": "array"
+          },
+          "hints": {
+            "$ref": "#/components/schemas/PlanHintsOut"
+          },
+          "loop": {
+            "$ref": "#/components/schemas/PlanLoopOut"
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "unknown",
+              "asleep",
+              "busy",
+              "free"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "wakeups": {
+            "items": {
+              "$ref": "#/components/schemas/PlanTimerOut"
+            },
+            "title": "Wakeups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "now",
+          "phase",
+          "busy",
+          "decision",
+          "considered",
+          "also_ready",
+          "wakeups",
+          "loop",
+          "focus",
+          "hints"
+        ],
+        "title": "OutlookOut",
+        "type": "object"
+      },
       "ParamSpec": {
         "description": "Обязательный параметр сценария: `values` — у enum, `min`/`max` — у int, `pattern` — у\nstring (ECMA-262). Проверяет сервер: запуск с недопустимым значением — 422.",
         "properties": {
@@ -2384,6 +2464,314 @@
           "phone"
         ],
         "title": "PhoneIn",
+        "type": "object"
+      },
+      "PlanActOut": {
+        "properties": {
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario",
+          "params",
+          "reason"
+        ],
+        "title": "PlanActOut",
+        "type": "object"
+      },
+      "PlanCandidateOut": {
+        "properties": {
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario",
+          "params",
+          "score",
+          "verdict"
+        ],
+        "title": "PlanCandidateOut",
+        "type": "object"
+      },
+      "PlanDecisionOut": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "act",
+              "wait"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "kind",
+          "scenario",
+          "params",
+          "reason",
+          "until"
+        ],
+        "title": "PlanDecisionOut",
+        "type": "object"
+      },
+      "PlanFocusOut": {
+        "properties": {
+          "deed": {
+            "title": "Deed",
+            "type": "string"
+          },
+          "today": {
+            "title": "Today",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "deed",
+          "today"
+        ],
+        "title": "PlanFocusOut",
+        "type": "object"
+      },
+      "PlanHintsOut": {
+        "properties": {
+          "battle_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battle Target"
+          },
+          "lottery_tickets": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "const": "max",
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Lottery Tickets",
+            "type": "object"
+          },
+          "sleep_hours": {
+            "title": "Sleep Hours",
+            "type": "integer"
+          },
+          "sleep_place": {
+            "anyOf": [
+              {
+                "enum": [
+                  "hotel",
+                  "bridge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sleep Place"
+          }
+        },
+        "required": [
+          "battle_target",
+          "lottery_tickets",
+          "sleep_hours",
+          "sleep_place"
+        ],
+        "title": "PlanHintsOut",
+        "type": "object"
+      },
+      "PlanLoopOut": {
+        "properties": {
+          "auto": {
+            "title": "Auto",
+            "type": "boolean"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "manual_queue": {
+            "title": "Manual Queue",
+            "type": "integer"
+          },
+          "next_wake": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Wake"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "ready": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready"
+          }
+        },
+        "required": [
+          "paused",
+          "ready",
+          "auto",
+          "current",
+          "manual_queue",
+          "next_wake"
+        ],
+        "title": "PlanLoopOut",
+        "type": "object"
+      },
+      "PlanTimerOut": {
+        "properties": {
+          "after_wake": {
+            "title": "After Wake",
+            "type": "boolean"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "kind": {
+            "enum": [
+              "busy",
+              "cooldown",
+              "refresh",
+              "sleep_window",
+              "sleep_allowed",
+              "book_ready",
+              "card_ready",
+              "fastfood_ready",
+              "prizebox_ready",
+              "gorbushka_next",
+              "gorbushka_comeback",
+              "motivation",
+              "battle",
+              "daily_midnight",
+              "daily_reset",
+              "stocks_dump",
+              "factory_open",
+              "tangerine_ready",
+              "tangerine_not_player",
+              "lottery_open",
+              "metro_kick",
+              "metro_ready"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "kind",
+          "key",
+          "after_wake"
+        ],
+        "title": "PlanTimerOut",
         "type": "object"
       },
       "PriceState": {
@@ -5682,6 +6070,48 @@
         "summary": "Read Notifications",
         "tags": [
           "reference"
+        ]
+      }
+    },
+    "/api/v1/planner/outlook": {
+      "get": {
+        "description": "«План бота»: что планировщик решил бы сейчас, почему не другое, что ещё готово и когда\nон проснётся дальше. Без решений, действий и записи в журнал; кеш — 5 с.",
+        "operationId": "planner_outlook_api_v1_planner_outlook_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutlookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not started | planner not started"
+          }
+        },
+        "summary": "Planner Outlook",
+        "tags": [
+          "planner"
         ]
       }
     },

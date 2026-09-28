@@ -8,6 +8,7 @@ from app.api.routes_commands import router as commands_router
 from app.api.routes_engine import router as engine_router
 from app.api.routes_events import router as events_router
 from app.api.routes_journal import router as journal_router
+from app.api.routes_planner import router as planner_router
 from app.api.routes_reference import router as reference_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_state import router as state_router
@@ -20,6 +21,7 @@ def create_api(container: Container) -> FastAPI:
     app.state.container = container
     app.include_router(auth_router)
     app.include_router(engine_router)
+    app.include_router(planner_router)
     app.include_router(state_router)
     app.include_router(settings_router)
     app.include_router(journal_router)

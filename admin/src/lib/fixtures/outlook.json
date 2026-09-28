@@ -1,0 +1,138 @@
+{
+ "now": "2026-09-27T16:30:00Z",
+ "phase": "busy",
+ "busy": {
+  "activity": "job",
+  "until": "2026-09-27T16:50:00Z"
+ },
+ "decision": {
+  "kind": "act",
+  "scenario": "lottery_buy",
+  "params": {
+   "reserve": 0,
+   "tickets_money": "max",
+   "keep_money": 0,
+   "tickets_knowledge": "max",
+   "keep_knowledge": 0,
+   "tickets_raw": "max",
+   "keep_raw": 0,
+   "tickets_details": "max",
+   "keep_details": 0
+  },
+  "reason": "lottery_unknown",
+  "until": null
+ },
+ "considered": [
+  {
+   "scenario": "levelup",
+   "params": {},
+   "score": null,
+   "verdict": "busy"
+  },
+  {
+   "scenario": "lottery_buy",
+   "params": {
+    "reserve": 0,
+    "tickets_money": "max",
+    "keep_money": 0,
+    "tickets_knowledge": "max",
+    "keep_knowledge": 0,
+    "tickets_raw": "max",
+    "keep_raw": 0,
+    "tickets_details": "max",
+    "keep_details": 0
+   },
+   "score": null,
+   "verdict": "chosen"
+  }
+ ],
+ "also_ready": [
+  {
+   "scenario": "tangerine",
+   "params": {
+    "chat": -1001377961602,
+    "reply_to": 927136
+   },
+   "reason": "tangerine_ready"
+  }
+ ],
+ "wakeups": [
+  {
+   "at": "2026-09-27T16:50:03Z",
+   "kind": "busy",
+   "key": null,
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-27T17:07:06Z",
+   "kind": "book_ready",
+   "key": null,
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-27T17:07:11Z",
+   "kind": "card_ready",
+   "key": null,
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-27T19:05:03Z",
+   "kind": "sleep_window",
+   "key": null,
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-27T21:02:03Z",
+   "kind": "daily_reset",
+   "key": null,
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-27T23:41:25Z",
+   "kind": "metro_ready",
+   "key": null,
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-28T07:30:32Z",
+   "kind": "gorbushka_comeback",
+   "key": null,
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-28T07:45:03Z",
+   "kind": "stocks_dump",
+   "key": null,
+   "after_wake": false
+  }
+ ],
+ "loop": {
+  "paused": false,
+  "ready": null,
+  "auto": true,
+  "current": null,
+  "manual_queue": 0,
+  "next_wake": null
+ },
+ "focus": [
+  {
+   "deed": "deed:harvest",
+   "today": 3
+  },
+  {
+   "deed": "deed:dconv",
+   "today": 2
+  }
+ ],
+ "hints": {
+  "battle_target": "📯Pied Piper",
+  "lottery_tickets": {
+   "money": "max",
+   "knowledge": "max",
+   "raw": "max",
+   "details": "max"
+  },
+  "sleep_hours": 7,
+  "sleep_place": "bridge"
+ }
+}

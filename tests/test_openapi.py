@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 from app.api.openapi import build_schema
+from app.engine.planner.types import WakeKind
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -42,6 +43,7 @@ def test_engine_tg_and_state_are_typed() -> None:
         ("/api/v1/tg/login/password", "post"): "TgStatusOut",
         ("/api/v1/tg/logout", "post"): "TgStatusOut",
         ("/api/v1/state", "get"): "StateOut",
+        ("/api/v1/planner/outlook", "get"): "OutlookOut",
     }
     for (path, method), model in typed.items():
         assert _ok_schema(schema, path, method) == {"$ref": f"#/components/schemas/{model}"}
@@ -104,3 +106,8 @@ def test_session_routes_document_401() -> None:
             continue
         for method, op in ops.items():
             assert "401" in op["responses"], (method, path)
+
+
+def test_plan_timer_kinds_are_closed_enum() -> None:
+    kind = _schemas()["PlanTimerOut"]["properties"]["kind"]
+    assert kind["enum"] == list(get_args(WakeKind))

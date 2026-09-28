@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections.abc import Callable
 
 import pytest
@@ -34,6 +35,7 @@ def build(
     notifier: NotifierPort | None = None,
     planner: object | None = None,
     store: ActionStore | None = None,
+    monotonic: Callable[[], float] = time.monotonic,
 ) -> EngineFacade:
     settings = settings or StaticSettings()
     bus = Bus()
@@ -60,6 +62,7 @@ def build(
         lock_ok=lock_ok,
         notifier=notifier,
         planner=planner,  # type: ignore[arg-type]
+        monotonic=monotonic,
     )
 
 

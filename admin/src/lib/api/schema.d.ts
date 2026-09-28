@@ -361,6 +361,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/planner/outlook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Planner Outlook
+         * @description «План бота»: что планировщик решил бы сейчас, почему не другое, что ещё готово и когда
+         *     он проснётся дальше. Без решений, действий и записи в журнал; кеш — 5 с.
+         */
+        get: operations["planner_outlook_api_v1_planner_outlook_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scenario-runs": {
         parameters: {
             query?: never;
@@ -1536,6 +1557,31 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** OutlookOut */
+        OutlookOut: {
+            /** Also Ready */
+            also_ready: components["schemas"]["PlanActOut"][];
+            busy: components["schemas"]["BusyState"] | null;
+            /** Considered */
+            considered: components["schemas"]["PlanCandidateOut"][];
+            decision: components["schemas"]["PlanDecisionOut"];
+            /** Focus */
+            focus: components["schemas"]["PlanFocusOut"][];
+            hints: components["schemas"]["PlanHintsOut"];
+            loop: components["schemas"]["PlanLoopOut"];
+            /**
+             * Now
+             * Format: date-time
+             */
+            now: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "unknown" | "asleep" | "busy" | "free";
+            /** Wakeups */
+            wakeups: components["schemas"]["PlanTimerOut"][];
+        };
         /**
          * ParamSpec
          * @description Обязательный параметр сценария: `values` — у enum, `min`/`max` — у int, `pattern` — у
@@ -1595,6 +1641,100 @@ export interface components {
         PhoneIn: {
             /** Phone */
             phone: string;
+        };
+        /** PlanActOut */
+        PlanActOut: {
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+            /** Scenario */
+            scenario: string;
+        };
+        /** PlanCandidateOut */
+        PlanCandidateOut: {
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Scenario */
+            scenario: string;
+            /** Score */
+            score: number | null;
+            /** Verdict */
+            verdict: string;
+        };
+        /** PlanDecisionOut */
+        PlanDecisionOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "act" | "wait";
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+            /** Scenario */
+            scenario: string | null;
+            /** Until */
+            until: string | null;
+        };
+        /** PlanFocusOut */
+        PlanFocusOut: {
+            /** Deed */
+            deed: string;
+            /** Today */
+            today: number;
+        };
+        /** PlanHintsOut */
+        PlanHintsOut: {
+            /** Battle Target */
+            battle_target: string | null;
+            /** Lottery Tickets */
+            lottery_tickets: {
+                [key: string]: number | "max";
+            };
+            /** Sleep Hours */
+            sleep_hours: number;
+            /** Sleep Place */
+            sleep_place: ("hotel" | "bridge") | null;
+        };
+        /** PlanLoopOut */
+        PlanLoopOut: {
+            /** Auto */
+            auto: boolean;
+            /** Current */
+            current: string | null;
+            /** Manual Queue */
+            manual_queue: number;
+            /** Next Wake */
+            next_wake: string | null;
+            /** Paused */
+            paused: boolean;
+            /** Ready */
+            ready: string | null;
+        };
+        /** PlanTimerOut */
+        PlanTimerOut: {
+            /** After Wake */
+            after_wake: boolean;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Key */
+            key: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "busy" | "cooldown" | "refresh" | "sleep_window" | "sleep_allowed" | "book_ready" | "card_ready" | "fastfood_ready" | "prizebox_ready" | "gorbushka_next" | "gorbushka_comeback" | "motivation" | "battle" | "daily_midnight" | "daily_reset" | "stocks_dump" | "factory_open" | "tangerine_ready" | "tangerine_not_player" | "lottery_open" | "metro_kick" | "metro_ready";
         };
         /** PriceState */
         PriceState: {
@@ -3175,6 +3315,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    planner_outlook_api_v1_planner_outlook_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlookOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description engine not started | planner not started */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

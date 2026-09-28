@@ -133,3 +133,24 @@ def test_focus_counts_come_from_done_today() -> None:
     view = view_of(awake(), FOCUS, done_today={"deed:harvest": 3, "deed:dconv": 2})
     assert view.focus == (("deed:harvest", 3), ("deed:dconv", 2))
     assert view_of(awake()).focus == ()
+
+
+def test_hints_follow_settings_and_money() -> None:
+    # Битва — через 3 ч от 10:00 UTC, в 16:00 по Москве.
+    settings = config(
+        {
+            "battle": {"overrides": {16: "🤖Hooli"}},
+            "lottery": {"tickets": {"money": 4}},
+            "sleep": {"duration_h": 8},
+        }
+    )
+    hints = view_of(awake(), settings).hints
+    assert hints.battle_target == "🤖Hooli"
+    assert hints.lottery_tickets == dict(money=4, knowledge="max", raw="max", details="max")
+    assert hints.sleep_hours == 8
+    # Отель — 3💵 за уровень, пока цена не видна: 500💵 на 70 уровне хватает.
+    assert hints.sleep_place == "hotel"
+    assert view_of(awake(money=100)).hints.sleep_place == "bridge"
+    unknown = awake().model_copy(update={"money": None})
+    assert outlook(unknown, BASE, NOW).hints.sleep_place is None
+    assert view_of(awake()).hints.battle_target == "📯Pied Piper"
