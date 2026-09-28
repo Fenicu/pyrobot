@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, Step
 from app.engine.planner.daily import DailyTasks
-from app.engine.planner.types import Act, Candidate, Decision, WakeKind
+from app.engine.planner.types import Act, Candidate, Decision, WakeKind, Wakeup
 from app.engine.settings import Settings
 from app.engine.state.model import (
     DEED_PRIORS,
@@ -16,6 +16,29 @@ from app.engine.state.model import (
     CharacterState,
     PriceState,
 )
+
+Phase = Literal["unknown", "asleep", "busy", "free"]
+
+
+@dataclass(frozen=True, slots=True)
+class Outlook:
+    """Проход планировщика для «Плана бота»: решение — то же, что у `decide`, плюс то, что
+    осталось за ним на том же снимке.
+
+    `considered` — кандидаты до первого решения (его `candidates`); `also_ready` — сценарии,
+    которые дальше по проходу тоже вернули бы действие (не очередь: запуск меняет состояние);
+    `wakeups` — таймеры всего прохода; `after_wake` — во сне таймеры прохода «как после
+    пробуждения»; `focus` — основные дела и их запуски за день.
+    """
+
+    phase: Phase
+    busy: BusyState | None
+    decision: Decision
+    considered: tuple[Candidate, ...]
+    also_ready: tuple[Act, ...]
+    wakeups: tuple[Wakeup, ...]
+    after_wake: tuple[Wakeup, ...]
+    focus: tuple[tuple[str, int], ...]
 
 
 class _Planner(DailyTasks):
@@ -29,7 +52,68 @@ class _Planner(DailyTasks):
             if busy.activity.startswith("sleep_"):
                 # Во сне игра позволяет только выбрать цель битвы.
                 return self.battle_target(busy) or self.wait()
-        steps: tuple[Step, ...] = (
+        for step in self.steps():
+            if (decision := step(busy)) is not None:
+                return decision
+        return self.wait()
+
+    def outlook(self, fresh: Callable[[], _Planner]) -> Outlook:
+        """Ветки занятости — как в `decide`; `fresh` — такой же планировщик с чистыми
+        кандидатами и таймерами для прохода «после пробуждения»."""
+        busy = self.busy()
+        if busy is None and (field := self.stale_of("busy")) is not None:
+            return self.view("unknown", None, self.refresh("state", field) or self.wait(), ())
+        if busy is not None:
+            self.wake(busy.until, "busy")
+            if busy.activity.startswith("sleep_"):
+                decision = self.battle_target(busy) or self.wait()
+                later = fresh()
+                for step in later.steps():
+                    step(None)
+                return self.view("asleep", busy, decision, (), later.wakeups)
+        first: Decision | None = None
+        ready: dict[str, Act] = {}
+        for step in self.steps():
+            found = step(busy)
+            if found is None:
+                continue
+            if first is None:
+                first = found
+            elif isinstance(found, Act):
+                ready.setdefault(run_key(found), found)
+        decision = first or self.wait()
+        own = run_key(decision) if isinstance(decision, Act) else None
+        also = tuple(act for key, act in ready.items() if key != own)
+        return self.view("free" if busy is None else "busy", busy, decision, also)
+
+    def view(
+        self,
+        phase: Phase,
+        busy: BusyState | None,
+        decision: Decision,
+        also_ready: tuple[Act, ...],
+        later: Iterable[Wakeup] = (),
+    ) -> Outlook:
+        wakeups = earliest(self.wakeups)
+        known = {(w.kind, w.key) for w in wakeups}
+        after_wake = tuple(w for w in earliest(later) if (w.kind, w.key) not in known)
+        focus = tuple(
+            (name, self.done_today.get(name, 0))
+            for name in (f"deed:{deed}" for deed in self.cfg.strategy.focus)
+        )
+        return Outlook(
+            phase,
+            busy,
+            decision,
+            decision.candidates,
+            also_ready,
+            wakeups,
+            after_wake,
+            focus,
+        )
+
+    def steps(self) -> tuple[Step, ...]:
+        return (
             self.metro_resume,
             self.levelup,
             self.bulls,
@@ -52,10 +136,6 @@ class _Planner(DailyTasks):
             self.metro,
             self.deeds,
         )
-        for step in steps:
-            if (decision := step(busy)) is not None:
-                return decision
-        return self.wait()
 
     def levelup(self, busy: BusyState | None) -> Decision | None:
         if not self.feature_on("levelup") or self.value("levelup_pending") is not True:
@@ -334,6 +414,54 @@ def decide(
         done_today,
     )
     return planner.decide()
+
+
+def outlook(
+    state: CharacterState,
+    settings: Settings,
+    now: datetime,
+    *,
+    certified: frozenset[str] | None = None,
+    last_refresh: Mapping[str, datetime] | None = None,
+    cooldowns: Mapping[str, datetime] | None = None,
+    last_done: Mapping[str, datetime] | None = None,
+    metro_durations: Sequence[float] = (),
+    done_today: Mapping[str, int] | None = None,
+) -> Outlook:
+    """«План бота» на тех же входах, что `decide`: его решение и то, что за ним. В цикле не
+    используется."""
+
+    def planner() -> _Planner:
+        return _Planner(
+            state,
+            settings,
+            now,
+            certified,
+            last_refresh or {},
+            cooldowns or {},
+            last_done or {},
+            metro_durations,
+            done_today,
+        )
+
+    return planner().outlook(planner)
+
+
+def run_key(act: Act) -> str:
+    """Один сценарий — одна запись; у рефреша — своя на источник (как ключ кулдауна)."""
+    if act.scenario == "refresh":
+        return f"refresh:{act.params['source']}"
+    return act.scenario
+
+
+def earliest(wakeups: Iterable[Wakeup]) -> tuple[Wakeup, ...]:
+    """Таймеры без дублей по `(kind, key)` — самый ранний из них, по времени."""
+    first: dict[tuple[str, str | None], Wakeup] = {}
+    for w in wakeups:
+        known = first.get((w.kind, w.key))
+        if known is None or w.at < known.at:
+            first[(w.kind, w.key)] = w
+    return tuple(sorted(first.values(), key=lambda w: (w.at, w.reason)))
 
 
 def lottery_params(
