@@ -104,6 +104,30 @@ describe('перечитывание плана', () => {
 		store.stop();
 	});
 
+	it('reset: план очищается, запрос отменяется, поздний ответ прежнего поколения не применяется', async () => {
+		const s = server();
+		const store = new PlanStore(s.api);
+		store.start();
+		await tick();
+		await s.answer();
+		expect(store.outlook).not.toBeNull();
+		store.onEvent(decision);
+		await tick();
+		expect(s.requests()).toBe(2);
+		store.onEvent({ type: 'reset', id: '', data: { reason: 'epoch' } });
+		await tick();
+		expect(store.outlook).toBeNull();
+		expect(s.signals[1]?.aborted).toBe(true);
+		expect(s.requests()).toBe(3);
+		// Ответ на запрос до reset приходит позже — не применяется.
+		await s.answer();
+		expect(store.outlook).toBeNull();
+		await s.answer();
+		expect(store.outlook?.decision.scenario).toBe('lottery_buy');
+		expect(s.requests()).toBe(3);
+		store.stop();
+	});
+
 	it('уход с главной отменяет запрос и перечитывания', async () => {
 		const s = server();
 		const store = new PlanStore(s.api);
@@ -121,10 +145,18 @@ describe('перечитывание плана', () => {
 });
 
 describe('значимые поля state', () => {
-	it('занятость, 🔥, деньги, ресурсы, таймеры, задания, лотерея, битва', () => {
-		for (const field of ['busy', 'motivation', 'money', 'details', 'book_ready_at', 'sleep_deadline', 'team_task', 'lottery', 'battle_at', 'battle_target']) {
+	it('всё, что читает планировщик, в том числе цены, статистика дел, биржа и уровень', () => {
+		for (const field of [
+			'busy', 'motivation', 'money', 'details', 'book_ready_at', 'sleep_deadline', 'team_task', 'lottery',
+			'battle_at', 'battle_target', 'prices', 'activity_stats', 'stock_limits', 'stock_quotes',
+			'smoothie_ingredients', 'level', 'some_future_field'
+		]) {
 			expect(significant({ [field]: null }), field).toBe(true);
 		}
-		expect(significant({ exp: 1, skills: {}, bag: 3 })).toBe(false);
+	});
+
+	it('поля, которых планировщик не читает, план не перечитывают', () => {
+		expect(significant({ exp: 1, skills: {}, bag: 3, stock_holdings: {} })).toBe(false);
+		expect(significant({ exp: 1, money: 5 })).toBe(true);
 	});
 });

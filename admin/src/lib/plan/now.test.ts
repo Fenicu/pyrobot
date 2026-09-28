@@ -12,7 +12,7 @@ const withLoop = (loop: Partial<Outlook['loop']>): Outlook => ({ ...plan, loop: 
 describe('«Сейчас»', () => {
 	it('решение планировщика и занятость', () => {
 		expect(nowView(plan)).toEqual({
-			blocker: null,
+			blockers: [],
 			decision: '🤑 билеты лотереи (все — max)',
 			at: null,
 			phase: 'Занят: работа до 19:50'
@@ -21,12 +21,22 @@ describe('«Сейчас»', () => {
 
 	it('пауза, неготовность, идущий сценарий, очередь — первыми, решение условное', () => {
 		expect(nowView(withLoop({ paused: true, ready: 'paused' }))).toMatchObject({
-			blocker: '⏸ Планировщик на паузе',
+			blockers: ['⏸ Планировщик на паузе'],
 			decision: 'когда пауза снимется — 🤑 билеты лотереи (все — max)'
 		});
-		expect(nowView(withLoop({ ready: 'tg_offline' })).blocker).toBe('⛔ Решения не исполняются: Telegram не в сети');
+		expect(nowView(withLoop({ ready: 'tg_offline' })).blockers).toEqual(['⛔ Решения не исполняются: Telegram не в сети']);
 		expect(nowView(withLoop({ current: 'deed:job' })).decision).toBe('после него — 🤑 билеты лотереи (все — max)');
-		expect(nowView(withLoop({ manual_queue: 2 })).blocker).toBe('🖐 Ручных запусков в очереди: 2');
+		expect(nowView(withLoop({ manual_queue: 2 })).blockers).toEqual(['🖐 Ручных запусков в очереди: 2']);
+	});
+
+	it('на паузе идущий ручной сценарий и очередь видны вместе с паузой', () => {
+		const view = nowView(withLoop({ paused: true, ready: 'paused', current: 'book', manual_queue: 1 }));
+		expect(view.blockers).toEqual([
+			'⏸ Планировщик на паузе',
+			'▶ Идёт сценарий: 📒 книга',
+			'🖐 Ручных запусков в очереди: 1'
+		]);
+		expect(view.decision).toBe('когда пауза снимется — 🤑 билеты лотереи (все — max)');
 	});
 
 	it('ожидание: причина и время следующего шага; во сне — пробуждение', () => {
@@ -58,9 +68,24 @@ describe('строка пояснения', () => {
 		);
 	});
 
-	it('при равенстве следующим — первое в списке; без основных дел — по оценке', () => {
-		const even: Outlook = { ...plan, focus: plan.focus.map((f) => ({ ...f, today: 2 })) };
-		expect(explain(even, {}, NOW)).toContain('следующей будет добыча');
+	it('следующее — доступное с бэкенда, даже если по счётчикам очередь другого', () => {
+		// Добыча 0, переработка 1, но на добычу нет 💵: следующей будет переработка, как и решение.
+		const poor: Outlook = {
+			...plan,
+			focus: [
+				{ deed: 'deed:harvest', today: 0 },
+				{ deed: 'deed:dconv', today: 1 }
+			],
+			hints: { ...plan.hints, next_focus: 'deed:dconv' }
+		};
+		expect(explain(poor, {}, NOW)).toContain('(сегодня ⛏ 0, ⚙️→🔩 1 — следующей будет переработка)');
+	});
+
+	it('доступного нет — порядок по счётчикам: меньше запусков, при равенстве — первое в списке', () => {
+		const none: Outlook = { ...plan, hints: { ...plan.hints, next_focus: null } };
+		expect(explain(none, {}, NOW)).toContain('по счётчикам следующей будет переработка');
+		const even: Outlook = { ...none, focus: plan.focus.map((f) => ({ ...f, today: 2 })) };
+		expect(explain(even, {}, NOW)).toContain('по счётчикам следующей будет добыча');
 		expect(explain({ ...plan, focus: [] }, {}, NOW)).toMatch(/^Основных дел нет/);
 		expect(explain(plan, {}, NOW)).toContain('Личное задание: нет данных за сегодня, командное — нет данных за сегодня.');
 	});

@@ -6,9 +6,10 @@ import { val } from '$lib/util/observed';
 import { actDetail, deedText, readyText, scenarioText, WAKE } from './text';
 
 export interface NowView {
-	/** Почему решение сейчас не исполняется (пауза, неготовность, идущий сценарий, очередь). */
-	blocker: string | null;
-	/** Решение планировщика; при `blocker` — условное: «когда пауза снимется — …». */
+	/** Почему решение сейчас не исполняется или что идёт до него: пауза, неготовность, идущий
+	 * сценарий, ручная очередь — все, что есть, по порядку. */
+	blockers: string[];
+	/** Решение планировщика; при `blockers` — условное: «когда пауза снимется — …». */
 	decision: string;
 	/** Момент следующего шага ожидания, ISO. */
 	at: string | null;
@@ -16,14 +17,25 @@ export interface NowView {
 	phase: string;
 }
 
-function blocker(plan: Outlook): { text: string; when: string } | null {
+interface Blocker {
+	text: string;
+	when: string;
+}
+
+function blockers(plan: Outlook): Blocker[] {
 	const loop = plan.loop;
-	if (loop.paused) return { text: '⏸ Планировщик на паузе', when: 'когда пауза снимется' };
-	if (loop.ready !== null) return { text: `⛔ Решения не исполняются: ${readyText(loop.ready)}`, when: 'когда это пройдёт' };
-	if (loop.current !== null) return { text: `▶ Идёт сценарий: ${scenarioText(loop.current)}`, when: 'после него' };
-	if (loop.manual_queue > 0) return { text: `🖐 Ручных запусков в очереди: ${loop.manual_queue}`, when: 'после них' };
-	if (!loop.auto) return { text: 'Планировщик выключен: бот исполняет только ручные запуски', when: 'если бы он работал' };
-	return null;
+	const out: Blocker[] = [];
+	if (loop.paused) out.push({ text: '⏸ Планировщик на паузе', when: 'когда пауза снимется' });
+	else if (loop.ready !== null) {
+		out.push({ text: `⛔ Решения не исполняются: ${readyText(loop.ready)}`, when: 'когда это пройдёт' });
+	}
+	// На паузе ручной сценарий может идти (manual_while_paused): его видно и тогда.
+	if (loop.current !== null) out.push({ text: `▶ Идёт сценарий: ${scenarioText(loop.current)}`, when: 'после него' });
+	if (loop.manual_queue > 0) out.push({ text: `🖐 Ручных запусков в очереди: ${loop.manual_queue}`, when: 'после них' });
+	if (!loop.auto) {
+		out.push({ text: 'Планировщик выключен: бот исполняет только ручные запуски', when: 'если бы он работал' });
+	}
+	return out;
 }
 
 /** Зачем выбрано дело: основное, задание, запасное. */
@@ -58,11 +70,12 @@ function phaseText(plan: Outlook): string {
 }
 
 export function nowView(plan: Outlook): NowView {
-	const block = blocker(plan);
+	const blocks = blockers(plan);
 	const decision = decisionText(plan);
+	const first = blocks[0];
 	return {
-		blocker: block?.text ?? null,
-		decision: block ? `${block.when} — ${decision.text}` : decision.text,
+		blockers: blocks.map((b) => b.text),
+		decision: first ? `${first.when} — ${decision.text}` : decision.text,
 		at: decision.at,
 		phase: phaseText(plan)
 	};
@@ -75,12 +88,17 @@ function focusText(plan: Outlook): string {
 		const only = focus[0]!;
 		return `Основное дело: ${deedText(only.deed)} (сегодня ${only.today}).`;
 	}
-	// То же правило, что у планировщика: меньше запусков сегодня, при равенстве — раньше в списке.
-	const next = focus.reduce((best, f) => (f.today < best.today ? f : best));
 	const names = focus.map((f) => deedText(f.deed));
 	const counts = focus.map((f) => `${scenarioText(f.deed).split(' ')[0]} ${f.today}`).join(', ');
 	const list = `${names.slice(0, -1).join(', ')} и ${names.at(-1)}`;
-	return `Основные дела: ${list} по очереди (сегодня ${counts} — следующей будет ${deedText(next.deed)}).`;
+	// Следующее — то, что шаг дел взял бы среди доступных сейчас (с бэкенда); доступных нет — только
+	// порядок по счётчикам: меньше запусков сегодня, при равенстве — раньше в списке.
+	const available = plan.hints.next_focus;
+	const byCount = focus.reduce((best, f) => (f.today < best.today ? f : best));
+	const next = available
+		? `следующей будет ${deedText(available)}`
+		: `по счётчикам следующей будет ${deedText(byCount.deed)}`;
+	return `Основные дела: ${list} по очереди (сегодня ${counts} — ${next}).`;
 }
 
 function personalText(state: PublicState, day: string): string {

@@ -66,8 +66,8 @@
 			<div class="min-w-0 space-y-4">
 				<section aria-labelledby="plan-now">
 					<h3 id="plan-now" class="mb-1 text-xs font-semibold tracking-wide text-fg-muted uppercase">Сейчас</h3>
-					{#if view.blocker}
-						<p class="font-semibold text-warn-fg">{view.blocker}</p>
+					{#if view.blockers.length > 0}
+						{#each view.blockers as line (line)}<p class="font-semibold text-warn-fg">{line}</p>{/each}
 						<p class="text-sm">
 							{view.decision}{#if view.at}{' — следующий шаг в '}<b>{fmtTime(view.at)}</b>{/if}
 						</p>
