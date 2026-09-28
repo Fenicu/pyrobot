@@ -122,7 +122,7 @@ async def test_target_chat_checked_again_at_execution() -> None:
     rig = Rig(TEAM_LIVE)
     pending = asyncio.ensure_future(rig.gw.submit(forward()))
     await until(lambda: rig.gw.queue_size == 1)
-    await _team(rig, -1009999)
+    await _team(rig, -1002222222222)
     rig.start()
     try:
         res = await asyncio.wait_for(pending, 1)
@@ -168,3 +168,32 @@ async def test_forward_waits_for_request_interval(rig: Rig) -> None:
     await rig.gw.submit(forward())
     job, fwd = rig.transport.sent
     assert fwd.at - job.at >= 0.19
+
+
+async def test_team_chat_checked_once_before_first_forward(rig: Rig) -> None:
+    assert (await rig.gw.submit(forward(5))).status is ActionStatus.CONFIRMED
+    assert (await rig.gw.submit(forward(6))).status is ActionStatus.CONFIRMED
+    assert rig.transport.group_checks == [TEAM]
+    other = -1002222222222
+    await _team(rig, other)
+    await rig.gw.submit(forward(7, chat_id=other))
+    assert rig.transport.group_checks == [TEAM, other]
+
+
+@pytest.mark.parametrize("verdict", ["not_group", "not_member", "unavailable"])
+async def test_unverified_team_chat_refused_and_rechecked(rig: Rig, verdict: str) -> None:
+    rig.transport.groups[TEAM] = verdict
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.REFUSED and res.reason == f"team_chat_{verdict}"
+    assert rig.transport.sent == []
+    # Отказ не кешируется и ключ не расходует: аккаунт добавили в группу — следующая уходит.
+    rig.transport.groups[TEAM] = "ok"
+    assert (await rig.gw.submit(forward())).status is ActionStatus.CONFIRMED
+    assert rig.transport.group_checks == [TEAM, TEAM]
+
+
+async def test_team_chat_check_error_is_refusal(rig: Rig) -> None:
+    rig.transport.group_error = OSError("network down")
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.REFUSED and res.reason == "team_chat_unavailable"
+    assert rig.transport.sent == []

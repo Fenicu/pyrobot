@@ -3,13 +3,17 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from typing import Annotated, Any, Literal, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
 # Меняется только своими эндпоинтами движка (kill/unkill, pause/resume): у них latch шлюза,
 # проверка блокировки экземпляра и аудит, а PATCH настроек обошёл бы их.
 READ_ONLY: dict[str, Any] = {"readOnly": True}
 # Код настройку не читает: менять можно, но ни на что не влияет — в админке она приглушена.
 UNUSED: dict[str, Any] = {"x-unused": True}
+
+
+# Супергруппа в Telegram — id с префиксом -100: -100XXXXXXXXXX ≤ −10¹².
+SUPERGROUP_MAX_ID = -1_000_000_000_000
 
 
 # Длительности, сроки и таймауты ограничены сверху по смыслу поля: огромное значение переполнило бы
@@ -44,8 +48,26 @@ class ChatsSection(BaseModel):
     tangerine_chat_id: int = -1001377961602
     tangerine_reply_to: int = 927136
     bulls_invite_chat_id: int | None = None
-    # Чат команды для пересылки итогов задания и отчёта о фабрике; None — не пересылать.
-    team_chat_id: int | None = None
+    # Чат команды для пересылки итогов задания и отчёта о фабрике; None — не пересылать. Только
+    # супергруппа (-100…) и не один из чатов выше: личный отчёт не должен уйти не туда.
+    team_chat_id: int | None = Field(default=None, le=SUPERGROUP_MAX_ID)
+
+    @field_validator("team_chat_id")
+    @classmethod
+    def _team_chat_is_own(cls, value: int | None, info: ValidationInfo) -> int | None:
+        others = {
+            info.data.get(name)
+            for name in (
+                "game_chat_id",
+                "swinfo_chat_id",
+                "smoothie_channel_id",
+                "tangerine_chat_id",
+                "bulls_invite_chat_id",
+            )
+        }
+        if value is not None and value in others:
+            raise ValueError("team chat must differ from game and other known chats")
+        return value
 
 
 class FeaturesSection(BaseModel):

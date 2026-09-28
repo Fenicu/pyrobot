@@ -19,7 +19,12 @@ from app.engine.tg_auth import (
     SendCodeRejected,
     SignUpRequired,
 )
-from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
+from app.engine.transport.base import (
+    FloodWait,
+    GroupCheck,
+    TransportAuthLost,
+    TransportRejected,
+)
 from app.engine.types import Button, IncomingMessage, MessageKind
 
 log = logging.getLogger(__name__)
@@ -433,6 +438,32 @@ class KurigramTransport:
         except (errors.BadRequest, errors.Forbidden) as exc:
             raise TransportRejected(str(exc.ID or exc)) from exc
         return _forwarded_id(updates, random_id)
+
+    async def check_group(self, chat_id: int) -> GroupCheck:
+        from pyrogram import enums, errors
+
+        client = self._client
+        try:
+            chat = await client.get_chat(chat_id)
+            if chat.type not in (
+                enums.ChatType.GROUP,
+                enums.ChatType.SUPERGROUP,
+                enums.ChatType.FORUM,
+            ):
+                return "not_group"
+            member = await client.get_chat_member(chat_id, "me")
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except errors.UserNotParticipant:
+            return "not_member"
+        except errors.RPCError:
+            return "unavailable"
+        if member.status in (enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.BANNED):
+            return "not_member"
+        return "ok"
 
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         from pyrogram import errors

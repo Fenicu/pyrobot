@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
     from app.engine.types import IncomingMessage
+
+
+# Проверка чата команды: группа или супергруппа, где аккаунт — участник (`ok`).
+GroupCheck = Literal["ok", "not_group", "not_member", "unavailable"]
 
 
 class FloodWait(Exception):
@@ -34,4 +38,8 @@ class Transport(Protocol):
 
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         """Текущая версия сообщения из Telegram; None — сообщения нет."""
+        ...
+
+    async def check_group(self, chat_id: int) -> GroupCheck:
+        """Чат — группа или супергруппа, и аккаунт в ней состоит."""
         ...

@@ -66,6 +66,8 @@ class FakeClient:
         self.me: Any = None
         self.stored: dict[tuple[int, int], Any] = {}
         self.responses: dict[str, Any] = {}
+        self.chat: Any = None
+        self.member: Any = None
 
     async def connect(self) -> bool:
         if self.is_connected:
@@ -116,6 +118,18 @@ class FakeClient:
 
     def rnd_id(self) -> int:
         return 1
+
+    async def get_chat(self, chat_id: int) -> Any:
+        err = self.errors.pop("GetChat", None)
+        if err is not None:
+            raise err
+        return self.chat
+
+    async def get_chat_member(self, chat_id: int, user_id: int | str) -> Any:
+        err = self.errors.pop("GetChatMember", None)
+        if err is not None:
+            raise err
+        return self.member
 
     async def get_messages(self, chat_id: int, message_ids: int) -> Any:
         err = self.errors.pop("GetMessages", None)

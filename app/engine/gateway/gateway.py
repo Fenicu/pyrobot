@@ -154,6 +154,8 @@ class ActionGateway:
         self._spend_block: str | None = None
         self._keys: dict[str, asyncio.Future[ActionResult]] = {}
         self._closed = False
+        # Чаты команды, где проверено: группа и аккаунт в ней состоит.
+        self._groups_ok: set[int] = set()
 
     @property
     def queue_size(self) -> int:
@@ -551,6 +553,11 @@ class ActionGateway:
         blocked = self._check(p)
         if blocked is not None:
             return await self._record(p, *blocked)
+        if p.cls is CommandClass.FORWARD and p.req.chat_id not in self._groups_ok:
+            verdict = await self._check_group(p.req.chat_id)
+            if verdict != "ok":
+                return await self._record(p, ActionStatus.REFUSED, f"team_chat_{verdict}")
+            self._groups_ok.add(p.req.chat_id)
         try:
             p.action_id = await self._store.create(p.req, p.cls, ActionStatus.INTENT)
         except DuplicateKey as dup:
@@ -562,6 +569,17 @@ class ActionGateway:
             if p.cls is not CommandClass.NAV:
                 return ActionResult(ActionStatus.REJECTED, reason="db_unavailable")
         return await self._attempts(p)
+
+    async def _check_group(self, chat_id: int) -> str:
+        """Перед первой пересылкой в чат: группа или супергруппа, где аккаунт — участник. Отказ
+        не кешируется — после добавления аккаунта в группу следующая пересылка проверит заново."""
+        try:
+            return await self._transport.check_group(chat_id)
+        except TransportAuthLost:
+            return "auth_lost"
+        except Exception:
+            log.exception("team chat %s not checked", chat_id)
+            return "unavailable"
 
     async def _record(self, p: _Pending, status: ActionStatus, reason: str) -> ActionResult:
         # Действие не дошло до INTENT — ключ идемпотентности не расходуется, чтобы тем же ключом

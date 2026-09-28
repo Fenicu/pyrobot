@@ -184,14 +184,14 @@ async def test_team_chat_off_not_queued(rig: ForwardRig) -> None:
 async def test_team_chat_changed_before_send() -> None:
     r = ForwardRig()
     await r.deliver(game_msg(*TASK))
-    await _update(r, "chats", team_chat_id=-1009999)
+    await _update(r, "chats", team_chat_id=-1002222222222)
     r.start()
     try:
         await r.settle()
     finally:
         await r.stop()
     [(kind, chat, _)] = r.sent
-    assert (kind, chat) == ("forward", -1009999)
+    assert (kind, chat) == ("forward", -1002222222222)
 
 
 async def test_team_chat_changed_in_gateway_queue_rejected() -> None:
@@ -200,7 +200,7 @@ async def test_team_chat_changed_in_gateway_queue_rejected() -> None:
     try:
         await r.deliver(game_msg(*TASK))
         await until(lambda: r.gw.gw.queue_size == 1)
-        await _update(r, "chats", team_chat_id=-1009999)
+        await _update(r, "chats", team_chat_id=-1002222222222)
         r.gw.start()
         await r.settle()
     finally:
@@ -332,3 +332,11 @@ async def test_factory_report_of_other_day_not_forwarded(rig: ForwardRig) -> Non
     await rig.deliver(old)
     await rig.settle()
     assert rig.sent == []
+
+
+async def test_unverified_team_chat_notified(rig: ForwardRig) -> None:
+    rig.gw.transport.groups[TEAM] = "not_member"
+    await rig.deliver(game_msg(*TASK))
+    await rig.settle()
+    assert rig.sent == []
+    assert rig.notes.items == [("warn", "team_forward_failed")]

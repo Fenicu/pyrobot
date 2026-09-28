@@ -81,6 +81,7 @@
     "team_chat_id": {
      "anyOf": [
       {
+       "maximum": -1000000000000,
        "type": "integer"
       },
       {

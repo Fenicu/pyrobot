@@ -342,3 +342,61 @@ async def test_forward_unresolved_peer_is_refusal_not_unknown(
     with pytest.raises(TransportRejected, match="peer"):
         await t.forward(GAME, 77, -1001149209877)
     assert all(name != "ForwardMessages" for name, _ in t.client.invoked)
+
+
+def _chat(kind: str) -> object:
+    from pyrogram import enums
+
+    return NS(type=getattr(enums.ChatType, kind))
+
+
+def _member(status: str) -> object:
+    from pyrogram import enums
+
+    return NS(status=getattr(enums.ChatMemberStatus, status))
+
+
+@pytest.mark.parametrize(
+    ("kind", "status", "verdict"),
+    [
+        ("SUPERGROUP", "MEMBER", "ok"),
+        ("GROUP", "ADMINISTRATOR", "ok"),
+        ("FORUM", "OWNER", "ok"),
+        ("SUPERGROUP", "LEFT", "not_member"),
+        ("SUPERGROUP", "BANNED", "not_member"),
+        ("CHANNEL", "MEMBER", "not_group"),
+        ("PRIVATE", "MEMBER", "not_group"),
+    ],
+)
+async def test_check_group(tmp_path: Path, kind: str, status: str, verdict: str) -> None:
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    t.client.chat = _chat(kind)
+    t.client.member = _member(status)
+    assert await t.check_group(-1001149209877) == verdict
+
+
+@pytest.mark.parametrize(
+    ("where", "error", "verdict"),
+    [
+        ("GetChatMember", "UserNotParticipant", "not_member"),
+        ("GetChat", "ChannelPrivate", "unavailable"),
+        ("GetChat", "PeerIdInvalid", "unavailable"),
+    ],
+)
+async def test_check_group_errors(tmp_path: Path, where: str, error: str, verdict: str) -> None:
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    t.client.chat = _chat("SUPERGROUP")
+    t.client.member = _member("MEMBER")
+    t.client.errors[where] = rpc_error(error)
+    assert await t.check_group(-1001149209877) == verdict
+
+
+async def test_check_group_unauthorized_resets_client(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    lost = await _online(t)
+    t.client.errors["GetChat"] = rpc_error("AuthKeyUnregistered")
+    with pytest.raises(TransportAuthLost):
+        await t.check_group(-1001149209877)
+    assert lost == [1]

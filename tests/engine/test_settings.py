@@ -178,6 +178,33 @@ def test_team_chat_off_by_default() -> None:
     assert Settings().chats.team_chat_id is None
     patched = apply_patch(Settings(), {"chats": {"team_chat_id": -1001149209877}})
     assert patched.chats.team_chat_id == -1001149209877
+    assert apply_patch(patched, {"chats": {"team_chat_id": None}}).chats.team_chat_id is None
+
+
+@pytest.mark.parametrize(
+    "chat",
+    [
+        # Чат игры и личные чаты (положительные id), обычная группа без -100.
+        227859379,
+        267519921,
+        -1149209877,
+        1001149209877,
+        # Чаты, которые бот уже читает или куда шлёт: SWINFO, канал смузи, мандарины.
+        -1001109615116,
+        -1001356300612,
+        -1001377961602,
+    ],
+)
+def test_team_chat_only_other_supergroup(chat: int) -> None:
+    with pytest.raises(ValidationError) as err:
+        apply_patch(Settings(), {"chats": {"team_chat_id": chat}})
+    assert err.value.errors()[0]["loc"] == ("chats", "team_chat_id")
+
+
+def test_team_chat_not_bulls_invite_chat() -> None:
+    bulls = apply_patch(Settings(), {"chats": {"bulls_invite_chat_id": -1001234567890}})
+    with pytest.raises(ValidationError):
+        apply_patch(bulls, {"chats": {"team_chat_id": -1001234567890}})
 
 
 # Версия настроек прода до основных дел: командный вес и явный список дел без прогулки.

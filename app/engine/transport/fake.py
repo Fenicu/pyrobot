@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.engine.tg_auth import InvalidCode, InvalidPassword, PasswordRequired
+from app.engine.transport.base import GroupCheck
 from app.engine.types import IncomingMessage
 
 
@@ -27,6 +28,10 @@ class FakeTransport:
         self.fail_with: list[BaseException] = []
         self.toast: str | None = None
         self.messages: dict[tuple[int, int], IncomingMessage] = {}
+        # Проверка чатов команды: итог по чату (по умолчанию — участник группы) и вызовы.
+        self.groups: dict[int, GroupCheck] = {}
+        self.group_error: BaseException | None = None
+        self.group_checks: list[int] = []
         self._next_id = 1000
         self._tasks: set[asyncio.Future[None]] = set()
 
@@ -59,6 +64,12 @@ class FakeTransport:
 
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         return self.messages.get((chat_id, message_id))
+
+    async def check_group(self, chat_id: int) -> GroupCheck:
+        self.group_checks.append(chat_id)
+        if self.group_error is not None:
+            raise self.group_error
+        return self.groups.get(chat_id, "ok")
 
 
 class FakeTgBackend:
