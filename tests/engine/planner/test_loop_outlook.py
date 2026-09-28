@@ -97,6 +97,34 @@ async def test_outlook_reads_empty_caches_without_filling_them() -> None:
     assert again.outlook.decision == first.outlook.decision
 
 
+class FailingLastDone(CountingStore):
+    """`last_done` ломается, пока тест не починит: план должен строиться и без него."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.broken = True
+
+    async def last_done(self) -> dict[str, datetime]:
+        self.reads.append("last_done")
+        if self.broken:
+            raise ConnectionError("db down")
+        return await super(CountingStore, self).last_done()
+
+
+async def test_outlook_survives_last_done_store_failure() -> None:
+    """Как `_peek_today`: сбой хранилища не роняет план, значение — пустое."""
+    loop, _, _ = rig(awake())
+    store = FailingLastDone()
+    loop._store = store
+    view = await loop.outlook()
+    assert isinstance(view.outlook.decision, Act | Wait)
+    # Не закешировано в цикле: сбой не портит кеш step(), следующий проход перечитает.
+    assert loop._last_done is None
+    store.broken = False
+    again = await loop.outlook()
+    assert again.outlook.decision == view.outlook.decision
+
+
 class SlowStore(CountingStore):
     """Первые чтения кешей ждут, пока тест их не отпустит: порядок завершения задаёт тест."""
 

@@ -302,7 +302,13 @@ class PlannerLoop:
         settings = self._settings.current
         last_done = self._last_done
         if last_done is None:
-            last_done = await self._store.last_done()
+            try:
+                last_done = await self._store.last_done()
+            except Exception:
+                # Без кулдаунов последних запусков решаем как после рестарта; перечитаем на
+                # следующем проходе — кеш цикла (`step()`) сбой здесь не трогает.
+                log.exception("last done not loaded for outlook")
+                last_done = {}
         durations = self._metro_durations
         if durations is None:
             durations = await self._load_metro_durations()
