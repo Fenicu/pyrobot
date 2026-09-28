@@ -1547,7 +1547,9 @@ tools/outlook_fixture.py` строит её из снимка с прода `tes
 шлюза, проверкой блокировки экземпляра и аудитом; поля, которые код не читает, — `x-unused`
 (`UNUSED` в `app/engine/settings.py`: `features.casino`, `features.arena`, `levelup.policy`): PATCH
 их принимает, но ни на что это не влияет; `tests/engine/test_settings_unused.py` сверяет пометку с кодом
-`app/**` в обе стороны — помечены ровно те листья, которые нигде не читаются). `PATCH /api/v1/settings` (CSRF) принимает
+`app/**` в обе стороны — помечены ровно те листья, которые нигде не читаются; обращения ищутся по
+AST полным путём — цепочки атрибутов с раскрытием локальных имён и параметров с типом секции, так
+что `.metro` секции метро не засчитывается `strategy.reserve_ahead_min.metro`). `PATCH /api/v1/settings` (CSRF) принимает
 `{version, changes, confirm_live?}`: `changes` — частичный JSON, секции сливаются, листья (списки,
 словари вроде `battle.overrides`) заменяются целиком (`apply_patch`, `app/engine/settings.py`).
 `version` — версия, которую видел клиент; если настройки успели измениться — 409
