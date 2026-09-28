@@ -18,7 +18,8 @@ from tests.fixtures import game_msg
 @pytest.mark.parametrize(
     ("msg_id", "expected"),
     [
-        (3624389, CrewScreen(tag="SU", factory_wins=247, signup_open=True)),
+        (3624389, CrewScreen(tag="SU", factory_wins=247, signup_open=True, glory=45090)),
+        (3626163, CrewScreen(tag="SU", factory_wins=247, signup_open=True, glory=45180)),
         (3624391, FactoryScreen(status="not_signed")),
         (3572473, FactoryScreen(status="signed")),
         (3586815, FactoryScreen(status="closed")),

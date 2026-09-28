@@ -90,6 +90,7 @@ class PublicState(BaseModel):
     daily_personal: Observed[PersonalTask] | None = None
     team_tag: Observed[str] | None = None
     factory_wins: Observed[int] | None = None
+    glory: Observed[int] | None = None
     factory_won_at: Observed[datetime] | None = None
     factory_signed: Observed[bool] | None = None
     factory_skip: Observed[bool] | None = None

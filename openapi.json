@@ -3189,6 +3189,16 @@
               }
             ]
           },
+          "glory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "gorbushka": {
             "anyOf": [
               {

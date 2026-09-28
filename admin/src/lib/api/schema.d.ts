@@ -1855,6 +1855,7 @@ export interface components {
             factory_won_at?: components["schemas"]["Observed_datetime_"] | null;
             fastfood_ready_at?: components["schemas"]["Observed_datetime_"] | null;
             food_stock?: components["schemas"]["Observed_dict_str__FoodStockState__"] | null;
+            glory?: components["schemas"]["Observed_int_"] | null;
             gorbushka?: components["schemas"]["Observed_GorbushkaState_"] | null;
             knowledge?: components["schemas"]["Observed_int_"] | null;
             last_refusal?: components["schemas"]["Observed_RefusalState_"] | null;

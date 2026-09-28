@@ -224,6 +224,8 @@ class CharacterState(_Frozen):
     daily_personal: Obs[PersonalTask] | None = None
     team_tag: Obs[str] | None = None
     factory_wins: Obs[int] | None = None
+    # Личная слава 🏆 с экрана команды.
+    glory: Obs[int] | None = None
     factory_won_at: Obs[datetime] | None = None
     factory_signed: Obs[bool] | None = None
     factory_skip: Obs[bool] | None = None

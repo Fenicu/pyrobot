@@ -45,6 +45,15 @@ def test_factory_win_of_own_team_only() -> None:
     assert value(state, "factory_won_at") == "2026-09-26T09:04:00Z"
 
 
+def test_personal_glory_from_crew_screen_is_a_metric() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "crew", 3624389, 1)
+    assert value(state, "glory") == 45090
+    later = feed(reducer, state, "crew", 3626163, 2)
+    assert value(later, "glory") == 45180
+    assert reducer.metrics(state, later) == {"glory": 45180.0}
+
+
 def test_factory_report_day_only_grows() -> None:
     reducer = StateReducer()
     state = feed(reducer, {}, "crew", 3620025, 1)

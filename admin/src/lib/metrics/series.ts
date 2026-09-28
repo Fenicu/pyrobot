@@ -10,6 +10,7 @@ export const METRICS: { key: string; label: string }[] = [
 	{ key: 'raw', label: '🔩 сырьё' },
 	{ key: 'details', label: '⚙️ детали' },
 	{ key: 'books', label: '📒 книги' },
+	{ key: 'glory', label: '🏆 слава' },
 	{ key: 'level', label: 'уровень' }
 ];
 

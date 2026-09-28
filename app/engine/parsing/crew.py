@@ -12,6 +12,7 @@ from app.engine.types import IncomingMessage
 _CREW = re.compile(
     r"\AО команде\n.*?^™️Тег: (?P<tag>\S+)$.*?^⚔Побед на фабрике: (?P<wins>\d+)$", re.S | re.M
 )
+_GLORY = re.compile(r"^🏆Твоя слава: (?P<n>" + NUM + r")$", re.M)
 _SIGNUP_OPEN = "❗️Началась запись на ⚔битву за фабрику"
 _FACTORY = "⚔Битва за фабрику\n"
 _FACTORY_STATUS = (
@@ -38,6 +39,8 @@ class CrewScreen(Event):
     tag: str
     factory_wins: int
     signup_open: bool
+    # Личная слава «🏆Твоя слава» (не слава команды «🏆Слава»).
+    glory: int | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -73,8 +76,14 @@ class FactoryReport(Event):
 def recognize_crew(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     if m := _CREW.match(text):
+        glory = _GLORY.search(text)
         return [
-            CrewScreen(tag=m["tag"], factory_wins=int(m["wins"]), signup_open=_SIGNUP_OPEN in text)
+            CrewScreen(
+                tag=m["tag"],
+                factory_wins=int(m["wins"]),
+                signup_open=_SIGNUP_OPEN in text,
+                glory=num(glory["n"]) if glory else None,
+            )
         ]
     if text.startswith(_FACTORY):
         tail = text.rsplit("\n", 1)[-1]

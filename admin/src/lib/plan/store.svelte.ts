@@ -24,6 +24,7 @@ export const IGNORED = new Set([
 	'last_refusal',
 	'team_tag',
 	'factory_wins',
+	'glory',
 	'factory_call_at',
 	'stock_holdings'
 ]);

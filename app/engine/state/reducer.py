@@ -145,6 +145,7 @@ METRIC_FIELDS = (
     "raw",
     "details",
     "books",
+    "glory",
 )
 STATS_ALPHA = 0.1
 _PROFILE_FIELDS = (
@@ -726,6 +727,8 @@ def _battle_menu(p: _Patch, e: BattleMenu) -> None:
 def _crew(p: _Patch, e: CrewScreen) -> None:
     p.snap("team_tag", e.tag)
     p.snap("factory_wins", e.factory_wins)
+    if e.glory is not None:
+        p.snap("glory", e.glory)
     if e.signup_open:
         # Запасной сигнал о начале записи, если SWINFO пропущен.
         p.snap("factory_call_at", p.at)
