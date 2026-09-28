@@ -1579,6 +1579,8 @@ export interface components {
              * @enum {string}
              */
             phase: "unknown" | "asleep" | "busy" | "free";
+            /** Reserves */
+            reserves: components["schemas"]["PlanReserveOut"][];
             /** Wakeups */
             wakeups: components["schemas"]["PlanTimerOut"][];
         };
@@ -1729,6 +1731,21 @@ export interface components {
              * @enum {string}
              */
             why: "personal" | "team" | "focus" | "best";
+        };
+        /** PlanReserveOut */
+        PlanReserveOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "gorbushka" | "metro";
+            /** Motivation */
+            motivation: number;
         };
         /** PlanTimerOut */
         PlanTimerOut: {

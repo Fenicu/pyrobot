@@ -97,6 +97,7 @@ async def test_outlook_reads_without_writing(planned: Planned, api_client: Async
     }
     assert {t["kind"] for t in body["wakeups"]} >= {"gorbushka_comeback", "sleep_window"}
     assert body["hints"]["sleep_hours"] == 7
+    assert body["reserves"] == []
     store: CountingStore = planned.store
     assert store.decisions == [] and store.runs == []
     assert planned.facade.gateway.queue_size == 0

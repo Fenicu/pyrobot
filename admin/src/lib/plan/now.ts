@@ -15,6 +15,8 @@ export interface NowView {
 	at: string | null;
 	/** Занятость по взгляду планировщика. */
 	phase: string;
+	/** «Держит 🔥: …» — запасы от дел; пусто — запаса нет. */
+	reserves: string;
 }
 
 interface Blocker {
@@ -70,6 +72,18 @@ function phaseText(plan: Outlook): string {
 	return `${plan.phase === 'asleep' ? 'Спит' : 'Занят'}: ${what} до ${fmtTime(busy.until)}`;
 }
 
+/** Запасы 🔥 от дел: сколько и под что — бой Горбушки или вход в метро, к какому моменту. */
+function reservesText(plan: Outlook): string {
+	if (plan.reserves.length === 0) return '';
+	const now = Date.parse(plan.now);
+	const parts = plan.reserves.map((r) => {
+		const due = Date.parse(r.at) <= now;
+		if (r.kind === 'metro') return `${r.motivation} под метро (${due ? 'уже доступно' : `откроется в ${fmtTime(r.at)}`})`;
+		return `${r.motivation} под бой Горбушки ${due ? 'сейчас' : `в ${fmtTime(r.at)}`}`;
+	});
+	return `Держит 🔥: ${parts.join(', ')}`;
+}
+
 export function nowView(plan: Outlook): NowView {
 	const blocks = blockers(plan);
 	const decision = decisionText(plan);
@@ -78,7 +92,8 @@ export function nowView(plan: Outlook): NowView {
 		blockers: blocks.map((b) => b.text),
 		decision: first ? `${first.when} — ${decision.text}` : decision.text,
 		at: decision.at,
-		phase: phaseText(plan)
+		phase: phaseText(plan),
+		reserves: reservesText(plan)
 	};
 }
 

@@ -19,8 +19,9 @@ from app.engine.state.model import load_state  # noqa: E402
 STATE = ROOT / "tests" / "fixtures" / "api" / "state.json"
 OUT = ROOT / "admin" / "src" / "lib" / "fixtures" / "outlook.json"
 # Снимок с прода снят во сне (во сне план — только таймеры). Копия сдвинута на 2 ч 40 мин назад, в
-# 19:30 MSK (идёт продажа лотереи), персонаж занят работой, ждёт прокачки и ляжет спать к ночи —
-# в плане есть отказы до решения, «готово сейчас» и таймеры.
+# 19:30 MSK (идёт продажа лотереи), персонаж занят работой, ждёт прокачки, метро откроется через
+# 50 минут и ляжет спать к ночи — в плане есть отказы до решения, «готово сейчас», запас 🔥 под
+# метро и таймеры.
 SHIFT = timedelta(hours=-2, minutes=-40)
 NOW = datetime(2026, 9, 27, 16, 30, tzinfo=UTC)
 SEEN = NOW - timedelta(minutes=1)
@@ -56,6 +57,7 @@ def build() -> dict[str, Any]:
     # Немного 🔥 — чтобы в подсказке было основное дело, которое бот возьмёт следующим.
     data["motivation"] = _seen(5)
     data["sleep_deadline"] = _seen(_iso(NOW + timedelta(hours=8)), "derived")
+    data["metro_ready_at"] = _seen(_iso(NOW + timedelta(minutes=50)), "derived")
     view = outlook(load_state(data), Settings(), NOW, done_today=DONE_TODAY)
     loop = LoopView(
         paused=False, ready=None, auto=True, current=None, manual_queue=0, next_wake=None

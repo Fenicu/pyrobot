@@ -2323,6 +2323,13 @@
             "title": "Phase",
             "type": "string"
           },
+          "reserves": {
+            "items": {
+              "$ref": "#/components/schemas/PlanReserveOut"
+            },
+            "title": "Reserves",
+            "type": "array"
+          },
           "wakeups": {
             "items": {
               "$ref": "#/components/schemas/PlanTimerOut"
@@ -2341,7 +2348,8 @@
           "wakeups",
           "loop",
           "focus",
-          "hints"
+          "hints",
+          "reserves"
         ],
         "title": "OutlookOut",
         "type": "object"
@@ -2747,6 +2755,34 @@
           "why"
         ],
         "title": "PlanNextDeedOut",
+        "type": "object"
+      },
+      "PlanReserveOut": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "gorbushka",
+              "metro"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "motivation": {
+            "title": "Motivation",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "motivation",
+          "at"
+        ],
+        "title": "PlanReserveOut",
         "type": "object"
       },
       "PlanTimerOut": {

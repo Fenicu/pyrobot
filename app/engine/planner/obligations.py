@@ -19,7 +19,7 @@ from app.engine.planner.base import (
     PlannerBase,
     battle_hour,
 )
-from app.engine.planner.types import Decision
+from app.engine.planner.types import Decision, Reserve
 from app.engine.state.model import BusyState, LotteryState, MetroRunRef, StockLimits
 from app.engine.state.reducer import LOTTERY_CURRENCIES
 
@@ -371,16 +371,25 @@ class Obligations(PlannerBase):
         battle = self.upcoming_battle()
         return battle is None or battle - start >= self.metro_run() + self.metro_margin()
 
-    def metro_reserve(self) -> int:
+    def metro_hold(self) -> Reserve | None:
         """🔥 на вход, которые дела не тратят: спуск станет доступен не позже чем через
         `strategy.reserve_ahead_min.metro` минут, и битва его позволит."""
         if not self.feature_on("metro"):
-            return 0
+            return None
         ahead = timedelta(minutes=self.cfg.strategy.reserve_ahead_min.metro)
         ready = self.metro_ready() or self.now
         if not ahead or ready - self.now > ahead or not self.metro_fits(ready):
-            return 0
-        return ENTRY_COST
+            return None
+        return Reserve("metro", ENTRY_COST, max(ready, self.now))
+
+    def metro_reserve(self) -> int:
+        reserve = self.metro_hold()
+        return 0 if reserve is None else reserve.motivation
+
+    def reserves(self) -> tuple[Reserve, ...]:
+        """Запасы 🔥 от дел по времени."""
+        held = (r for r in (self.gorbushka_hold(), self.metro_hold()) if r is not None)
+        return tuple(sorted(held, key=lambda r: (r.at, r.kind)))
 
     def metro_inside(self) -> tuple[MetroRunRef, datetime] | None:
         """Забег, в котором персонаж ещё может быть, и его битва (известная на входе, к началу
@@ -425,8 +434,9 @@ class Obligations(PlannerBase):
             return None
         if (field := self.stale_of("motivation")) is not None:
             return self.refresh("metro", field)
-        if self.value("motivation") - self.motivation_reserve() < ENTRY_COST:
-            self.reject("metro", {}, "no_motivation")
+        have: int = self.value("motivation")
+        if have - self.motivation_reserve() < ENTRY_COST:
+            self.reject("metro", {}, "reserved" if have >= ENTRY_COST else "no_motivation")
             self.wake(self.value("motivation_next_at"), "motivation")
             return None
         return self.act("metro", self.metro_params(battle), "metro_ready")

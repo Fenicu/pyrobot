@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { cleanup, render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { Outlook, StateOut } from '$lib/api/types';
@@ -20,6 +20,7 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		const now = within(block).getByRole('region', { name: 'Сейчас' });
 		expect(now).toHaveTextContent('🤑 билеты лотереи (все — max)');
 		expect(now).toHaveTextContent('Занят: работа до 19:50');
+		expect(now).toHaveTextContent('Держит 🔥: 2 под метро (откроется в 20:21)');
 		expect(now).toHaveTextContent('сегодня ⛏ 3, ⚙️→🔩 2). Следующее дело — переработка.');
 
 		const why = within(block).getByRole('region', { name: 'Почему не другое' });
@@ -39,10 +40,30 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		expect(timers[0]).toHaveTextContent('19:50');
 		expect(timers[0]).toHaveTextContent('Освободится');
 		expect(timers[0]).toHaveTextContent('через 20 мин');
-		expect(timers[3]).toHaveTextContent('22:05');
-		expect(timers[3]).toHaveTextContent('Сон 7 ч под мостом');
+		expect(timers[3]).toHaveTextContent('20:21');
+		expect(timers[3]).toHaveTextContent('Метро доступно');
+		expect(timers[4]).toHaveTextContent('22:05');
+		expect(timers[4]).toHaveTextContent('Сон 7 ч под мостом');
 		expect(timers[7]).toHaveTextContent('Слив налички в акции перед битвой');
 		expect(timers[7]).toHaveTextContent('цель 📯Pied Piper');
+	});
+
+	it('без запаса 🔥 строки «Держит» нет; отказ из-за запаса — под что он', () => {
+		const reserved: Outlook = {
+			...plan,
+			reserves: [],
+			considered: [{ scenario: 'deed:dconv', params: { today: 2 }, score: 1.2, verdict: 'reserved' }, ...plan.considered]
+		};
+		card(reserved);
+		const now = screen.getByRole('region', { name: 'Сейчас' });
+		expect(now).not.toHaveTextContent('Держит');
+		cleanup();
+		card({ ...reserved, reserves: plan.reserves });
+		const why = screen.getByRole('region', { name: 'Почему не другое' });
+		const row = within(why).getAllByRole('listitem')[0]!;
+		expect(row).toHaveAttribute('data-verdict', 'reserved');
+		expect(row).toHaveTextContent('⚙️→🔩 переработка');
+		expect(row).toHaveTextContent('🔥 в запасе · сегодня 2, под метро');
 	});
 
 	it('при паузе решение — условное', () => {

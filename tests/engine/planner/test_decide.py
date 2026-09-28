@@ -383,7 +383,8 @@ def test_gorbushka_waiting_reserves_motivation() -> None:
     g = GorbushkaState(state="waiting", won=1, total=4, next_fight_at=m(30), fight_cost=1)
     decision = decide(awake(motivation=1, gorbushka=g), BASE, NOW)
     assert isinstance(decision, Wait) and decision.until == w(30)
-    assert verdicts(decision)["deed:job"] == "no_motivation"
+    assert verdicts(decision)["deed:job"] == "reserved"
+    assert verdicts(decision)["deed:learn"] == "no_motivation"
     later = GorbushkaState(state="waiting", won=1, total=4, next_fight_at=m(90), fight_cost=1)
     assert act(decide(awake(motivation=1, gorbushka=later), BASE, NOW)) == ("deed:job", {})
 

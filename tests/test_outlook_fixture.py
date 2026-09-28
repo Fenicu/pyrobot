@@ -15,6 +15,7 @@ def test_fixture_covers_every_plan_section() -> None:
     assert [c["verdict"] for c in plan["considered"]] == ["busy", "chosen"]
     assert plan["also_ready"]
     assert len(plan["wakeups"]) >= 5
+    assert [(r["kind"], r["motivation"]) for r in plan["reserves"]] == [("metro", 2)]
     assert [(f["deed"], f["today"]) for f in plan["focus"]] == [
         ("deed:harvest", 3),
         ("deed:dconv", 2),

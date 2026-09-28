@@ -21,7 +21,8 @@ class PlanCandidateOut(BaseModel):
     scenario: str
     params: dict[str, Any]
     score: float | None
-    # `chosen`, `ok` или причина отказа (`busy`, `no_motivation`, `stale:<поле>`, …).
+    # `chosen`, `ok` или причина отказа (`busy`, `no_motivation`, `reserved` — 🔥 хватило бы без
+    # запасов, `stale:<поле>`, …).
     verdict: str
 
 
@@ -74,6 +75,14 @@ class PlanNextDeedOut(BaseModel):
     why: Literal["personal", "team", "focus", "best"]
 
 
+class PlanReserveOut(BaseModel):
+    # gorbushka — под бой Горбушки, metro — под вход в метро.
+    kind: Literal["gorbushka", "metro"]
+    motivation: int
+    # Момент боя или открытия метро; уже доступное — момент плана.
+    at: datetime
+
+
 class PlanHintsOut(BaseModel):
     # Цель ближайшей битвы по настройкам (своя на её час или общая); null — время следующей битвы
     # неизвестно или устарело.
@@ -103,6 +112,8 @@ class OutlookOut(BaseModel):
     loop: PlanLoopOut
     focus: list[PlanFocusOut]
     hints: PlanHintsOut
+    # 🔥, которые дела сейчас не тратят (`strategy.reserve_ahead_min`), по времени; пусто — нет.
+    reserves: list[PlanReserveOut]
 
 
 def _timer(w: Wakeup, after_wake: bool) -> PlanTimerOut:
@@ -162,6 +173,10 @@ def outlook_out(view: PlanView) -> OutlookOut:
                 else None
             ),
         ),
+        reserves=[
+            PlanReserveOut(kind=r.kind, motivation=r.motivation, at=r.at.astimezone(UTC))
+            for r in o.reserves
+        ],
     )
 
 

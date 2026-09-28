@@ -76,6 +76,12 @@
    "after_wake": false
   },
   {
+   "at": "2026-09-27T17:21:03Z",
+   "kind": "metro_ready",
+   "key": null,
+   "after_wake": false
+  },
+  {
    "at": "2026-09-27T19:05:03Z",
    "kind": "sleep_window",
    "key": null,
@@ -84,12 +90,6 @@
   {
    "at": "2026-09-27T21:02:03Z",
    "kind": "daily_reset",
-   "key": null,
-   "after_wake": false
-  },
-  {
-   "at": "2026-09-27T23:41:25Z",
-   "kind": "metro_ready",
    "key": null,
    "after_wake": false
   },
@@ -138,5 +138,12 @@
    "deed": "deed:dconv",
    "why": "focus"
   }
- }
+ },
+ "reserves": [
+  {
+   "kind": "metro",
+   "motivation": 2,
+   "at": "2026-09-27T17:21:00Z"
+  }
+ ]
 }

@@ -13,7 +13,7 @@ from app.engine.planner.decide import (
     outlook,
     run_key,
 )
-from app.engine.planner.types import Act, Decision, Wait, Wakeup
+from app.engine.planner.types import Act, Decision, Reserve, Wait, Wakeup
 from app.engine.settings import Settings
 from app.engine.state.model import (
     BusyState,
@@ -274,3 +274,43 @@ def test_after_wake_keeps_open_windows_and_readiness() -> None:
     ]
     closed = Wakeup(woke - timedelta(minutes=20), "stocks_dump")
     assert planner.after_wake([closed], woke) == ()
+
+
+METRO_ON = config({"features": {"metro": True}})
+FIGHT_SOON = GorbushkaState(state="waiting", won=1, total=4, next_fight_at=m(30), fight_cost=1)
+
+
+def test_reserves_show_amount_and_moment() -> None:
+    # Бой Горбушки через 30 мин, метро откроется через 40 (+ минута на округление экрана).
+    state = awake(gorbushka=FIGHT_SOON, metro_ready_at=m(40))
+    view = view_of(state, METRO_ON)
+    assert view.reserves == (Reserve("gorbushka", 1, m(30)), Reserve("metro", 2, m(41)))
+    assert act(view.decision)[0].startswith("deed:")
+    # Уже доступные бой и спуск держатся к «сейчас»; занятость запасу не мешает.
+    due = GorbushkaState(state="meeting", won=1, total=4, fight_cost=2)
+    busy = view_of(awake(busy=JOB, gorbushka=due), METRO_ON)
+    assert busy.reserves == (Reserve("gorbushka", 2, NOW), Reserve("metro", 2, NOW))
+
+
+def test_no_reserves_beyond_horizon_or_with_feature_off() -> None:
+    state = awake(gorbushka=FIGHT_SOON, metro_ready_at=m(40))
+    assert view_of(state).reserves == (Reserve("gorbushka", 1, m(30)),)
+    far = config({"features": {"metro": True}, "strategy": {"reserve_ahead_min": {"metro": 30}}})
+    assert view_of(state, far).reserves == (Reserve("gorbushka", 1, m(30)),)
+    zero = config({"strategy": {"reserve_ahead_min": {"gorbushka": 0}}})
+    assert view_of(state, zero).reserves == ()
+    assert view_of(awake()).reserves == ()
+
+
+def test_deed_refused_only_by_reserve_is_reserved() -> None:
+    # 2🔥, обе под метро: без запаса хватило бы и на дело за 1🔥, и на учёбу за 2🔥.
+    state = awake(motivation=2, metro_ready_at=m(30))
+    view = view_of(state, METRO_ON)
+    assert isinstance(view.decision, Wait)
+    deeds = {c.scenario: c.verdict for c in view.considered if c.scenario.startswith("deed:")}
+    assert set(deeds.values()) == {"reserved"}
+    assert "motivation" in reasons(view.wakeups)
+    # 1🔥 под бой: учёбе за 2🔥 не хватило бы и без запаса.
+    tired = view_of(awake(motivation=1, gorbushka=FIGHT_SOON))
+    verdicts = {c.scenario: c.verdict for c in tired.considered}
+    assert (verdicts["deed:job"], verdicts["deed:learn"]) == ("reserved", "no_motivation")

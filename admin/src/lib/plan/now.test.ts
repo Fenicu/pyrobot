@@ -15,8 +15,29 @@ describe('«Сейчас»', () => {
 			blockers: [],
 			decision: '🤑 билеты лотереи (все — max)',
 			at: null,
-			phase: 'Занят: работа до 19:50'
+			phase: 'Занят: работа до 19:50',
+			reserves: 'Держит 🔥: 2 под метро (откроется в 20:21)'
 		});
+	});
+
+	it('запас 🔥: под бой Горбушки и метро по времени, уже доступное — «сейчас»; без запаса строки нет', () => {
+		const both: Outlook = {
+			...plan,
+			reserves: [
+				{ kind: 'gorbushka', motivation: 1, at: '2026-09-27T16:38:00Z' },
+				{ kind: 'metro', motivation: 2, at: '2026-09-27T17:21:00Z' }
+			]
+		};
+		expect(nowView(both).reserves).toBe('Держит 🔥: 1 под бой Горбушки в 19:38, 2 под метро (откроется в 20:21)');
+		const due: Outlook = {
+			...plan,
+			reserves: [
+				{ kind: 'metro', motivation: 2, at: plan.now },
+				{ kind: 'gorbushka', motivation: 3, at: plan.now }
+			]
+		};
+		expect(nowView(due).reserves).toBe('Держит 🔥: 2 под метро (уже доступно), 3 под бой Горбушки сейчас');
+		expect(nowView({ ...plan, reserves: [] }).reserves).toBe('');
 	});
 
 	it('пауза, неготовность, идущий сценарий, очередь — первыми, решение условное', () => {

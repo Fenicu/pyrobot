@@ -14,7 +14,7 @@ from app.engine.planner.obligations import (
     TARGET_LAST_CALL,
     msk_at,
 )
-from app.engine.planner.types import Act, Candidate, Decision, WakeKind, Wakeup
+from app.engine.planner.types import Act, Candidate, Decision, Reserve, WakeKind, Wakeup
 from app.engine.settings import Settings
 from app.engine.state.model import (
     DEED_PRIORS,
@@ -64,7 +64,8 @@ class Outlook:
     `considered` — кандидаты до первого решения (его `candidates`); `also_ready` — сценарии,
     которые дальше по проходу тоже вернули бы действие (не очередь: запуск меняет состояние);
     `wakeups` — таймеры всего прохода; `after_wake` — во сне таймеры прохода «как после
-    пробуждения»; `focus` — основные дела и их запуски за день.
+    пробуждения»; `focus` — основные дела и их запуски за день; `reserves` — 🔥, которые дела
+    сейчас не тратят (под бой Горбушки, вход в метро).
     """
 
     phase: Phase
@@ -76,6 +77,7 @@ class Outlook:
     after_wake: tuple[Wakeup, ...]
     focus: tuple[tuple[str, int], ...]
     hints: PlanHints
+    reserves: tuple[Reserve, ...]
 
 
 class _Planner(DailyTasks):
@@ -151,6 +153,7 @@ class _Planner(DailyTasks):
             after,
             focus,
             self.hints(fresh().next_deed()),
+            self.reserves(),
         )
 
     def hints(self, next_deed: NextDeed | None) -> PlanHints:
@@ -425,7 +428,8 @@ class _Planner(DailyTasks):
         """Разрешённые дела с вердиктом `ok`; отказанные сразу уходят в кандидаты."""
         battle = self.battle_time()
         deadline: datetime | None = self.value("sleep_deadline")
-        motivation = self.value("motivation") - self.motivation_reserve() - self.metro_reserve()
+        have: int = self.value("motivation")
+        motivation = have - self.motivation_reserve() - self.metro_reserve()
         money = self.value("money") - self.ticket_reserve() - self.hotel_reserve()
         details: int = self.value("details")
         focus = self.cfg.strategy.focus
@@ -449,7 +453,7 @@ class _Planner(DailyTasks):
             elif self.blocks_factory(end):
                 verdict = "factory_window"
             elif motivation < price.motivation:
-                verdict = "no_motivation"
+                verdict = "reserved" if have >= price.motivation else "no_motivation"
                 self.wake(self.value("motivation_next_at"), "motivation")
             elif money < price.money:
                 verdict = "no_money"

@@ -4,7 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
-from app.engine.planner.types import Act, Candidate, Decision, Wait, WakeKind, Wakeup
+from app.engine.planner.types import Act, Candidate, Decision, Reserve, Wait, WakeKind, Wakeup
 from app.engine.settings import Settings
 from app.engine.state.model import (
     DEFAULT_PRICES,
@@ -281,19 +281,24 @@ class PlannerBase:
         known = self.s.prices.get("gorbushka_ticket")
         return known.value if known is not None else GORBUSHKA_TICKET
 
-    def motivation_reserve(self) -> int:
+    def gorbushka_hold(self) -> Reserve | None:
         """🔥 под бой Горбушки, которые дела не тратят: бой не позже чем через
         `strategy.reserve_ahead_min.gorbushka` минут."""
         g = self.gorbushka_state() if self.feature_on("gorbushka") else None
         if g is None or g.state not in ("meeting", "waiting"):
-            return 0
+            return None
         if g.won is not None and g.total is not None and g.won >= g.total:
-            return 0
+            return None
         ahead = timedelta(minutes=self.cfg.strategy.reserve_ahead_min.gorbushka)
         fight_at = g.next_fight_at or self.now
         if not ahead or fight_at - self.now > ahead:
-            return 0
-        return g.fight_cost if g.fight_cost is not None else 1
+            return None
+        cost = g.fight_cost if g.fight_cost is not None else 1
+        return Reserve("gorbushka", cost, max(fight_at, self.now))
+
+    def motivation_reserve(self) -> int:
+        reserve = self.gorbushka_hold()
+        return 0 if reserve is None else reserve.motivation
 
     def ticket_reserve(self) -> int:
         g = self.gorbushka_state() if self.feature_on("gorbushka") else None

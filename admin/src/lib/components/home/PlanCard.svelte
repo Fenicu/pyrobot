@@ -88,6 +88,7 @@
 						</p>
 					{/if}
 					<p class="text-xs text-fg-muted">{view.phase}</p>
+					{#if view.reserves}<p class="text-xs text-fg-muted">{view.reserves}</p>{/if}
 					<p class="mt-1 text-xs text-fg-muted">{why}</p>
 					{#if error}<p class="mt-1 text-xs text-bad-fg">Не обновилось: {errorText(error)}</p>{/if}
 				</section>

@@ -661,7 +661,9 @@ def test_metro_needs_motivation_over_reserve() -> None:
     ok = metro_state(NOON, motivation=3, gorbushka=fight)
     assert act(decide(ok, METRO_ALONE, NOON))[0] == "metro"
     short = metro_state(NOON, motivation=2, gorbushka=fight)
-    assert verdicts(decide(short, METRO_ALONE, NOON))["metro"] == "no_motivation"
+    assert verdicts(decide(short, METRO_ALONE, NOON))["metro"] == "reserved"
+    empty = metro_state(NOON, motivation=1, gorbushka=fight)
+    assert verdicts(decide(empty, METRO_ALONE, NOON))["metro"] == "no_motivation"
 
 
 def test_metro_needs_free_character_and_time_before_sleep() -> None:
@@ -675,7 +677,7 @@ def test_deeds_keep_motivation_for_metro_ready_soon() -> None:
     soon = metro_state(NOON, motivation=2, metro_ready_at=NOON + timedelta(minutes=30))
     decision = decide(soon, METRO, NOON)
     assert isinstance(decision, Wait)
-    assert {v for k, v in verdicts(decision).items() if k.startswith("deed:")} == {"no_motivation"}
+    assert {v for k, v in verdicts(decision).items() if k.startswith("deed:")} == {"reserved"}
     assert act(decide(soon, only(), NOON))[0].startswith("deed:")
 
 

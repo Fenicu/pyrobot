@@ -3,7 +3,19 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Outlook, ScenarioInfo } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
-import { READY, SCENARIO, VERDICT, WAKE, deedTag, lotteryTickets, scenarioText, timerLine, verdictText } from './text';
+import {
+	READY,
+	SCENARIO,
+	VERDICT,
+	WAKE,
+	candidateDetail,
+	deedTag,
+	lotteryTickets,
+	scenarioText,
+	timerLine,
+	verdictText,
+	verdictTone
+} from './text';
 
 const plan = fixture<Outlook>('outlook');
 const openapi = JSON.parse(readFileSync(join(process.cwd(), '..', 'openapi.json'), 'utf-8'));
@@ -26,11 +38,26 @@ describe('словари плана', () => {
 			'chosen', 'ok', 'busy', 'eating', 'no_motivation', 'no_money', 'no_details', 'no_value',
 			'battle_window', 'sleep_deadline', 'factory_window', 'uncertified', 'cooldown', 'rate_limited',
 			'not_feasible', 'no_hard_offer', 'cant_afford', 'sleep_not_allowed', 'market_closed', 'no_stock',
-			'not_player', 'in_metro', 'metro_unknown_screen'
+			'not_player', 'in_metro', 'metro_unknown_screen', 'reserved'
 		];
 		expect(verdicts.filter((v) => !(v in VERDICT))).toEqual([]);
 		expect(verdictText('stale:motivation')).toBe('нужно обновить: 🔥');
 		expect(verdictText('stale:woke_at')).toBe('нужно обновить: woke_at');
+	});
+
+	it('отказ из-за запаса 🔥 — под что он держится; у метро — только запас Горбушки', () => {
+		expect(verdictText('reserved')).toBe('🔥 в запасе');
+		expect(verdictTone('reserved')).toBe('muted');
+		const deed = { scenario: 'deed:harvest', params: {}, score: 0.5, verdict: 'reserved' };
+		expect(candidateDetail(deed, plan)).toBe('под метро');
+		const both: Outlook = {
+			...plan,
+			reserves: [{ kind: 'gorbushka', motivation: 1, at: plan.now }, ...plan.reserves]
+		};
+		expect(candidateDetail(deed, both)).toBe('под Горбушку и метро');
+		expect(candidateDetail({ ...deed, params: { today: 2 } }, both)).toBe('сегодня 2, под Горбушку и метро');
+		const metro = { scenario: 'metro', params: {}, score: null, verdict: 'reserved' };
+		expect(candidateDetail(metro, both)).toBe('под Горбушку');
 	});
 
 	it('причины неготовности цикла', () => {

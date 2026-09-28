@@ -34,6 +34,19 @@ class Wait:
 
 type Decision = Act | Wait
 
+ReserveKind = Literal["gorbushka", "metro"]
+
+
+@dataclass(frozen=True, slots=True)
+class Reserve:
+    """🔥, которые дела не тратят: под бой Горбушки или вход в метро; `at` — момент боя или
+    открытия метро (уже доступное — «сейчас»)."""
+
+    kind: ReserveKind
+    motivation: int
+    at: datetime
+
+
 # Причины пробуждения планировщика — закрытый набор: незнакомую причину отсечёт mypy.
 WakeKind = Literal[
     "busy",

@@ -123,7 +123,8 @@ export const VERDICT: Record<string, string> = {
 	no_stock: 'нет подходящей акции',
 	not_player: 'адресат не играет',
 	in_metro: 'уже в метро',
-	metro_unknown_screen: 'незнакомый экран метро'
+	metro_unknown_screen: 'незнакомый экран метро',
+	reserved: '🔥 в запасе'
 };
 
 /** Поля состояния в вердикте `stale:<поле>`. */
@@ -155,7 +156,7 @@ export type Tone = 'ok' | 'warn' | 'muted';
 
 export function verdictTone(verdict: string): Tone {
 	if (verdict === 'chosen') return 'ok';
-	if (verdict === 'ok' || verdict.startsWith('stale:') || verdict === 'cooldown') return 'muted';
+	if (verdict === 'ok' || verdict.startsWith('stale:') || verdict === 'cooldown' || verdict === 'reserved') return 'muted';
 	return 'warn';
 }
 
@@ -263,7 +264,19 @@ export function actDetail(scenario: string, params: Record<string, unknown>, pla
 	}
 }
 
-/** Подробность отказа: когда он снимется, если это видно по таймерам. */
+/** Под что держится запас 🔥 (`reserves`) — для отказа `reserved`. */
+const RESERVE_FOR: Record<Outlook['reserves'][number]['kind'], string> = {
+	gorbushka: 'Горбушку',
+	metro: 'метро'
+};
+
+/** Запасы, из-за которых отказано: у метро — только запас Горбушки (свой вход он и тратит). */
+function reservedFor(c: PlanCandidate, plan: Outlook): string {
+	const held = plan.reserves.filter((r) => c.scenario !== 'metro' || r.kind !== 'metro');
+	return held.length > 0 ? `под ${held.map((r) => RESERVE_FOR[r.kind]).join(' и ')}` : '';
+}
+
+/** Подробность отказа: когда он снимется, если это видно по таймерам; у запаса 🔥 — под что он. */
 export function candidateDetail(c: PlanCandidate, plan: Outlook): string {
 	const find = (kind: WakeKind, key: string | null = null) =>
 		plan.wakeups.find((t) => t.kind === kind && t.key === key && !t.after_wake);
@@ -277,5 +290,6 @@ export function candidateDetail(c: PlanCandidate, plan: Outlook): string {
 	else if (c.verdict === 'busy') timer = find('busy');
 	const today = typeof c.params.today === 'number' ? `сегодня ${c.params.today}` : '';
 	const wait = timer ? `до ${fmtTime(timer.at)}` : '';
-	return [today, wait].filter(Boolean).join(', ');
+	const reserve = c.verdict === 'reserved' ? reservedFor(c, plan) : '';
+	return [today, wait, reserve].filter(Boolean).join(', ');
 }
