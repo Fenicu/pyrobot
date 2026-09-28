@@ -92,6 +92,25 @@ describe('Настройки', () => {
 		expect(paths).toContain('engine.antiflood_retry_max');
 	});
 
+	it('поиск находит поля по описанию секции и вложенной группы', async () => {
+		const user = userEvent.setup();
+		await view();
+		const search = screen.getByRole('searchbox', { name: 'Поиск настройки' });
+		const paths = () =>
+			[...screen.getByRole('region', { name: 'Найденные настройки' }).querySelectorAll('[data-path]')].map((e) =>
+				e.getAttribute('data-path')
+			);
+		// Только в описании группы «Не тратить на билеты».
+		await user.type(search, 'на другие траты');
+		expect(paths()).toEqual(['lottery.keep.money', 'lottery.keep.knowledge', 'lottery.keep.raw', 'lottery.keep.details']);
+		// Только в описании секции «Движок».
+		await user.clear(search);
+		await user.type(search, 'темп шлюза');
+		expect(paths()).toContain('engine.mode');
+		expect(paths()).toContain('engine.manual_while_paused');
+		expect(paths().every((p) => p?.startsWith('engine.'))).toBe(true);
+	});
+
 	it('«max» или число, теги, поиск', async () => {
 		const user = userEvent.setup();
 		const { editor } = await view();

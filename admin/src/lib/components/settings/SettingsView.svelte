@@ -25,13 +25,18 @@
 	const section = $derived(editor.sections.find((s) => s.name === active) ?? editor.sections[0] ?? null);
 	const title = (s: Section) => settingLabel(s.name, s.title);
 	const q = $derived(query.trim().toLowerCase());
-	// Поиск — по пути, подписи и описанию настройки.
+	// Поиск — по пути, подписи и описанию поля, а также по подписи и описанию его секции и вложенной
+	// группы: совпадение у группы находит все её поля.
 	const found = $derived.by(() => {
 		if (!q) return [];
+		const has = (...text: string[]) => text.some((t) => t.toLowerCase().includes(q));
 		const hit = (f: Field) => {
 			const key = pathKey(f.path);
-			const text = [key, settingLabel(key, f.title), settingHelp(key) ?? ''];
-			return text.some((t) => t.toLowerCase().includes(q));
+			if (has(key, settingLabel(key, f.title), settingHelp(key) ?? '')) return true;
+			return f.path.slice(0, -1).some((_, i) => {
+				const group = pathKey(f.path.slice(0, i + 1));
+				return has(settingLabel(group, ''), settingHelp(group) ?? '');
+			});
 		};
 		return editor.sections
 			.map((s) => ({ section: s, fields: leaves(s.fields).filter(hit) }))

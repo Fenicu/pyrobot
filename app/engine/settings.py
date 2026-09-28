@@ -231,6 +231,8 @@ class SettingsPatchError(ValueError):
 
 # Читаются только при старте процесса (парсер, фильтр чатов, вход в Telegram, конвейер).
 _RESTART_REQUIRED = ("chats.", "telegram.", "engine.recovered_react_max_age_min")
+# Чат мандаринов не входит ни в фильтр, ни в разбор: планировщик и шлюз читают его на лету.
+_LIVE = frozenset({"chats.tangerine_chat_id", "chats.tangerine_reply_to"})
 
 
 def apply_patch(settings: Settings, changes: Mapping[str, Any]) -> Settings:
@@ -277,7 +279,7 @@ def _diff(old: Any, new: Any, prefix: str, out: dict[str, list[Any]]) -> None:
 
 
 def restart_required(paths: Iterable[str]) -> list[str]:
-    return [p for p in paths if p.startswith(_RESTART_REQUIRED)]
+    return [p for p in paths if p.startswith(_RESTART_REQUIRED) and p not in _LIVE]
 
 
 SettingsChange = Callable[[Settings], Settings]

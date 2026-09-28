@@ -165,6 +165,8 @@ def test_restart_required_paths() -> None:
         "engine.recovered_react_max_age_min"
     ]
     assert restart_required(["telegram.expected_user_id"]) == ["telegram.expected_user_id"]
+    # Чат мандаринов планировщик и шлюз читают на лету.
+    assert restart_required(["chats.tangerine_chat_id", "chats.tangerine_reply_to"]) == []
 
 
 # Версия настроек прода до основных дел: командный вес и явный список дел без прогулки.
