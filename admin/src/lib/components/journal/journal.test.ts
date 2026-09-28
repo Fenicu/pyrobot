@@ -243,11 +243,32 @@ describe('Разбор решения: кандидаты', () => {
 			id: 344
 		});
 		const rows = await screen.findAllByRole('row');
-		const chosen = rows.find((r) => r.textContent?.includes('chosen'))!;
+		const chosen = rows.find((r) => r.textContent?.includes('daily_pick'))!;
 		expect(chosen).toHaveTextContent('task=jobMoney_hard');
-		expect(within(chosen).getByText('chosen')).toHaveClass('pill-ok');
-		const refused = rows.find((r) => r.textContent?.includes('no_motivation'))!;
-		expect(within(refused).getByText('no_motivation')).toHaveClass('pill-muted');
+		expect(within(chosen).getByText('выбрано')).toHaveClass('pill-ok');
+		const refused = rows.find((r) => r.textContent?.includes('deed:harvest'))!;
+		expect(within(refused).getByText('нет 🔥')).toHaveClass('pill-muted');
+	});
+
+	it('вердикты — словарём «Плана бота», код — в подсказке; незнакомый — как есть', async () => {
+		const decision = {
+			...fixture<object>('decision_detail'),
+			kind: 'wait',
+			candidates: [
+				{ scenario: 'deed:job', params: {}, score: 1.4, verdict: 'reserved' },
+				{ scenario: 'deeds', params: {}, score: null, verdict: 'stale:motivation' },
+				{ scenario: 'deed:walk', params: {}, score: 0.3, verdict: 'brand_new' }
+			]
+		};
+		const fetch = mockFetch(() => json(decision));
+		render(DecisionDetail, {
+			api: createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch),
+			id: 344
+		});
+		const reserved = await screen.findByText('🔥 в запасе');
+		expect(reserved).toHaveAttribute('title', 'reserved');
+		expect(screen.getByText('нужно обновить: 🔥')).toHaveAttribute('title', 'stale:motivation');
+		expect(screen.getByText('brand_new')).toHaveClass('pill-muted');
 	});
 });
 

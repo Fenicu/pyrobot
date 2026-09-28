@@ -3,6 +3,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import type { DecisionOut } from '$lib/api/types';
 	import type { LiveEvent } from '$lib/live/sse';
+	import { verdictText } from '$lib/plan/text';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
 	import { pretty } from '$lib/util/text';
@@ -84,7 +85,9 @@
 							{#if params}<span class="ext-text block font-mono text-[11px] text-fg-faint">{params}</span>{/if}
 						</td>
 						<td class="tabular-nums">{typeof c.score === 'number' ? c.score.toFixed(2) : '—'}</td>
-						<td><Pill tone={verdictTone(c.verdict)}>{c.verdict ?? '—'}</Pill></td>
+						<td>
+							{#if c.verdict}<Pill tone={verdictTone(c.verdict)} title={c.verdict}>{verdictText(c.verdict)}</Pill>{:else}—{/if}
+						</td>
 					</tr>
 				{/each}
 			</tbody>
