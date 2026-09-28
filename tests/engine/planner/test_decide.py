@@ -388,6 +388,37 @@ def test_gorbushka_waiting_reserves_motivation() -> None:
     assert act(decide(awake(motivation=1, gorbushka=later), BASE, NOW)) == ("deed:job", {})
 
 
+@pytest.mark.parametrize(
+    ("ahead", "fight_in", "reserved"),
+    [(None, 59, True), (None, 61, False), (0, 30, False), (120, 119, True), (120, 121, False)],
+)
+def test_gorbushka_reserve_horizon_from_settings(
+    ahead: int | None, fight_in: int, reserved: bool
+) -> None:
+    strategy = {} if ahead is None else {"reserve_ahead_min": {"gorbushka": ahead}}
+    settings = config({"strategy": strategy})
+    g = GorbushkaState(state="waiting", won=1, total=4, next_fight_at=m(fight_in), fight_cost=1)
+    decision = decide(awake(motivation=1, gorbushka=g), settings, NOW)
+    if reserved:
+        assert isinstance(decision, Wait)
+        assert verdicts(decision)["deed:job"] != "ok"
+    else:
+        assert act(decision) == ("deed:job", {})
+
+
+def test_zero_gorbushka_horizon_keeps_nothing_even_for_fight_due_now() -> None:
+    # Бой уже доступен, но Горбушка не сертифицирована: с горизонтом 0 дела не держат под него 🔥.
+    settings = config({"strategy": {"reserve_ahead_min": {"gorbushka": 0}}})
+    g = GorbushkaState(state="meeting", won=1, total=4, fight_cost=1)
+    held = decide(awake(motivation=1, gorbushka=g), BASE, NOW)
+    assert act(held) == ("gorbushka", {"buy": False})
+    certified = frozenset({"deed:job", "refresh"})
+    free = decide(awake(motivation=1, gorbushka=g), settings, NOW, certified=certified)
+    assert act(free) == ("deed:job", {})
+    kept = decide(awake(motivation=1, gorbushka=g), BASE, NOW, certified=certified)
+    assert isinstance(kept, Wait) and verdicts(kept)["deed:job"] != "ok"
+
+
 def test_gorbushka_unknown_or_comeback_opens_screen() -> None:
     unknown = awake().model_copy(update={"gorbushka": None})
     assert act(decide(unknown, BASE, NOW)) == ("gorbushka", {"buy": False})

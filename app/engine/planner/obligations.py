@@ -39,8 +39,6 @@ SLEEP_NIGHT_OPEN, SLEEP_AFTER_BULLS, SLEEP_WAKE_BY = time(22, 5), time(0, 30), t
 SMOOTHIE_RESET = time(3, 0)
 # Тираж стартует в 19:17, продажа закрыта с 21:07; сценарий стартует не позже 21:05.
 LOTTERY_OPEN, LOTTERY_LAST_START = time(19, 17), time(21, 5)
-# 2🔥 на вход в метро держатся от дел, если спуск станет доступен в ближайший час.
-METRO_RESERVE_AHEAD = timedelta(hours=1)
 METRO_SAFETY = 1.5
 # Забег, прерванный рестартом, продолжается, если последний его экран свежий и игра ещё не
 # выкинула персонажа.
@@ -374,10 +372,13 @@ class Obligations(PlannerBase):
         return battle is None or battle - start >= self.metro_run() + self.metro_margin()
 
     def metro_reserve(self) -> int:
+        """🔥 на вход, которые дела не тратят: спуск станет доступен не позже чем через
+        `strategy.reserve_ahead_min.metro` минут, и битва его позволит."""
         if not self.feature_on("metro"):
             return 0
+        ahead = timedelta(minutes=self.cfg.strategy.reserve_ahead_min.metro)
         ready = self.metro_ready() or self.now
-        if ready - self.now > METRO_RESERVE_AHEAD or not self.metro_fits(ready):
+        if not ahead or ready - self.now > ahead or not self.metro_fits(ready):
             return 0
         return ENTRY_COST
 

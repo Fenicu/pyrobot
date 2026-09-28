@@ -218,6 +218,24 @@ def test_daily_personal_order() -> None:
     assert patched.daily.personal_order == ("jobMoney",)
 
 
+def test_reserve_ahead_defaults_patch_and_saved_dumps() -> None:
+    ahead = Settings().strategy.reserve_ahead_min
+    assert (ahead.gorbushka, ahead.metro) == (60, 60)
+    patched = apply_patch(Settings(), {"strategy": {"reserve_ahead_min": {"metro": 0}}})
+    assert (
+        patched.strategy.reserve_ahead_min.gorbushka,
+        patched.strategy.reserve_ahead_min.metro,
+    ) == (60, 0)
+    diff = settings_diff(Settings().model_dump(mode="json"), patched.model_dump(mode="json"))
+    assert diff == {"strategy.reserve_ahead_min.metro": [60, 0]}
+    assert restart_required(diff) == []
+    with pytest.raises(ValidationError):
+        apply_patch(Settings(), {"strategy": {"reserve_ahead_min": {"gorbushka": -1}}})
+    saved = Settings().model_dump(mode="json")
+    del saved["strategy"]["reserve_ahead_min"]
+    assert Settings.model_validate(saved).strategy.reserve_ahead_min.gorbushka == 60
+
+
 def test_robbery_defense_on_by_default_and_for_saved_dumps() -> None:
     saved = Settings().model_dump(mode="json")
     del saved["features"]["robbery_defense"]

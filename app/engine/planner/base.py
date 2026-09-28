@@ -24,7 +24,6 @@ BATTLE_SKEW = timedelta(minutes=2)
 # первые минуты часа, на час раньше, поэтому запас — только на задержку отправки.
 HOURLY_COUNTDOWN = timedelta(days=1)
 HOURLY_SKEW = timedelta(seconds=2)
-GORBUSHKA_AHEAD = timedelta(hours=1)
 GORBUSHKA_TICKET = PriceState(money=120, knowledge=20)
 # Таймеры выведены из даты сообщения (точность — секунда): итог приходит в `until` + 0–1 с.
 TIMER_MARGIN = timedelta(seconds=3)
@@ -283,13 +282,16 @@ class PlannerBase:
         return known.value if known is not None else GORBUSHKA_TICKET
 
     def motivation_reserve(self) -> int:
+        """🔥 под бой Горбушки, которые дела не тратят: бой не позже чем через
+        `strategy.reserve_ahead_min.gorbushka` минут."""
         g = self.gorbushka_state() if self.feature_on("gorbushka") else None
         if g is None or g.state not in ("meeting", "waiting"):
             return 0
         if g.won is not None and g.total is not None and g.won >= g.total:
             return 0
+        ahead = timedelta(minutes=self.cfg.strategy.reserve_ahead_min.gorbushka)
         fight_at = g.next_fight_at or self.now
-        if fight_at - self.now > GORBUSHKA_AHEAD:
+        if not ahead or fight_at - self.now > ahead:
             return 0
         return g.fight_cost if g.fight_cost is not None else 1
 

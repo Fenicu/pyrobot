@@ -679,6 +679,35 @@ def test_deeds_keep_motivation_for_metro_ready_soon() -> None:
     assert act(decide(soon, only(), NOON))[0].startswith("deed:")
 
 
+@pytest.mark.parametrize(
+    ("ahead", "ready_in", "reserved"),
+    [(None, 59, True), (None, 61, False), (0, 30, False), (120, 119, True), (120, 121, False)],
+)
+def test_metro_reserve_horizon_from_settings(
+    ahead: int | None, ready_in: int, reserved: bool
+) -> None:
+    strategy = {} if ahead is None else {"reserve_ahead_min": {"metro": ahead}}
+    soon = metro_state(NOON, motivation=2, metro_ready_at=NOON + timedelta(minutes=ready_in))
+    decision = decide(soon, only("metro", strategy=strategy), NOON)
+    if reserved:
+        assert isinstance(decision, Wait)
+    else:
+        assert act(decision)[0].startswith("deed:")
+
+
+def test_zero_metro_horizon_keeps_nothing_even_when_metro_is_open() -> None:
+    # Метро открыто, но спуск запрещён (не сертифицирован): дела берут 🔥 только без запаса.
+    certified = frozenset({"deed:job", "refresh"})
+    cfg = only("metro", strategy={"reserve_ahead_min": {"metro": 0}, "deeds": ["job"]})
+    assert act(decide(metro_state(NOON, motivation=2), cfg, NOON, certified=certified)) == (
+        "deed:job",
+        {},
+    )
+    held = only("metro", strategy={"deeds": ["job"]})
+    decision = decide(metro_state(NOON, motivation=2), held, NOON, certified=certified)
+    assert isinstance(decision, Wait)
+
+
 def run_in(
     seen: datetime, battle: Obs[datetime] | None = None, src: str = "screen"
 ) -> Obs[MetroRunRef]:

@@ -72,6 +72,13 @@ class FeaturesSection(BaseModel):
 Deed = Literal["harvest", "job", "learn", "dconv", "walk", "confa", "rob"]
 
 
+class ReserveAhead(BaseModel):
+    """За сколько минут до боя Горбушки и открытия метро дела держат под них 🔥; 0 — не держат."""
+
+    gorbushka: int = Field(default=60, ge=0)
+    metro: int = Field(default=60, ge=0)
+
+
 class StrategySection(BaseModel):
     weight_xp: float = Field(default=1.0, ge=0)
     weight_money: float = Field(default=1.0, ge=0)
@@ -83,6 +90,7 @@ class StrategySection(BaseModel):
     # Основные дела: делят 🔥 поровну, остальные разрешённые (`deeds`) — запасные по оценке.
     focus: tuple[Deed, ...] = ("harvest", "dconv")
     deeds: tuple[Deed, ...] = ("harvest", "job", "learn", "dconv", "walk")
+    reserve_ahead_min: ReserveAhead = Field(default_factory=ReserveAhead)
 
 
 Food = Literal["hotdog", "pizza", "burger", "banana"]

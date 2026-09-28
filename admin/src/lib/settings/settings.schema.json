@@ -557,6 +557,25 @@
    "title": "MetroSection",
    "type": "object"
   },
+  "ReserveAhead": {
+   "description": "За сколько минут до боя Горбушки и открытия метро дела держат под них 🔥; 0 — не держат.",
+   "properties": {
+    "gorbushka": {
+     "default": 60,
+     "minimum": 0,
+     "title": "Gorbushka",
+     "type": "integer"
+    },
+    "metro": {
+     "default": 60,
+     "minimum": 0,
+     "title": "Metro",
+     "type": "integer"
+    }
+   },
+   "title": "ReserveAhead",
+   "type": "object"
+  },
   "RetentionSection": {
    "properties": {
     "decisions_days": {
@@ -698,6 +717,9 @@
      "exclusiveMinimum": 0,
      "title": "Money Scale",
      "type": "number"
+    },
+    "reserve_ahead_min": {
+     "$ref": "#/$defs/ReserveAhead"
     },
     "resource_scale": {
      "default": 10.0,
