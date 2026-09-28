@@ -72,6 +72,12 @@ async def test_patch_errors_are_422_with_location(
     r = await api_client.patch("/api/v1/settings", headers=h, json=bad)
     assert r.status_code == 422
     assert r.json()["detail"][0]["loc"] == ["body", "changes", "sleep", "duration_h"]
+    # Огромная длительность переполнила бы расчёты планировщика — отклоняется пределом поля.
+    for section, field in (("engine", "state_stale_after_min"), ("metro", "min_budget_min")):
+        huge = {"version": 0, "changes": {section: {field: 10**13}}}
+        r = await api_client.patch("/api/v1/settings", headers=h, json=huge)
+        assert r.status_code == 422
+        assert r.json()["detail"][0]["loc"] == ["body", "changes", section, field]
     assert (await api_client.get("/api/v1/settings")).json()["version"] == 0
 
 

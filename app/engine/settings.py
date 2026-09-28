@@ -12,19 +12,21 @@ READ_ONLY: dict[str, Any] = {"readOnly": True}
 UNUSED: dict[str, Any] = {"x-unused": True}
 
 
+# Длительности, сроки и таймауты ограничены сверху по смыслу поля: огромное значение переполнило бы
+# timedelta в планировщике (цикл встал бы) или надолго остановило бы шлюз.
 class EngineSection(BaseModel):
     mode: Literal["dry_run", "live"] = "dry_run"
     killed: bool = Field(default=False, json_schema_extra=READ_ONLY)
     kill_reason: str | None = Field(default=None, json_schema_extra=READ_ONLY)
-    min_request_interval_s: float = Field(default=1.6, ge=0)
+    min_request_interval_s: float = Field(default=1.6, ge=0, le=60)
     antiflood_retry_max: int = Field(default=2, ge=0)
-    antiflood_pause_s: float = Field(default=10.0, ge=0)
-    action_ttl_s: float = Field(default=60.0, gt=0)
-    default_expect_timeout_s: float = Field(default=20.0, gt=0)
+    antiflood_pause_s: float = Field(default=10.0, ge=0, le=600)
+    action_ttl_s: float = Field(default=60.0, gt=0, le=3600)
+    default_expect_timeout_s: float = Field(default=20.0, gt=0, le=300)
     click_answer_timeout_s: float = Field(default=4.0, gt=0, le=30)
-    recovered_react_max_age_min: int = Field(default=10, ge=0)
-    refresh_min_interval_s: float = Field(default=120.0, gt=0)
-    state_stale_after_min: int = Field(default=15, ge=1)
+    recovered_react_max_age_min: int = Field(default=10, ge=0, le=1440)
+    refresh_min_interval_s: float = Field(default=120.0, gt=0, le=3600)
+    state_stale_after_min: int = Field(default=15, ge=1, le=1440)
     paused: bool = Field(default=False, json_schema_extra=READ_ONLY)
     urgent_while_paused: bool = True
     manual_while_paused: bool = True
@@ -105,7 +107,7 @@ class FoodSection(BaseModel):
 
 class SleepSection(BaseModel):
     duration_h: int = Field(default=7, ge=7, le=12)
-    lead_min: int = Field(default=120, ge=10)
+    lead_min: int = Field(default=120, ge=10, le=1440)
     hotel_if_cash_after_reserve_ge: int | None = None
 
 
@@ -126,11 +128,11 @@ class StocksSection(BaseModel):
     cash_floor: int = Field(default=150, ge=0)
     min_dump: int = Field(default=200, ge=1)
     sell_cap_margin: int = Field(default=5, ge=0)
-    dump_lead_min: int = Field(default=5, ge=1)
+    dump_lead_min: int = Field(default=5, ge=1, le=1440)
 
 
 class TangerineSection(BaseModel):
-    interval_h: int = Field(default=20, ge=20)
+    interval_h: int = Field(default=20, ge=20, le=168)
 
 
 MetroBuff = Literal["fastMove", "strong", "firstAid"]
@@ -138,10 +140,10 @@ MetroBuff = Literal["fastMove", "strong", "firstAid"]
 
 class MetroSection(BaseModel):
     # До битвы нужно не меньше max(min_budget_min, p90 прошлых забегов × 1.5) + запасы.
-    min_budget_min: int = Field(default=60, ge=1)
+    min_budget_min: int = Field(default=60, ge=1, le=1440)
     # Игра выкидывает из метро за 15 минут до битвы с половиной найденного.
-    battle_margin_min: int = Field(default=15, ge=15)
-    extra_margin_min: int = Field(default=10, ge=0)
+    battle_margin_min: int = Field(default=15, ge=15, le=1440)
+    extra_margin_min: int = Field(default=10, ge=0, le=1440)
     # Бафы за 🕳; за 🌐 — никогда (донат).
     buffs: tuple[MetroBuff, ...] = ("fastMove", "strong", "firstAid")
     heal_at: int = Field(default=50, ge=0, le=100)
@@ -204,10 +206,10 @@ class LotterySection(BaseModel):
 
 class RetentionSection(BaseModel):
     # Журнал: сообщения (с нераспознанными), действия, запуски сценариев, уведомления.
-    messages_days: int = Field(default=90, ge=1)
-    decisions_days: int = Field(default=30, ge=1)
+    messages_days: int = Field(default=90, ge=1, le=3650)
+    decisions_days: int = Field(default=30, ge=1, le=3650)
     # Долгая статистика: ряды метрик и забеги метро.
-    metrics_days: int = Field(default=365, ge=1)
+    metrics_days: int = Field(default=365, ge=1, le=3650)
 
 
 class Settings(BaseModel):

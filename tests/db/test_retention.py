@@ -64,6 +64,13 @@ async def test_retention_defaults() -> None:
     assert (policy.messages_days, policy.decisions_days, policy.metrics_days) == (90, 30, 365)
 
 
+async def test_purge_with_longest_retention(clean_db: Database) -> None:
+    # Предел хранения — 10 лет: срок считается без переполнения даты.
+    longest = RetentionSection(messages_days=3650, decisions_days=3650, metrics_days=3650)
+    purged = await DbRetention(clean_db, 1).purge(NOW, longest)
+    assert set(purged.values()) == {0}
+
+
 async def test_purge_keeps_recent_and_open_obligations(clean_db: Database) -> None:
     journal = DbJournal(clean_db, 1)
     for i, days in enumerate((91, 91, 89)):

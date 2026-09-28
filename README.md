@@ -573,6 +573,18 @@ $2.6 + 🔩0.7, конфа 112💡 + 📚31 — у прогулки и конф�
 `robPro`, `jobMoney`, `materials`, `learnKnows`, `walkMoney`, `confKnows`; типы, которых нет в списке,
 идут после перечисленных).
 
+Длительности, сроки и таймауты ограничены сверху по смыслу поля — огромное значение из PATCH (422)
+переполнило бы `timedelta` в планировщике и остановило бы цикл или надолго заморозило бы шлюз:
+минуты — до суток (`engine.state_stale_after_min`, `engine.recovered_react_max_age_min`,
+`strategy.reserve_ahead_min.*`, `sleep.lead_min`, `stocks.dump_lead_min`, `metro.min_budget_min`,
+`metro.battle_margin_min`, `metro.extra_margin_min` — 1440), `sleep.duration_h` — 12,
+`tangerine.interval_h` — 168 (неделя), секунды шлюза — `min_request_interval_s` 60,
+`default_expect_timeout_s` 300, `antiflood_pause_s` 600, `action_ttl_s` и `refresh_min_interval_s`
+3600, `click_answer_timeout_s` 30, сроки хранения `retention.*_days` — 3650 (10 лет). Тест
+`tests/engine/test_settings.py` требует предел у каждой настройки с суффиксом `_s`/`_min`/`_h`/`_days`
+и проверяет, что планировщик считает на пределах. Счётчики и суммы (`antiflood_retry_max`, 💵 и
+ресурсы) в арифметику времени не попадают и пределов сверху не имеют.
+
 JSON Schema настроек (`Settings.model_json_schema()` — та же, что `schema` в `GET /settings`)
 выгружается офлайн в `admin/src/lib/settings/settings.schema.json`: `uv run python
 tools/settings_schema.py [файл]`. Файл лежит в репозитории, `tests/test_settings_schema.py` падает,

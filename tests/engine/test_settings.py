@@ -1,5 +1,8 @@
+import re
+from typing import Any
+
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.engine.settings import (
     EngineSection,
@@ -248,3 +251,89 @@ def test_robbery_defense_on_by_default_and_for_saved_dumps() -> None:
     saved = Settings().model_dump(mode="json")
     del saved["features"]["robbery_defense"]
     assert Settings.model_validate(saved).features.robbery_defense
+
+
+# Длительности, сроки и таймауты: верхний предел по смыслу поля. Без него огромное значение из
+# PATCH переполняло timedelta (OverflowError в планировщике — цикл вставал, в чистке журнала, на
+# старте) или надолго останавливало шлюз.
+LIMITS: dict[str, int] = {
+    "engine.min_request_interval_s": 60,
+    "engine.antiflood_pause_s": 600,
+    "engine.action_ttl_s": 3600,
+    "engine.default_expect_timeout_s": 300,
+    "engine.click_answer_timeout_s": 30,
+    "engine.recovered_react_max_age_min": 1440,
+    "engine.refresh_min_interval_s": 3600,
+    "engine.state_stale_after_min": 1440,
+    "strategy.reserve_ahead_min.gorbushka": 1440,
+    "strategy.reserve_ahead_min.metro": 1440,
+    "sleep.duration_h": 12,
+    "sleep.lead_min": 1440,
+    "stocks.dump_lead_min": 1440,
+    "tangerine.interval_h": 168,
+    "metro.min_budget_min": 1440,
+    "metro.battle_margin_min": 1440,
+    "metro.extra_margin_min": 1440,
+    "retention.messages_days": 3650,
+    "retention.decisions_days": 3650,
+    "retention.metrics_days": 3650,
+}
+DURATION = re.compile(r"_(s|min|h|days)$")
+
+
+def nested(path: str, value: object) -> dict[str, Any]:
+    head, _, rest = path.partition(".")
+    return {head: nested(rest, value) if rest else value}
+
+
+def limited_settings() -> Settings:
+    """Все длительности — на верхнем пределе."""
+    data: dict[str, Any] = {}
+    for path, limit in LIMITS.items():
+        _merge_into(data, nested(path, limit))
+    return apply_patch(Settings(), data)
+
+
+def _merge_into(data: dict[str, Any], extra: dict[str, Any]) -> None:
+    for key, value in extra.items():
+        if isinstance(value, dict):
+            _merge_into(data.setdefault(key, {}), value)
+        else:
+            data[key] = value
+
+
+@pytest.mark.parametrize(("path", "limit"), LIMITS.items())
+def test_durations_have_upper_limit(path: str, limit: int) -> None:
+    value: Any = apply_patch(Settings(), nested(path, limit)).model_dump()
+    for key in path.split("."):
+        value = value[key]
+    assert value == limit
+    default: Any = Settings().model_dump()
+    for key in path.split("."):
+        default = default[key]
+    assert default <= limit
+    for huge in (limit + 1, 10**13, "inf"):
+        with pytest.raises(ValidationError):
+            apply_patch(Settings(), nested(path, huge))
+
+
+def test_every_duration_setting_has_a_limit() -> None:
+    """Новая настройка-длительность без предела не пройдёт: путь по имени (`_s`, `_min`, `_h`,
+    `_days`, группа `reserve_ahead_min`) — в LIMITS, предел в схеме — тот же."""
+    found: dict[str, float | None] = {}
+
+    def walk(model: type[BaseModel], prefix: str) -> None:
+        for name, field in model.model_fields.items():
+            path = f"{prefix}{name}"
+            if isinstance(field.annotation, type) and issubclass(field.annotation, BaseModel):
+                walk(field.annotation, f"{path}.")
+            elif DURATION.search(name) or prefix.endswith("reserve_ahead_min."):
+                le = [m.le for m in field.metadata if getattr(m, "le", None) is not None]
+                found[path] = le[0] if le else None
+
+    walk(Settings, "")
+    assert found == LIMITS
+
+
+def test_limited_settings_load() -> None:
+    assert limited_settings().metro.min_budget_min == 1440

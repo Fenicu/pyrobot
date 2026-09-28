@@ -5,7 +5,7 @@ import pytest
 
 from app.engine.gametime import MSK
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN, battle_hour
-from app.engine.planner.decide import decide
+from app.engine.planner.decide import decide, outlook
 from app.engine.planner.types import Act, Decision, Wait
 from app.engine.scenarios.registry import CERTIFIED
 from app.engine.settings import Settings
@@ -20,6 +20,7 @@ from app.engine.state.model import (
     StockLimits,
     TargetSet,
 )
+from tests.engine.test_settings import limited_settings
 
 PHASE4 = ("stocks_dump", "factory", "bulls", "tangerine", "smoothie", "metro", "lottery")
 FOOD = {"hotdog": FoodStockState(count=100, low=50, high=140)}
@@ -711,6 +712,24 @@ def test_zero_metro_horizon_keeps_nothing_even_when_metro_is_open() -> None:
     held = only("metro", strategy={"deeds": ["job"]})
     decision = decide(metro_state(NOON, motivation=2), held, NOON, certified=certified)
     assert isinstance(decision, Wait)
+
+
+def test_planner_runs_on_limit_durations() -> None:
+    # Все длительности на верхнем пределе: проход и решение считаются без переполнения timedelta.
+    cfg = limited_settings()
+    states = [
+        metro_state(NOON),
+        state(NOON, sleep_deadline=NOON + timedelta(hours=3), motivation=5),
+        state(msk(21, 50), battle_at=msk(22), money=5000),
+    ]
+    for s in states:
+        for last in ({}, {"tangerine": NOON - timedelta(hours=30), "metro": NOON - DAY}):
+            decision = decide(s, cfg, NOON, last_done=last)
+            view = outlook(s, cfg, NOON, last_done=last)
+            assert view.decision == decision
+    # Бюджет забега — сутки: до битвы в 22:00 спуск не помещается.
+    alone = limited_settings().model_copy(update={"features": METRO_ALONE.features})
+    assert verdicts(decide(metro_state(NOON), alone, NOON))["metro"] == "battle_window"
 
 
 def run_in(

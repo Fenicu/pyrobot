@@ -118,11 +118,13 @@
     "action_ttl_s": {
      "default": 60.0,
      "exclusiveMinimum": 0,
+     "maximum": 3600,
      "title": "Action Ttl S",
      "type": "number"
     },
     "antiflood_pause_s": {
      "default": 10.0,
+     "maximum": 600,
      "minimum": 0,
      "title": "Antiflood Pause S",
      "type": "number"
@@ -143,6 +145,7 @@
     "default_expect_timeout_s": {
      "default": 20.0,
      "exclusiveMinimum": 0,
+     "maximum": 300,
      "title": "Default Expect Timeout S",
      "type": "number"
     },
@@ -172,6 +175,7 @@
     },
     "min_request_interval_s": {
      "default": 1.6,
+     "maximum": 60,
      "minimum": 0,
      "title": "Min Request Interval S",
      "type": "number"
@@ -193,6 +197,7 @@
     },
     "recovered_react_max_age_min": {
      "default": 10,
+     "maximum": 1440,
      "minimum": 0,
      "title": "Recovered React Max Age Min",
      "type": "integer"
@@ -200,11 +205,13 @@
     "refresh_min_interval_s": {
      "default": 120.0,
      "exclusiveMinimum": 0,
+     "maximum": 3600,
      "title": "Refresh Min Interval S",
      "type": "number"
     },
     "state_stale_after_min": {
      "default": 15,
+     "maximum": 1440,
      "minimum": 1,
      "title": "State Stale After Min",
      "type": "integer"
@@ -489,6 +496,7 @@
    "properties": {
     "battle_margin_min": {
      "default": 15,
+     "maximum": 1440,
      "minimum": 15,
      "title": "Battle Margin Min",
      "type": "integer"
@@ -518,6 +526,7 @@
     },
     "extra_margin_min": {
      "default": 10,
+     "maximum": 1440,
      "minimum": 0,
      "title": "Extra Margin Min",
      "type": "integer"
@@ -536,6 +545,7 @@
     },
     "min_budget_min": {
      "default": 60,
+     "maximum": 1440,
      "minimum": 1,
      "title": "Min Budget Min",
      "type": "integer"
@@ -585,18 +595,21 @@
    "properties": {
     "decisions_days": {
      "default": 30,
+     "maximum": 3650,
      "minimum": 1,
      "title": "Decisions Days",
      "type": "integer"
     },
     "messages_days": {
      "default": 90,
+     "maximum": 3650,
      "minimum": 1,
      "title": "Messages Days",
      "type": "integer"
     },
     "metrics_days": {
      "default": 365,
+     "maximum": 3650,
      "minimum": 1,
      "title": "Metrics Days",
      "type": "integer"
@@ -628,6 +641,7 @@
     },
     "lead_min": {
      "default": 120,
+     "maximum": 1440,
      "minimum": 10,
      "title": "Lead Min",
      "type": "integer"
@@ -646,6 +660,7 @@
     },
     "dump_lead_min": {
      "default": 5,
+     "maximum": 1440,
      "minimum": 1,
      "title": "Dump Lead Min",
      "type": "integer"
@@ -758,6 +773,7 @@
    "properties": {
     "interval_h": {
      "default": 20,
+     "maximum": 168,
      "minimum": 20,
      "title": "Interval H",
      "type": "integer"
