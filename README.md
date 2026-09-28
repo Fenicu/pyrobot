@@ -329,11 +329,11 @@ uv run mypy
 | Переменная | Назначение |
 |---|---|
 | `PYROBOT_DATABASE_URL` | Connection string к PostgreSQL (по умолчанию localhost:55432). |
-| `PYROBOT_DATA_DIR` | Путь к директории для хранения игровых данных. |
+| `PYROBOT_DATA_DIR` | Каталог файла сессии Telegram (рабочий каталог kurigram), по умолчанию `/data`. |
 | `PYROBOT_TG_API_ID` | Telegram API ID (из my.telegram.org). При `PYROBOT_TRANSPORT=kurigram` обязателен и больше 0, иначе процесс не стартует (ошибка валидации конфигурации). |
 | `PYROBOT_TG_API_HASH` | Telegram API hash (из my.telegram.org). При `PYROBOT_TRANSPORT=kurigram` обязателен и не пуст. |
-| `PYROBOT_ADMIN_LOGIN` | Логин для доступа в админку. |
-| `PYROBOT_ADMIN_PASSWORD` | Пароль для админки (если не задан, доступ отключён). |
+| `PYROBOT_ADMIN_LOGIN` | Логин админа в админке, по умолчанию `admin`. |
+| `PYROBOT_ADMIN_PASSWORD` | Пароль первого админа: при старте создаёт админа `PYROBOT_ADMIN_LOGIN`, если его ещё нет в базе; пароль существующего не меняет (смена — экран «Смена пароля» в админке). Не задан и админа в базе нет — войти нельзя. |
 | `PYROBOT_COOKIE_SECURE` | Использовать флаг Secure для cookies (true в боевой, false в локальной разработке). |
 | `PYROBOT_TRANSPORT` | Транспорт Telegram: `kurigram` (боевой MTProto) или `fake` (для тестов). |
 | `PYROBOT_LOG_LEVEL` | Уровень логирования (DEBUG, INFO, WARNING, ERROR). Логгер `pyrogram` никогда не опускается ниже INFO: в DEBUG kurigram печатает код входа в Telegram. |
@@ -711,7 +711,7 @@ $2.6 + 🔩0.7, конфа 112💡 + 📚31 — у прогулки и конф�
 битве, фабрика, биржевики, слив налички в акции, смузи, мандарин, ежедневные задания, лотерея и
 защита от ограбления `robbery_defense`; выключены казино, арена, пир пета, платная информация и
 сезонные ивенты; в сохранённых настройках флаг лежит явным значением, поэтому смена умолчания уже
-записанные настройки не меняет — у прода `features.lottery=false` включается PATCH); `lottery` —
+записанные настройки не меняет — такой флаг включают в админке); `lottery` —
 сколько билетов брать за тираж по валютам `tickets.{money,knowledge,raw,details}` (число ≥ 0 или
 `"max"` — до лимита тиража, по умолчанию `"max"` у всех) и сколько ресурса не тратить
 `keep.{…}` (по умолчанию 0; к 💵 ещё резервы билета Горбушки и отеля, как у дел; запас под слив в
@@ -963,7 +963,7 @@ last_refresh, cooldowns, last_done)`; общие помощники — `base.py
 сценарий сна потребует для отеля (большее из цены и порога), — дела и лотерея их не тратят, а
 билет покупается только из денег сверх резерва на отель. Резерв на отель (и здесь, и
 в сливе налички) держится, только если сон будет исполнен: механика включена и в `live` сценарий сна
-сертифицирован (сертифицирован). Дело не начинается, если
+сертифицирован. Дело не начинается, если
 закончится позже чем за 6 минут до битвы (запрет действует до минуты после её начала) или позже
 дедлайна сна. Если нужное поле неизвестно, устарело или сомнительно (`stale_fields`; мотивация — ещё
 и после тика регенерации, время битвы — после её начала), решение — обновить его экран (`refresh`),
@@ -1352,7 +1352,8 @@ Postgres advisory lock) → если лок не взят, движок не с�
 падении → `tg.boot()` пытается восстановить существующую сессию Telegram.
 
 Режим по умолчанию — `dry_run` (`settings.engine.mode`): любое действие, кроме `nav`, подавляется
-шлюзом ещё до отправки, в игру ничего не уходит. Переключение в `live` — через настройки движка.
+шлюзом ещё до отправки, в игру ничего не уходит. Переключение в `live` — кнопкой «Включить live»
+на главной админки или настройкой `engine.mode`.
 
 `GET /readyz` отдаёт 200, только когда одновременно: лок держится этим процессом, все фоновые задачи
 супервизора живы, Telegram в состоянии `ONLINE`, kill switch не активен, блок трат снят и конвейер
@@ -1384,6 +1385,10 @@ Postgres advisory lock) → если лок не взят, движок не с�
 - `app/engine` — движок: типы сообщений, парсеры, реестр команд, конвейер, шлюз действий, транспорт.
 - `app/db` — Postgres: модели, миграции, хранилища.
 - `app/api` — HTTP API для админки.
+- `admin/` — админка (SvelteKit), см. «Админка».
+- `tools/` — скрипты: игровые фикстуры из выгрузки, выгрузка `openapi.json`, схемы настроек и
+  фикстуры «Плана бота», вход в Telegram без браузера (`login.py`).
+- `deploy/` — скрипты выката на apps и блок Caddy.
 
 ### Транспорт и вход в Telegram
 
@@ -2206,25 +2211,25 @@ docker compose -f compose.yml config          # нужен .env рядом (см
 
 ### CI/CD
 
-**CI/CD** (`.forgejo/workflows/ci.yml`, Forgejo Actions): на каждый push — `lint` (ruff, mypy) и
-`test` (pytest с сервисом Postgres) в контейнере uv и `admin` в контейнере `node:24-bookworm-slim`
-(git — через apt-прокси хоумлаба `10.10.40.23:3142`; `npm ci`, `npm run gen:api` + `git diff
---exit-code` — закоммиченный `schema.d.ts` совпадает с `openapi.json`, `npm run check`, `npm run
-test`, `npm run build`), затем `image` (ждёт все три) на хостовом раннере
+**CI/CD** (`.forgejo/workflows/ci.yml`, Forgejo Actions): на push в `master`, на теги и по ручному
+запуску — `lint` (ruff, mypy) и `test` (pytest с сервисом Postgres) в контейнере uv и `admin` в
+контейнере `node:24-bookworm-slim` (git — через apt-прокси хоумлаба `10.10.40.23:3142`; `npm ci`,
+`npm run gen:api` + `git diff --exit-code` — закоммиченный `schema.d.ts` совпадает с `openapi.json`,
+`npm run check`, `npm run test`, `npm run build`), затем `image` (ждёт все три) на хостовом раннере
 (`self-hosted`) собирает образ — поломка `Dockerfile` видна сразу. Сборка — `docker buildx build`
 своим builder'ом `builder-pyrobot` (драйвер `docker-container`: BuildKit независимо от настроек
-демона; без `--use`, чтобы не переключать общий builder хоста), `--platform linux/amd64
---provenance=false`, как у соседних проектов. Без тега результат остаётся только в кэше builder'а
-(`--output type=cacheonly`); по тегу `vX.Y.Z` тот же вызов с `--push` публикует образ в registry
-Forgejo как `git.fenicu.com/fenicu/pyrobot:<тег>` и `:latest` (тег другого вида — ошибка), локальных
-образов на раннере не остаётся. `deploy` выкатывает его на apps: пишет `.env` из секретов,
-копирует по ssh `compose.yml` и `deploy/remote-deploy.sh` в `~/pyrobot` и запускает скрипт —
-`docker compose pull pyrobot` → `docker compose run --rm migrate` (ошибка миграции останавливает
-выкат, старый бот работает дальше) → `docker compose up -d --remove-orphans` → ожидание `/readyz`
-до 5 минут (`python -m app.healthcheck /readyz` внутри контейнера), не дождался — вывод `docker
-compose ps` и хвоста логов, job красный. Выкаты не идут параллельно (`concurrency:
-deploy-pyrobot`). apps должен быть залогинен в `git.fenicu.com` (как для остальных сервисов на
-apps).
+демона; без `--use`, чтобы не переключать общий builder хоста),
+`--platform linux/amd64 --provenance=false`, как у соседних проектов. Без тега результат остаётся
+только в кэше builder'а (`--output type=cacheonly`); по тегу `vX.Y.Z` тот же вызов с `--push`
+публикует образ в registry Forgejo как `git.fenicu.com/fenicu/pyrobot:<тег>` и `:latest` (тег
+другого вида — ошибка), локальных образов на раннере не остаётся. `deploy` выкатывает его на apps:
+пишет `.env` из секретов, копирует по ssh `compose.yml` и `deploy/remote-deploy.sh` в `~/pyrobot` и
+запускает скрипт — `docker compose pull pyrobot` → `docker compose run --rm migrate` (ошибка
+миграции останавливает выкат, старый бот работает дальше) → `docker compose up -d --remove-orphans`
+→ ожидание `/readyz` до 5 минут (`python -m app.healthcheck /readyz` внутри контейнера), не дождался
+— вывод `docker compose ps` и хвоста логов, job красный. Выкаты не идут параллельно
+(`concurrency: deploy-pyrobot`). apps должен быть залогинен в `git.fenicu.com` (как для остальных
+сервисов на apps).
 
 Каждый выкат перезаписывает `~/pyrobot/.env` на apps целиком: ручная правка там живёт только до
 следующего выката. Постоянное значение — секрет или переменная репозитория плюс строка в шаге
@@ -2236,16 +2241,16 @@ apps).
 |---|---|
 | `GITEA_TOKEN` | Клонирование исходников в контейнерных job (`lint`, `test`, `admin`). |
 | `REGISTRY_USER`, `REGISTRY_TOKEN` | Вход в registry `git.fenicu.com` для публикации образа. |
-| `DEPLOY_SSH_KEY` | Приватный ключ деплоя на apps (`fenicu@10.10.40.20`; по спеке — ключ `~/.ssh/forgejo-deploy-apps`), как у остальных сервисов на apps. |
+| `DEPLOY_SSH_KEY` | Приватный ключ деплоя на apps (`fenicu@10.10.40.20`, ключ `~/.ssh/forgejo-deploy-apps`), как у остальных сервисов на apps. |
 | `PYROBOT_DB_PASSWORD` | Пароль Postgres на apps (`POSTGRES_PASSWORD`, hex — без URL-экранирования). |
 | `PYROBOT_TG_API_ID`, `PYROBOT_TG_API_HASH` | Telegram API (my.telegram.org). |
-| `PYROBOT_ADMIN_PASSWORD` | Пароль первого админа (нужен только первому старту; дальше пароль меняется через `POST /api/v1/auth/password`). |
+| `PYROBOT_ADMIN_PASSWORD` | Пароль первого админа (нужен только первому старту; дальше пароль меняется в админке, экран «Смена пароля»). |
 
 Переменная репозитория `PYROBOT_SKIP_READY` (`vars.*`, по умолчанию не задана): `true` — выкат ждёт
 только `/healthz`. Нужна на первый выкат: `/readyz` отдаёт 200 только при Telegram `ONLINE`, а вход в
-Telegram делается через API уже работающего сервиса (см. «Первый вход»); после входа переменную
-убрать. С включённым
-kill switch или блоком трат `/readyz` тоже 503 — выкат будет красным, пока их не снять.
+Telegram делается через админку или API уже работающего сервиса (см. «Первый вход»); после входа
+переменную убрать. С включённым kill switch или блоком трат `/readyz` тоже 503 — выкат будет
+красным, пока их не снять.
 
 ### Caddy на web
 
@@ -2269,8 +2274,8 @@ kill switch или блоком трат `/readyz` тоже 503 — выкат �
 ### Первый вход
 
 **Первый вход** — через админку (`https://sw.fenicu.com/`: вход по `PYROBOT_ADMIN_LOGIN` и
-`PYROBOT_ADMIN_PASSWORD`, дальше «Ещё» → Telegram) или без браузера — `tools/login.py`, интерактивно
-по API сервиса:
+`PYROBOT_ADMIN_PASSWORD`, дальше экран «Telegram», на телефоне — в «Ещё») или без браузера —
+`tools/login.py`, интерактивно по API сервиса:
 
 ```bash
 uv run python tools/login.py https://sw.fenicu.com   # или http://10.10.40.20:8089 внутри сети
@@ -2291,8 +2296,10 @@ uv run python tools/login.py https://sw.fenicu.com   # или http://10.10.40.20
 уже `online`, чужой аккаунт, неверный пароль админа).
 
 Первый выкат: завести секреты и `PYROBOT_SKIP_READY=true` → тег `vX.Y.Z` (выкат ждёт только
-`/healthz`) → добавить блок в Caddy → `tools/login.py` (вход админа и в Telegram) → проверить `GET
-/readyz` = 200 изнутри (через Caddy он закрыт): `http://10.10.40.20:8089/readyz` из VLAN или
+`/healthz`) → добавить блок в Caddy → вход в Telegram (экран «Telegram» админки или
+`tools/login.py`) → проверить `GET /readyz` = 200 изнутри (через Caddy он закрыт):
+`http://10.10.40.20:8089/readyz` из VLAN или
 `docker compose exec pyrobot python -m app.healthcheck /readyz` на apps → убрать
 `PYROBOT_SKIP_READY` (следующие выкаты ждут `/readyz`). Режим после выката —
-`dry_run` (дефолт настроек), переход в `live` — отдельным решением (спека, «Катовер»).
+`dry_run` (дефолт настроек), `live` включается отдельным решением — кнопкой «Включить live» на
+главной админки; режим хранится в настройках, следующие выкаты его не меняют.
