@@ -1699,6 +1699,8 @@ export interface components {
             lottery_tickets: {
                 [key: string]: number | "max";
             };
+            /** Next Focus */
+            next_focus: string | null;
             /** Sleep Hours */
             sleep_hours: number;
             /** Sleep Place */

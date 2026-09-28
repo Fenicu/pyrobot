@@ -2625,6 +2625,17 @@
             "title": "Lottery Tickets",
             "type": "object"
           },
+          "next_focus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Focus"
+          },
           "sleep_hours": {
             "title": "Sleep Hours",
             "type": "integer"
@@ -2649,7 +2660,8 @@
           "battle_target",
           "lottery_tickets",
           "sleep_hours",
-          "sleep_place"
+          "sleep_place",
+          "next_focus"
         ],
         "title": "PlanHintsOut",
         "type": "object"

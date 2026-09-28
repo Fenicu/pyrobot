@@ -67,7 +67,8 @@ class PlanFocusOut(BaseModel):
 
 
 class PlanHintsOut(BaseModel):
-    # Цель ближайшей битвы по настройкам (своя на её час или общая); null — время неизвестно.
+    # Цель ближайшей битвы по настройкам (своя на её час или общая); null — время следующей битвы
+    # неизвестно или устарело.
     battle_target: str | None
     # Билеты за тираж по настройкам: число или `max` по валютам.
     lottery_tickets: dict[str, int | Literal["max"]]
@@ -75,6 +76,9 @@ class PlanHintsOut(BaseModel):
     # Место сна по правилу сценария на текущих деньгах; null — деньги неизвестны или цена отеля
     # не видена.
     sleep_place: Literal["hotel", "bridge"] | None
+    # Основное дело (`deed:<дело>`), которое шаг дел взял бы следующим среди доступных сейчас;
+    # null — ни одно не доступно (нет 🔥, 💵, ⚙️, окно битвы) или нужные поля устарели.
+    next_focus: str | None
 
 
 class OutlookOut(BaseModel):
@@ -144,6 +148,7 @@ def outlook_out(view: PlanView) -> OutlookOut:
             lottery_tickets=o.hints.lottery_tickets,
             sleep_hours=o.hints.sleep_hours,
             sleep_place=o.hints.sleep_place,
+            next_focus=o.hints.next_focus,
         ),
     )
 

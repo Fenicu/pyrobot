@@ -133,6 +133,7 @@
    "details": "max"
   },
   "sleep_hours": 7,
-  "sleep_place": "bridge"
+  "sleep_place": "bridge",
+  "next_focus": "deed:dconv"
  }
 }

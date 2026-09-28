@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Literal
 
-from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, Step
+from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, TIMER_MARGIN, Step
 from app.engine.planner.daily import DailyTasks
 from app.engine.planner.types import Act, Candidate, Decision, WakeKind, Wakeup
 from app.engine.settings import Settings
@@ -19,17 +19,32 @@ from app.engine.state.model import (
 from app.engine.state.reducer import LOTTERY_CURRENCIES
 
 Phase = Literal["unknown", "asleep", "busy", "free"]
+# Таймеры окон и моментов: наступившие во сне к подъёму уже прошли (битва, слив перед ней, запись
+# на фабрику, начало продажи лотереи, выброс из метро, окно сна).
+WINDOWED: frozenset[WakeKind] = frozenset(
+    {
+        "sleep_window",
+        "sleep_allowed",
+        "battle",
+        "stocks_dump",
+        "factory_open",
+        "lottery_open",
+        "metro_kick",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
 class PlanHints:
     """Подробности для строк плана: цель ближайшей битвы, билеты лотереи по настройкам, длина
-    сна и место сна на текущих деньгах (None — неизвестно)."""
+    и место сна на текущих деньгах, основное дело, которое шаг дел взял бы следующим среди
+    доступных сейчас (None — неизвестно или ни одно не доступно)."""
 
     battle_target: str | None
     lottery_tickets: dict[str, int | Literal["max"]]
     sleep_hours: int
     sleep_place: Literal["hotel", "bridge"] | None
+    next_focus: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,10 +87,11 @@ class _Planner(DailyTasks):
 
     def outlook(self, fresh: Callable[[], _Planner]) -> Outlook:
         """Ветки занятости — как в `decide`; `fresh` — такой же планировщик с чистыми
-        кандидатами и таймерами для прохода «после пробуждения»."""
+        кандидатами и таймерами для прохода «после пробуждения» и подсказок."""
         busy = self.busy()
         if busy is None and (field := self.stale_of("busy")) is not None:
-            return self.view("unknown", None, self.refresh("state", field) or self.wait(), ())
+            decision = self.refresh("state", field) or self.wait()
+            return self.view("unknown", None, decision, (), fresh)
         if busy is not None:
             self.wake(busy.until, "busy")
             if busy.activity.startswith("sleep_"):
@@ -83,7 +99,8 @@ class _Planner(DailyTasks):
                 later = fresh()
                 for step in later.steps():
                     step(None)
-                return self.view("asleep", busy, decision, (), later.wakeups)
+                woke = after_wake(later.wakeups, busy.until + TIMER_MARGIN)
+                return self.view("asleep", busy, decision, (), fresh, woke)
         first: Decision | None = None
         ready: dict[str, Act] = {}
         for step in self.steps():
@@ -97,7 +114,7 @@ class _Planner(DailyTasks):
         decision = first or self.wait()
         own = run_key(decision) if isinstance(decision, Act) else None
         also = tuple(act for key, act in ready.items() if key != own)
-        return self.view("free" if busy is None else "busy", busy, decision, also)
+        return self.view("free" if busy is None else "busy", busy, decision, also, fresh)
 
     def view(
         self,
@@ -105,11 +122,12 @@ class _Planner(DailyTasks):
         busy: BusyState | None,
         decision: Decision,
         also_ready: tuple[Act, ...],
+        fresh: Callable[[], _Planner],
         later: Iterable[Wakeup] = (),
     ) -> Outlook:
         wakeups = earliest(self.wakeups)
         known = {(w.kind, w.key) for w in wakeups}
-        after_wake = tuple(w for w in earliest(later) if (w.kind, w.key) not in known)
+        after = tuple(w for w in earliest(later) if (w.kind, w.key) not in known)
         focus = tuple(
             (name, self.done_today.get(name, 0))
             for name in (f"deed:{deed}" for deed in self.cfg.strategy.focus)
@@ -121,20 +139,32 @@ class _Planner(DailyTasks):
             decision.candidates,
             also_ready,
             wakeups,
-            after_wake,
+            after,
             focus,
-            self.hints(),
+            self.hints(fresh().next_focus()),
         )
 
-    def hints(self) -> PlanHints:
-        battle = self.battle_time()
+    def hints(self, next_focus: str | None) -> PlanHints:
+        battle = self.upcoming_battle()
         tickets = self.cfg.lottery.tickets
         return PlanHints(
             battle_target=self.target_for(battle) if battle is not None else None,
             lottery_tickets={c: getattr(tickets, c) for c in LOTTERY_CURRENCIES},
             sleep_hours=self.cfg.sleep.duration_h,
             sleep_place=self.sleep_place(),
+            next_focus=next_focus,
         )
+
+    def next_focus(self) -> str | None:
+        """Основное дело, которое шаг дел взял бы среди доступных сейчас (как `focus_deed`,
+        без заданий дня); None — ни одно не доступно или нужные поля устарели. Считается на
+        отдельном планировщике: его отказы и таймеры в план не попадают."""
+        if not self.feature_on("deed:"):
+            return None
+        if self.stale_of("motivation", "money", "details", "battle_at") is not None:
+            return None
+        pick = self.focus_deed(self.doable_deeds())
+        return pick[0].scenario if pick is not None else None
 
     def steps(self) -> tuple[Step, ...]:
         return (
@@ -476,6 +506,18 @@ def run_key(act: Act) -> str:
     if act.scenario == "refresh":
         return f"refresh:{act.params['source']}"
     return act.scenario
+
+
+def after_wake(wakeups: Iterable[Wakeup], woke: datetime) -> tuple[Wakeup, ...]:
+    """Таймеры прохода «после пробуждения»: наступающие во сне случатся в момент подъёма
+    (`at = woke`), а окна, которые за сон пройдут (`WINDOWED`), отбрасываются."""
+    out: list[Wakeup] = []
+    for w in wakeups:
+        if w.at >= woke:
+            out.append(w)
+        elif w.kind not in WINDOWED:
+            out.append(replace(w, at=woke))
+    return earliest(out)
 
 
 def earliest(wakeups: Iterable[Wakeup]) -> tuple[Wakeup, ...]:

@@ -1,6 +1,8 @@
 from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
 from app.engine.planner.decide import Outlook, decide, earliest, outlook, run_key
 from app.engine.planner.types import Act, Decision, Wait, Wakeup
 from app.engine.settings import Settings
@@ -48,7 +50,7 @@ def test_unknown_busy_gives_only_the_decision() -> None:
 
 
 def test_asleep_shows_timers_after_wake_without_their_acts() -> None:
-    state = awake(busy=SLEEP, books=3, book_ready_at=obs(m(60)), prizebox=True)
+    state = awake(busy=SLEEP, books=3, book_ready_at=obs(m(360)), prizebox=True)
     view = view_of(state)
     assert view.phase == "asleep" and view.busy == SLEEP
     assert view.decision == Wait(w(300), "busy", ())
@@ -56,10 +58,10 @@ def test_asleep_shows_timers_after_wake_without_their_acts() -> None:
     assert reasons(view.wakeups) == ["busy"]
     # Проход «как после пробуждения»: таймеры книги и Горбушки есть, а готовые призовая коробка и
     # дело не показываются ни решением, ни кандидатами.
-    assert reasons(view.after_wake)[:1] == ["book_ready"]
-    assert view.after_wake[0].at == r(60)
-    assert "gorbushka_comeback" in reasons(view.after_wake)
-    assert "busy" not in reasons(view.after_wake)
+    moments = {t.reason: t.at for t in view.after_wake}
+    assert moments["book_ready"] == r(360)
+    assert moments["gorbushka_comeback"] == w(300)
+    assert "busy" not in moments
 
 
 def test_asleep_sets_only_battle_target() -> None:
@@ -160,3 +162,50 @@ def test_hints_follow_settings_and_money() -> None:
     unknown = awake().model_copy(update={"money": None, "prices": priced})
     assert outlook(unknown, BASE, NOW).hints.sleep_place is None
     assert view_of(awake()).hints.battle_target == "📯Pied Piper"
+
+
+def test_asleep_timers_during_sleep_happen_on_wake() -> None:
+    # Сон 22:30–05:10 МСК через полночь: сброс заданий в 00:02 и возврат Горбушки в 03:30
+    # случатся при подъёме, а слив перед битвой в 01:00 и окно сна к подъёму пройдут.
+    at = datetime(2026, 9, 26, 19, 30, tzinfo=UTC)
+    woke = datetime(2026, 9, 27, 2, 10, tzinfo=UTC)
+    settings = config({"features": {"daily_tasks": True, "stocks_dump": True}})
+    book = woke + timedelta(minutes=50)
+    state = awake(
+        at,
+        busy=BusyState(activity="sleep_bridge", until=woke),
+        books=3,
+        book_ready_at=book,
+    )
+    view = outlook(state, settings, at)
+    assert view.decision == decide(state, settings, at)
+    moments = {w.reason: w.at for w in view.after_wake}
+    wake = woke + TIMER_MARGIN
+    assert moments["daily_reset"] == wake
+    assert moments["gorbushka_comeback"] == wake
+    assert moments["book_ready"] == book + READY_SLACK + TIMER_MARGIN
+    assert not {"stocks_dump", "battle", "sleep_window"} & moments.keys()
+    assert all(w.at >= wake for w in view.after_wake)
+    assert [w.reason for w in view.wakeups] == ["busy"]
+
+
+def test_battle_target_hint_only_for_upcoming_battle() -> None:
+    assert view_of(awake()).hints.battle_target == "📯Pied Piper"
+    past = awake(battle_at=obs(m(-30), age_min=90))
+    assert view_of(past).hints.battle_target is None
+
+
+def test_next_focus_is_the_available_one() -> None:
+    # Добыча — 0 раз, переработка — 1, но на добычу нет 💵: следующей будет переработка, как и
+    # решение.
+    done = {"deed:harvest": 0, "deed:dconv": 1}
+    poor = view_of(awake(money=20), FOCUS, done_today=done)
+    assert act(poor.decision) == ("deed:dconv", {})
+    assert poor.hints.next_focus == "deed:dconv"
+    assert view_of(awake(), FOCUS, done_today=done).hints.next_focus == "deed:harvest"
+    assert view_of(awake(motivation=0), FOCUS, done_today=done).hints.next_focus is None
+    stale = awake(motivation=obs(40, age_min=20))
+    assert view_of(stale, FOCUS, done_today=done).hints.next_focus is None
+    # Занятость не мешает: подсказка — что будет, когда персонаж освободится.
+    busy = view_of(awake(busy=JOB, money=20), FOCUS, done_today=done)
+    assert busy.hints.next_focus == "deed:dconv"

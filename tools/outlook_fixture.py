@@ -53,6 +53,8 @@ def build() -> dict[str, Any]:
     data = _shifted(json.loads(STATE.read_text(encoding="utf-8"))["state"])
     data["busy"] = _seen({"activity": "job", "until": _iso(NOW + timedelta(minutes=20))})
     data["levelup_pending"] = _seen(True)
+    # Немного 🔥 — чтобы в подсказке было основное дело, которое бот возьмёт следующим.
+    data["motivation"] = _seen(5)
     data["sleep_deadline"] = _seen(_iso(NOW + timedelta(hours=8)), "derived")
     view = outlook(load_state(data), Settings(), NOW, done_today=DONE_TODAY)
     loop = LoopView(
