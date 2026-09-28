@@ -568,6 +568,12 @@ $2.6 + 🔩0.7, конфа 112💡 + 📚31 — у прогулки и конф�
 `robPro`, `jobMoney`, `materials`, `learnKnows`, `walkMoney`, `confKnows`; типы, которых нет в списке,
 идут после перечисленных).
 
+JSON Schema настроек (`Settings.model_json_schema()` — та же, что `schema` в `GET /settings`)
+выгружается офлайн в `admin/src/lib/settings/settings.schema.json`: `uv run python
+tools/settings_schema.py [файл]`. Файл лежит в репозитории, `tests/test_settings_schema.py` падает,
+если он отстал от кода (как `openapi.json`, проверка идёт в pytest); по нему тест админки сверяет,
+что у каждой настройки есть подпись и описание.
+
 ### Ретеншн
 
 **Ретеншн** (`app/db/retention.py`, `DbRetention`) — фоновая задача `retention` под супервизором:
