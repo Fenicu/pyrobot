@@ -42,14 +42,12 @@
 	</fieldset>
 {:else}
 	<div
-		class="grid gap-1 border-b border-line-soft py-2 md:grid-cols-[16rem_minmax(0,1fr)_9rem] md:items-center md:gap-3 {field.unused
-			? 'opacity-60'
-			: ''}"
+		class="grid gap-1 border-b border-line-soft py-2 md:grid-cols-[16rem_minmax(0,1fr)_9rem] md:items-center md:gap-3"
 		data-path={key}
 	>
 		<div class="flex items-start gap-1">
 			<div class="min-w-0 flex-1">
-				<label for={id} class="block text-sm">
+				<label for={id} class="block text-sm {field.unused ? 'text-fg-muted' : ''}">
 					{label}
 					<span class="block font-mono text-[11px] text-fg-faint">{key}</span>
 				</label>

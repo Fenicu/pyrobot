@@ -66,14 +66,17 @@ describe('Настройки', () => {
 		await view(undefined, () => ({ ...settings, schema: schemaJson }));
 		await user.click(screen.getByRole('button', { name: 'Функции' }));
 		const row = document.querySelector('[data-path="features.casino"]') as HTMLElement;
-		expect(row).toHaveClass('opacity-60');
+		// Приглушена подпись, а не вся строка: прозрачность съела бы контраст пути и фокуса в светлой теме.
+		expect(row.className).not.toMatch(/opacity/);
+		expect(row.querySelector('label')).toHaveClass('text-fg-muted');
 		const note = within(row).getByText('не используется ботом');
+		expect(note).toHaveClass('text-fg-muted');
 		const toggle = within(row).getByRole('switch', { name: 'Казино' });
 		expect(toggle.getAttribute('aria-describedby')!.split(' ')).toContain(note.id);
 		await user.click(toggle);
 		expect(screen.getByRole('region', { name: 'Несохранённые изменения' })).toHaveTextContent('1 изменение');
 		const used = document.querySelector('[data-path="features.lottery"]') as HTMLElement;
-		expect(used).not.toHaveClass('opacity-60');
+		expect(used.querySelector('label')).not.toHaveClass('text-fg-muted');
 		expect(used).not.toHaveTextContent('не используется ботом');
 	});
 

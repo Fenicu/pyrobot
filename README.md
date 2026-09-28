@@ -1545,8 +1545,8 @@ tools/outlook_fixture.py` строит её из снимка с прода `tes
 дефолты и JSON Schema модели `Settings` (поля `engine.killed`, `engine.kill_reason`,
 `engine.paused` помечены `readOnly` — их меняют только `/engine/kill|unkill|pause|resume` с latch
 шлюза, проверкой блокировки экземпляра и аудитом; поля, которые код не читает, — `x-unused`
-(`UNUSED` в `app/engine/settings.py`: `features.casino`, `features.arena`, `levelup.policy`), менять
-их можно, но ни на что не влияет; `tests/engine/test_settings_unused.py` сверяет пометку с кодом
+(`UNUSED` в `app/engine/settings.py`: `features.casino`, `features.arena`, `levelup.policy`): PATCH
+их принимает, но ни на что это не влияет; `tests/engine/test_settings_unused.py` сверяет пометку с кодом
 `app/**` в обе стороны — помечены ровно те листья, которые нигде не читаются). `PATCH /api/v1/settings` (CSRF) принимает
 `{version, changes, confirm_live?}`: `changes` — частичный JSON, секции сливаются, листья (списки,
 словари вроде `battle.overrides`) заменяются целиком (`apply_patch`, `app/engine/settings.py`).
@@ -1904,8 +1904,10 @@ CI сверяет, что `schema.d.ts` актуален. Сборка в Docker
   (`settings/help.ts`) у каждой секции, вложенной группы и поля: что делает, в чём измеряется, когда
   применяется, крайние значения и связь с другими настройками — по фактическому поведению движка
   (поле, которое кодом не читается, так и описано); без подписи — заголовок схемы; путь виден
-  всегда, мелко. Поле с `x-unused` приглушено и помечено «не используется ботом» (пометка связана
-  с полем через `aria-describedby`), но редактируется как обычное. На ПК описание — под полем мелким текстом и связано с ним через
+  всегда, мелко. У поля с `x-unused` подпись приглушена цветом (не прозрачностью — контраст пути и
+  фокус остаются) и под ней «не используется ботом» (пометка связана с полем через
+  `aria-describedby`); переключатели `features.casino` и `features.arena` редактируются как обычные,
+  `levelup.policy` — константа с единственным значением, показана как есть. На ПК описание — под полем мелким текстом и связано с ним через
   `aria-describedby`, на телефоне — по кнопке ⓘ (`aria-expanded`/`aria-controls`); описание секции —
   под её заголовком. Тест `settings/help.test.ts` сверяет
   словарь с рекурсивным набором путей `settings.schema.json` (секции, группы, листья) в обе
