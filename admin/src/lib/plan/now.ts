@@ -81,24 +81,32 @@ export function nowView(plan: Outlook): NowView {
 	};
 }
 
+/** Зачем шаг дел возьмёт следующее дело. */
+const WHY: Record<NonNullable<Outlook['hints']['next_deed']>['why'], string> = {
+	personal: ', для личного задания',
+	team: ', для командного задания',
+	focus: '',
+	best: ', лучшее по оценке: основные сейчас недоступны'
+};
+
 function focusText(plan: Outlook): string {
 	const focus = plan.focus;
-	if (focus.length === 0) return 'Основных дел нет — дело выбирается по оценке.';
-	if (focus.length === 1) {
-		const only = focus[0]!;
-		return `Основное дело: ${deedText(only.deed)} (сегодня ${only.today}).`;
+	let base: string;
+	if (focus.length === 0) base = 'Основных дел нет — дело выбирается по оценке.';
+	else if (focus.length === 1) base = `Основное дело: ${deedText(focus[0]!.deed)} (сегодня ${focus[0]!.today}).`;
+	else {
+		const names = focus.map((f) => deedText(f.deed));
+		const counts = focus.map((f) => `${scenarioText(f.deed).split(' ')[0]} ${f.today}`).join(', ');
+		base = `Основные дела: ${names.slice(0, -1).join(', ')} и ${names.at(-1)} по очереди (сегодня ${counts}).`;
 	}
-	const names = focus.map((f) => deedText(f.deed));
-	const counts = focus.map((f) => `${scenarioText(f.deed).split(' ')[0]} ${f.today}`).join(', ');
-	const list = `${names.slice(0, -1).join(', ')} и ${names.at(-1)}`;
-	// Следующее — то, что шаг дел взял бы среди доступных сейчас (с бэкенда); доступных нет — только
-	// порядок по счётчикам: меньше запусков сегодня, при равенстве — раньше в списке.
-	const available = plan.hints.next_focus;
+	// Следующее — то, что шаг дел выбрал бы среди доступных сейчас (с бэкенда: задания дня, потом
+	// основные по очереди, потом лучшее по оценке); доступных нет — только очередь основных по
+	// счётчикам: меньше запусков сегодня, при равенстве — раньше в списке.
+	const next = plan.hints.next_deed;
+	if (next) return `${base} Следующее дело — ${deedText(next.deed)}${WHY[next.why]}.`;
+	if (focus.length === 0) return base;
 	const byCount = focus.reduce((best, f) => (f.today < best.today ? f : best));
-	const next = available
-		? `следующей будет ${deedText(available)}`
-		: `по счётчикам следующей будет ${deedText(byCount.deed)}`;
-	return `Основные дела: ${list} по очереди (сегодня ${counts} — ${next}).`;
+	return `${base} Доступных дел сейчас нет; по счётчикам следующее основное — ${deedText(byCount.deed)}.`;
 }
 
 function personalText(state: PublicState, day: string): string {

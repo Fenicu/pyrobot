@@ -1699,8 +1699,7 @@ export interface components {
             lottery_tickets: {
                 [key: string]: number | "max";
             };
-            /** Next Focus */
-            next_focus: string | null;
+            next_deed: components["schemas"]["PlanNextDeedOut"] | null;
             /** Sleep Hours */
             sleep_hours: number;
             /** Sleep Place */
@@ -1720,6 +1719,16 @@ export interface components {
             paused: boolean;
             /** Ready */
             ready: string | null;
+        };
+        /** PlanNextDeedOut */
+        PlanNextDeedOut: {
+            /** Deed */
+            deed: string;
+            /**
+             * Why
+             * @enum {string}
+             */
+            why: "personal" | "team" | "focus" | "best";
         };
         /** PlanTimerOut */
         PlanTimerOut: {

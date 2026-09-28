@@ -20,7 +20,7 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		const now = within(block).getByRole('region', { name: 'Сейчас' });
 		expect(now).toHaveTextContent('🤑 билеты лотереи (все — max)');
 		expect(now).toHaveTextContent('Занят: работа до 19:50');
-		expect(now).toHaveTextContent('сегодня ⛏ 3, ⚙️→🔩 2 — следующей будет переработка');
+		expect(now).toHaveTextContent('сегодня ⛏ 3, ⚙️→🔩 2). Следующее дело — переработка.');
 
 		const why = within(block).getByRole('region', { name: 'Почему не другое' });
 		const rows = within(why).getAllByRole('listitem');

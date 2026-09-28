@@ -2625,16 +2625,15 @@
             "title": "Lottery Tickets",
             "type": "object"
           },
-          "next_focus": {
+          "next_deed": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/PlanNextDeedOut"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Next Focus"
+            ]
           },
           "sleep_hours": {
             "title": "Sleep Hours",
@@ -2661,7 +2660,7 @@
           "lottery_tickets",
           "sleep_hours",
           "sleep_place",
-          "next_focus"
+          "next_deed"
         ],
         "title": "PlanHintsOut",
         "type": "object"
@@ -2724,6 +2723,30 @@
           "next_wake"
         ],
         "title": "PlanLoopOut",
+        "type": "object"
+      },
+      "PlanNextDeedOut": {
+        "properties": {
+          "deed": {
+            "title": "Deed",
+            "type": "string"
+          },
+          "why": {
+            "enum": [
+              "personal",
+              "team",
+              "focus",
+              "best"
+            ],
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deed",
+          "why"
+        ],
+        "title": "PlanNextDeedOut",
         "type": "object"
       },
       "PlanTimerOut": {

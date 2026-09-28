@@ -61,9 +61,9 @@ describe('«Сейчас»', () => {
 });
 
 describe('строка пояснения', () => {
-	it('основные дела со счётчиками и задания дня со снимка', () => {
+	it('основные дела со счётчиками, следующее дело и задания дня со снимка', () => {
 		expect(explain(plan, prod.state, NOW)).toBe(
-			'Основные дела: добыча и переработка по очереди (сегодня ⛏ 3, ⚙️→🔩 2 — следующей будет переработка). ' +
+			'Основные дела: добыча и переработка по очереди (сегодня ⛏ 3, ⚙️→🔩 2). Следующее дело — переработка. ' +
 				'Личное задание дня уже выполнено, командное выполнено.'
 		);
 	});
@@ -76,17 +76,26 @@ describe('строка пояснения', () => {
 				{ deed: 'deed:harvest', today: 0 },
 				{ deed: 'deed:dconv', today: 1 }
 			],
-			hints: { ...plan.hints, next_focus: 'deed:dconv' }
+			hints: { ...plan.hints, next_deed: { deed: 'deed:dconv', why: 'focus' } }
 		};
-		expect(explain(poor, {}, NOW)).toContain('(сегодня ⛏ 0, ⚙️→🔩 1 — следующей будет переработка)');
+		expect(explain(poor, {}, NOW)).toContain('(сегодня ⛏ 0, ⚙️→🔩 1). Следующее дело — переработка.');
 	});
 
-	it('доступного нет — порядок по счётчикам: меньше запусков, при равенстве — первое в списке', () => {
-		const none: Outlook = { ...plan, hints: { ...plan.hints, next_focus: null } };
-		expect(explain(none, {}, NOW)).toContain('по счётчикам следующей будет переработка');
+	it('дело под задание — с причиной', () => {
+		const team: Outlook = { ...plan, hints: { ...plan.hints, next_deed: { deed: 'deed:walk', why: 'team' } } };
+		expect(explain(team, {}, NOW)).toContain('Следующее дело — прогулка, для командного задания.');
+		const personal: Outlook = { ...plan, hints: { ...plan.hints, next_deed: { deed: 'deed:job', why: 'personal' } } };
+		expect(explain(personal, {}, NOW)).toContain('Следующее дело — работа, для личного задания.');
+		const best: Outlook = { ...plan, hints: { ...plan.hints, next_deed: { deed: 'deed:job', why: 'best' } } };
+		expect(explain(best, {}, NOW)).toContain('Следующее дело — работа, лучшее по оценке: основные сейчас недоступны.');
+	});
+
+	it('доступного нет — очередь основных по счётчикам: меньше запусков, при равенстве — первое в списке', () => {
+		const none: Outlook = { ...plan, hints: { ...plan.hints, next_deed: null } };
+		expect(explain(none, {}, NOW)).toContain('Доступных дел сейчас нет; по счётчикам следующее основное — переработка.');
 		const even: Outlook = { ...none, focus: plan.focus.map((f) => ({ ...f, today: 2 })) };
-		expect(explain(even, {}, NOW)).toContain('по счётчикам следующей будет добыча');
-		expect(explain({ ...plan, focus: [] }, {}, NOW)).toMatch(/^Основных дел нет/);
-		expect(explain(plan, {}, NOW)).toContain('Личное задание: нет данных за сегодня, командное — нет данных за сегодня.');
+		expect(explain(even, {}, NOW)).toContain('по счётчикам следующее основное — добыча');
+		expect(explain({ ...none, focus: [] }, {}, NOW)).toMatch(/^Основных дел нет/);
+		expect(explain(none, {}, NOW)).toContain('Личное задание: нет данных за сегодня, командное — нет данных за сегодня.');
 	});
 });

@@ -134,6 +134,9 @@
   },
   "sleep_hours": 7,
   "sleep_place": "bridge",
-  "next_focus": "deed:dconv"
+  "next_deed": {
+   "deed": "deed:dconv",
+   "why": "focus"
+  }
  }
 }

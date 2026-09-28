@@ -2,11 +2,26 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app.engine.gametime import tasks_day
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
-from app.engine.planner.decide import Outlook, _Planner, decide, earliest, outlook, run_key
+from app.engine.planner.decide import (
+    NextDeed,
+    Outlook,
+    _Planner,
+    decide,
+    earliest,
+    outlook,
+    run_key,
+)
 from app.engine.planner.types import Act, Decision, Wait, Wakeup
 from app.engine.settings import Settings
-from app.engine.state.model import BusyState, CharacterState, GorbushkaState, PriceState
+from app.engine.state.model import (
+    BusyState,
+    CharacterState,
+    GorbushkaState,
+    PriceState,
+    TeamTask,
+)
 from tests.engine.planner.test_decide import BASE, FOCUS, NOW, awake, config, m, obs, r, w
 
 SLEEP = BusyState(activity="sleep_hotel", until=m(300))
@@ -195,20 +210,34 @@ def test_battle_target_hint_only_for_upcoming_battle() -> None:
     assert view_of(past).hints.battle_target is None
 
 
-def test_next_focus_is_the_available_one() -> None:
+def test_next_deed_is_what_the_deeds_step_would_pick() -> None:
     # Добыча — 0 раз, переработка — 1, но на добычу нет 💵: следующей будет переработка, как и
     # решение.
     done = {"deed:harvest": 0, "deed:dconv": 1}
     poor = view_of(awake(money=20), FOCUS, done_today=done)
     assert act(poor.decision) == ("deed:dconv", {})
-    assert poor.hints.next_focus == "deed:dconv"
-    assert view_of(awake(), FOCUS, done_today=done).hints.next_focus == "deed:harvest"
-    assert view_of(awake(motivation=0), FOCUS, done_today=done).hints.next_focus is None
+    assert poor.hints.next_deed == NextDeed("deed:dconv", "focus")
+    assert view_of(awake(), FOCUS, done_today=done).hints.next_deed == NextDeed(
+        "deed:harvest", "focus"
+    )
+    assert view_of(awake(motivation=0), FOCUS, done_today=done).hints.next_deed is None
     stale = awake(motivation=obs(40, age_min=20))
-    assert view_of(stale, FOCUS, done_today=done).hints.next_focus is None
+    assert view_of(stale, FOCUS, done_today=done).hints.next_deed is None
     # Занятость не мешает: подсказка — что будет, когда персонаж освободится.
     busy = view_of(awake(busy=JOB, money=20), FOCUS, done_today=done)
-    assert busy.hints.next_focus == "deed:dconv"
+    assert busy.hints.next_deed == NextDeed("deed:dconv", "focus")
+    # Основные недоступны — лучшее по оценке.
+    no_focus = config({"strategy": {"focus": ["confa"]}})
+    assert view_of(awake(), no_focus).hints.next_deed == NextDeed("deed:job", "best")
+
+
+def test_next_deed_follows_team_task_first() -> None:
+    # Командное задание на прогулку: шаг дел выберет её раньше основных дел.
+    team = TeamTask(current=10, goal=120, resource="💵", day=tasks_day(NOW), activities=("walk",))
+    state = awake(team_task=team)
+    view = view_of(state, FOCUS, done_today={"deed:harvest": 0, "deed:dconv": 0})
+    assert act(view.decision) == ("deed:walk", {})
+    assert view.hints.next_deed == NextDeed("deed:walk", "team")
 
 
 def test_window_open_at_wake_is_shown_at_wake() -> None:

@@ -66,6 +66,14 @@ class PlanFocusOut(BaseModel):
     today: int
 
 
+class PlanNextDeedOut(BaseModel):
+    # `deed:<дело>`.
+    deed: str
+    # personal/team — под личное или командное задание, focus — основное по очереди, best —
+    # лучшее по оценке (основные сейчас недоступны).
+    why: Literal["personal", "team", "focus", "best"]
+
+
 class PlanHintsOut(BaseModel):
     # Цель ближайшей битвы по настройкам (своя на её час или общая); null — время следующей битвы
     # неизвестно или устарело.
@@ -76,9 +84,9 @@ class PlanHintsOut(BaseModel):
     # Место сна по правилу сценария на текущих деньгах; null — деньги неизвестны или цена отеля
     # не видена.
     sleep_place: Literal["hotel", "bridge"] | None
-    # Основное дело (`deed:<дело>`), которое шаг дел взял бы следующим среди доступных сейчас;
-    # null — ни одно не доступно (нет 🔥, 💵, ⚙️, окно битвы) или нужные поля устарели.
-    next_focus: str | None
+    # Дело, которое шаг дел взял бы следующим среди доступных сейчас, и почему; null — ни одно не
+    # доступно (нет 🔥, 💵, ⚙️, окно битвы) или нужные поля устарели.
+    next_deed: PlanNextDeedOut | None
 
 
 class OutlookOut(BaseModel):
@@ -148,7 +156,11 @@ def outlook_out(view: PlanView) -> OutlookOut:
             lottery_tickets=o.hints.lottery_tickets,
             sleep_hours=o.hints.sleep_hours,
             sleep_place=o.hints.sleep_place,
-            next_focus=o.hints.next_focus,
+            next_deed=(
+                PlanNextDeedOut(deed=o.hints.next_deed.deed, why=o.hints.next_deed.why)
+                if o.hints.next_deed is not None
+                else None
+            ),
         ),
     )
 

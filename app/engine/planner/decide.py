@@ -31,17 +31,29 @@ Phase = Literal["unknown", "asleep", "busy", "free"]
 MOMENTS: frozenset[WakeKind] = frozenset({"battle", "metro_kick", "sleep_window"})
 
 
+NextWhy = Literal["personal", "team", "focus", "best"]
+
+
+@dataclass(frozen=True, slots=True)
+class NextDeed:
+    """Дело, которое шаг дел выбрал бы среди доступных сейчас, и почему: под личное или
+    командное задание, основное по очереди или лучшее по оценке."""
+
+    deed: str
+    why: NextWhy
+
+
 @dataclass(frozen=True, slots=True)
 class PlanHints:
     """Подробности для строк плана: цель ближайшей битвы, билеты лотереи по настройкам, длина
-    и место сна на текущих деньгах, основное дело, которое шаг дел взял бы следующим среди
-    доступных сейчас (None — неизвестно или ни одно не доступно)."""
+    и место сна на текущих деньгах, дело, которое шаг дел взял бы следующим среди доступных
+    сейчас (None — неизвестно или ни одно не доступно)."""
 
     battle_target: str | None
     lottery_tickets: dict[str, int | Literal["max"]]
     sleep_hours: int
     sleep_place: Literal["hotel", "bridge"] | None
-    next_focus: str | None
+    next_deed: NextDeed | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,10 +150,10 @@ class _Planner(DailyTasks):
             wakeups,
             after,
             focus,
-            self.hints(fresh().next_focus()),
+            self.hints(fresh().next_deed()),
         )
 
-    def hints(self, next_focus: str | None) -> PlanHints:
+    def hints(self, next_deed: NextDeed | None) -> PlanHints:
         battle = self.upcoming_battle()
         tickets = self.cfg.lottery.tickets
         return PlanHints(
@@ -149,7 +161,7 @@ class _Planner(DailyTasks):
             lottery_tickets={c: getattr(tickets, c) for c in LOTTERY_CURRENCIES},
             sleep_hours=self.cfg.sleep.duration_h,
             sleep_place=self.sleep_place(),
-            next_focus=next_focus,
+            next_deed=next_deed,
         )
 
     def after_wake(self, wakeups: Iterable[Wakeup], woke: datetime) -> tuple[Wakeup, ...]:
@@ -179,16 +191,27 @@ class _Planner(DailyTasks):
             return start + lead + DUMP_SPAN - TARGET_LAST_CALL
         return None
 
-    def next_focus(self) -> str | None:
-        """Основное дело, которое шаг дел взял бы среди доступных сейчас (как `focus_deed`,
-        без заданий дня); None — ни одно не доступно или нужные поля устарели. Считается на
-        отдельном планировщике: его отказы и таймеры в план не попадают."""
+    def next_deed(self) -> NextDeed | None:
+        """Дело, которое шаг дел выбрал бы сейчас тем же порядком (личное задание, командное,
+        основное по очереди, лучшее по оценке), если бы персонаж был свободен; None — ни одно не
+        доступно или нужные поля устарели. Считается на отдельном планировщике: его отказы и
+        таймеры в план не попадают."""
         if not self.feature_on("deed:"):
             return None
         if self.stale_of("motivation", "money", "details", "battle_at") is not None:
             return None
-        pick = self.focus_deed(self.doable_deeds())
-        return pick[0].scenario if pick is not None else None
+        ok = self.doable_deeds()
+        if not ok:
+            return None
+        picks: tuple[tuple[NextWhy, tuple[Candidate, str] | None], ...] = (
+            ("personal", self.personal_deed(ok)),
+            ("team", self.team_deed(ok)),
+            ("focus", self.focus_deed(ok)),
+        )
+        for why, pick in picks:
+            if pick is not None:
+                return NextDeed(pick[0].scenario, why)
+        return NextDeed(self.best_deed(ok)[0].scenario, "best")
 
     def steps(self) -> tuple[Step, ...]:
         return (
