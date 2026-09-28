@@ -3,6 +3,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import type { ActionOut } from '$lib/api/types';
 	import type { LiveEvent } from '$lib/live/sse';
+	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
 	import { ACTION_STATUS, SOURCE, statusTone } from '$lib/util/game';
 	import Pill from '../Pill.svelte';
@@ -17,7 +18,7 @@
 	let { api, id, subscribe }: Props = $props();
 	let action = $state<ActionOut | null>(null);
 	let error = $state('');
-	const now = new Date();
+	const now = $derived(clock.now);
 
 	async function load(current: number) {
 		try {

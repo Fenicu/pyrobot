@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { tick } from 'svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '$lib/api/client';
 import type { JournalPage } from '$lib/api/types';
 import { JournalFeed } from '$lib/stores/journal.svelte';
@@ -106,5 +107,25 @@ describe('Журнал на странице с прода', () => {
 		await vi.waitFor(() =>
 			expect(fetch.calls.filter((c) => c.url.startsWith('/api/v1/journal')).length).toBe(before + 1)
 		);
+	});
+});
+
+describe('Журнал: «сейчас» по общему тикеру', () => {
+	afterEach(() => vi.useRealTimers());
+
+	it('после полуночи по МСК вчерашние строки получают дату', async () => {
+		vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+		vi.setSystemTime(new Date('2026-09-27T20:59:30Z'));
+		const item = { ...page.items[0]!, at: '2026-09-27T20:59:00Z' };
+		const fetch = mockFetch(() => json({ items: [item], next_cursor: null }));
+		const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const feed = new JournalFeed(api);
+		await feed.reload();
+		render(JournalView, { api, feed });
+		const time = screen.getByRole('region', { name: 'Лента' }).querySelector('time')!;
+		expect(time).toHaveTextContent(/^23:59:00$/);
+		vi.advanceTimersByTime(60_000);
+		await tick();
+		expect(time).toHaveTextContent('27.09 23:59:00');
 	});
 });

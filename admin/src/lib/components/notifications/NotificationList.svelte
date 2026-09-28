@@ -4,6 +4,7 @@
 	import type { NotificationOut } from '$lib/api/types';
 	import type { LiveEvent } from '$lib/live/sse';
 	import { toasts } from '$lib/stores/toasts.svelte';
+	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
 	import Pill from '../Pill.svelte';
 
@@ -16,7 +17,8 @@
 		onread?: () => void;
 		now?: Date;
 	}
-	let { api, subscribe, onread, now = new Date() }: Props = $props();
+	let { api, subscribe, onread, now: fixedNow }: Props = $props();
+	const now = $derived(fixedNow ?? clock.now);
 	let items = $state<NotificationOut[]>([]);
 	let unread = $state(0);
 	let next = $state<number | null>(null);

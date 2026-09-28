@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { MetroRunDetail } from '$lib/api/types';
 	import { EVENT_TEXT, eventCounts, frameAt, mapOf, OUTCOME_TEXT, outcomeOf } from '$lib/metro/model';
+	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment, fmtNum, fmtSpan } from '$lib/util/format';
 	import { CURRENCY } from '$lib/util/game';
 	import Pill from '../Pill.svelte';
@@ -11,7 +12,8 @@
 		run: MetroRunDetail;
 		now?: Date;
 	}
-	let { run, now = new Date() }: Props = $props();
+	let { run, now: fixedNow }: Props = $props();
+	const now = $derived(fixedNow ?? clock.now);
 	const model = $derived(mapOf(run));
 	const max = $derived(Math.max(0, model.path.length - 1));
 	let step = $state(0);

@@ -3,6 +3,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import type { DecisionOut } from '$lib/api/types';
 	import type { LiveEvent } from '$lib/live/sse';
+	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
 	import { pretty } from '$lib/util/text';
 	import Pill from '../Pill.svelte';
@@ -23,7 +24,7 @@
 	let { api, id, subscribe }: Props = $props();
 	let decision = $state<DecisionOut | null>(null);
 	let error = $state('');
-	const now = new Date();
+	const now = $derived(clock.now);
 
 	$effect(() => {
 		const current = id;

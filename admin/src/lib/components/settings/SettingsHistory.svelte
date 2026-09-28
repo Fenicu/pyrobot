@@ -3,6 +3,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import type { SettingsVersion } from '$lib/api/types';
 	import { fmtValue } from '$lib/settings/value';
+	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
 
 	interface Props {
@@ -11,7 +12,8 @@
 		refresh?: number;
 		now?: Date;
 	}
-	let { api, refresh = 0, now = new Date() }: Props = $props();
+	let { api, refresh = 0, now: fixedNow }: Props = $props();
+	const now = $derived(fixedNow ?? clock.now);
 	let items = $state<SettingsVersion[]>([]);
 	let next = $state<number | null>(null);
 	let open = $state<number | null>(null);

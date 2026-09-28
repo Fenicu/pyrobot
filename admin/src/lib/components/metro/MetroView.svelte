@@ -3,6 +3,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import type { MetroRunDetail, MetroRunSummary } from '$lib/api/types';
 	import { OUTCOME_TEXT, outcomeOf, summarize } from '$lib/metro/model';
+	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment, fmtSpan } from '$lib/util/format';
 	import Pill from '../Pill.svelte';
 	import MetroRun from './MetroRun.svelte';
@@ -14,7 +15,8 @@
 		onselect?: (id: number) => void;
 		now?: Date;
 	}
-	let { api, initial = null, onselect, now = new Date() }: Props = $props();
+	let { api, initial = null, onselect, now: fixedNow }: Props = $props();
+	const now = $derived(fixedNow ?? clock.now);
 	let runs = $state<MetroRunSummary[]>([]);
 	let next = $state<number | null>(null);
 	let selected = $state<number | null>(null);

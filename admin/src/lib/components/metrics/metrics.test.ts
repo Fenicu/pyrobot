@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '$lib/api/client';
 import { deferred, type Deferred } from '$lib/test/deferred';
 import { json, mockFetch } from '$lib/test/fetch';
@@ -88,5 +88,40 @@ describe('Метрики: гонки и прогресс', () => {
 		answers[1]!.resolve({ series: { money: [['2026-09-27T12:00:00Z', 3]] }, initial: {}, next_cursor: null });
 		expect(await screen.findByRole('img', { name: 'График: 💵 деньги · 3, точек 4' })).toBeInTheDocument();
 		expect(screen.queryByRole('status')).toBeNull();
+	});
+});
+
+describe('Метрики: «сегодня» по общему тикеру', () => {
+	afterEach(() => vi.useRealTimers());
+
+	it('после полуночи по МСК окно «сегодня» — новые сутки, в течение суток без перечитывания', async () => {
+		vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+		vi.setSystemTime(new Date('2026-09-27T20:59:00Z'));
+		const fetch = mockFetch(() => json({ series: {}, initial: {}, next_cursor: null }));
+		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		render(MetricsView, { api });
+		await vi.waitFor(() => expect(fetch.calls).toHaveLength(1));
+		expect(fetch.calls[0]?.url).toContain('from=2026-09-26T21%3A00%3A00.000Z');
+		expect(fetch.calls[0]?.url).toContain('to=2026-09-27T20%3A59%3A00.000Z');
+		vi.advanceTimersByTime(60_000);
+		await vi.waitFor(() => expect(fetch.calls).toHaveLength(2));
+		expect(fetch.calls[1]?.url).toContain('from=2026-09-27T21%3A00%3A00.000Z');
+		vi.advanceTimersByTime(5 * 60_000);
+		await new Promise((r) => setTimeout(r, 10));
+		expect(fetch.calls).toHaveLength(2);
+	});
+
+	it('окно берёт текущий момент при выборе, а не при открытии страницы', async () => {
+		const user = userEvent.setup();
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-09-27T10:00:00Z'));
+		const fetch = mockFetch(() => json({ series: {}, initial: {}, next_cursor: null }));
+		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		render(MetricsView, { api });
+		await vi.waitFor(() => expect(fetch.calls).toHaveLength(1));
+		vi.setSystemTime(new Date('2026-09-27T15:00:00Z'));
+		await user.click(screen.getByRole('button', { name: '7 дней' }));
+		await vi.waitFor(() => expect(fetch.calls).toHaveLength(2));
+		expect(fetch.calls[1]?.url).toContain('to=2026-09-27T15%3A00%3A00.000Z');
 	});
 });

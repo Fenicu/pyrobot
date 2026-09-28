@@ -5,6 +5,7 @@
 	import type { Confirmer } from '$lib/commands';
 	import type { LiveEvent } from '$lib/live/sse';
 	import { keyOf, type JournalFeed } from '$lib/stores/journal.svelte';
+	import { clock } from '$lib/util/clock.svelte';
 	import { DESKTOP, Media } from '$lib/util/media.svelte';
 	import Modal from '../Modal.svelte';
 	import FeedFilters from './FeedFilters.svelte';
@@ -16,10 +17,11 @@
 		feed: JournalFeed;
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 		confirmer?: Confirmer;
-		/** Момент «сейчас» для дат строк (сегодняшние — без даты). */
+		/** Момент «сейчас» для дат строк (сегодняшние — без даты); без него — общий тикер. */
 		now?: Date;
 	}
-	let { api, feed, subscribe, confirmer, now = new Date() }: Props = $props();
+	let { api, feed, subscribe, confirmer, now: fixedNow }: Props = $props();
+	const now = $derived(fixedNow ?? clock.now);
 	let selected = $state<JournalItem | null>(null);
 	let sentinel = $state<HTMLElement>();
 	const desktop = new Media(DESKTOP);

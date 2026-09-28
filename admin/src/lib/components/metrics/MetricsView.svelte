@@ -2,16 +2,18 @@
 	import type { Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import { loadMetrics, METRICS, stepSeries, type MetricsData, type Window } from '$lib/metrics/series';
-	import { fmtNum, mskDayStart } from '$lib/util/format';
+	import { clock } from '$lib/util/clock.svelte';
+	import { fmtNum, mskDay, mskDayStart } from '$lib/util/format';
 	import Chart from './Chart.svelte';
 
 	type Period = 'today' | '7d' | '30d' | 'custom';
 
 	interface Props {
 		api: Api;
+		/** Фиксированный «сейчас» (тесты); без него — текущий момент и общий тикер. */
 		now?: Date;
 	}
-	let { api, now = new Date() }: Props = $props();
+	let { api, now }: Props = $props();
 	let period = $state<Period>('today');
 	let from = $state('');
 	let to = $state('');
@@ -29,8 +31,12 @@
 		{ value: 'custom', label: 'свой' }
 	];
 
+	// Сутки по МСК: окно «сегодня» пересчитывается после полуночи, а не каждую минуту.
+	const today = $derived(mskDay(now ?? clock.now));
+
+	/** Окно на момент выбора: конец — «сейчас» в этот момент. */
 	function windowOf(p: Period): Window | null {
-		const end = now;
+		const end = now ?? new Date();
 		if (p === 'today') return { from: mskDayStart(end), to: end };
 		if (p === '7d') return { from: new Date(end.getTime() - 7 * DAY), to: end };
 		if (p === '30d') return { from: new Date(end.getTime() - 30 * DAY), to: end };
@@ -45,6 +51,7 @@
 
 	// Новый выбор отменяет прежнюю загрузку; её поздний ответ не применяется (номер запроса).
 	$effect(() => {
+		if (period === 'today') void today;
 		const w = windowOf(period);
 		const keys = [...fields];
 		if (!w || keys.length === 0) return;

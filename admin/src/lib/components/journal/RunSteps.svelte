@@ -3,6 +3,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import type { ScenarioRunDetail } from '$lib/api/types';
 	import type { LiveEvent } from '$lib/live/sse';
+	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment, fmtSpan, toDate } from '$lib/util/format';
 	import { ACTION_STATUS, statusTone } from '$lib/util/game';
 	import { pretty } from '$lib/util/text';
@@ -17,7 +18,7 @@
 	let { api, runId, subscribe }: Props = $props();
 	let run = $state<ScenarioRunDetail | null>(null);
 	let error = $state('');
-	const now = new Date();
+	const now = $derived(clock.now);
 
 	async function load(id: number) {
 		try {

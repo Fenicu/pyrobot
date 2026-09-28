@@ -3,6 +3,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import type { UnrecognizedOut } from '$lib/api/types';
 	import { toasts } from '$lib/stores/toasts.svelte';
+	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
 
 	type Acked = 'false' | 'true' | 'all';
@@ -12,7 +13,8 @@
 		api: Api;
 		now?: Date;
 	}
-	let { api, now = new Date() }: Props = $props();
+	let { api, now: fixedNow }: Props = $props();
+	const now = $derived(fixedNow ?? clock.now);
 	let items = $state<UnrecognizedOut[]>([]);
 	let next = $state<number | null>(null);
 	let acked = $state<Acked>('false');

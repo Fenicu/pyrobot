@@ -7,6 +7,7 @@
 	type ClickIn = components['schemas']['ClickIn'];
 	import { commandResult, isStale, newKey, withConfirm, type Confirmer } from '$lib/commands';
 	import { toasts } from '$lib/stores/toasts.svelte';
+	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
 	import { pretty } from '$lib/util/text';
 	import KV from './KV.svelte';
@@ -20,7 +21,7 @@
 	}
 	let { api, item, onstale, confirmer }: Props = $props();
 	let pending = $state<string | null>(null);
-	const now = new Date();
+	const now = $derived(clock.now);
 
 	const markup = $derived((item.markup ?? null) as Markup | null);
 	const rows = $derived.by(() => {
