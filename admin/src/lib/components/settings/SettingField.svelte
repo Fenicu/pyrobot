@@ -16,6 +16,9 @@
 	const label = $derived(settingLabel(key, field.title));
 	const help = $derived(settingHelp(key) ?? field.description);
 	const id = $derived(`set-${key.replaceAll('.', '-')}`);
+	// На ПК описание видно всегда (`md:block`) и связано с полем через aria-describedby; на
+	// телефоне, пока свёрнуто (`hidden`), ссылка на скрытый элемент AT не читает.
+	const describedby = $derived(help ? `${id}-help` : undefined);
 	// На телефоне описание раскрывается кнопкой ⓘ, на ПК видно всегда.
 	let open = $state(false);
 	const value = $derived(editor.value(field.path));
@@ -57,7 +60,7 @@
 		</div>
 		<div class="min-w-0 rounded-md {changed ? 'ring-1 ring-accent ring-offset-2 ring-offset-surface' : ''}">
 			{#if field.readOnly}
-				<span class="ext-text text-sm" {id}>{fmtValue(value)}</span>
+				<span class="ext-text text-sm" {id} aria-describedby={describedby}>{fmtValue(value)}</span>
 				<span class="ml-2 text-xs whitespace-nowrap text-fg-faint">только чтение</span>
 			{:else}
 				<Widget
@@ -65,6 +68,7 @@
 					{value}
 					{id}
 					{label}
+					{describedby}
 					fallback={editor.defaultValue(field.path)}
 					invalid={!!error}
 					onchange={(next) => editor.set(field.path, next)}

@@ -11,9 +11,11 @@
 		/** Значение, которое ставится при включении пустого (null) поля. */
 		fallback?: unknown;
 		invalid?: boolean;
+		/** id описания поля (`SettingField`, `{id}-help`): связывает поле ввода с ним на ПК. */
+		describedby?: string;
 		onchange: (next: unknown) => void;
 	}
-	let { kind, value, id, label, fallback, invalid = false, onchange }: Props = $props();
+	let { kind, value, id, label, fallback, invalid = false, describedby, onchange }: Props = $props();
 	let mapKey = $state('');
 	let jsonText = $state('');
 	let jsonError = $state('');
@@ -56,6 +58,7 @@
 			class="peer sr-only"
 			checked={value === true}
 			aria-label={label}
+			aria-describedby={describedby}
 			onchange={(e) => onchange(e.currentTarget.checked)}
 		/>
 		<span
@@ -65,7 +68,7 @@
 		<span class="text-xs text-fg-muted">{value === true ? 'вкл' : 'выкл'}</span>
 	</label>
 {:else if kind.kind === 'enum'}
-	<select {id} class="input" aria-label={label} aria-invalid={invalid || undefined} value={String(value ?? '')} onchange={(e) => onchange(e.currentTarget.value)}>
+	<select {id} class="input" aria-label={label} aria-invalid={invalid || undefined} aria-describedby={describedby} value={String(value ?? '')} onchange={(e) => onchange(e.currentTarget.value)}>
 		{#each kind.options as o (o)}<option value={o}>{o}</option>{/each}
 	</select>
 {:else if kind.kind === 'const'}
@@ -81,11 +84,12 @@
 		max={kind.max}
 		aria-label={label}
 		aria-invalid={invalid || undefined}
+		aria-describedby={describedby}
 		value={value === null || value === undefined ? '' : String(value)}
 		oninput={(e) => onchange(num(e.currentTarget.value))}
 	/>
 {:else if kind.kind === 'string'}
-	<input {id} class="input" aria-label={label} aria-invalid={invalid || undefined} value={String(value ?? '')} oninput={(e) => onchange(e.currentTarget.value)} />
+	<input {id} class="input" aria-label={label} aria-invalid={invalid || undefined} aria-describedby={describedby} value={String(value ?? '')} oninput={(e) => onchange(e.currentTarget.value)} />
 {:else if kind.kind === 'enum_tags'}
 	<TagsInput value={(value as string[]) ?? []} options={kind.options} {label} onchange={onchange} />
 {:else if kind.kind === 'string_tags'}
@@ -96,6 +100,7 @@
 			{id}
 			class="input w-auto"
 			aria-label="{label}: вид"
+			aria-describedby={describedby}
 			value={value === 'max' ? 'max' : 'num'}
 			onchange={(e) => onchange(e.currentTarget.value === 'max' ? 'max' : (kind.min ?? 0))}
 		>
@@ -110,6 +115,7 @@
 				min={kind.min}
 				aria-label="{label}: число"
 				aria-invalid={invalid || undefined}
+				aria-describedby={describedby}
 				value={String(value ?? '')}
 				oninput={(e) => onchange(num(e.currentTarget.value))}
 			/>
@@ -127,7 +133,7 @@
 			задано
 		</label>
 		{#if value !== null && value !== undefined}
-			<Self kind={kind.inner} {value} {id} {label} {invalid} {onchange} />
+			<Self kind={kind.inner} {value} {id} {label} {invalid} {describedby} {onchange} />
 		{/if}
 	</span>
 {:else if kind.kind === 'map'}
@@ -172,6 +178,7 @@
 		{id}
 		class="input min-h-20 font-mono text-xs"
 		aria-label={label}
+		aria-describedby={describedby}
 		bind:value={jsonText}
 		onchange={() => {
 			try {

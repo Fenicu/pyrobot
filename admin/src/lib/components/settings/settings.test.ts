@@ -73,6 +73,9 @@ describe('Настройки', () => {
 		expect(info).toHaveAttribute('aria-expanded', 'false');
 		expect(info).toHaveAttribute('aria-controls', help.id);
 		expect(info).toHaveClass('md:hidden');
+		// На ПК (описание всегда видно) поле связано с ним через aria-describedby.
+		const field = within(row as HTMLElement).getByRole('spinbutton', { name: 'Пауза между запросами, с' });
+		expect(field).toHaveAttribute('aria-describedby', help.id);
 		info.focus();
 		await user.keyboard('{Enter}');
 		expect(info).toHaveAttribute('aria-expanded', 'true');
