@@ -38,11 +38,17 @@ function percentile(values: number[], p: number): number | null {
 	return sorted[i] ?? null;
 }
 
-/** Сводка по списку забегов: p90 длительности завершённых, среднее время шага, доли исходов. */
+/** Сводка по списку забегов: p90 длительности завершённых, среднее время шага, шагов на
+ * посещённую клетку (по забегам с картой; у списка сервера до 0.4 `visited` нет — null), исходы
+ * числом и долями. */
 export function summarize(runs: MetroRunSummary[]) {
 	const done = runs.filter((r) => r.status === 'done');
 	const steps = runs.map((r) => r.step_s).filter((s): s is number => typeof s === 'number');
+	const mapped = runs.filter((r) => typeof r.visited === 'number' && r.visited > 0);
+	const cells = mapped.reduce((a, r) => a + r.visited, 0);
 	const count = (o: Outcome) => runs.filter((r) => outcomeOf(r) === o).length;
+	const share = (n: number) => (runs.length ? n / runs.length : null);
+	const [self, ejected, stopped] = [count('self'), count('ejected'), count('stopped')];
 	return {
 		total: runs.length,
 		p90DurationS: percentile(
@@ -50,9 +56,13 @@ export function summarize(runs: MetroRunSummary[]) {
 			0.9
 		),
 		meanStepS: steps.length ? steps.reduce((a, b) => a + b, 0) / steps.length : null,
-		self: count('self'),
-		ejected: count('ejected'),
-		stopped: count('stopped')
+		stepsPerCell: cells > 0 ? mapped.reduce((a, r) => a + r.steps, 0) / cells : null,
+		self,
+		ejected,
+		stopped,
+		selfShare: share(self),
+		ejectedShare: share(ejected),
+		stoppedShare: share(stopped)
 	};
 }
 

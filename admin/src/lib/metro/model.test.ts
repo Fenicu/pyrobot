@@ -39,6 +39,25 @@ describe('забег метро 27.09', () => {
 		});
 	});
 
+	it('сводка: шагов на клетку по посещённым клеткам и исходы долями', () => {
+		const base = runs[0]!;
+		const r = (steps: number, visited: number, status: string, mode: string) => ({
+			...base,
+			steps,
+			visited,
+			status,
+			summary: { ...base.summary, mode }
+		});
+		const stats = summarize([r(100, 50, 'done', 'leave'), r(60, 20, 'done', 'explore'), r(10, 0, 'failed', 'explore'), r(30, 10, 'done', 'leave')]);
+		// Забег без посещённых клеток (упал до карты) в «шагов на клетку» не входит.
+		expect(stats.stepsPerCell).toBeCloseTo(190 / 80);
+		expect([stats.self, stats.ejected, stats.stopped]).toEqual([2, 1, 1]);
+		expect([stats.selfShare, stats.ejectedShare, stats.stoppedShare]).toEqual([0.5, 0.25, 0.25]);
+		// Список сервера до 0.4 — без visited.
+		expect(summarize(runs).stepsPerCell).toBeNull();
+		expect(summarize([]).selfShare).toBeNull();
+	});
+
 	it('пустой и незавершённый забег', () => {
 		const empty = mapOf({ grid: {}, path: [], events: [], vitals: [], summary: {} });
 		expect([empty.cells, empty.path, empty.exit, empty.rows]).toEqual([[], [], null, 0]);

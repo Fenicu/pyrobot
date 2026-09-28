@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
 import { createApi } from '$lib/api/client';
-import type { MetroRunDetail } from '$lib/api/types';
+import type { MetroRunDetail, MetroRunSummary } from '$lib/api/types';
+import { deferred, flush } from '$lib/test/deferred';
 import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import MetroRun from './MetroRun.svelte';
@@ -80,5 +81,42 @@ describe('карта метро', () => {
 		expect(await screen.findByRole('img', { name: /Карта забега #1/ })).toBeInTheDocument();
 		expect(screen.getByLabelText('Сводка забегов')).toHaveTextContent('p90 длительности: 9 мин');
 		expect(fetch.calls.map((c) => c.url)).toContain('/api/v1/metro/runs/1');
+	});
+
+	it('сводка: шагов на клетку и исходы долями', async () => {
+		const base = fixture<{ items: MetroRunSummary[] }>('metro_runs').items[0]!;
+		const items = [
+			{ ...base, id: 3, steps: 120, visited: 40 },
+			{ ...base, id: 2, steps: 60, visited: 40, summary: { ...base.summary, mode: 'explore' } },
+			{ ...base, id: 1, steps: 20, visited: 0, status: 'failed' },
+			{ ...base, id: 0, steps: 10, visited: 20 }
+		];
+		const fetch = mockFetch((c) =>
+			c.url.startsWith('/api/v1/metro/runs?') ? json({ items, next_before: null }) : json(run)
+		);
+		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		render(MetroView, { api, now: NOW });
+		const stats = await screen.findByLabelText('Сводка забегов');
+		expect(stats).toHaveTextContent('шагов на клетку: 1.9');
+		expect(stats).toHaveTextContent('вышел сам 50% · выброс 25% · остановлен 25%');
+	});
+
+	it('ошибка прежнего забега не показывается у нового', async () => {
+		const base = fixture<{ items: MetroRunSummary[] }>('metro_runs').items[0]!;
+		const late = deferred<Response>();
+		const fetch = mockFetch((c) => {
+			if (c.url.startsWith('/api/v1/metro/runs?')) return json({ items: [{ ...base, id: 2 }, base], next_before: null });
+			return c.url === '/api/v1/metro/runs/2' ? late.promise : json(run);
+		});
+		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		render(MetroView, { api, now: NOW });
+		const list = await screen.findByRole('list', { name: 'Забеги метро' });
+		const buttons = await within(list).findAllByRole('button');
+		await fireEvent.click(buttons[1]!);
+		expect(await screen.findByRole('img', { name: /Карта забега #1/ })).toBeInTheDocument();
+		late.resolve(json({ detail: 'metro run not found' }, 404));
+		await flush();
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(screen.getByRole('img', { name: /Карта забега #1/ })).toBeInTheDocument();
 	});
 });

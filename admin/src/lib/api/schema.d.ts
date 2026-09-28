@@ -1140,6 +1140,11 @@ export interface components {
             summary: {
                 [key: string]: unknown;
             };
+            /**
+             * Visited
+             * @default 0
+             */
+            visited: number;
             /** Vitals */
             vitals: unknown[];
         };
@@ -1182,6 +1187,11 @@ export interface components {
             summary: {
                 [key: string]: unknown;
             };
+            /**
+             * Visited
+             * @default 0
+             */
+            visited: number;
         };
         /** MetroRunsPage */
         MetroRunsPage: {

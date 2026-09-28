@@ -8,6 +8,7 @@ from app.api.container import Container
 from app.api.cursor import decode_cursor, encode_cursor
 from app.api.deps import SessionContext, container, current_session, require_csrf
 from app.api.errors import AUTH, CSRF, not_found
+from app.db.models import MetroRunRow
 from app.engine.state.reducer import METRIC_FIELDS
 
 router = APIRouter(prefix="/api/v1", tags=["reference"])
@@ -37,6 +38,8 @@ class MetroRunSummary(BaseModel):
     buffs: list[Any]
     result: dict[str, Any] | None
     summary: dict[str, Any]
+    # Посещённых клеток (`grid.visited`): «шагов на клетку» в сводке списка.
+    visited: int = 0
 
 
 class MetroRunDetail(MetroRunSummary):
@@ -146,6 +149,12 @@ async def metrics(
     )
 
 
+def _metro_run[T: MetroRunSummary](model: type[T], row: MetroRunRow) -> T:
+    visited = row.grid.get("visited") if isinstance(row.grid, dict) else None
+    count = len(visited) if isinstance(visited, list) else 0
+    return model.model_validate(row, from_attributes=True).model_copy(update={"visited": count})
+
+
 @router.get("/metro/runs", response_model=MetroRunsPage, responses=AUTH)
 async def metro_runs(
     _: Annotated[SessionContext, Depends(current_session)],
@@ -156,7 +165,7 @@ async def metro_runs(
     rows = await c.reads.metro_runs(limit + 1, before)
     page = rows[:limit]
     return MetroRunsPage(
-        items=[MetroRunSummary.model_validate(r, from_attributes=True) for r in page],
+        items=[_metro_run(MetroRunSummary, r) for r in page],
         next_before=page[-1].id if len(rows) > limit else None,
     )
 
@@ -174,7 +183,7 @@ async def metro_run(
     row = await c.reads.metro_run(run_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "metro run not found")
-    return MetroRunDetail.model_validate(row, from_attributes=True)
+    return _metro_run(MetroRunDetail, row)
 
 
 @router.get("/unrecognized", response_model=UnrecognizedPage, responses=AUTH)

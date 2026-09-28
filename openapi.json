@@ -1352,6 +1352,11 @@
             "title": "Summary",
             "type": "object"
           },
+          "visited": {
+            "default": 0,
+            "title": "Visited",
+            "type": "integer"
+          },
           "vitals": {
             "items": {},
             "title": "Vitals",
@@ -1484,6 +1489,11 @@
             "additionalProperties": true,
             "title": "Summary",
             "type": "object"
+          },
+          "visited": {
+            "default": 0,
+            "title": "Visited",
+            "type": "integer"
           }
         },
         "required": [

@@ -22,6 +22,7 @@
 	let selected = $state<number | null>(null);
 	let detail = $state<MetroRunDetail | null>(null);
 	let error = $state('');
+	let detailError = $state('');
 	const stats = $derived(summarize(runs));
 
 	async function loadRuns(before: number | null) {
@@ -45,12 +46,18 @@
 		const id = selected;
 		if (id === null) return;
 		detail = null;
+		detailError = '';
+		// Ответ прежнего выбора — ни забег, ни ошибка — у нового не показывается.
 		call(api.GET('/api/v1/metro/runs/{run_id}', { params: { path: { run_id: id } } }))
 			.then((d) => {
 				if (selected === id) detail = d;
 			})
-			.catch((e: unknown) => (error = e instanceof ApiFailure ? e.message : String(e)));
+			.catch((e: unknown) => {
+				if (selected === id) detailError = e instanceof ApiFailure ? e.message : String(e);
+			});
 	});
+
+	const pct = (share: number | null) => (share === null ? '—' : `${Math.round(share * 100)}%`);
 
 	function pick(id: number) {
 		selected = id;
@@ -90,12 +97,18 @@
 			<dl class="mt-3 space-y-0.5 text-xs text-fg-muted" aria-label="Сводка забегов">
 				<div>p90 длительности: {stats.p90DurationS !== null ? fmtSpan(stats.p90DurationS) : '—'}</div>
 				<div>среднее время шага: {stats.meanStepS !== null ? `${stats.meanStepS.toFixed(1)} с` : '—'}</div>
-				<div>вышел сам / выброс / остановлен: {stats.self} / {stats.ejected} / {stats.stopped}</div>
+				<div>шагов на клетку: {stats.stepsPerCell !== null ? stats.stepsPerCell.toFixed(1) : '—'}</div>
+				<div>
+					вышел сам {pct(stats.selfShare)} · выброс {pct(stats.ejectedShare)} · остановлен {pct(stats.stoppedShare)}
+					<span class="text-fg-faint">({stats.self} / {stats.ejected} / {stats.stopped} из {stats.total})</span>
+				</div>
 			</dl>
 		{/if}
 	</section>
 	<div class="card min-w-0">
-		{#if detail}
+		{#if detailError}
+			<p class="ext-text text-sm text-bad-fg" role="alert">{detailError}</p>
+		{:else if detail}
 			<MetroRun run={detail} {now} />
 		{:else if selected !== null}
 			<p class="text-sm text-fg-muted" role="status">Загрузка забега #{selected}…</p>

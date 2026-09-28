@@ -90,11 +90,16 @@ async def test_metro_runs_list_and_detail(
         "exit": [3, 4],
     }
     first = await store.save(None, "done", record)
-    second = await store.save(None, "stopped", {**record, "started_at": _at(60).isoformat()})
+    visited = {"cells": [[0, 0, "."]], "visited": [[0, 0], [0, 1], [1, 1]]}
+    second = await store.save(
+        None, "stopped", {**record, "started_at": _at(60).isoformat(), "grid": visited}
+    )
     await login(api_client)
     runs = (await api_client.get("/api/v1/metro/runs")).json()
     assert [r["id"] for r in runs["items"]] == [second, first]
     assert "grid" not in runs["items"][0] and runs["items"][1]["summary"] == {"exit": [3, 4]}
+    # Посещённые клетки — для «шагов на клетку» в сводке списка; без grid.visited — 0.
+    assert [r["visited"] for r in runs["items"]] == [3, 0]
     page = (await api_client.get("/api/v1/metro/runs", params={"limit": 1})).json()
     assert [r["id"] for r in page["items"]] == [second] and page["next_before"] == second
     tail = (
@@ -103,6 +108,8 @@ async def test_metro_runs_list_and_detail(
     assert [r["id"] for r in tail["items"]] == [first] and tail["next_before"] is None
     full = (await api_client.get(f"/api/v1/metro/runs/{first}")).json()
     assert full["grid"] == {"cells": [[0, 0, "."]]} and full["steps"] == 120
+    assert full["visited"] == 0
+    assert (await api_client.get(f"/api/v1/metro/runs/{second}")).json()["visited"] == 3
     assert (await api_client.get("/api/v1/metro/runs/999999")).status_code == 404
 
 
