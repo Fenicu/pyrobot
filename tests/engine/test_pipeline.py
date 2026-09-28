@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
@@ -8,17 +9,18 @@ from app.engine.events import AntiFlood, Event
 from app.engine.memory import MemoryJournal
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
+from app.engine.state.ledger import Effect
 from app.engine.types import IncomingMessage
 from tests.engine.helpers import GAME, make_msg, now
 
 
 class CountingReducer:
-    def apply(
+    def reduce(
         self, state: dict[str, Any], msg: IncomingMessage, events: Sequence[Event]
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], tuple[Effect, ...]]:
         if not events:
-            return state
-        return {**state, "events": state.get("events", 0) + len(events)}
+            return state, ()
+        return {**state, "events": state.get("events", 0) + len(events)}, ()
 
 
 def _pipeline(reducer: Any = None, journal: Any = None) -> tuple[Pipeline, list[Delivery], Any]:
@@ -125,7 +127,7 @@ async def test_published_after_journal_append() -> None:
 
 async def test_reducer_error_keeps_message() -> None:
     class Broken:
-        def apply(self, state: Any, msg: Any, events: Any) -> Any:
+        def reduce(self, state: Any, msg: Any, events: Any) -> Any:
             raise RuntimeError("bug")
 
     pipe, seen, journal = _pipeline(Broken())
@@ -315,3 +317,65 @@ async def test_memory_journal_revisions() -> None:
         await journal.append(msg, [], None, 0)
     await journal.append(make_msg("c", msg_id=4), [], None, 0)
     assert [m.text for m in await journal.revisions(GAME, 3)] == ["a", "b"]
+
+
+async def test_effects_reach_journal_once() -> None:
+    from app.engine.settings import ChatsSection
+    from app.engine.state.reducer import StateReducer
+    from tests.fixtures import game_msg
+
+    journal = MemoryJournal()
+    pipe = Pipeline(
+        journal=journal, parser=default_parser(ChatsSection()), reducer=StateReducer(), bus=Bus()
+    )
+    book = game_msg("items", 3516680)
+    await pipe.process(book)
+    await pipe.process(book)
+    edit = replace(book, revision=book.revision + 1, kind="edit")
+    await pipe.process(edit)
+    assert [(m.msg_id, e.kind, e.amounts) for m, e, _ in journal.ledger] == [
+        (book.msg_id, "book", {"exp": 457})
+    ]
+
+
+async def test_commit_uncertain_then_conflict_reloads_snapshot() -> None:
+    """Фиксация прошла, но ответ потерялся: повтор упирается в уже записанную ревизию — снимок и
+    эффекты уже в журнале, состояние перечитывается из него, эффекты не задваиваются."""
+    from app.engine.settings import ChatsSection
+    from app.engine.state.reducer import StateReducer
+    from tests.fixtures import game_msg
+
+    class LostCommit(MemoryJournal):
+        def __init__(self) -> None:
+            super().__init__()
+            self.lose = 1
+
+        async def append(self, *args: Any, **kwargs: Any) -> int | None:
+            result = await super().append(*args, **kwargs)
+            if self.lose:
+                self.lose -= 1
+                raise ConnectionError("commit result lost")
+            return result
+
+    journal = LostCommit()
+    seen: list[Delivery] = []
+    bus = Bus()
+
+    async def collect(d: Delivery) -> None:
+        seen.append(d)
+
+    bus.subscribe(collect)
+    pipe = Pipeline(
+        journal=journal,
+        parser=default_parser(ChatsSection()),
+        reducer=StateReducer(),
+        bus=bus,
+        retry_base_s=0.01,
+    )
+    book = game_msg("items", 3516680)
+    assert await pipe.process(book) is None
+    assert (pipe.state, pipe.version) == journal.snapshot and pipe.version == 1
+    assert pipe.healthy and seen == []
+    assert len(journal.ledger) == 1
+    await pipe.process(book)
+    assert len(journal.ledger) == 1

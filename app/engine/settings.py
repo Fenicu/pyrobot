@@ -212,6 +212,9 @@ class RetentionSection(BaseModel):
     decisions_days: int = Field(default=30, ge=1, le=3650)
     # Долгая статистика: ряды метрик и забеги метро.
     metrics_days: int = Field(default=365, ge=1, le=3650)
+    # Журнал прихода — целыми сутками MSK: сегодня и `ledger_days - 1` суток до него; не меньше 31,
+    # чтобы все 30 дней «Итогов» были полными.
+    ledger_days: int = Field(default=31, ge=31, le=3650)
 
 
 class Settings(BaseModel):

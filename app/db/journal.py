@@ -7,8 +7,10 @@ from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.base import Database
-from app.db.models import MessageRow, MetricRow, StateSnapshot, UnrecognizedRow
+from app.db.models import LedgerRow, MessageRow, MetricRow, StateSnapshot, UnrecognizedRow
 from app.engine.events import Event, Unrecognized
+from app.engine.gametime import tasks_day
+from app.engine.state.ledger import Effect, numbered
 from app.engine.types import Button, IncomingMessage
 
 
@@ -90,6 +92,7 @@ class DbJournal:
         new_state: dict[str, Any] | None,
         new_version: int,
         metrics: Mapping[str, float] | None = None,
+        effects: Sequence[Effect] = (),
     ) -> int | None:
         async with self._db.sessions() as session, session.begin():
             stmt = (
@@ -144,4 +147,30 @@ class DbJournal:
                 for event in events
                 if isinstance(event, Unrecognized)
             )
+            if effects:
+                await session.execute(self._ledger(msg, effects))
             return int(journal_id)
+
+    def _ledger(self, msg: IncomingMessage, effects: Sequence[Effect]) -> Any:
+        """Эффекты — после вставки ревизии, в той же транзакции: повтор после сбоя фиксации
+        упирается в ревизию и их не задваивает; ключ эффекта уже есть — «уже записано»."""
+        rows = []
+        for effect, seq in numbered(effects):
+            at = effect.at or msg.date
+            rows.append(
+                {
+                    "account_id": self._account_id,
+                    "at": at,
+                    "day": tasks_day(at),
+                    "kind": effect.kind,
+                    "amounts": effect.amounts,
+                    "items": effect.items,
+                    "chat_id": msg.chat_id,
+                    "msg_id": msg.msg_id,
+                    "revision": msg.revision,
+                    "seq": seq,
+                }
+            )
+        return (
+            pg_insert(LedgerRow).values(rows).on_conflict_do_nothing(constraint="uq_ledger_effect")
+        )

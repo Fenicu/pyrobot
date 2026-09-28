@@ -9,12 +9,14 @@ from app.db.base import Database
 from app.db.models import (
     ActionRow,
     DecisionRow,
+    LedgerRow,
     MessageRow,
     MetricRow,
     MetroRunRow,
     NotificationRow,
     ScenarioRunRow,
 )
+from app.engine.gametime import tasks_day
 from app.engine.gateway.types import ActionStatus
 from app.engine.metro.store import METRO_HISTORY
 from app.engine.settings import RetentionSection
@@ -34,6 +36,7 @@ class DbRetention:
         journal = now - timedelta(days=policy.messages_days)
         decisions = now - timedelta(days=policy.decisions_days)
         stats = now - timedelta(days=policy.metrics_days)
+        ledger = tasks_day(now) - timedelta(days=policy.ledger_days - 1)
         # Несверенный неизвестный исход траты — обязательство сверки, оно живёт до сверки.
         open_obligation = and_(
             ActionRow.status == ActionStatus.OUTCOME_UNKNOWN.value,
@@ -75,6 +78,7 @@ class DbRetention:
                 MetroRunRow.started_at < stats,
                 MetroRunRow.id.not_in(recent_metro.scalar_subquery()),
             ),
+            "ledger": await self._purge(LedgerRow, LedgerRow.day < ledger),
         }
 
     async def _purge(self, model: Any, *conds: Any) -> int:

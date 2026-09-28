@@ -9,6 +9,7 @@ from app.engine.commands import CommandClass
 from app.engine.events import Event, Unrecognized
 from app.engine.gateway.store import CANCELLED, DuplicateKey, Obligation, StoredAction
 from app.engine.gateway.types import ActionRequest, ActionStatus
+from app.engine.state.ledger import Effect, numbered
 from app.engine.types import IncomingMessage
 
 _UNFINISHED = (ActionStatus.INTENT, ActionStatus.SENT)
@@ -20,7 +21,10 @@ class MemoryJournal:
         self.snapshot: tuple[dict[str, Any], int] = ({}, 0)
         self.metrics: list[tuple[datetime, str, float]] = []
         self.unrecognized: list[tuple[int, str]] = []
+        # Журнал прихода: сообщение, эффект, номер эффекта этого вида в сообщении.
+        self.ledger: list[tuple[IncomingMessage, Effect, int]] = []
         self._keys: set[tuple[int, int, int, str]] = set()
+        self._ledger_keys: set[tuple[int, int, int, str, int]] = set()
 
     async def load_state(self) -> tuple[dict[str, Any], int]:
         return self.snapshot
@@ -49,6 +53,7 @@ class MemoryJournal:
         new_state: dict[str, Any] | None,
         new_version: int,
         metrics: Mapping[str, float] | None = None,
+        effects: Sequence[Effect] = (),
     ) -> int | None:
         key = (msg.chat_id, msg.msg_id, msg.revision, msg.content_hash())
         if key in self._keys:
@@ -62,6 +67,11 @@ class MemoryJournal:
         self.unrecognized.extend(
             (journal_id, e.first_line) for e in events if isinstance(e, Unrecognized)
         )
+        for effect, seq in numbered(effects):
+            ledger_key = (msg.chat_id, msg.msg_id, msg.revision, effect.kind, seq)
+            if ledger_key not in self._ledger_keys:
+                self._ledger_keys.add(ledger_key)
+                self.ledger.append((msg, effect, seq))
         return journal_id
 
 

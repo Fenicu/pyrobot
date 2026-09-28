@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from app.engine.bus import Bus, Delivery
 from app.engine.events import Event
 from app.engine.parsing import MessageParser
+from app.engine.state.ledger import Effect
 from app.engine.types import IncomingMessage
 
 log = logging.getLogger(__name__)
@@ -17,12 +18,18 @@ State = dict[str, Any]
 
 
 class Reducer(Protocol):
-    def apply(self, state: State, msg: IncomingMessage, events: Sequence[Event]) -> State: ...
+    def reduce(
+        self, state: State, msg: IncomingMessage, events: Sequence[Event]
+    ) -> tuple[State, Sequence[Effect]]:
+        """Новое состояние и эффекты применённых итогов для журнала прихода."""
+        ...
 
 
 class NullReducer:
-    def apply(self, state: State, msg: IncomingMessage, events: Sequence[Event]) -> State:
-        return state
+    def reduce(
+        self, state: State, msg: IncomingMessage, events: Sequence[Event]
+    ) -> tuple[State, Sequence[Effect]]:
+        return state, ()
 
 
 class JournalStore(Protocol):
@@ -35,6 +42,7 @@ class JournalStore(Protocol):
         new_state: State | None,
         new_version: int,
         metrics: Mapping[str, float] | None = None,
+        effects: Sequence[Effect] = (),
     ) -> int | None: ...
 
 
@@ -127,8 +135,9 @@ class Pipeline:
 
     async def process(self, msg: IncomingMessage) -> Delivery | None:
         events = self._parser.parse(msg)
+        effects: Sequence[Effect] = ()
         try:
-            new_state = self._reducer.apply(self._state, msg, events)
+            new_state, effects = self._reducer.reduce(self._state, msg, events)
         except Exception:
             log.exception("reducer failed on %s/%s", msg.chat_id, msg.msg_id)
             new_state = self._state
@@ -142,7 +151,7 @@ class Pipeline:
                 log.exception("metrics failed on %s/%s", msg.chat_id, msg.msg_id)
                 metrics = None
         journal_id = await self._append(
-            msg, events, new_state if changed else None, version, metrics
+            msg, events, new_state if changed else None, version, metrics, effects
         )
         if journal_id is None:
             return None
@@ -168,21 +177,35 @@ class Pipeline:
         new_state: State | None,
         version: int,
         metrics: Mapping[str, float] | None,
+        effects: Sequence[Effect],
     ) -> int | None:
         delay = self._retry_base
+        failed = False
         while True:
             try:
                 journal_id = await self._journal.append(
-                    msg, events, new_state, version, metrics=metrics
+                    msg, events, new_state, version, metrics=metrics, effects=effects
                 )
             except Exception:
                 self._healthy = False
+                failed = True
                 log.exception("journal append failed, retry in %.2fs", delay)
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, self._retry_max)
                 continue
             self._healthy = True
+            if journal_id is None and failed:
+                await self._reload(msg)
             return journal_id
+
+    async def _reload(self, msg: IncomingMessage) -> None:
+        """Сбой ответа на фиксацию, а повтор упёрся в уже записанную ревизию: прошлая попытка
+        зафиксировалась вместе со снимком и эффектами — состояние берётся из снимка журнала."""
+        log.warning("message %s/%s already journaled, state reloaded", msg.chat_id, msg.msg_id)
+        try:
+            self._state, self._version = await self._journal.load_state()
+        except Exception:
+            log.exception("state not reloaded after uncertain commit")
 
     def _remember(self, msg: IncomingMessage) -> None:
         key = (msg.chat_id, msg.msg_id)

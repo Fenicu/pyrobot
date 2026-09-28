@@ -26,12 +26,12 @@ function schemaPaths(): { groups: string[]; leaves: string[] } {
 describe('описания настроек', () => {
 	const { groups, leaves } = schemaPaths();
 
-	it('схема: 18 секций и групп, 91 лист', () => {
+	it('схема: 18 секций и групп, 92 листа', () => {
 		expect(groups).toHaveLength(18);
 		expect(groups).toContain('lottery.tickets');
 		expect(groups).toContain('lottery.keep');
 		expect(groups).toContain('strategy.reserve_ahead_min');
-		expect(leaves).toHaveLength(91);
+		expect(leaves).toHaveLength(92);
 	});
 
 	it('словарь совпадает с путями схемы в обе стороны', () => {

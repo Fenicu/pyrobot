@@ -612,6 +612,13 @@
      "title": "Decisions Days",
      "type": "integer"
     },
+    "ledger_days": {
+     "default": 31,
+     "maximum": 3650,
+     "minimum": 31,
+     "title": "Ledger Days",
+     "type": "integer"
+    },
     "messages_days": {
      "default": 90,
      "maximum": 3650,

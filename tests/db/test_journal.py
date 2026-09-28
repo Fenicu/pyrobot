@@ -92,3 +92,50 @@ async def test_messages_with_event_give_latest_revision(clean_db: Database) -> N
         (10, 0, True),
         (11, 5, False),
     ]
+
+
+async def test_ledger_rows_in_same_transaction_once(clean_db: Database) -> None:
+    from datetime import UTC, date, datetime
+
+    from sqlalchemy import select
+
+    from app.db.models import LedgerRow
+    from app.engine.state.ledger import Effect
+
+    journal = DbJournal(clean_db, account_id=1)
+    # 21:30 UTC — уже следующие сутки по Москве.
+    moment = datetime(2026, 9, 27, 21, 30, tzinfo=UTC)
+    msg = make_msg("итог", msg_id=7, date=moment)
+    battle = datetime(2026, 9, 27, 15, 30, tzinfo=UTC)
+    effects = [
+        Effect("deed", {"exp": 158}, {"Пуговица": 1}),
+        Effect("deed", {"exp": 47}),
+        Effect("factory", {"money": 347}, at=battle),
+    ]
+    assert await journal.append(msg, [], {"x": 1}, 1, effects=effects) is not None
+    assert await journal.append(msg, [], None, 1, effects=effects) is None
+    # Та же ревизия с другим содержимым (правки одной секунды): эффекты по ключу уже записаны.
+    same_revision = make_msg("итог!", msg_id=7, date=moment)
+    assert await journal.append(same_revision, [], None, 1, effects=effects[:1]) is not None
+    async with clean_db.sessions() as session:
+        rows = (await session.scalars(select(LedgerRow).order_by(LedgerRow.id))).all()
+    assert [(r.kind, r.seq, r.amounts, r.items, r.at, r.day) for r in rows] == [
+        ("deed", 0, {"exp": 158}, {"Пуговица": 1}, moment, date(2026, 9, 28)),
+        ("deed", 1, {"exp": 47}, {}, moment, date(2026, 9, 28)),
+        ("factory", 0, {"money": 347}, {}, battle, date(2026, 9, 27)),
+    ]
+    assert {(r.chat_id, r.msg_id, r.revision) for r in rows} == {(msg.chat_id, 7, 0)}
+
+
+async def test_ledger_not_written_without_message_row(clean_db: Database) -> None:
+    from sqlalchemy import func, select
+
+    from app.db.models import LedgerRow
+    from app.engine.state.ledger import Effect
+
+    journal = DbJournal(clean_db, account_id=1)
+    msg = make_msg("итог", msg_id=8)
+    await journal.append(msg, [], None, 1)
+    assert await journal.append(msg, [], None, 1, effects=[Effect("book", {"exp": 1})]) is None
+    async with clean_db.sessions() as session:
+        assert await session.scalar(select(func.count()).select_from(LedgerRow)) == 0

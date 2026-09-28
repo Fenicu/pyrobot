@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -139,6 +140,31 @@ class MetricRow(Base):
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     key: Mapped[str] = mapped_column(String(32))
     value: Mapped[float] = mapped_column(Float)
+
+
+class LedgerRow(Base):
+    """Журнал прихода: эффект применённого итога сообщения (что редьюсер изменил в ресурсах)."""
+
+    __tablename__ = "ledger"
+    __table_args__ = (
+        UniqueConstraint(
+            "account_id", "chat_id", "msg_id", "revision", "kind", "seq", name="uq_ledger_effect"
+        ),
+        Index("ix_ledger_account_day", "account_id", "day"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    # Время исхода (ревизии, в которой итог применён; у отчётов битвы и фабрики — самой битвы) и
+    # его дата по Москве.
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    day: Mapped[date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(32))
+    amounts: Mapped[dict[str, Any]]
+    items: Mapped[dict[str, Any]]
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    msg_id: Mapped[int] = mapped_column(BigInteger)
+    revision: Mapped[int] = mapped_column(BigInteger)
+    seq: Mapped[int] = mapped_column(Integer)
 
 
 class UnrecognizedRow(Base):

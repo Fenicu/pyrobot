@@ -3,11 +3,11 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
 from app.engine.events import Event, Unrecognized
-from app.engine.gametime import tasks_day
+from app.engine.gametime import MSK, tasks_day, to_msk
 from app.engine.parsing.activities import (
     ActivityCancelled,
     ActivityFinished,
@@ -60,6 +60,7 @@ from app.engine.parsing.profile import ProfileCompact
 from app.engine.parsing.refusals import Busy, Refused
 from app.engine.parsing.screens import (
     BattleMenu,
+    BattleReport,
     DeedFinishedInstantly,
     EtherScreen,
     InfoScreen,
@@ -85,6 +86,7 @@ from app.engine.parsing.smoothie import (
 from app.engine.parsing.stocks import Dividends, StockBought, StockScreen, StockSold
 from app.engine.parsing.swinfo import BattleSummary, FactoryCall, FactoryResult
 from app.engine.parsing.tangerine import TangerineRefused
+from app.engine.state.ledger import Effect, amounts
 from app.engine.state.model import (
     DAY_SCOPED,
     DEED_PRIORS,
@@ -126,6 +128,10 @@ LOTTERY_SALE_ENDS = timedelta(minutes=10)
 # совпадает с известным (отсчёт округлён до минуты).
 LOTTERY_SAME_DRAW = timedelta(minutes=2)
 LOTTERY_CURRENCIES = ("money", "knowledge", "raw", "details")
+# Битва за фабрику — в 18:30 MSK: отчёт о ней (/fb) датируется ею.
+FACTORY_BATTLE = time(18, 30)
+# Ответы с изменением ресурсов → вид эффекта журнала прихода.
+_RESULT_KINDS = {"symbol_exchange": "exchange", "tangerine_gift": "tangerine_gift"}
 # Бой с биржевиками: итог приходит через ~5 мин после присоединения (медиана 292 с).
 BULLS_FIGHT = timedelta(minutes=5)
 FOOD_KINDS = ("hotdog", "pizza", "burger", "banana")
@@ -191,6 +197,29 @@ class _Patch:
         self.origin = min(origin, at)
         self.msg_id = msg_id
         self.updates: dict[str, Any] = {}
+        # Применённые итоги (ключ → создание сообщения) и горизонт их хранения.
+        self.applied: dict[str, datetime] = dict(state.applied)
+        self.horizon = max([*self.applied.values(), self.origin]) - OUTCOME_HORIZON
+        # Эффекты для журнала прихода: только применённых итогов.
+        self.effects: list[Effect] = []
+
+    def effect(
+        self,
+        kind: str,
+        sums: dict[str, int],
+        items: Mapping[str, int] | None = None,
+        at: datetime | None = None,
+    ) -> None:
+        if sums or items:
+            self.effects.append(Effect(kind, sums, dict(items or {}), at))
+
+    def first(self, key: str) -> bool:
+        """Итог, который приходит разными сообщениями (каждый /fb, /battle), — один раз по своему
+        ключу, а не по сообщению."""
+        if key in self.applied or self.origin < self.horizon:
+            return False
+        self.applied[key] = self.origin
+        return True
 
     def get(self, name: str) -> Any:
         return self.updates.get(name, getattr(self.state, name))
@@ -383,6 +412,7 @@ def _started(p: _Patch, e: ActivityStarted) -> None:
     p.delta("money", -e.money)
     p.delta("details", -e.details)
     p.delta("motivation", -_motivation_cost(p, e.activity))
+    p.effect("deed_start", amounts(money=-e.money, details=-e.details))
 
 
 @_on(ActivityFinished)
@@ -391,11 +421,13 @@ def _finished(p: _Patch, e: ActivityFinished) -> None:
     p.rewards(e.rewards)
     p.delta("motivation", e.motivation_refund)
     p.stat(e.activity, e.rewards)
+    p.effect("deed", amounts(e.rewards), e.rewards.items)
 
 
 @_on(BonusRewards)
 def _bonus(p: _Patch, e: BonusRewards) -> None:
     p.rewards(e.rewards)
+    p.effect("deed", amounts(e.rewards), e.rewards.items)
 
 
 @_on(ActivityCancelled)
@@ -405,6 +437,7 @@ def _cancelled(p: _Patch, e: ActivityCancelled) -> None:
     p.snap("busy", None)
     p.delta("motivation", e.motivation)
     p.delta("money", e.money)
+    p.effect("deed_start", amounts(money=e.money))
 
 
 @_on(MotivationFull)
@@ -445,6 +478,7 @@ def _fell_asleep(p: _Patch, e: FellAsleep) -> None:
     p.snap("busy", BusyState(activity=f"sleep_{e.where}", until=p.at + timedelta(hours=e.hours)))
     p.snap("sleep_deadline", None, src="derived")
     p.delta("money", -e.cost)
+    p.effect("hotel", amounts(money=-e.cost))
 
 
 @_on(SleepMenu)
@@ -468,11 +502,13 @@ def _woke(p: _Patch, rewards: Rewards) -> None:
 @_on(WokeUp)
 def _woke_up(p: _Patch, e: WokeUp) -> None:
     _woke(p, e.rewards)
+    p.effect("sleep", amounts(e.rewards))
 
 
 @_on(RobberyFight)
 def _robbery(p: _Patch, e: RobberyFight) -> None:
     _woke(p, e.rewards)
+    p.effect("robbery_fight", amounts(e.rewards))
 
 
 @_on(RobberyLoss)
@@ -481,6 +517,7 @@ def _robbery_loss(p: _Patch, e: RobberyLoss) -> None:
     p.rewards(e.rewards)
     if e.money_lost is None:
         p.doubt("money")
+    p.effect("robbery", amounts(e.rewards))
 
 
 @_on(DeedsMenu)
@@ -555,6 +592,7 @@ def _book(p: _Patch, e: BookRead) -> None:
     p.delta("exp", e.exp)
     p.delta("books", -1)
     p.snap("book_ready_at", p.later(e.next_in_s))
+    p.effect("book", amounts(exp=e.exp))
 
 
 @_on(CardUsed)
@@ -562,6 +600,7 @@ def _card(p: _Patch, e: CardUsed) -> None:
     p.delta("money", e.money)
     p.delta("cards", -1)
     p.snap("card_ready_at", p.later(e.next_in_s))
+    p.effect("card", amounts(money=e.money))
 
 
 @_on(GiftsScreen)
@@ -576,6 +615,7 @@ def _gifts(p: _Patch, e: GiftsScreen) -> None:
 def _container(p: _Patch, e: ContainerOpened) -> None:
     p.delta(f"containers_{e.size}", -1)
     p.rewards(e.rewards)
+    p.effect("container", amounts(e.rewards), e.rewards.items)
 
 
 @_on(PrizeboxOpened)
@@ -588,6 +628,7 @@ def _prizebox(p: _Patch, e: PrizeboxOpened) -> None:
         p.snap("money", e.money_after)
     else:
         p.rewards(e.rewards)
+    p.effect("prizebox", amounts(e.rewards), e.rewards.items)
 
 
 @_on(GorbushkaScreen)
@@ -629,11 +670,14 @@ def _gorbushka(p: _Patch, e: GorbushkaScreen) -> None:
     if bought_after is not None and ticket is not None:
         p.delta("money", -ticket.value.money, since=bought_after)
         p.delta("knowledge", -ticket.value.knowledge, since=bought_after)
+        cost = amounts(money=-ticket.value.money, knowledge=-ticket.value.knowledge)
+        p.effect("gorbushka_ticket", cost)
 
 
 @_on(GorbushkaFight)
 def _gorbushka_fight(p: _Patch, e: GorbushkaFight) -> None:
     p.rewards(e.rewards)
+    p.effect("gorbushka_fight", amounts(e.rewards))
     current: Obs[GorbushkaState] | None = p.get("gorbushka")
     cost = current.value.fight_cost if current is not None else None
     p.delta("motivation", -(cost if cost is not None else 1))
@@ -668,6 +712,7 @@ def _levelup(p: _Patch, e: LevelUpStep) -> None:
         p.snap("levelup_pending", False)
         p.delta("money", e.money)
         p.delta("motivation", e.motivation)
+        p.effect("levelup", amounts(money=e.money))
     if e.skill is not None and e.skill in Skills.model_fields:
         _add_skills(p, {e.skill: 1})
 
@@ -735,6 +780,7 @@ def _task_chosen(p: _Patch, e: TaskChosen) -> None:
 @_on(TaskCompleted)
 def _task_completed(p: _Patch, e: TaskCompleted) -> None:
     p.rewards(e.rewards)
+    p.effect("task", amounts(e.rewards, trophies=e.trophies))
     day = tasks_day(p.at)
     known: Obs[PersonalTask] | None = p.get("daily_personal")
     if known is not None and known.value.day == day:
@@ -780,6 +826,25 @@ def _factory_report(p: _Patch, e: FactoryReport) -> None:
     known: Obs[date] | None = p.get("factory_report_day")
     if known is None or known.value <= e.battle_day:
         p.snap("factory_report_day", e.battle_day)
+    if p.first(f"factory:{e.day}"):
+        battle = datetime.combine(e.battle_day, FACTORY_BATTLE, tzinfo=MSK)
+        p.effect("factory", amounts(e.rewards), at=battle.astimezone(UTC))
+
+
+def battle_moment(hour: int, seen: datetime) -> datetime:
+    """Битва в `hour` часов по Москве — последняя не позже `seen` (отчёт запрошен после неё)."""
+    local = to_msk(seen)
+    battle = local.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if battle > local:
+        battle -= timedelta(days=1)
+    return battle.astimezone(UTC)
+
+
+@_on(BattleReport)
+def _battle_report(p: _Patch, e: BattleReport) -> None:
+    battle = battle_moment(e.hour, p.origin)
+    if p.first(f"battle:{battle.isoformat()}"):
+        p.effect("battle", amounts(e.rewards), at=battle)
 
 
 @_on(BullsInvite)
@@ -799,6 +864,7 @@ def _bulls_result(p: _Patch, e: BullsResult) -> None:
     if busy is not None and busy.value is not None and busy.value.activity == "bulls":
         p.snap("busy", None)
     p.rewards(e.rewards)
+    p.effect("bulls", amounts(e.rewards))
     if e.won:
         p.snap("bulls_won_at", p.at)
 
@@ -855,6 +921,7 @@ _on(StockSold)(_stock_trade)
 @_on(Dividends)
 def _dividends(p: _Patch, e: Dividends) -> None:
     p.delta("money", e.amount)
+    p.effect("dividends", amounts(money=e.amount))
 
 
 @_on(BattleSummary)
@@ -954,19 +1021,18 @@ for _screen in (
 @_on(MetroFinished)
 def _metro_finished(p: _Patch, e: MetroFinished) -> None:
     loot = e.loot
-    p.rewards(
-        Rewards(
-            exp=loot.get("exp", 0),
-            money=loot.get("money", 0),
-            knowledge=loot.get("knowledge", 0),
-            details=loot.get("details", 0),
-            raw=loot.get("raw", 0),
-            stamina=e.stamina,
-            upgrades_white=loot.get("upgrades_white", 0),
-            upgrades_blue=loot.get("upgrades_blue", 0),
-            upgrades_red=loot.get("upgrades_red", 0),
-        )
+    found_rewards = Rewards(
+        exp=loot.get("exp", 0),
+        money=loot.get("money", 0),
+        knowledge=loot.get("knowledge", 0),
+        details=loot.get("details", 0),
+        raw=loot.get("raw", 0),
+        stamina=e.stamina,
+        upgrades_white=loot.get("upgrades_white", 0),
+        upgrades_blue=loot.get("upgrades_blue", 0),
+        upgrades_red=loot.get("upgrades_red", 0),
     )
+    p.rewards(found_rewards)
     food = {kind: n for kind in FOOD_KINDS if (n := loot.get(kind, 0))}
     stock: Obs[dict[str, FoodStockState]] | None = p.get("food_stock")
     if food and stock is not None and all(kind in stock.value for kind in food):
@@ -980,6 +1046,7 @@ def _metro_finished(p: _Patch, e: MetroFinished) -> None:
         p.change("food_stock", found)
     p.snap("metro_ready_at", p.at + METRO_COOLDOWN, src="derived")
     p.snap("metro_message", None)
+    p.effect("metro", amounts(found_rewards))
 
 
 def _sale_ends(p: _Patch, draw_in_s: int) -> datetime:
@@ -1014,6 +1081,11 @@ def _lottery_bought(p: _Patch, e: LotteryBought) -> None:
     после покупки — нехватка (игра покупает сколько может)."""
     known: Obs[LotteryState] | None = p.get("lottery")
     spent = [c for c, n in e.bought.items() if n]
+    if known is not None and known.value.draw == e.draw and known.value.prices is not None:
+        # Трата известна по ценам снимка тиража, даже если сам снимок сомнителен.
+        prices = known.value.prices
+        cost = {c: -e.bought[c] * prices[c] for c in spent if c in prices}
+        p.effect("lottery_tickets", amounts(**cost))
     if known is None or known.value.draw != e.draw or known.value.bought is None:
         # Другой тираж: прежний снимок не про него, сколько куплено всего — неизвестно.
         p.snap(
@@ -1059,6 +1131,7 @@ def _lottery_currency(p: _Patch, e: LotteryCurrency) -> None:
     if before is not None and e.bought > before:
         # Правка после клика по количеству: куплено больше известного — списываем разницу.
         p.delta(e.currency, -(e.bought - before) * e.price)
+        p.effect("lottery_tickets", amounts(**{e.currency: -(e.bought - before) * e.price}))
     short = dict(snap.short)
     if e.short:
         short[e.currency] = _seen_value(p, e.currency)
@@ -1076,6 +1149,7 @@ def _lottery_currency(p: _Patch, e: LotteryCurrency) -> None:
 @_on(ResourcesChanged)
 def _resources(p: _Patch, e: ResourcesChanged) -> None:
     p.rewards(e.rewards)
+    p.effect(_RESULT_KINDS.get(e.source, e.source), amounts(e.rewards), e.rewards.items)
 
 
 @_on(LotteryWin)
@@ -1085,12 +1159,15 @@ def _lottery_win(p: _Patch, e: LotteryWin) -> None:
     p.delta("containers_small", e.containers_small)
     p.delta("containers_medium", e.containers_medium)
     _add_skills(p, e.skills)
+    extra = {"containers_small": e.containers_small, "containers_medium": e.containers_medium}
+    p.effect("lottery_win", amounts(e.rewards, **extra))
 
 
 @_on(LotterySkillsExpired)
 def _lottery_skills_expired(p: _Patch, e: LotterySkillsExpired) -> None:
     p.rewards(e.rewards)
     _add_skills(p, {s: -n for s, n in Counter(e.skills).items()})
+    p.effect("lottery_skills", amounts(e.rewards))
 
 
 @_on(EtherScreen)
@@ -1122,11 +1199,16 @@ class StateReducer:
     def apply(
         self, state: dict[str, Any], msg: IncomingMessage, events: Sequence[Event]
     ) -> dict[str, Any]:
+        return self.reduce(state, msg, events)[0]
+
+    def reduce(
+        self, state: dict[str, Any], msg: IncomingMessage, events: Sequence[Event]
+    ) -> tuple[dict[str, Any], tuple[Effect, ...]]:
+        """Новое состояние и эффекты для журнала прихода: эффект есть ровно у применённого
+        итога (ключ `applied`, прирост счётчика лотереи, доказанная покупка билета Горбушки)."""
         current = self._load(state)
         patch = _Patch(current, msg.date, msg.origin, msg.msg_id)
-        applied = dict(current.applied)
-        newest = max([*applied.values(), patch.origin])
-        horizon = newest - OUTCOME_HORIZON
+        applied, horizon = patch.applied, patch.horizon
         for event in events:
             handler = _HANDLERS.get(type(event))
             if handler is None:
@@ -1142,10 +1224,10 @@ class StateReducer:
             patch.updates["applied"] = kept
         result = patch.result()
         if result == current:
-            return state
+            return state, tuple(patch.effects)
         dumped = dump_state(result)
         self._cache = (dumped, result)
-        return dumped
+        return dumped, tuple(patch.effects)
 
     def metrics(self, old: Mapping[str, Any], new: Mapping[str, Any]) -> dict[str, float]:
         out: dict[str, float] = {}

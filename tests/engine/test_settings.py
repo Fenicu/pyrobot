@@ -285,6 +285,7 @@ LIMITS: dict[str, int] = {
     "retention.messages_days": 3650,
     "retention.decisions_days": 3650,
     "retention.metrics_days": 3650,
+    "retention.ledger_days": 3650,
 }
 DURATION = re.compile(r"_(s|min|h|days)$")
 
