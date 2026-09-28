@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Outlook, ScenarioInfo } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
-import { READY, SCENARIO, VERDICT, WAKE, lotteryTickets, scenarioText, timerLine, verdictText } from './text';
+import { READY, SCENARIO, VERDICT, WAKE, deedTag, lotteryTickets, scenarioText, timerLine, verdictText } from './text';
 
 const plan = fixture<Outlook>('outlook');
 const openapi = JSON.parse(readFileSync(join(process.cwd(), '..', 'openapi.json'), 'utf-8'));
@@ -49,5 +49,11 @@ describe('словари плана', () => {
 		expect(lotteryTickets(custom)).toBe('💵 4, 📚 max');
 		const cooldown = { at: plan.now, kind: 'cooldown' as const, key: 'refresh:profile', after_wake: false };
 		expect(timerLine(cooldown, plan).text).toBe('Кончится отсрочка: обновить профиль');
+	});
+
+	it('метка дела для счётчиков: учёба и конфа делят значок 📚 в игре — метки различаются', () => {
+		expect(deedTag('deed:learn')).not.toBe(deedTag('deed:confa'));
+		expect(deedTag('deed:harvest')).toBe('⛏');
+		expect(deedTag('deed:dconv')).toBe('⚙️→🔩');
 	});
 });

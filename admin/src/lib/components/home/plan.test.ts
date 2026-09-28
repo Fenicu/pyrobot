@@ -82,6 +82,11 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		const more = screen.getByRole('button', { name: 'Ещё' });
 		expect(more).toHaveAttribute('aria-expanded', 'false');
 		expect(more).toHaveClass('md:hidden');
+		// aria-controls — id панелей и списков, которые кнопка раскрывает (только те, что есть в DOM:
+		// на фикстуре нет таймеров «после пробуждения» — plan-later-list не участвует).
+		const controlled = more.getAttribute('aria-controls')!.split(' ');
+		expect(controlled).toEqual(['plan-why-panel', 'plan-ready-panel', 'plan-timers-list']);
+		for (const id of controlled) expect(document.getElementById(id), id).not.toBeNull();
 		await user.click(more);
 		expect(timers.every((t) => !t.classList.contains('hidden'))).toBe(true);
 		expect(why).not.toHaveClass('hidden');

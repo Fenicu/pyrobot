@@ -49,6 +49,17 @@ describe('«Сейчас»', () => {
 		expect(nowView(idle).decision).toBe('⏳ ждёт событий: таймеров нет');
 	});
 
+	it('ожидание отсрочки — с тем, чья она (не только «кончится отсрочка»)', () => {
+		const until = '2026-09-27T17:10:00Z';
+		const wakeups: Outlook['wakeups'] = [{ at: until, kind: 'cooldown', key: 'deed:job', after_wake: false }];
+		const waiting: Outlook = {
+			...plan,
+			wakeups,
+			decision: { kind: 'wait', scenario: null, params: {}, reason: 'cooldown:deed:job', until }
+		};
+		expect(nowView(waiting).decision).toBe('⏳ ждёт: кончится отсрочка: работа');
+	});
+
 	it('дело — с причиной выбора', () => {
 		const deed: Outlook = {
 			...plan,
@@ -88,6 +99,29 @@ describe('строка пояснения', () => {
 		expect(explain(personal, {}, NOW)).toContain('Следующее дело — работа, для личного задания.');
 		const best: Outlook = { ...plan, hints: { ...plan.hints, next_deed: { deed: 'deed:job', why: 'best' } } };
 		expect(explain(best, {}, NOW)).toContain('Следующее дело — работа, лучшее по оценке: основные сейчас недоступны.');
+	});
+
+	it('основных дел нет — «лучшее по оценке» без повтора «основные недоступны»', () => {
+		const noFocus: Outlook = {
+			...plan,
+			focus: [],
+			hints: { ...plan.hints, next_deed: { deed: 'deed:job', why: 'best' } }
+		};
+		const text = explain(noFocus, {}, NOW);
+		expect(text).toContain('Основных дел нет — дело выбирается по оценке. Следующее дело — работа, лучшее по оценке.');
+		expect(text).not.toContain('недоступны');
+	});
+
+	it('учёба и конфа в основных делах — счётчики различимы (в игре у обоих значок 📚)', () => {
+		const both: Outlook = {
+			...plan,
+			focus: [
+				{ deed: 'deed:learn', today: 1 },
+				{ deed: 'deed:confa', today: 2 }
+			],
+			hints: { ...plan.hints, next_deed: null }
+		};
+		expect(explain(both, {}, NOW)).toContain('сегодня 📚уч 1, 📚конф 2');
 	});
 
 	it('доступного нет — очередь основных по счётчикам: меньше запусков, при равенстве — первое в списке', () => {

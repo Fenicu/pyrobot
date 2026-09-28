@@ -21,8 +21,8 @@ function server() {
 		return d.promise;
 	};
 	const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetchImpl as typeof fetch);
-	const answer = async () => {
-		pending.shift()?.resolve(json(plan));
+	const answer = async (value: Outlook = plan) => {
+		pending.shift()?.resolve(json(value));
 		await vi.advanceTimersByTimeAsync(0);
 	};
 	return { api, signals, answer, requests: () => signals.length };
@@ -40,6 +40,11 @@ const decision: LiveEvent = {
 	type: 'decision',
 	id: 'd',
 	data: { id: 1, at: '2026-09-27T16:30:00Z', kind: 'act', scenario: 'book', reason: 'book_ready', until: null }
+};
+const settingsFrame: LiveEvent = {
+	type: 'settings',
+	id: 's',
+	data: { version: 2, mode: 'live', paused: true, killed: false }
 };
 
 describe('перечитывание плана', () => {
@@ -61,6 +66,19 @@ describe('перечитывание плана', () => {
 		expect(store.outlook?.decision.scenario).toBe('lottery_buy');
 		expect(s.requests()).toBe(2);
 		await s.answer();
+		expect(s.requests()).toBe(2);
+		store.stop();
+	});
+
+	it('кадр settings перечитывает план сразу — пауза, продолжение, kill, смена режима, PATCH настроек', async () => {
+		const s = server();
+		const store = new PlanStore(s.api);
+		store.start();
+		await tick();
+		await s.answer();
+		expect(s.requests()).toBe(1);
+		store.onEvent(settingsFrame);
+		await tick();
 		expect(s.requests()).toBe(2);
 		store.stop();
 	});
@@ -89,6 +107,20 @@ describe('перечитывание плана', () => {
 		store.stop();
 	});
 
+	it('readyChanged перечитывает план с тем же троттлингом, что и значимые кадры state', async () => {
+		const s = server();
+		const store = new PlanStore(s.api);
+		store.start();
+		await tick();
+		await s.answer();
+		store.readyChanged();
+		await vi.advanceTimersByTimeAsync(4_900);
+		expect(s.requests()).toBe(1);
+		await vi.advanceTimersByTimeAsync(100);
+		expect(s.requests()).toBe(2);
+		store.stop();
+	});
+
 	it('раз в минуту и после reset', async () => {
 		const s = server();
 		const store = new PlanStore(s.api);
@@ -104,26 +136,28 @@ describe('перечитывание плана', () => {
 		store.stop();
 	});
 
-	it('reset: план очищается, запрос отменяется, поздний ответ прежнего поколения не применяется', async () => {
+	it('reset: прежний план виден, пока не придёт новый; запрос отменяется, поздний ответ прежнего поколения не применяется', async () => {
 		const s = server();
 		const store = new PlanStore(s.api);
 		store.start();
 		await tick();
 		await s.answer();
-		expect(store.outlook).not.toBeNull();
+		expect(store.outlook?.decision.scenario).toBe('lottery_buy');
 		store.onEvent(decision);
 		await tick();
 		expect(s.requests()).toBe(2);
 		store.onEvent({ type: 'reset', id: '', data: { reason: 'epoch' } });
 		await tick();
-		expect(store.outlook).toBeNull();
+		// Блок не мигает «Загрузка плана…»: старый план остаётся, пока не пришёл новый.
+		expect(store.outlook?.decision.scenario).toBe('lottery_buy');
 		expect(s.signals[1]?.aborted).toBe(true);
 		expect(s.requests()).toBe(3);
-		// Ответ на запрос до reset приходит позже — не применяется.
-		await s.answer();
-		expect(store.outlook).toBeNull();
-		await s.answer();
+		// Ответ на запрос до reset приходит позже — не применяется (был бы виден как 'gorbushka').
+		await s.answer({ ...plan, decision: { ...plan.decision, scenario: 'gorbushka' } });
 		expect(store.outlook?.decision.scenario).toBe('lottery_buy');
+		// Ответ нового поколения (после reset) применяется.
+		await s.answer({ ...plan, decision: { ...plan.decision, scenario: 'book' } });
+		expect(store.outlook?.decision.scenario).toBe('book');
 		expect(s.requests()).toBe(3);
 		store.stop();
 	});

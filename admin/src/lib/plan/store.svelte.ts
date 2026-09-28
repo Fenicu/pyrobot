@@ -34,9 +34,12 @@ export function significant(changed: Record<string, unknown>): boolean {
 
 /** «План бота» (`GET /planner/outlook`): один запрос в полёте на вкладку (повтор во время запроса —
  * ещё один после него), отмена при уходе с главной. Перечитывание: при открытии, на кадр
- * `decision` и `scenario_run`, на кадр `state` с полями, которые читает планировщик, — не чаще раза
- * в 5 с, раз в минуту. `reset` — новое поколение: план очищается, запрос в полёте отменяется, его
- * поздний ответ не применяется. */
+ * `decision`, `scenario_run` и `settings` (пауза, продолжение, kill, смена режима, PATCH настроек —
+ * решения на паузе не журналятся, без этого «Сейчас» до 60 с противоречило бы нажатой паузе), на
+ * кадр `state` с полями, которые читает планировщик, — не чаще раза в 5 с, раз в минуту; поля
+ * готовности цикла (`readyChanged`) — с тем же троттлингом. `reset` — новое поколение: запрос в
+ * полёте отменяется, его поздний ответ не применяется, план читается заново, а прежний план виден
+ * на экране, пока не пришёл новый. */
 export class PlanStore {
 	outlook = $state<Outlook | null>(null);
 	error = $state<ApiError | null>(null);
@@ -114,16 +117,24 @@ export class PlanStore {
 	onEvent(event: LiveEvent): void {
 		if (!this.#started) return;
 		if (event.type === 'reset') {
-			// Поток начался заново: прежний план мог быть снят со старого снимка.
+			// Поток начался заново: прежний план мог быть снят со старого снимка — но он же не
+			// исчез с экрана, поэтому его видно, пока не придёт новый (новое поколение отменяет
+			// запрос в полёте, его поздний ответ не применяется).
 			this.#cancel();
-			this.outlook = null;
 			this.error = null;
 			void this.load();
-		} else if (event.type === 'decision' || event.type === 'scenario_run') {
+		} else if (event.type === 'decision' || event.type === 'scenario_run' || event.type === 'settings') {
 			void this.load();
 		} else if (event.type === 'state' && significant(event.data.changed as Record<string, unknown>)) {
 			this.#stateChanged();
 		}
+	}
+
+	/** Поля готовности цикла сменились (стор статуса движка на главной, опрос раз в 15 с — у них
+	 * нет своего кадра потока): перечитать план с тем же троттлингом, что у значимых кадров `state`. */
+	readyChanged(): void {
+		if (!this.#started) return;
+		this.#stateChanged();
 	}
 
 	#stateChanged(): void {

@@ -78,6 +78,18 @@ export function deedText(name: string): string {
 	return scenarioText(name).replace(/^\S+\s/, '');
 }
 
+/** Дела с одним значком в игре (`app/engine/parsing/activities.py`: и «Учиться», и «Конфа» шлют
+ * 📚) — короткая метка вместо голого значка, иначе счётчик «Основные дела» их не различает. */
+const DEED_TAG: Record<string, string> = {
+	'deed:learn': '📚уч',
+	'deed:confa': '📚конф'
+};
+
+/** Метка дела для счётчика «Основные дела»: значок сценария, а где он не свой — короткая метка. */
+export function deedTag(name: string): string {
+	return DEED_TAG[name] ?? scenarioText(name).split(' ')[0]!;
+}
+
 export const SOURCE_TEXT: Record<string, string> = {
 	profile: 'профиль',
 	inventory: 'инвентарь',

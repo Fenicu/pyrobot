@@ -3,7 +3,7 @@ import type { Outlook, PublicState } from '$lib/api/types';
 import { fmtNum, fmtTime, mskDay } from '$lib/util/format';
 import { activityLabel, PERSONAL_TASK } from '$lib/util/game';
 import { val } from '$lib/util/observed';
-import { actDetail, deedText, readyText, scenarioText, WAKE } from './text';
+import { actDetail, deedTag, deedText, readyText, scenarioText, timerLine } from './text';
 
 export interface NowView {
 	/** Почему решение сейчас не исполняется или что идёт до него: пауза, неготовность, идущий
@@ -57,7 +57,8 @@ function decisionText(plan: Outlook): { text: string; at: string | null } {
 	if (d.reason === 'no_timers') return { text: '⏳ ждёт событий: таймеров нет', at: null };
 	const timer = plan.wakeups.find((t) => !t.after_wake && t.at === d.until) ?? plan.wakeups[0];
 	if (plan.phase === 'asleep' && timer?.kind === 'busy') return { text: '🛌 ждёт пробуждения', at: d.until };
-	const what = timer ? WAKE[timer.kind].text.toLowerCase() : d.reason;
+	// timerLine несёт ключ (чей это кулдаун, какой источник обновить) — голый текст WAKE[kind] его теряет.
+	const what = timer ? timerLine(timer, plan).text.toLowerCase() : d.reason;
 	return { text: `⏳ ждёт: ${what}`, at: d.until };
 }
 
@@ -86,7 +87,7 @@ const WHY: Record<NonNullable<Outlook['hints']['next_deed']>['why'], string> = {
 	personal: ', для личного задания',
 	team: ', для командного задания',
 	focus: '',
-	best: ', лучшее по оценке: основные сейчас недоступны'
+	best: ', лучшее по оценке'
 };
 
 function focusText(plan: Outlook): string {
@@ -96,14 +97,19 @@ function focusText(plan: Outlook): string {
 	else if (focus.length === 1) base = `Основное дело: ${deedText(focus[0]!.deed)} (сегодня ${focus[0]!.today}).`;
 	else {
 		const names = focus.map((f) => deedText(f.deed));
-		const counts = focus.map((f) => `${scenarioText(f.deed).split(' ')[0]} ${f.today}`).join(', ');
+		const counts = focus.map((f) => `${deedTag(f.deed)} ${f.today}`).join(', ');
 		base = `Основные дела: ${names.slice(0, -1).join(', ')} и ${names.at(-1)} по очереди (сегодня ${counts}).`;
 	}
 	// Следующее — то, что шаг дел выбрал бы среди доступных сейчас (с бэкенда: задания дня, потом
 	// основные по очереди, потом лучшее по оценке); доступных нет — только очередь основных по
 	// счётчикам: меньше запусков сегодня, при равенстве — раньше в списке.
 	const next = plan.hints.next_deed;
-	if (next) return `${base} Следующее дело — ${deedText(next.deed)}${WHY[next.why]}.`;
+	if (next) {
+		// «Основные сейчас недоступны» повторило бы «Основных дел нет» строкой выше — только когда
+		// основные дела вообще есть (просто сейчас ни одно не проходит).
+		const why = next.why === 'best' && focus.length > 0 ? `${WHY.best}: основные сейчас недоступны` : WHY[next.why];
+		return `${base} Следующее дело — ${deedText(next.deed)}${why}.`;
+	}
 	if (focus.length === 0) return base;
 	const byCount = focus.reduce((best, f) => (f.today < best.today ? f : best));
 	return `${base} Доступных дел сейчас нет; по счётчикам следующее основное — ${deedText(byCount.deed)}.`;

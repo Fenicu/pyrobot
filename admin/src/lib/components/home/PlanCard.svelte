@@ -35,6 +35,17 @@
 	);
 	const phoneOnly = (i: number) => (i >= PHONE_TIMERS && !more ? 'hidden md:grid' : 'grid');
 	const extra = $derived(more ? '' : 'hidden md:block');
+	// «Ещё» раскрывает несколько панелей и списков разом: id тех, что сейчас есть в DOM.
+	const controls = $derived(
+		[
+			'plan-why-panel',
+			(plan?.also_ready.length ?? 0) > 0 ? 'plan-ready-panel' : null,
+			'plan-timers-list',
+			later.length > 0 ? 'plan-later-list' : null
+		]
+			.filter((id): id is string => id !== null)
+			.join(' ')
+	);
 </script>
 
 {#snippet timerRow(t: PlanTimer, i: number)}
@@ -81,7 +92,7 @@
 					{#if error}<p class="mt-1 text-xs text-bad-fg">Не обновилось: {errorText(error)}</p>{/if}
 				</section>
 
-				<section aria-labelledby="plan-why" class={extra}>
+				<section id="plan-why-panel" aria-labelledby="plan-why" class={extra}>
 					<h3 id="plan-why" class="mb-1 text-xs font-semibold tracking-wide text-fg-muted uppercase">
 						Почему не другое
 					</h3>
@@ -105,7 +116,7 @@
 				</section>
 
 				{#if plan.also_ready.length > 0}
-					<section aria-labelledby="plan-ready" class={extra}>
+					<section id="plan-ready-panel" aria-labelledby="plan-ready" class={extra}>
 						<h3 id="plan-ready" class="mb-1 text-xs font-semibold tracking-wide text-fg-muted uppercase">
 							Готово сейчас <span class="font-normal normal-case">· на текущем снимке</span>
 						</h3>
@@ -127,7 +138,7 @@
 				{#if timers.length + later.length === 0}
 					<p class="text-sm text-fg-faint">Таймеров нет: бот ждёт событий.</p>
 				{/if}
-				<ul>
+				<ul id="plan-timers-list">
 					{#each timers as t, i (t.kind + (t.key ?? ''))}
 						{@render timerRow(t, i)}
 					{/each}
@@ -136,7 +147,7 @@
 					<h4 class="mt-2 text-xs text-fg-faint {timers.length >= PHONE_TIMERS && !more ? 'hidden md:block' : ''}">
 						после пробуждения
 					</h4>
-					<ul>
+					<ul id="plan-later-list">
 						{#each later as t, i (t.kind + (t.key ?? ''))}
 							{@render timerRow(t, timers.length + i)}
 						{/each}
@@ -149,6 +160,7 @@
 				type="button"
 				class="btn mt-2 w-full md:hidden"
 				aria-expanded={more}
+				aria-controls={controls}
 				onclick={() => (more = !more)}
 			>
 				{more ? 'Свернуть' : 'Ещё'}

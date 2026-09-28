@@ -12,6 +12,20 @@
 	let now = $state(new Date());
 	// «План бота» живёт, пока открыта главная: уход — отмена запроса и таймеров.
 	const plan = new PlanStore(api);
+
+	// Готовность цикла (tg_offline, spending_blocked, lock_lost, pipeline_unhealthy) не шлёт своего
+	// кадра потока — её доходит только опрос статуса движка (раз в 15 с). Пауза и kill уже приходят
+	// сразу кадром settings, поэтому здесь — только остальные поля `_planner_ready()`.
+	let lastReady: string | null = null;
+	$effect(() => {
+		const status = engine.status;
+		const ready = status
+			? `${status.lock_ok}|${status.pipeline_healthy}|${status.spending_blocked ?? ''}|${status.tg.state}`
+			: null;
+		if (lastReady !== null && ready !== null && ready !== lastReady) plan.readyChanged();
+		lastReady = ready;
+	});
+
 	onMount(() => {
 		const t = setInterval(() => (now = new Date()), 30_000);
 		plan.start();
