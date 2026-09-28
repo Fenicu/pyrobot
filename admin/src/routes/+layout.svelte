@@ -8,6 +8,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import Shell from '$lib/components/Shell.svelte';
 	import Toasts from '$lib/components/Toasts.svelte';
+	import { loginHref, safeNext } from '$lib/nav';
 	import { theme } from '$lib/stores/theme.svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -15,18 +16,22 @@
 
 	onMount(() => {
 		theme.init();
-		void session.load();
-		return stopApp;
+		void session.start();
+		return () => {
+			session.stop();
+			stopApp();
+		};
 	});
 
-	// Вход открывает поток и счётчики, выход или 401 — закрывает и ведёт на /login.
+	// Вход открывает поток и счётчики и возвращает на исходную страницу; выход или 401 —
+	// закрывает и ведёт на /login с возвратом. Сбой связи при старте на вход не ведёт.
 	$effect(() => {
 		if (session.status === 'authenticated') {
 			startApp();
-			if (onLogin) void goto('/', { replaceState: true });
+			if (onLogin) void goto(safeNext(page.url.searchParams.get('next')), { replaceState: true });
 		} else if (session.status === 'anonymous') {
 			stopApp();
-			if (!onLogin) void goto('/login', { replaceState: true });
+			if (!onLogin) void goto(loginHref(page.url), { replaceState: true });
 		}
 	});
 </script>
@@ -35,6 +40,14 @@
 	{@render children()}
 {:else if session.status === 'authenticated'}
 	<Shell>{@render children()}</Shell>
+{:else if session.offline}
+	<main class="flex min-h-dvh items-center justify-center p-4">
+		<section class="card w-full max-w-sm space-y-3 p-5 text-sm" role="alert">
+			<p class="font-medium">Нет связи с сервером</p>
+			<p class="text-fg-muted">Повтор через {Math.round(session.retryIn / 1000)} с.</p>
+			<button type="button" class="btn btn-primary w-full" onclick={() => session.retry()}>Повторить</button>
+		</section>
+	</main>
 {:else}
 	<p class="p-6 text-sm text-fg-muted" role="status">Загрузка…</p>
 {/if}

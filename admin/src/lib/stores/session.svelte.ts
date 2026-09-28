@@ -2,25 +2,49 @@ import createClient from 'openapi-fetch';
 import { API_ORIGIN, type SessionHooks } from '$lib/api/client';
 import { normalizeError, type ApiError } from '$lib/api/errors';
 import type { paths } from '$lib/api/schema';
+import { FIRST_DELAY_MS, MAX_DELAY_MS } from '$lib/live/connection.svelte';
 
 export type SessionStatus = 'unknown' | 'authenticated' | 'anonymous';
+
+export interface Timers {
+	setTimer: (fn: () => void, ms: number) => unknown;
+	clearTimer: (handle: unknown) => void;
+}
+
+const REAL_TIMERS: Timers = {
+	setTimer: (fn, ms) => setTimeout(fn, ms),
+	clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>)
+};
 
 /** Сессия админа: cookie httpOnly ставит сервер, CSRF-токен живёт только в памяти вкладки и
  * после перезагрузки берётся из `GET /auth/me`. */
 export class Session {
 	login = $state<string | null>(null);
 	status = $state<SessionStatus>('unknown');
+	/** Старт: `/auth/me` не ответил (сеть, 5xx) — сессия неизвестна, идёт повтор. */
+	offline = $state(false);
+	/** Пауза до следующей попытки старта, мс. */
+	retryIn = $state(0);
 	#csrf: string | null = null;
 	#client;
 	#onExpire: () => void;
+	#timers: Timers;
+	#timer: unknown = null;
+	#delay = FIRST_DELAY_MS;
+	#starting: Promise<void> | null = null;
 
-	constructor(fetchImpl: typeof fetch = (r) => fetch(r), onExpire: () => void = () => {}) {
+	constructor(
+		fetchImpl: typeof fetch = (r) => fetch(r),
+		onExpire: () => void = () => {},
+		timers: Timers = REAL_TIMERS
+	) {
 		this.#client = createClient<paths>({
 			baseUrl: API_ORIGIN,
 			fetch: fetchImpl,
 			credentials: 'same-origin'
 		});
 		this.#onExpire = onExpire;
+		this.#timers = timers;
 	}
 
 	get csrf(): string | null {
@@ -48,8 +72,52 @@ export class Session {
 		} catch {
 			// сеть — ниже
 		}
-		if (this.status === 'unknown') this.status = 'anonymous';
+		// Сеть или 5xx (502 во время выката) — не «вышел»: статус прежний.
 		return 'error';
+	}
+
+	/** Старт вкладки: `/auth/me`, пока сессия неизвестна; сбой — повтор с растущей паузой
+	 * 1 → 30 с, как у потока событий. */
+	start(): Promise<void> {
+		this.#starting ??= this.#attempt().finally(() => (this.#starting = null));
+		return this.#starting;
+	}
+
+	/** «Повторить» — сразу, не дожидаясь паузы. */
+	retry(): void {
+		this.#cancelRetry();
+		void this.start();
+	}
+
+	stop(): void {
+		this.#cancelRetry();
+		this.#settled();
+	}
+
+	async #attempt(): Promise<void> {
+		this.#cancelRetry();
+		if (this.status !== 'unknown') return this.#settled();
+		await this.load();
+		if (this.status !== 'unknown') return this.#settled();
+		const wait = this.#delay;
+		this.#delay = Math.min(this.#delay * 2, MAX_DELAY_MS);
+		this.offline = true;
+		this.retryIn = wait;
+		this.#timer = this.#timers.setTimer(() => {
+			this.#timer = null;
+			void this.start();
+		}, wait);
+	}
+
+	#cancelRetry(): void {
+		if (this.#timer !== null) this.#timers.clearTimer(this.#timer);
+		this.#timer = null;
+	}
+
+	#settled(): void {
+		this.offline = false;
+		this.retryIn = 0;
+		this.#delay = FIRST_DELAY_MS;
 	}
 
 	async signIn(login: string, password: string): Promise<ApiError | null> {
@@ -100,11 +168,13 @@ export class Session {
 		this.#csrf = null;
 		this.login = null;
 		this.status = 'anonymous';
+		this.stop();
 	}
 
 	#set(login: string, csrf: string): void {
 		this.login = login;
 		this.#csrf = csrf;
 		this.status = 'authenticated';
+		this.stop();
 	}
 }

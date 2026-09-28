@@ -1,13 +1,14 @@
 import { goto } from '$app/navigation';
 import { createApi, EVENTS_URL } from '$lib/api/client';
 import { LiveConnection } from '$lib/live/connection.svelte';
+import { loginHref } from '$lib/nav';
 import { CharacterStore } from '$lib/stores/character.svelte';
 import { EngineStore } from '$lib/stores/engine.svelte';
 import { Session } from '$lib/stores/session.svelte';
 import { UnreadCounter } from '$lib/stores/unread.svelte';
 
 /** Синглтоны вкладки: сессия, клиент API, поток событий и общие счётчики. */
-export const session = new Session(undefined, () => void goto('/login'));
+export const session = new Session(undefined, () => void goto(loginHref(new URL(location.href))));
 export const api = createApi(session.hooks);
 export const live = new LiveConnection({
 	url: EVENTS_URL,

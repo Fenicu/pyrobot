@@ -1,6 +1,28 @@
 import { describe, expect, it, vi } from 'vitest';
+import { deferred, flush } from '$lib/test/deferred';
 import { json, mockFetch } from '$lib/test/fetch';
 import { Session } from './session.svelte';
+
+/** Управляемые таймеры: тест сам запускает отложенный повтор. */
+function manualTimers() {
+	const pending: { id: number; fn: () => void; ms: number }[] = [];
+	let seq = 0;
+	return {
+		pending,
+		setTimer: (fn: () => void, ms: number) => {
+			pending.push({ id: ++seq, fn, ms });
+			return seq;
+		},
+		clearTimer: (handle: unknown) => {
+			const i = pending.findIndex((t) => t.id === handle);
+			if (i !== -1) pending.splice(i, 1);
+		},
+		async fire() {
+			pending.shift()!.fn();
+			await flush();
+		}
+	};
+}
 
 describe('сессия', () => {
 	it('/auth/me даёт логин и CSRF в память, 401 — аноним', async () => {
@@ -98,6 +120,78 @@ describe('сессия', () => {
 	it('сервер недоступен — не «вышел», а ошибка', async () => {
 		const s = new Session((() => Promise.reject(new TypeError('offline'))) as typeof fetch);
 		expect(await s.load()).toBe('error');
-		expect(s.status).toBe('anonymous');
+		expect(s.status).toBe('unknown');
+	});
+});
+
+describe('старт без связи', () => {
+	it('сеть или 5xx — статус остаётся unknown и повтор с растущей паузой, аноним — только по 401', async () => {
+		const replies: (Response | Error)[] = [
+			json({ detail: 'bad gateway' }, 502),
+			new TypeError('offline'),
+			json({ detail: 'oops' }, 500),
+			json({ detail: 'not authenticated' }, 401)
+		];
+		const fetch = mockFetch(() => {
+			const r = replies.shift()!;
+			if (r instanceof Error) throw r;
+			return r;
+		});
+		const t = manualTimers();
+		const s = new Session(fetch, () => {}, t);
+		await s.start();
+		expect([s.status, s.offline, s.retryIn]).toEqual(['unknown', true, 1000]);
+		expect(t.pending.map((p) => p.ms)).toEqual([1000]);
+		await t.fire();
+		expect([s.status, s.offline, s.retryIn]).toEqual(['unknown', true, 2000]);
+		await t.fire();
+		expect([s.status, s.retryIn]).toEqual(['unknown', 4000]);
+		await t.fire();
+		expect([s.status, s.offline, s.retryIn]).toEqual(['anonymous', false, 0]);
+		expect(t.pending).toEqual([]);
+		expect(fetch.calls).toHaveLength(4);
+	});
+
+	it('пауза растёт до 30 с', async () => {
+		const t = manualTimers();
+		const s = new Session((() => Promise.reject(new TypeError('offline'))) as typeof fetch, () => {}, t);
+		await s.start();
+		const waits = [s.retryIn];
+		for (let i = 0; i < 6; i++) {
+			await t.fire();
+			waits.push(s.retryIn);
+		}
+		expect(waits).toEqual([1000, 2000, 4000, 8000, 16000, 30000, 30000]);
+	});
+
+	it('«Повторить» — сразу и без второго таймера, пока запрос идёт — не дублируется', async () => {
+		const reply = deferred<Response>();
+		const fetch = mockFetch(() => (fetch.calls.length === 1 ? json({ detail: '' }, 502) : reply.promise));
+		const t = manualTimers();
+		const s = new Session(fetch, () => {}, t);
+		await s.start();
+		expect(t.pending).toHaveLength(1);
+		s.retry();
+		s.retry();
+		await flush();
+		expect(t.pending).toHaveLength(0);
+		expect(fetch.calls).toHaveLength(2);
+		reply.resolve(json({ login: 'admin', csrf_token: 'c1' }));
+		await flush();
+		expect([s.status, s.offline, s.retryIn]).toEqual(['authenticated', false, 0]);
+		expect(t.pending).toHaveLength(0);
+	});
+
+	it('вход во время паузы снимает повтор', async () => {
+		const fetch = mockFetch((c) =>
+			c.url === '/api/v1/auth/login' ? json({ login: 'admin', csrf_token: 'c9' }) : json({ detail: '' }, 503)
+		);
+		const t = manualTimers();
+		const s = new Session(fetch, () => {}, t);
+		await s.start();
+		expect(s.offline).toBe(true);
+		expect(await s.signIn('admin', 'right')).toBeNull();
+		expect([s.status, s.offline, s.retryIn]).toEqual(['authenticated', false, 0]);
+		expect(t.pending).toEqual([]);
 	});
 });

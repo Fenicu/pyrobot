@@ -38,3 +38,28 @@ export const MORE_NAV: NavItem[] = [
 export function isActive(pathname: string, href: string): boolean {
 	return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
 }
+
+const BASE = 'http://app.invalid';
+// Без возврата: главная — и так по умолчанию, после смены пароля форма не нужна.
+const NO_RETURN = new Set(['/', '/login', '/password']);
+
+/** Вход с возвратом на текущую страницу (`?next=`); со страницы входа — её же `next`. */
+export function loginHref(url: URL): string {
+	if (url.pathname === '/login') return `/login${url.search}`;
+	if (NO_RETURN.has(url.pathname)) return '/login';
+	return `/login?next=${encodeURIComponent(url.pathname + url.search + url.hash)}`;
+}
+
+/** Куда вернуться после входа: только путь этого же приложения, иначе — главная. */
+export function safeNext(raw: string | null): string {
+	if (!raw || !raw.startsWith('/')) return '/';
+	let url: URL;
+	try {
+		url = new URL(raw, BASE);
+	} catch {
+		return '/';
+	}
+	const path = url.pathname + url.search + url.hash;
+	if (url.origin !== BASE || path.startsWith('//') || url.pathname === '/login') return '/';
+	return path;
+}
