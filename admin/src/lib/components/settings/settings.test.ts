@@ -60,15 +60,47 @@ describe('Настройки', () => {
 		await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Несохранённые изменения' })).toBeNull());
 	});
 
+	it('описание под полем, секции — своё; ⓘ раскрывает описание на телефоне', async () => {
+		const user = userEvent.setup();
+		await view();
+		const engine = screen.getByRole('region', { name: 'Движок' });
+		expect(engine).toHaveTextContent('Режим, пауза, kill switch и темп шлюза');
+		const row = engine.querySelector('[data-path="engine.min_request_interval_s"]')!;
+		const help = within(row as HTMLElement).getByText(/Минимальный интервал между любыми двумя отправками/);
+		// На ПК описание видно всегда (md:block), на телефоне скрыто до нажатия ⓘ.
+		expect(help).toHaveClass('hidden', 'md:block');
+		const info = within(row as HTMLElement).getByRole('button', { name: 'Описание: Пауза между запросами, с' });
+		expect(info).toHaveAttribute('aria-expanded', 'false');
+		expect(info).toHaveAttribute('aria-controls', help.id);
+		expect(info).toHaveClass('md:hidden');
+		info.focus();
+		await user.keyboard('{Enter}');
+		expect(info).toHaveAttribute('aria-expanded', 'true');
+		expect(help).not.toHaveClass('hidden');
+		await user.click(info);
+		expect(help).toHaveClass('hidden');
+	});
+
+	it('поиск находит настройку по описанию', async () => {
+		const user = userEvent.setup();
+		await view();
+		await user.type(screen.getByRole('searchbox', { name: 'Поиск настройки' }), 'антифлуд');
+		const found = screen.getByRole('region', { name: 'Найденные настройки' });
+		const paths = [...found.querySelectorAll('[data-path]')].map((e) => e.getAttribute('data-path'));
+		// «Пауза между запросами» — только по описанию: в пути и подписи слова нет.
+		expect(paths).toContain('engine.min_request_interval_s');
+		expect(paths).toContain('engine.antiflood_retry_max');
+	});
+
 	it('«max» или число, теги, поиск', async () => {
 		const user = userEvent.setup();
 		const { editor } = await view();
 		await user.type(screen.getByRole('searchbox', { name: 'Поиск настройки' }), 'lottery.tickets');
 		const found = screen.getByRole('region', { name: 'Найденные настройки' });
-		await user.selectOptions(within(found).getByRole('combobox', { name: '💵: вид' }), 'num');
+		await user.selectOptions(within(found).getByRole('combobox', { name: 'Билеты за 💵: вид' }), 'num');
 		expect(editor.value(['lottery', 'tickets', 'money'])).toBe(0);
-		await user.clear(screen.getByRole('spinbutton', { name: '💵: число' }));
-		await user.type(screen.getByRole('spinbutton', { name: '💵: число' }), '4');
+		await user.clear(screen.getByRole('spinbutton', { name: 'Билеты за 💵: число' }));
+		await user.type(screen.getByRole('spinbutton', { name: 'Билеты за 💵: число' }), '4');
 		expect(editor.value(['lottery', 'tickets', 'money'])).toBe(4);
 		await user.clear(screen.getByRole('searchbox', { name: 'Поиск настройки' }));
 		await user.type(screen.getByRole('searchbox', { name: 'Поиск настройки' }), 'focus');

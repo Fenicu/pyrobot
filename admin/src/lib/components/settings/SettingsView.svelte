@@ -3,7 +3,7 @@
 	import type { Api } from '$lib/api/client';
 	import { errorText } from '$lib/api/errors';
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
-	import { FIELD_LABELS, SECTION_LABELS } from '$lib/settings/labels';
+	import { settingHelp, settingLabel } from '$lib/settings/labels';
 	import { leaves, pathKey, type Field, type Section } from '$lib/settings/schema';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -23,13 +23,16 @@
 	const historyKey = $derived(editor.conflict ?? editor.version ?? 0);
 
 	const section = $derived(editor.sections.find((s) => s.name === active) ?? editor.sections[0] ?? null);
-	const title = (s: Section) => SECTION_LABELS[s.name] ?? s.title;
+	const title = (s: Section) => settingLabel(s.name, s.title);
 	const q = $derived(query.trim().toLowerCase());
+	// Поиск — по пути, подписи и описанию настройки.
 	const found = $derived.by(() => {
 		if (!q) return [];
-		const hit = (f: Field) =>
-			pathKey(f.path).toLowerCase().includes(q) ||
-			(FIELD_LABELS[pathKey(f.path)] ?? f.title).toLowerCase().includes(q);
+		const hit = (f: Field) => {
+			const key = pathKey(f.path);
+			const text = [key, settingLabel(key, f.title), settingHelp(key) ?? ''];
+			return text.some((t) => t.toLowerCase().includes(q));
+		};
 		return editor.sections
 			.map((s) => ({ section: s, fields: leaves(s.fields).filter(hit) }))
 			.filter((r) => r.fields.length > 0);
@@ -85,7 +88,7 @@
 			<label class="relative block">
 				<span class="sr-only">Поиск настройки</span>
 				<Search class="pointer-events-none absolute top-2.5 left-2 size-4 text-fg-faint" aria-hidden="true" />
-				<input class="input pl-8" type="search" placeholder="поиск настройки…" bind:value={query} />
+				<input class="input pl-8" type="search" placeholder="название, описание или путь…" bind:value={query} />
 			</label>
 			<ul class="flex gap-1 overflow-x-auto lg:flex-col">
 				{#each editor.sections as s (s.name)}
@@ -120,7 +123,8 @@
 				{/each}
 			{:else if section}
 				<h2 class="card-title">{title(section)}</h2>
-				{#if section.description}<p class="mb-1 text-xs text-fg-faint">{section.description}</p>{/if}
+				{@const about = settingHelp(section.name) ?? section.description}
+				{#if about}<p class="mb-1 text-xs text-fg-muted">{about}</p>{/if}
 				{#each section.fields as f (pathKey(f.path))}<SettingField {editor} field={f} />{/each}
 			{/if}
 		</section>
