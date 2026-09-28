@@ -33,6 +33,10 @@ export type PlanCandidate = S['PlanCandidateOut'];
 export type PlanAct = S['PlanActOut'];
 export type PlanTimer = S['PlanTimerOut'];
 export type WakeKind = PlanTimer['kind'];
+export type DailyOut = S['DailyOut'];
+export type DayOut = S['DayOut'];
+export type KindOut = S['KindOut'];
+export type BalanceOut = S['BalanceOut'];
 
 /** Наблюдение поля состояния: `{value, at, src}`. */
 export interface Observed<T> {

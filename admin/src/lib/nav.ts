@@ -1,5 +1,6 @@
 import type { Component } from 'svelte';
 import Bell from '@lucide/svelte/icons/bell';
+import CalendarDays from '@lucide/svelte/icons/calendar-days';
 import ChartLine from '@lucide/svelte/icons/chart-line';
 import Gamepad2 from '@lucide/svelte/icons/gamepad-2';
 import House from '@lucide/svelte/icons/house';
@@ -28,6 +29,7 @@ export const MAIN_NAV: NavItem[] = [
 
 /** «Ещё» на телефоне, продолжение меню на ПК. */
 export const MORE_NAV: NavItem[] = [
+	{ href: '/daily', label: 'Итоги', icon: CalendarDays },
 	{ href: '/metrics', label: 'Метрики', icon: ChartLine },
 	{ href: '/settings', label: 'Настройки', icon: Settings },
 	{ href: '/notifications', label: 'Уведомления', icon: Bell, badge: 'unread' },
