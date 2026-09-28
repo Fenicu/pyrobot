@@ -455,7 +455,9 @@ class _Planner(DailyTasks):
                 verdict = "no_money"
             elif details < price.details:
                 verdict = "no_details"
-            elif score <= 0:
+            elif score <= 0 and activity not in focus:
+                # Важность основных дел задал пользователь, а оценка видит не весь доход: предметы
+                # крафта с добычи в статистику не входят.
                 verdict = "no_value"
             else:
                 verdict = self.gate(name)

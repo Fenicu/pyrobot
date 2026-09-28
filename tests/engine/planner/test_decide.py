@@ -9,6 +9,7 @@ from app.engine.planner.types import Act, Candidate, Decision, Wait, Wakeup
 from app.engine.scenarios.registry import CERTIFIED
 from app.engine.settings import Settings
 from app.engine.state.model import (
+    ActivityStat,
     BusyState,
     CharacterState,
     FoodStockState,
@@ -143,8 +144,6 @@ def test_experience_only_weights_pick_recycling() -> None:
 
 
 def test_learned_average_replaces_prior() -> None:
-    from app.engine.state.model import ActivityStat
-
     state = awake().model_copy(
         update={"activity_stats": {"harvest": ActivityStat(count=20, exp=900)}}
     )
@@ -189,6 +188,32 @@ def test_no_main_deed_falls_back_to_best_score() -> None:
     assert (decision.scenario, decision.reason[:11]) == ("deed:job", "best score ")
     assert verdicts(decision)["deed:harvest"] == "no_money"
     assert verdicts(decision)["deed:dconv"] == "no_money"
+
+
+# Добыча с прода: предметы крафта («Пуговица +1») в статистику не входят, оценка — только опыт
+# минус цена 30💵: 192.6 / 200 − 1 < 0.
+HARVEST_PROD = {"harvest": ActivityStat(count=3, exp=192.6)}
+
+
+def test_main_deed_is_not_cut_by_score() -> None:
+    state = awake().model_copy(update={"activity_stats": HARVEST_PROD})
+    decision = decide(state, FOCUS, NOW, done_today={"deed:harvest": 2, "deed:dconv": 3})
+    assert isinstance(decision, Act)
+    assert (decision.scenario, decision.reason) == ("deed:harvest", "focus harvest (2 today)")
+    harvest = next(c for c in decision.candidates if c.scenario == "deed:harvest")
+    assert harvest.score is not None and harvest.score < 0
+    # Очередь переработки: добыча доступна, но не выбрана.
+    turn = decide(state, FOCUS, NOW, done_today={"deed:harvest": 3, "deed:dconv": 2})
+    assert act(turn) == ("deed:dconv", {})
+    assert verdicts(turn)["deed:harvest"] == "ok"
+
+
+def test_deed_outside_focus_is_cut_by_score() -> None:
+    state = awake().model_copy(update={"activity_stats": HARVEST_PROD})
+    settings = Settings.model_validate({"features": QUIET, "strategy": {"focus": ["dconv"]}})
+    decision = decide(state, settings, NOW, done_today={"deed:dconv": 3})
+    assert act(decision) == ("deed:dconv", {})
+    assert verdicts(decision)["deed:harvest"] == "no_value"
 
 
 def test_main_deed_outside_allowed_deeds_is_ignored() -> None:
