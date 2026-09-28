@@ -5,7 +5,7 @@ import pytest
 
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
 from app.engine.planner.decide import decide
-from app.engine.planner.types import Act, Candidate, Decision, Wait
+from app.engine.planner.types import Act, Candidate, Decision, Wait, Wakeup
 from app.engine.scenarios.registry import CERTIFIED
 from app.engine.settings import Settings
 from app.engine.state.model import (
@@ -523,3 +523,18 @@ def test_screen_cooldown_waits_extra_minute_but_ready_screen_does_not() -> None:
     assert decision == Wait(r(-0.5), "book_ready", decision.candidates)
     ready = awake(books=3, book_ready_at=obs(m(-5), age_min=5))
     assert act(decide(ready, BASE, NOW)) == ("book", {})
+
+
+def test_wakeup_reason_is_kind_or_kind_and_key() -> None:
+    assert Wakeup(NOW, "busy").reason == "busy"
+    assert Wakeup(NOW, "cooldown", "refresh:profile").reason == "cooldown:refresh:profile"
+    assert Wakeup(NOW, "refresh", "daily").reason == "refresh:daily"
+
+
+def test_simultaneous_timers_wait_for_first_reason_by_name() -> None:
+    # Таймеры в один момент: причина ожидания — первая по имени (как у прежних строк), а не
+    # первая зарегистрированная (фастфуд проверяется раньше карты).
+    at = obs(m(10), age_min=1)
+    state = awake(stamina=10, cards=3, fastfood_ready_at=at, card_ready_at=at, motivation=0)
+    decision = decide(state, BASE, NOW)
+    assert decision == Wait(r(10), "card_ready", decision.candidates)

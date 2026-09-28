@@ -112,7 +112,7 @@ class DailyTasks(Obligations):
         fresh = last is not None and tasks_day(last) == self.tasks_today()
         if last is not None and fresh and self.now - last < DAILY_REFRESH_EVERY:
             self.reject("daily_refresh", {}, "rate_limited")
-            self.wake(last + DAILY_REFRESH_EVERY, "refresh:daily")
+            self.wake(last + DAILY_REFRESH_EVERY, "refresh", "daily")
             return None
         return self.act("daily_refresh", {}, reason)
 

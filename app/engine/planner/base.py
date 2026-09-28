@@ -4,7 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
-from app.engine.planner.types import Act, Candidate, Decision, Wait
+from app.engine.planner.types import Act, Candidate, Decision, Wait, WakeKind, Wakeup
 from app.engine.settings import Settings
 from app.engine.state.model import (
     DEFAULT_PRICES,
@@ -130,7 +130,7 @@ class PlannerBase:
         self.stale = frozenset(stale)
         self.refresh_every = timedelta(seconds=settings.engine.refresh_min_interval_s)
         self.candidates: list[Candidate] = []
-        self.wakeups: list[tuple[datetime, str]] = []
+        self.wakeups: list[Wakeup] = []
 
     def value(self, name: str) -> Any:
         obs = getattr(self.s, name)
@@ -140,9 +140,9 @@ class PlannerBase:
         """Таймер истёк с запасом; истёкший уже на момент наблюдения `seen` — без запаса."""
         return (seen is not None and at <= seen) or at + TIMER_MARGIN <= self.now
 
-    def wake(self, at: datetime | None, reason: str) -> None:
+    def wake(self, at: datetime | None, kind: WakeKind, key: str | None = None) -> None:
         if at is not None and at + TIMER_MARGIN > self.now:
-            self.wakeups.append((at + TIMER_MARGIN, reason))
+            self.wakeups.append(Wakeup(at + TIMER_MARGIN, kind, key))
 
     def reject(self, scenario: str, params: Mapping[str, Any], verdict: str) -> None:
         self.candidates.append(Candidate(scenario, dict(params), None, verdict))
@@ -158,7 +158,7 @@ class PlannerBase:
         key = key or scenario
         until = self.cooldowns.get(key)
         if until is not None and until > self.now:
-            self.wake(until, f"cooldown:{key}")
+            self.wake(until, "cooldown", key)
             return "cooldown"
         return None
 
@@ -183,7 +183,7 @@ class PlannerBase:
         self.reject(scenario, {}, f"stale:{field}")
         last = self.last_refresh.get(source)
         if last is not None and self.now - last < self.refresh_every:
-            self.wake(last + self.refresh_every, f"refresh:{source}")
+            self.wake(last + self.refresh_every, "refresh", source)
             return None
         return self.act(
             "refresh", {"source": source}, f"{scenario} needs {field}", f"refresh:{source}"
@@ -192,8 +192,8 @@ class PlannerBase:
     def wait(self) -> Wait:
         if not self.wakeups:
             return Wait(None, "no_timers", tuple(self.candidates))
-        at, reason = min(self.wakeups)
-        return Wait(at, reason, tuple(self.candidates))
+        first = min(self.wakeups, key=lambda w: (w.at, w.reason))
+        return Wait(first.at, first.reason, tuple(self.candidates))
 
     def busy(self) -> BusyState | None:
         obs = self.s.busy

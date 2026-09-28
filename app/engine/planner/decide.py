@@ -7,7 +7,7 @@ from typing import Any
 
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, Step
 from app.engine.planner.daily import DailyTasks
-from app.engine.planner.types import Act, Candidate, Decision
+from app.engine.planner.types import Act, Candidate, Decision, WakeKind
 from app.engine.settings import Settings
 from app.engine.state.model import (
     DEED_PRIORS,
@@ -95,13 +95,13 @@ class _Planner(DailyTasks):
         return self.act("sleep", params, "sleep_deadline")
 
     def book(self, busy: BusyState | None) -> Decision | None:
-        return self._cooled_item("book", "books", "book_ready_at", busy)
+        return self._cooled_item("book", "books", "book_ready_at", "book_ready", busy)
 
     def card(self, busy: BusyState | None) -> Decision | None:
-        return self._cooled_item("card", "cards", "card_ready_at", busy)
+        return self._cooled_item("card", "cards", "card_ready_at", "card_ready", busy)
 
     def _cooled_item(
-        self, name: str, count: str, ready_at: str, busy: BusyState | None
+        self, name: str, count: str, ready_at: str, ready_kind: WakeKind, busy: BusyState | None
     ) -> Decision | None:
         if not self.feature_on(name):
             return None
@@ -110,7 +110,7 @@ class _Planner(DailyTasks):
         if self.value(count) <= 0:
             return None
         if (ready := self.timer(ready_at)) is not None:
-            self.wake(ready, f"{name}_ready")
+            self.wake(ready, ready_kind)
             return None
         if busy is not None:
             self.reject(name, {}, "busy")
