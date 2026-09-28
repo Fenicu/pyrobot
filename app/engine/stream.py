@@ -169,6 +169,7 @@ class PublishingActionStore:
                 "text": req.text,
                 "data": req.data,
                 "command_class": cls.value,
+                "scenario_run_id": req.scenario_run_id,
             },
         )
         return action_id

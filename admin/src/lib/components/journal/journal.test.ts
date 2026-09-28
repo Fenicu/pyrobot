@@ -7,7 +7,12 @@ import type { JournalPage } from '$lib/api/types';
 import { JournalFeed } from '$lib/stores/journal.svelte';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
+import type { LiveEvent } from '$lib/live/sse';
+import { deferred, flush } from '$lib/test/deferred';
 import JournalView from './JournalView.svelte';
+import ActionDetail from './ActionDetail.svelte';
+import DecisionDetail from './DecisionDetail.svelte';
+import RunSteps from './RunSteps.svelte';
 
 const page = fixture<JournalPage>('journal_page');
 
@@ -127,5 +132,96 @@ describe('Журнал: «сейчас» по общему тикеру', () => 
 		vi.advanceTimersByTime(60_000);
 		await tick();
 		expect(time).toHaveTextContent('27.09 23:59:00');
+	});
+});
+
+describe('Шаги идущего запуска', () => {
+	const step = { ...fixture<object>('action_detail'), idempotency_key: null, scenario_run_id: 34 };
+	const runOf = (status: string, actions: object[]) => ({
+		id: 34, decision_id: 343, scenario: 'sleep', params: {}, started_at: '2026-09-27T19:05:03Z',
+		finished_at: status === 'running' ? null : '2026-09-27T19:05:30Z', status, reason: '', requested_by: null,
+		metro_run_id: null, actions
+	});
+	const created = (id: number, run: number | null, text: string): LiveEvent => ({
+		type: 'action',
+		id: `e:${id}`,
+		data: {
+			id, status: 'intent', reason: '', source: 'scenario', kind: 'send', chat_id: 227859379, text, data: null,
+			command_class: 'action', scenario_run_id: run
+		}
+	});
+
+	it('новый шаг — из кадра создания сразу, запуск перечитывается, пока идёт', async () => {
+		const replies = [deferred<Response>(), deferred<Response>(), deferred<Response>()];
+		const fetch = mockFetch(() => replies[fetch.calls.length - 1]!.promise);
+		const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		let emit: (e: LiveEvent) => void = () => {};
+		const subscribe = (h: (e: LiveEvent) => void) => {
+			emit = h;
+			return () => {};
+		};
+		render(RunSteps, { api, runId: 34, subscribe });
+		replies[0]!.resolve(json(runOf('running', [step])));
+		const steps = await screen.findByRole('list', { name: 'Шаги запуска #34' });
+		expect(within(steps).getAllByRole('listitem')).toHaveLength(1);
+
+		emit(created(501, 35, '/other'));
+		emit(created(500, 34, '/job'));
+		await tick();
+		expect(within(steps).getAllByRole('listitem')).toHaveLength(2);
+		expect(steps).toHaveTextContent('/job');
+		expect(steps).not.toHaveTextContent('/other');
+		expect(fetch.calls).toHaveLength(2);
+
+		// Статус шага — из кадра обновления; поздний ответ прежнего чтения не откатывает список.
+		emit({ type: 'action', id: 'e:3', data: { id: 500, status: 'refused', reason: 'no_money' } });
+		await tick();
+		expect(steps).toHaveTextContent('no_money');
+		expect(fetch.calls).toHaveLength(3);
+		replies[2]!.resolve(json(runOf('done', [step, { ...step, id: 500, status: 'refused', reason: 'no_money', payload: { text: '/job' } }])));
+		replies[1]!.resolve(json(runOf('running', [step])));
+		await flush();
+		expect(within(steps).getAllByRole('listitem')).toHaveLength(2);
+
+		// Завершённый запуск больше не перечитывается по кадрам шагов.
+		emit({ type: 'action', id: 'e:4', data: { id: 500, status: 'confirmed', reason: '' } });
+		await tick();
+		expect(fetch.calls).toHaveLength(3);
+	});
+});
+
+describe('Ошибки разбора', () => {
+	const apiOf = (fetch: typeof globalThis.fetch) =>
+		createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+
+	it('ошибка прежнего решения не показывается у нового', async () => {
+		const first = deferred<Response>();
+		const fetch = mockFetch((c) => (c.url === '/api/v1/decisions/1' ? first.promise : json(fixture('decision_detail'))));
+		const { rerender } = render(DecisionDetail, { api: apiOf(fetch), id: 1 });
+		await rerender({ id: 344 });
+		expect(await screen.findByText(/Решение #344/)).toBeInTheDocument();
+		first.resolve(json({ detail: 'decision not found' }, 404));
+		await flush();
+		expect(screen.queryByText(/not found/)).toBeNull();
+		expect(screen.getByText(/Решение #344/)).toBeInTheDocument();
+	});
+
+	it('действие: ошибка сбрасывается после успешной загрузки', async () => {
+		let fail = true;
+		const fetch = mockFetch(() => (fail ? json({ detail: '' }, 503) : json(fixture('action_detail'))));
+		let emit: (e: LiveEvent) => void = () => {};
+		render(ActionDetail, {
+			api: apiOf(fetch),
+			id: 474,
+			subscribe: (h: (e: LiveEvent) => void) => {
+				emit = h;
+				return () => {};
+			}
+		});
+		expect(await screen.findByText('Движок недоступен')).toBeInTheDocument();
+		fail = false;
+		emit({ type: 'action', id: 'e:1', data: { id: 474, status: 'confirmed', reason: '' } });
+		expect(await screen.findByText(/Действие #474/)).toBeInTheDocument();
+		expect(screen.queryByText('Движок недоступен')).toBeNull();
 	});
 });

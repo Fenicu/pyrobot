@@ -34,7 +34,9 @@
 			.then((d) => {
 				if (current === id) decision = d;
 			})
-			.catch((e: unknown) => (error = e instanceof ApiFailure ? e.message : String(e)));
+			.catch((e: unknown) => {
+				if (current === id) error = e instanceof ApiFailure ? e.message : String(e);
+			});
 	});
 
 	const candidates = $derived((decision?.candidates ?? []) as Candidate[]);

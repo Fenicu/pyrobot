@@ -84,6 +84,19 @@ async def test_action_store_publishes_lifecycle() -> None:
     assert await store.unreconciled() == []
 
 
+async def test_action_created_frame_carries_scenario_run() -> None:
+    # По scenario_run_id кадра создания админка добавляет шаг в открытый запуск.
+    stream = EventStream(epoch="e1")
+    store = PublishingActionStore(MemoryActionStore(), stream)
+    step = ActionRequest(
+        kind=ActionKind.SEND, chat_id=GAME, text="/job", source=Source.SCENARIO, scenario_run_id=34
+    )
+    manual = ActionRequest(kind=ActionKind.SEND, chat_id=GAME, text="/inv", source=Source.MANUAL)
+    await store.create(step, CommandClass.ACTION, ActionStatus.INTENT)
+    await store.create(manual, CommandClass.NAV, ActionStatus.INTENT)
+    assert [e.data["scenario_run_id"] for e in stream.history()] == [34, None]
+
+
 async def test_planner_store_publishes_decisions_and_runs() -> None:
     stream = EventStream(epoch="e1")
     store = PublishingPlannerStore(MemoryPlannerStore(), stream)

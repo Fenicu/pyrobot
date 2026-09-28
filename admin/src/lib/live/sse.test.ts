@@ -27,8 +27,15 @@ describe('кадры SSE с прода', () => {
 		const [created, sent] = actions;
 		expect(created?.type === 'action' && isActionCreated(created.data)).toBe(true);
 		expect(created?.data).toMatchObject({ id: 475, status: 'intent', source: 'manual', text: '/inv' });
+		// Кадр создания старого сервера без запуска — scenario_run_id null.
+		expect(created?.data).toMatchObject({ scenario_run_id: null });
 		expect(sent?.type === 'action' && isActionCreated(sent.data)).toBe(false);
 		expect(sent?.data).toEqual({ id: 475, status: 'sent', reason: '' });
+		const step = decodeEvent(
+			'action',
+			'{"id": 9, "status": "intent", "reason": "", "source": "scenario", "kind": "send", "chat_id": 1, "text": "/job", "data": null, "command_class": "action", "scenario_run_id": 34}'
+		);
+		expect(step?.data).toMatchObject({ id: 9, scenario_run_id: 34 });
 	});
 
 	it('сообщение без кнопок у старого сервера — markup null; state — changed целиком', () => {

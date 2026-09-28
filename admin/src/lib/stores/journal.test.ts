@@ -5,7 +5,7 @@ import { decodeEvent, type LiveEvent } from '$lib/live/sse';
 import { deferred, flush, type Deferred } from '$lib/test/deferred';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
-import { EMPTY_FILTER, feedQuery, JournalFeed, keyOf } from './journal.svelte';
+import { EMPTY_FILTER, feedQuery, JournalFeed, keyOf, LIVE_KEPT } from './journal.svelte';
 
 const page = fixture<JournalPage>('journal_page');
 
@@ -44,6 +44,26 @@ describe('лента журнала', () => {
 		expect(fetch.calls[1]?.url).toContain(`cursor=${page.next_cursor}`);
 		expect(f.items).toHaveLength(61);
 		expect(f.done).toBe(true);
+	});
+
+	it('живых строк сверху — не больше LIVE_KEPT: старые отбрасываются, страницы и курсор не трогаются', async () => {
+		const { f } = feed();
+		await f.reload();
+		const decision = (id: number) => ev('decision', { id, at: '2026-09-27T20:30:00Z', kind: 'wait', scenario: null, reason: 'busy', until: null });
+		for (let id = 1000; id < 1000 + LIVE_KEPT + 20; id++) f.onEvent(decision(id));
+		expect(LIVE_KEPT).toBe(500);
+		expect(f.items).toHaveLength(LIVE_KEPT + page.items.length);
+		expect(keyOf(f.items[0]!)).toBe(`decision:${1000 + LIVE_KEPT + 19}`);
+		expect(keyOf(f.items[LIVE_KEPT - 1]!)).toBe('decision:1020');
+		expect(f.items.slice(LIVE_KEPT).map(keyOf)).toEqual(page.items.map(keyOf));
+		expect(f.cursor).toBe(page.next_cursor);
+		// Обновление действия со страницы по-прежнему меняет его строку.
+		f.onEvent(ev('action', { id: 474, status: 'refused', reason: 'busy' }));
+		const row = f.items.find((i) => keyOf(i) === 'action:474');
+		expect(row?.type === 'action' && row.status).toBe('refused');
+		// Повтор кадра строки, которая ещё в ленте, её не дублирует.
+		f.onEvent(decision(1000 + LIVE_KEPT + 19));
+		expect(f.items).toHaveLength(LIVE_KEPT + page.items.length);
 	});
 
 	it('живое сверху, обновление действия меняет строку', async () => {

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
-	import type { ScenarioRunDetail } from '$lib/api/types';
-	import type { LiveEvent } from '$lib/live/sse';
+	import type { ActionOut, ScenarioRunDetail } from '$lib/api/types';
+	import { isActionCreated, type LiveEvent, type SseActionCreated } from '$lib/live/sse';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment, fmtSpan, toDate } from '$lib/util/format';
 	import { ACTION_STATUS, statusTone } from '$lib/util/game';
@@ -12,7 +12,8 @@
 	interface Props {
 		api: Api;
 		runId: number;
-		/** Подписка на поток: кадр `scenario_run` этого запуска перечитывает шаги. */
+		/** Подписка на поток: кадр `scenario_run` этого запуска перечитывает его, кадры `action` его
+		 * шагов добавляют и обновляют шаги сразу, а пока запуск идёт — ещё и перечитывают его. */
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 	}
 	let { api, runId, subscribe }: Props = $props();
@@ -20,12 +21,18 @@
 	let error = $state('');
 	const now = $derived(clock.now);
 
+	// Номер чтения: ответ, который обогнало более новое чтение, не применяется.
+	let request = 0;
+
 	async function load(id: number) {
+		const mine = ++request;
 		try {
-			run = await call(api.GET('/api/v1/scenario-runs/{run_id}', { params: { path: { run_id: id } } }));
+			const out = await call(api.GET('/api/v1/scenario-runs/{run_id}', { params: { path: { run_id: id } } }));
+			if (mine !== request) return;
+			run = out;
 			error = '';
 		} catch (e) {
-			error = e instanceof ApiFailure ? e.message : String(e);
+			if (mine === request) error = e instanceof ApiFailure ? e.message : String(e);
 		}
 	}
 
@@ -33,12 +40,55 @@
 		void load(runId);
 	});
 
+	/** Шаг из кадра создания — до ответа API (момент — приход кадра). */
+	function stepOf(d: SseActionCreated): ActionOut {
+		return {
+			id: d.id,
+			created_at: new Date().toISOString(),
+			source: d.source,
+			kind: d.kind,
+			chat_id: d.chat_id,
+			payload: { text: d.text, data: d.data },
+			command_class: d.command_class,
+			status: d.status,
+			reason: d.reason,
+			attempts: 0,
+			answer: null,
+			match_detail: null,
+			sent_at: null,
+			finished_at: null,
+			reconciled_at: null,
+			idempotency_key: null,
+			scenario_run_id: d.scenario_run_id
+		};
+	}
+
+	function onEvent(e: LiveEvent) {
+		if (e.type === 'scenario_run') {
+			if (e.data.id === runId) void load(runId);
+			return;
+		}
+		if (e.type !== 'action') return;
+		const d = e.data;
+		const mine = isActionCreated(d) ? d.scenario_run_id === runId : !!run?.actions.some((a) => a.id === d.id);
+		if (!mine) return;
+		if (run === null) {
+			void load(runId);
+			return;
+		}
+		const i = run.actions.findIndex((a) => a.id === d.id);
+		const row = run.actions[i];
+		if (isActionCreated(d)) {
+			if (i === -1) run = { ...run, actions: [...run.actions, stepOf(d)] };
+		} else if (row) {
+			run = { ...run, actions: run.actions.with(i, { ...row, status: d.status, reason: d.reason || row.reason }) };
+		}
+		if (run.status === 'queued' || run.status === 'running') void load(runId);
+	}
+
 	$effect(() => {
 		if (!subscribe) return;
-		return subscribe((e) => {
-			if (e.type === 'scenario_run' && e.data.id === runId) void load(runId);
-			else if (e.type === 'action' && run?.actions.some((a) => a.id === e.data.id)) void load(runId);
-		});
+		return subscribe(onEvent);
 	});
 
 	const duration = $derived.by(() => {

@@ -129,6 +129,8 @@ function matches(item: JournalItem, f: FeedFilter): boolean {
 }
 
 const SOURCES_KEPT = 500;
+/** Живых строк сверху не больше: старые отбрасываются (страницы снизу и курсор не трогаются). */
+export const LIVE_KEPT = 500;
 const newer = (a: JournalItem, b: JournalItem) => new Date(a.at).getTime() > new Date(b.at).getTime();
 
 /** Лента журнала: страницы по курсору снизу, живые элементы из SSE сверху (ключ — тип + id),
@@ -136,7 +138,7 @@ const newer = (a: JournalItem, b: JournalItem) => new Date(a.at).getTime() > new
  * страницы, после её прихода применяются заново; действие, которое прошло фильтр только после
  * обновления статуса, дочитывается из `GET /actions/{id}`. */
 export class JournalFeed {
-	items = $state<JournalItem[]>([]);
+	items = $state.raw<JournalItem[]>([]);
 	filter = $state<FeedFilter>({ ...EMPTY_FILTER });
 	cursor = $state<string | null>(null);
 	loading = $state(false);
@@ -153,6 +155,10 @@ export class JournalFeed {
 	#fetching = new Set<number>();
 	/** Источник действий по кадрам создания (последние SOURCES_KEPT). */
 	#sources = new Map<number, string>();
+	/** Ключи всех строк ленты. */
+	#keys = new Set<string>();
+	/** Ключи живых строк в порядке прихода (не из страниц). */
+	#live = new Set<string>();
 
 	constructor(api: Api) {
 		this.#api = api;
@@ -220,7 +226,25 @@ export class JournalFeed {
 	}
 
 	#has(key: string): boolean {
-		return this.items.some((it) => keyOf(it) === key);
+		return this.#keys.has(key);
+	}
+
+	#setItems(items: JournalItem[]): void {
+		this.items = items;
+		this.#keys = new Set(items.map(keyOf));
+		this.#live.clear();
+	}
+
+	/** Живая строка добавлена: самая старая сверх LIVE_KEPT уходит из ленты. */
+	#added(key: string): void {
+		this.#keys.add(key);
+		this.#live.add(key);
+		if (this.#live.size <= LIVE_KEPT) return;
+		const oldest = this.#live.values().next().value;
+		if (oldest === undefined) return;
+		this.#live.delete(oldest);
+		this.#keys.delete(oldest);
+		this.items = this.items.filter((it) => keyOf(it) !== oldest);
 	}
 
 	/** Изменение применяется сразу; во время загрузки первой страницы — ещё и после неё. */
@@ -232,11 +256,13 @@ export class JournalFeed {
 	#update(id: number, status: string, reason: string): void {
 		const i = this.items.findIndex((it) => it.type === 'action' && it.id === id);
 		const row = this.items[i];
-		if (row?.type === 'action') this.items[i] = { ...row, status, reason: reason || row.reason };
+		if (row?.type === 'action') this.items = this.items.with(i, { ...row, status, reason: reason || row.reason });
 	}
 
 	#prepend(item: JournalItem): void {
-		if (!this.#has(keyOf(item))) this.items = [item, ...this.items];
+		if (this.#has(keyOf(item))) return;
+		this.items = [item, ...this.items];
+		this.#added(keyOf(item));
 	}
 
 	/** Вставка по моменту: лента идёт от новых к старым. */
@@ -244,6 +270,7 @@ export class JournalFeed {
 		if (this.#has(keyOf(item))) return;
 		const i = this.items.findIndex((it) => newer(item, it));
 		this.items = i === -1 ? [...this.items, item] : [...this.items.slice(0, i), item, ...this.items.slice(i)];
+		this.#added(keyOf(item));
 	}
 
 	async #fetchAction(id: number): Promise<void> {
@@ -281,11 +308,12 @@ export class JournalFeed {
 			);
 			if (seq !== this.#seq) return;
 			if (first) {
-				this.items = page.items;
+				this.#setItems(page.items);
 				for (const op of during ?? []) op();
 			} else {
-				const known = new Set(this.items.map(keyOf));
-				this.items = [...this.items, ...page.items.filter((it) => !known.has(keyOf(it)))];
+				const fresh = page.items.filter((it) => !this.#keys.has(keyOf(it)));
+				this.items = [...this.items, ...fresh];
+				for (const it of fresh) this.#keys.add(keyOf(it));
 			}
 			this.cursor = page.next_cursor;
 			this.error = null;

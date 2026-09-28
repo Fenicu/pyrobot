@@ -23,9 +23,11 @@
 	async function load(current: number) {
 		try {
 			const a = await call(api.GET('/api/v1/actions/{action_id}', { params: { path: { action_id: current } } }));
-			if (current === id) action = a;
+			if (current !== id) return;
+			action = a;
+			error = '';
 		} catch (e) {
-			error = e instanceof ApiFailure ? e.message : String(e);
+			if (current === id) error = e instanceof ApiFailure ? e.message : String(e);
 		}
 	}
 

@@ -29,6 +29,8 @@ export interface SseActionCreated {
 	text: string | null;
 	data: string | null;
 	command_class: string;
+	/** Запуск сценария, шагом которого идёт действие; у сервера до 0.4 поля нет — null. */
+	scenario_run_id: number | null;
 }
 export interface SseActionUpdate {
 	id: number;
@@ -126,6 +128,7 @@ export function decodeEvent(type: string, raw: string, id = ''): LiveEvent | nul
 	if (!valid(type as LiveType, rec)) return null;
 	if (type === 'message' && rec.markup === undefined) rec.markup = null;
 	if (type === 'action' && rec.reason === undefined) rec.reason = '';
+	if (type === 'action' && 'source' in rec && rec.scenario_run_id === undefined) rec.scenario_run_id = null;
 	return { type, id, data: rec } as LiveEvent;
 }
 
