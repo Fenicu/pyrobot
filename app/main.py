@@ -44,6 +44,7 @@ from app.engine.stream import (
     StreamFeed,
 )
 from app.engine.supervisor import Supervisor
+from app.engine.team_forward import TeamForward
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
@@ -128,6 +129,7 @@ class Runtime:
         self.facade: EngineFacade | None = None
         self.planner: PlannerLoop | None = None
         self.reactions: RobberyDefense | None = None
+        self.team_forward: TeamForward | None = None
         self.transport: Transport | None = None
         self._kurigram: KurigramTransport | None = None
 
@@ -248,6 +250,10 @@ class Runtime:
             ready=lambda: self._can_send() is None,
         )
         bus.subscribe(self.reactions.on_delivery, priority=20)
+        self.team_forward = TeamForward(
+            gateway=gateway, settings=settings, notifier=self.notifier, clock=SystemClock()
+        )
+        bus.subscribe(self.team_forward.on_delivery, priority=30)
         bus.subscribe(self.planner.on_delivery, priority=90)
         bus.subscribe(StreamFeed(self.stream, lambda: pipeline.state).on_delivery, priority=95)
         lag = LoopLagMonitor()
@@ -270,6 +276,7 @@ class Runtime:
         self.supervisor.start("gateway", self.gateway.run)
         self.supervisor.start("reconcile", reconciler.run)
         self.supervisor.start("reactions", self.reactions.run)
+        self.supervisor.start("team-forward", self.team_forward.run)
         # Без PYROBOT_PLANNER цикл всё равно нужен: он исполняет ручные запуски сценариев.
         self.supervisor.start("planner", self.planner.run)
         self.supervisor.start("lag", lag.run)
