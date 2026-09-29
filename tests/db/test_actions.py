@@ -51,6 +51,24 @@ async def test_lifecycle_idempotency_and_duplicate(clean_db: Database) -> None:
     assert dup.value.existing.id == action_id
 
 
+async def test_update_keeps_final_command_class(clean_db: Database) -> None:
+    # Класс команды акций шлюз уточняет перед каждой попыткой: итог пишется с ним.
+    store = DbActionStore(clean_db, account_id=1)
+    req = ActionRequest(kind=ActionKind.SEND, chat_id=1, text="/buys_stark_5")
+    action_id = await store.create(req, CommandClass.ACTION, ActionStatus.INTENT)
+    await store.update(action_id, status=ActionStatus.SENT, sent=True)
+    await store.update(
+        action_id,
+        status=ActionStatus.REJECTED,
+        reason="risky_requires_confirm",
+        cls=CommandClass.RISKY,
+    )
+    async with clean_db.sessions() as session:
+        row = await session.get(ActionRow, action_id)
+    assert row is not None
+    assert (row.command_class, row.status) == ("risky", "rejected")
+
+
 async def test_mark_unfinished_unknown(clean_db: Database) -> None:
     store = DbActionStore(clean_db, account_id=1)
     req = ActionRequest(kind=ActionKind.SEND, chat_id=1, text="/job")

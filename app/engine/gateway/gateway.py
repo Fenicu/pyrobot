@@ -692,7 +692,7 @@ class ActionGateway:
                     return await self._finish(
                         p, ActionStatus.OUTCOME_UNKNOWN, f"send_error:{type(exc).__name__}"
                     )
-                await self._mark_sent(p.action_id, attempts, answer)
+                await self._mark_sent(p, attempts, answer)
                 if req.expect is None:
                     return await self._finish(p, ActionStatus.CONFIRMED, "sent", answer=answer)
                 timeout_s = (
@@ -798,12 +798,18 @@ class ActionGateway:
             await asyncio.sleep(wait)
         self._last_send = self._clock.monotonic()
 
-    async def _mark_sent(self, action_id: int | None, attempts: int, answer: str | None) -> None:
+    async def _mark_sent(self, p: _Pending, attempts: int, answer: str | None) -> None:
+        action_id = p.action_id
         if action_id is None:
             return
         try:
             await self._store.update(
-                action_id, status=ActionStatus.SENT, attempts=attempts, answer=answer, sent=True
+                action_id,
+                status=ActionStatus.SENT,
+                attempts=attempts,
+                answer=answer,
+                sent=True,
+                cls=p.cls,
             )
         except Exception:
             log.exception("sent status not persisted for %s", action_id)
@@ -829,6 +835,7 @@ class ActionGateway:
                     reason=reason,
                     answer=answer,
                     match_detail=match.detail if match else None,
+                    cls=p.cls,
                 )
             except Exception:
                 log.exception("final status not persisted for %s", action_id)

@@ -133,6 +133,7 @@ class MemoryActionStore:
         answer: str | None = None,
         match_detail: str | None = None,
         sent: bool = False,
+        cls: CommandClass | None = None,
     ) -> None:
         row = self.rows[action_id]
         row.status = status
@@ -145,6 +146,8 @@ class MemoryActionStore:
         if match_detail is not None:
             row.match_detail = match_detail
         row.sent = row.sent or sent
+        if cls is not None:
+            row.cls = cls
 
     async def get_by_key(self, key: str) -> StoredAction | None:
         action_id = self._keys.get(key)

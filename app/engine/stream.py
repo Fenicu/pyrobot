@@ -186,6 +186,7 @@ class PublishingActionStore:
         answer: str | None = None,
         match_detail: str | None = None,
         sent: bool = False,
+        cls: CommandClass | None = None,
     ) -> None:
         await self.inner.update(
             action_id,
@@ -195,6 +196,7 @@ class PublishingActionStore:
             answer=answer,
             match_detail=match_detail,
             sent=sent,
+            cls=cls,
         )
         self.stream.publish("action", {"id": action_id, "status": status.value, "reason": reason})
 

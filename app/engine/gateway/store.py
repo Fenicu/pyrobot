@@ -81,6 +81,8 @@ class ActionStore(Protocol):
         answer: str | None = None,
         match_detail: str | None = None,
         sent: bool = False,
+        # Класс команды на момент итога: у команд акций шлюз уточняет его перед каждой попыткой.
+        cls: CommandClass | None = None,
     ) -> None: ...
 
     async def get_by_key(self, key: str) -> StoredAction | None: ...

@@ -122,6 +122,8 @@ async def test_stock_class_rechecked_before_retry(rig: Rig) -> None:
     res = await rig.gw.submit(send("/buys_stark_5", expect=expect_text("Куплено")))
     assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
     assert [s.payload for s in rig.transport.sent] == ["/buys_stark_5"]
+    # Строка создана как action до первой попытки; итог записан с классом, по которому решён.
+    assert rig.store.rows[res.action_id or 0].cls is CommandClass.RISKY
 
 
 async def test_stock_class_rechecked_after_peer_resolved(rig: Rig) -> None:
