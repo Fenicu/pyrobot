@@ -26,8 +26,11 @@ dev = [
     "mypy>=2.3",
 ]
 
+# PyPI — явно: зеркало по умолчанию из ~/.config/uv/uv.toml тогда не делает uv.lock устаревшим, и
+# uv sync/uv run его не переписывают. Своё зеркало — README «Разработка».
 [[tool.uv.index]]
-url = "http://10.10.40.8:3141/root/pypi/+simple/"
+name = "pypi"
+url = "https://pypi.org/simple"
 default = true
 
 [tool.ruff]

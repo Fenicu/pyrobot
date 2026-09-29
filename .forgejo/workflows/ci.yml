@@ -19,6 +19,10 @@ jobs:
     container:
       image: ghcr.io/astral-sh/uv:debian-slim
     timeout-minutes: 10
+    env:
+      # devpi хоумлаба. uv sync берёт файлы строго по адресам uv.lock (PyPI) и при другом индексе
+      # переписал бы lock: пакеты — экспортом версий и хешей из uv.lock через uv pip sync.
+      UV_DEFAULT_INDEX: http://10.10.40.8:3141/root/pypi/+simple/
     steps:
       - name: Получить исходники
         run: |
@@ -37,8 +41,9 @@ jobs:
           uvx --from 'ruff==0.16.9' ruff format --check .
       - name: mypy
         run: |
-          uv sync --frozen
-          uv run mypy
+          uv export --frozen --no-emit-project --no-header -q -o /tmp/requirements.txt
+          uv venv -q && uv pip sync -q --require-hashes /tmp/requirements.txt
+          uv run --no-sync mypy
 
   test:
     runs-on: docker
@@ -53,6 +58,8 @@ jobs:
           POSTGRES_USER: pyrobot
           POSTGRES_PASSWORD: pyrobot
     env:
+      # devpi хоумлаба, как в lint.
+      UV_DEFAULT_INDEX: http://10.10.40.8:3141/root/pypi/+simple/
       PYROBOT_TEST_DATABASE_URL: "postgresql+asyncpg://pyrobot:pyrobot@postgres:5432/pyrobot_test"
       PYROBOT_TEST_MIGRATIONS_URL: "postgresql+asyncpg://pyrobot:pyrobot@postgres:5432/pyrobot_migtest"
     steps:
@@ -74,8 +81,9 @@ jobs:
           PGPASSWORD=pyrobot psql -h postgres -U pyrobot -d pyrobot_test -c "CREATE DATABASE pyrobot_migtest"
       - name: pytest
         run: |
-          uv sync --frozen
-          uv run pytest -q -m "not corpus"
+          uv export --frozen --no-emit-project --no-header -q -o /tmp/requirements.txt
+          uv venv -q && uv pip sync -q --require-hashes /tmp/requirements.txt
+          uv run --no-sync pytest -q -m "not corpus"
 
   # Админка: типы API сверяются с openapi.json, svelte-check, vitest и сборка статики.
   admin:

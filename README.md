@@ -798,9 +798,16 @@ live не запускается); задания — `convDets` (перераб
 
 ## Разработка
 
-`pyproject.toml` и `uv.lock` указывают на devpi автора (зеркало PyPI в домашней сети). Вне её — с
-PyPI: `UV_DEFAULT_INDEX=https://pypi.org/simple uv sync` (uv перепишет адреса в `uv.lock` на PyPI, версии
-те же; эти изменения не коммитить). Образ от этого не зависит — см. «Образ».
+Зависимости Python — с публичного PyPI: версии, хеши и адреса файлов — в `uv.lock`, индекс PyPI в
+`pyproject.toml` назван явно. `uv sync` и `uv run` качают файлы по адресам из `uv.lock` и lock не
+переписывают, даже если в `~/.config/uv/uv.toml` задано своё зеркало по умолчанию: индекс проекта
+главнее. А вот переменная `UV_DEFAULT_INDEX` главнее `pyproject.toml` — с ней uv сочтёт lock
+устаревшим и перепишет адреса на зеркало (такое не коммитить).
+
+Автору: devpi хоумлаба остаётся в `~/.config/uv/uv.toml` (`[[index]]`, `default = true`) для других
+проектов, здесь пакеты идут с PyPI; через зеркало — только экспортом из lock-файла, как в CI:
+`UV_DEFAULT_INDEX=http://10.10.40.8:3141/root/pypi/+simple/ sh -c 'uv export --frozen --no-emit-project -q -o /tmp/req.txt && uv venv && uv pip sync --require-hashes /tmp/req.txt'`,
+дальше `uv run --no-sync …`. Образ — build-arg `PYPI_INDEX`, см. «Образ».
 
 ```bash
 uv sync
@@ -2963,8 +2970,8 @@ CI сверяет, что `schema.d.ts` актуален. Сборка в Docker
 **Образ** (`Dockerfile`, многостадийный): стадия сборки — `ghcr.io/astral-sh/uv` с Python 3.13 и
 компилятором (tgcrypto собирается из исходников), версии и хеши пакетов — строго из `uv.lock`: `uv
 export --frozen --no-dev` в requirements с хешами и `uv pip sync --require-hashes` из индекса
-build-arg `PYPI_INDEX` (по умолчанию PyPI) — адреса файлов в `uv.lock` ведут на devpi хоумлаба, `uv
-sync --frozen` скачивал бы по ним; стадия админки — `node:24-bookworm-slim`:
+build-arg `PYPI_INDEX` (по умолчанию PyPI): `uv sync --frozen` скачивал бы строго по адресам файлов
+из `uv.lock`, мимо зеркала; стадия админки — `node:24-bookworm-slim`:
 `npm ci` строго по `admin/package-lock.json` (реестр — build-arg `NPM_REGISTRY`, по умолчанию npmjs;
 кеш npm — `--mount=type=cache`) и `npm run build`, TS-типы API — закоммиченный `schema.d.ts` (`openapi.json`
 в контекст сборки не входит); рантайм — `python:3.13-slim-trixie` без uv, компилятора и node:
@@ -3017,7 +3024,9 @@ docker compose -f compose.yml config          # нужен .env рядом (см
 ### CI/CD (деплой автора)
 
 **CI/CD** (`.forgejo/workflows/ci.yml`, Forgejo Actions): на push в `master`, на теги и по ручному
-запуску — `lint` (ruff, mypy) и `test` (pytest с сервисом Postgres) в контейнере uv и `admin` в
+запуску — `lint` (ruff, mypy) и `test` (pytest с сервисом Postgres) в контейнере uv (пакеты Python — из
+devpi хоумлаба: `UV_DEFAULT_INDEX`, `uv export --frozen` с хешами → `uv pip sync --require-hashes` →
+`uv run --no-sync`; `uv sync` при другом индексе переписал бы `uv.lock`) и `admin` в
 контейнере `node:24-bookworm-slim` (git — через apt-прокси хоумлаба `10.10.40.23:3142`; `npm ci` из
 verdaccio хоумлаба — `npm_config_registry`,
 `npm run gen:api` + `git diff --exit-code` — закоммиченный `schema.d.ts` совпадает с `openapi.json`,

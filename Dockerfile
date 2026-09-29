@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # Сборка окружения: версии и хеши — строго из uv.lock, пакеты — из PYPI_INDEX (по умолчанию PyPI;
-# адреса файлов в uv.lock — зеркало автора, поэтому не uv sync, а экспорт с хешами); tgcrypto
-# собирается из исходников.
+# uv sync --frozen качал бы строго по адресам файлов в uv.lock, мимо зеркала, поэтому — экспорт с
+# хешами); tgcrypto собирается из исходников.
 FROM ghcr.io/astral-sh/uv:0.11.9-python3.13-trixie-slim AS build
 ARG APT_PROXY=""
 ARG PYPI_INDEX=https://pypi.org/simple
