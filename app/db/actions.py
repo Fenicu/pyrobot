@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
@@ -5,10 +6,20 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.db.base import Database
-from app.db.models import ActionRow
+from app.db.models import ActionRow, NotificationRow
 from app.engine.commands import CommandClass
-from app.engine.gateway.store import CANCELLED, Closed, DuplicateKey, Obligation, StoredAction
+from app.engine.gateway.store import (
+    CANCELLED,
+    LOST_FORWARD_CODE,
+    Closed,
+    DuplicateKey,
+    Obligation,
+    StoredAction,
+    lost_forward_text,
+)
 from app.engine.gateway.types import ActionRequest, ActionStatus
+
+log = logging.getLogger(__name__)
 
 # Неизвестный исход навигации и пересылки состояние игры не меняет: их не сверяют.
 UNRECONCILED_FREE = (CommandClass.NAV.value, CommandClass.FORWARD.value)
@@ -116,10 +127,23 @@ class DbActionStore:
                 )
                 .returning(ActionRow.id, ActionRow.command_class, ActionRow.payload)
             )
-            return [
+            closed = [
                 Closed(int(i), CommandClass(cls), payload.get("message_id"))
                 for i, cls, payload in rows
             ]
+            lost = [c for c in closed if c.cls is CommandClass.FORWARD]
+            session.add_all(
+                NotificationRow(
+                    account_id=self._account_id,
+                    level="warn",
+                    code=LOST_FORWARD_CODE,
+                    text=lost_forward_text(c.message_id),
+                )
+                for c in lost
+            )
+        for c in lost:
+            log.warning(lost_forward_text(c.message_id))
+        return closed
 
     async def unreconciled(self) -> list[Obligation]:
         async with self._db.sessions() as session:

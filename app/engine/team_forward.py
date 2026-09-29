@@ -9,11 +9,10 @@ from datetime import date, datetime, timedelta
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock, SystemClock
-from app.engine.commands import CommandClass
 from app.engine.events import Event
 from app.engine.gametime import day_start, tasks_day
 from app.engine.gateway.gateway import ActionGateway
-from app.engine.gateway.store import Closed
+from app.engine.gateway.store import CANCELLED
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.notify import NotifierPort
 from app.engine.parsing.crew import FactoryReport
@@ -57,18 +56,6 @@ def forward_target(msg: IncomingMessage, events: Sequence[Event]) -> Target | No
 def _day_end(day: date) -> datetime:
     """Полночь МСК после суток `day`."""
     return day_start(day + timedelta(days=1))
-
-
-async def notify_lost_forwards(notifier: NotifierPort, closed: Sequence[Closed]) -> int:
-    """Пересылки, прерванные падением прошлого процесса (при старте закрыты как outcome_unknown):
-    ушла ли копия — неизвестно, повтора нет (ключ израсходован), поэтому по каждой —
-    уведомление."""
-    lost = [c for c in closed if c.cls is CommandClass.FORWARD]
-    for c in lost:
-        text = f"forward {c.message_id} to team chat: outcome unknown (restart), not retried"
-        log.warning(text)
-        await notifier.notify("warn", "team_forward_unknown", text)
-    return len(lost)
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +168,12 @@ class TeamForward:
                 self._done.popitem(last=False)
         if status is ActionStatus.CONFIRMED:
             log.info("team forward %s sent as %s", item.key, result.answer)
+        elif status is ActionStatus.OUTCOME_UNKNOWN and reason == CANCELLED:
+            # Шлюз остановлен посреди пересылки: строку закроет и уведомит следующий старт — в
+            # одной транзакции, одно уведомление.
+            log.warning(
+                "team forward %s: outcome unknown (cancelled), reported at next start", item.key
+            )
         elif status is ActionStatus.OUTCOME_UNKNOWN:
             await self._warn(
                 "team_forward_unknown",

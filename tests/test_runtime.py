@@ -304,6 +304,11 @@ async def test_forward_left_by_previous_process_notified_not_retried(clean_db: D
     stored = await store.get_by_key(f"forward:{GAME}:3625831")
     assert stored is not None and stored.id == forwarded
     assert (stored.status, stored.reason) == (ActionStatus.OUTCOME_UNKNOWN, "restart")
+    # Повторный старт — без второго уведомления.
+    again = create_application(_cfg())
+    async with again.router.lifespan_context(again):
+        codes = [r.code for r in await again.state.runtime.notifier.recent()]
+    assert codes.count("team_forward_unknown") == 1
 
 
 async def test_start_interrupts_runs_left_by_previous_process(clean_db: Database) -> None:

@@ -46,6 +46,15 @@ class Closed:
     message_id: int | None = None
 
 
+# Уведомление о пересылке, закрытой при старте как outcome_unknown: ушла ли копия — неизвестно,
+# повтора нет. Пишется в той же транзакции, что и закрытие строки, — ни пропуска, ни дубля.
+LOST_FORWARD_CODE = "team_forward_unknown"
+
+
+def lost_forward_text(message_id: int | None) -> str:
+    return f"forward {message_id} to team chat: outcome unknown (restart), not retried"
+
+
 # Причина outcome_unknown для действия, прерванного остановкой шлюза посреди отправки;
 # такие строки при следующем старте сверяются так же, как незавершённые.
 CANCELLED = "cancelled"
@@ -76,7 +85,11 @@ class ActionStore(Protocol):
 
     async def get_by_key(self, key: str) -> StoredAction | None: ...
 
-    async def mark_unfinished_unknown(self) -> list[Closed]: ...
+    async def mark_unfinished_unknown(self) -> list[Closed]:
+        """Незавершённые действия прошлого процесса (и прерванные остановкой шлюза) — в
+        outcome_unknown `restart`; по каждой пересылке — уведомление `LOST_FORWARD_CODE` в той же
+        транзакции."""
+        ...
 
     async def unreconciled(self) -> list[Obligation]: ...
 

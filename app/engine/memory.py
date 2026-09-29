@@ -7,7 +7,15 @@ from typing import Any
 
 from app.engine.commands import CommandClass
 from app.engine.events import Event, Unrecognized
-from app.engine.gateway.store import CANCELLED, Closed, DuplicateKey, Obligation, StoredAction
+from app.engine.gateway.store import (
+    CANCELLED,
+    LOST_FORWARD_CODE,
+    Closed,
+    DuplicateKey,
+    Obligation,
+    StoredAction,
+    lost_forward_text,
+)
 from app.engine.gateway.types import ActionRequest, ActionStatus
 from app.engine.state.ledger import Effect, numbered
 from app.engine.types import IncomingMessage
@@ -97,6 +105,8 @@ class MemoryActionStore:
     def __init__(self) -> None:
         self.rows: dict[int, MemoryActionRow] = {}
         self._keys: dict[str, int] = {}
+        # Уведомления, которые хранилище пишет вместе с закрытием строк (уровень, код, текст).
+        self.notes: list[tuple[str, str, str]] = []
 
     def _stored(self, action_id: int) -> StoredAction:
         row = self.rows[action_id]
@@ -149,7 +159,13 @@ class MemoryActionStore:
         ]
         for i in ids:
             await self.update(i, status=ActionStatus.OUTCOME_UNKNOWN, reason="restart")
-        return [Closed(i, self.rows[i].cls, self.rows[i].req.message_id) for i in ids]
+        closed = [Closed(i, self.rows[i].cls, self.rows[i].req.message_id) for i in ids]
+        self.notes.extend(
+            ("warn", LOST_FORWARD_CODE, lost_forward_text(c.message_id))
+            for c in closed
+            if c.cls is CommandClass.FORWARD
+        )
+        return closed
 
     async def unreconciled(self) -> list[Obligation]:
         return [

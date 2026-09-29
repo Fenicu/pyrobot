@@ -14,7 +14,7 @@ from app.engine.gateway.types import ActionStatus
 from app.engine.notify import Level
 from app.engine.parsing import default_parser
 from app.engine.settings import ChatsSection, Settings
-from app.engine.team_forward import TeamForward, forward_target, notify_lost_forwards
+from app.engine.team_forward import TeamForward, forward_target
 from app.engine.types import IncomingMessage
 from tests.engine.gateway_rig import LIVE, Rig
 from tests.engine.helpers import GAME, make_msg, until
@@ -408,16 +408,6 @@ async def test_source_edited_before_send_refused_and_notified(rig: ForwardRig) -
     assert rig.notes.items == [("warn", "team_forward_failed")]
 
 
-async def test_lost_forwards_notified_each() -> None:
-    from app.engine.commands import CommandClass
-    from app.engine.gateway.store import Closed
-
-    notes = Notes()
-    closed = [Closed(1, CommandClass.ACTION, None), Closed(2, CommandClass.FORWARD, 5)]
-    assert await notify_lost_forwards(notes, closed) == 1
-    assert notes.items == [("warn", "team_forward_unknown")]
-
-
 async def test_factory_report_not_forwarded_when_read_crosses_midnight(rig: ForwardRig) -> None:
     # Реакция и очередь успели до полуночи, чтение источника начато в 23:59:59, а ответ пришёл в
     # 00:00:01 — день битвы кончился прямо перед вызовом транспорта.
@@ -443,3 +433,28 @@ async def test_task_has_no_deadline(rig: ForwardRig) -> None:
     await rig.settle()
     [row] = rig.gw.store.rows.values()
     assert row.req.deadline is None
+
+
+async def test_cancelled_mid_forward_notified_once_at_next_start() -> None:
+    # Шлюз остановлен посреди пересылки (outcome_unknown cancelled): реакция не уведомляет — это
+    # сделает следующий старт вместе с закрытием строки, одно уведомление, а не два.
+    r = ForwardRig()
+    hang = asyncio.Event()
+
+    async def read_forever() -> None:
+        await hang.wait()
+
+    r.gw.transport.on_fetch = read_forever
+    r.start()
+    try:
+        await r.deliver(game_msg(*TASK))
+        await until(lambda: r.gw.transport.fetches != [])
+        await r.gw.stop()
+        await r.settle()
+    finally:
+        await r.stop()
+    [row] = r.gw.store.rows.values()
+    assert (row.status, row.reason) == (ActionStatus.OUTCOME_UNKNOWN, "cancelled")
+    assert r.notes.items == [] and r.sent == []
+    await r.gw.store.mark_unfinished_unknown()
+    assert [code for _, code, _ in r.gw.store.notes] == ["team_forward_unknown"]
