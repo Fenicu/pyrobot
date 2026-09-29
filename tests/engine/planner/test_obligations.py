@@ -448,6 +448,29 @@ def test_teamless_character_skips_factory() -> None:
     assert act(decide(state(now, team_tag="SU"), only("factory"), now)) == ("factory_signup", {})
 
 
+def test_old_teamless_profile_is_refreshed_before_factory() -> None:
+    # «Без команды» — из профиля получасовой давности: игрок мог вступить в команду. У окна записи
+    # сначала профиль, а не отказ no_team; окно для дел и сна — как в команде, пока не ясно.
+    now = msk(18, 5)
+    old = Obs(value=None, at=msk(17, 35))
+    decision = decide(state(now, team_tag=old), only("factory"), now)
+    assert act(decision) == ("refresh", {"source": "profile"})
+    assert verdicts(decision)["factory_signup"] == "stale:team_tag"
+    # Лимит обновлений не дал — ждём его, без записи и без no_team.
+    limited = decide(state(now, team_tag=old), only("factory"), now, last_refresh={"profile": now})
+    assert not isinstance(limited, Act)
+    assert verdicts(limited)["factory_signup"] == "stale:team_tag"
+    early = msk(17, 57)
+    cfg = only("factory", strategy={"deeds": ["harvest", "job"]})
+    decision = decide(state(early, motivation=40, team_tag=old), cfg, early)
+    assert verdicts(decision)["deed:harvest"] == "factory_window"
+    # Свежий профиль: вступил — запись; всё ещё без команды — no_team.
+    joined = state(now, team_tag=Obs(value="SU", at=now))
+    assert act(decide(joined, only("factory"), now)) == ("factory_signup", {})
+    still = decide(state(now, team_tag=Obs(value=None, at=now)), only("factory"), now)
+    assert verdicts(still)["factory_signup"] == "no_team"
+
+
 def test_teamless_sleep_does_not_wait_for_factory() -> None:
     now = msk(17, 55)
     early = state(now, sleep_deadline=msk(19), battle_at=msk(22), team_tag=None)

@@ -71,6 +71,8 @@ class DailyTasks(Obligations):
             # Экран заданий открывается только из меню команды.
             self.reject("daily_refresh", {}, "no_team")
             return None
+        if self.teamless_before():
+            return self.refresh("daily_refresh", "team_tag")
         start, midnight = day_start(self.tasks_today()), self.midnight()
         if self.now < start + MIDNIGHT_GUARD:
             self.wake(start + MIDNIGHT_GUARD, "daily_midnight")

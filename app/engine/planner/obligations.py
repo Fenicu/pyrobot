@@ -214,6 +214,8 @@ class Obligations(PlannerBase):
         if busy is not None:
             self.reject("factory_signup", {}, "busy")
             return None
+        if self.teamless_before():
+            return self.refresh("factory_signup", "team_tag")
         return self.act("factory_signup", {}, "factory_window")
 
     def factory_joined(self) -> bool:

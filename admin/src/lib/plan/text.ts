@@ -146,7 +146,8 @@ const FIELD_TEXT: Record<string, string> = {
 	cards: 'карты',
 	gorbushka: 'Горбушка',
 	food_stock: 'запас еды',
-	company: 'своя компания'
+	company: 'своя компания',
+	team_tag: 'команда'
 };
 
 export function verdictText(verdict: string): string {

@@ -45,6 +45,7 @@ _PROFILE = (
     "sleep_deadline",
     "sleep_allowed_at",
     "company",
+    "team_tag",
 )
 SOURCE = {
     **dict.fromkeys(_PROFILE, "profile"),
@@ -116,6 +117,7 @@ class PlannerBase:
         self.last_done = last_done
         self.metro_durations = metro_durations
         self.done_today: Mapping[str, int] = done_today or {}
+        self.volatile_age = timedelta(minutes=settings.engine.state_stale_after_min)
         self.stale = self.find_stale()
         self.refresh_every = timedelta(seconds=settings.engine.refresh_min_interval_s)
         self.candidates: list[Candidate] = []
@@ -176,10 +178,23 @@ class PlannerBase:
         until = self.cooldowns.get(key or scenario)
         return until is not None and until > self.now
 
-    def teamless(self) -> bool:
-        """В последнем профиле нет тега команды: задания дня и фабрика — только для команд."""
+    def _no_team_seen(self) -> timedelta | None:
+        """Сколько назад профиль показал персонажа без тега команды; None — тег есть или
+        неизвестен."""
         team = self.s.team_tag
-        return team is not None and team.value is None
+        return None if team is None or team.value is not None else self.now - team.at
+
+    def teamless(self) -> bool:
+        """В свежем профиле (не старше быстрых полей) нет тега команды: задания дня и фабрика —
+        только для команд."""
+        age = self._no_team_seen()
+        return age is not None and age <= self.volatile_age
+
+    def teamless_before(self) -> bool:
+        """Тега команды не было в давнем профиле: игрок мог вступить в команду — до отказа
+        `no_team` нужен свежий профиль, а пока — как в команде."""
+        age = self._no_team_seen()
+        return age is not None and age > self.volatile_age
 
     def stale_of(self, *fields: str) -> str | None:
         for name in fields:

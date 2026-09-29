@@ -543,6 +543,11 @@ def test_teamless_character_has_no_daily_tasks() -> None:
     decision = decide(left, DAILY, NOW)
     assert picked(decision) == ("deed:harvest", {}, "focus harvest (0 today)")
     assert verdicts(decision)["daily_refresh"] == "no_team"
+    # Давний профиль без команды — сначала свежий профиль, а не /crew и не отказ.
+    old = awake(team_tag=Obs(value=None, at=m(-30)))
+    decision = decide(old, DAILY, NOW)
+    assert picked(decision) == ("refresh", {"source": "profile"}, "daily_refresh needs team_tag")
+    assert verdicts(decision)["daily_refresh"] == "stale:team_tag"
     # Тег в профиле или команда ещё неизвестна — как раньше.
     assert picked(decide(awake(team_tag="SU"), DAILY, NOW))[0] == "daily_refresh"
     assert picked(decide(tasks(chosen("jobMoney"), team_tag="SU"), DAILY, NOW))[0] == "deed:job"
