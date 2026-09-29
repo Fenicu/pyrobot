@@ -421,6 +421,31 @@ def test_deeds_keep_signup_window_free() -> None:
     assert verdicts(decision)["deed:harvest"] == "factory_window"
 
 
+def test_teamless_character_skips_factory() -> None:
+    # Битва за фабрику — только для команд: вне команды ни записи, ни окна для дел, ни отчёта.
+    now = msk(18, 5)
+    decision = decide(state(now, team_tag=None), only("factory"), now)
+    assert verdicts(decision)["factory_signup"] == "no_team"
+    assert not isinstance(decision, Act)
+    early = msk(17, 57)
+    cfg = only("factory", strategy={"deeds": ["harvest", "job"]})
+    decision = decide(state(early, motivation=40, team_tag=None), cfg, early)
+    assert isinstance(decision, Act) and "factory_window" not in verdicts(decision).values()
+    later = msk(18, 40)
+    decision = decide(state(later, team_tag=None), only("factory"), later, last_done=SIGNED)
+    assert "factory_report" not in verdicts(decision)
+    view = outlook(state(later, team_tag=None), only("factory"), later, last_done=SIGNED)
+    assert all(w.kind != "factory_report" for w in view.wakeups)
+    # В команде — как раньше.
+    assert act(decide(state(now, team_tag="SU"), only("factory"), now)) == ("factory_signup", {})
+
+
+def test_teamless_sleep_does_not_wait_for_factory() -> None:
+    now = msk(17, 55)
+    early = state(now, sleep_deadline=msk(19), battle_at=msk(22), team_tag=None)
+    assert act(decide(early, only("factory"), now))[0] == "sleep"
+
+
 def test_factory_waits_for_busy_then_after_close_forgets() -> None:
     now = msk(18, 5)
     busy = BusyState(activity="job", until=now + timedelta(minutes=1))

@@ -29,7 +29,7 @@ from app.engine.scenarios.library import ScenarioResult
 from app.engine.scenarios.registry import ScenarioSpec
 from app.engine.settings import Settings
 from app.engine.state.model import CharacterState
-from tests.engine.fakegame import LIVE, World, running_world
+from tests.engine.fakegame import LIVE, Ref, World, running_world
 from tests.engine.helpers import until
 from tests.engine.planner.test_obligations import only, state
 from tests.fixtures import game_msg
@@ -128,9 +128,9 @@ async def set_engine(world: World, **update: object) -> None:
     )
 
 
-def script_day(world: World) -> None:
+def script_day(world: World, profile: Ref = ("profile", 3624478)) -> None:
     game = world.game
-    game.on_text("😎Я", ("profile", 3624478))
+    game.on_text("😎Я", profile)
     game.on_text("/inv", ("items", 3625102))
     game.on_text("/read_exp", ("items", 3516680))
     game.on_text("/to_eat", ("food", 3624997))
@@ -161,6 +161,35 @@ async def test_from_empty_state_to_first_deed(world: World) -> None:
     gorbushka = world.state.gorbushka
     assert gorbushka is not None and gorbushka.value.next_fight_at is not None
     assert rig.loop.next_wake == gorbushka.value.next_fight_at + TIMER_MARGIN
+
+
+async def test_teamless_character_never_opens_crew(world: World) -> None:
+    # Полный цикл вне команды: профиль без тега (строка имени автора без [SU]) → состояние →
+    # планировщик. Задания дня и фабрика включены, но /crew не уходит, дела идут как обычно.
+    team_features = {"daily_tasks": True, "factory": True}
+    await world.settings.update(
+        lambda s: s.model_copy(update={"features": s.features.model_copy(update=team_features)}),
+        changed_by="test",
+    )
+    profile = game_msg("profile", 3624478)
+    teamless = replace(profile, text=(profile.text or "").replace("☣️[SU]\xa0", "☣️", 1))
+    assert teamless.text != profile.text
+    script_day(world, teamless)
+    rig = Rig(world)
+    await rig.steps(12)
+    assert "/crew" not in world.game.payloads()
+    assert world.game.payloads()[-1] == "/job"
+    team = world.state.team_tag
+    assert team is not None and team.value is None
+    company = world.state.company
+    assert company is not None and company.value == "bmesa"
+    rejected = {
+        (c["scenario"], c["verdict"]) for _, d in rig.store.decisions for c in d.candidates
+    }
+    assert {("daily_refresh", "no_team"), ("factory_signup", "no_team")} <= rejected
+    assert {r.scenario for r in rig.store.runs}.isdisjoint(
+        {"daily_refresh", "daily_pick", "factory_signup", "factory_report"}
+    )
 
 
 async def test_scenario_steps_carry_their_run(world: World) -> None:

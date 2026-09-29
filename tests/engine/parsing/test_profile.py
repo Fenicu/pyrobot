@@ -1,5 +1,7 @@
 from dataclasses import replace
 
+import pytest
+
 from app.engine.parsing.profile import ProfileCompact, recognize_compact
 from tests.fixtures import game_msg
 
@@ -92,3 +94,39 @@ def test_unknown_company_mark_keeps_profile() -> None:
     assert _company("") is None and _company("🦄") is None
     profile = _with_mark("")
     assert profile is not None and profile.money == _profile(3624478).money
+
+
+def test_team_tag_from_name_line() -> None:
+    assert _profile(3624478).team_tag == "SU"
+    assert _profile(3536910).team_tag == "SU"
+
+
+def _teamless(name_line: str) -> ProfileCompact:
+    # Своего профиля вне команды в корпусе нет (автор в команде с 2023, прежний формат профиля
+    # другой): строка имени — реальная, тег убран. Так игра пишет игроков без команды в отчётах
+    # битв SWINFO («☂️MstrGreen», «📯🕺Макс») и биржевиков («📯Stiven King (54)»).
+    msg = game_msg("profile", 3624478)
+    text = (msg.text or "").replace("☣️[SU]\xa0Fenicu 🐀", name_line, 1)
+    assert text != msg.text
+    events = recognize_compact(replace(msg, text=text))
+    assert len(events) == 1 and isinstance(events[0], ProfileCompact), name_line
+    return events[0]
+
+
+@pytest.mark.parametrize(
+    ("line", "company"),
+    [
+        ("☣️Fenicu 🐀", "bmesa"),
+        ("☣️💰Fenicu 🐀", "bmesa"),
+        ("📯🕺Макс", "piper"),
+        ("📯Stiven King 🐕", "piper"),
+        ("⚡️1", "stark"),
+        # В имени без тега бывают и значки компаний: своя — первый значок строки.
+        ("☂️🤖Robot 🐀", "umbrl"),
+    ],
+)
+def test_profile_without_team_tag(line: str, company: str) -> None:
+    p = _teamless(line)
+    own = _profile(3624478)
+    assert p.team_tag is None and p.company == company
+    assert replace(p, team_tag=own.team_tag, company=own.company) == own

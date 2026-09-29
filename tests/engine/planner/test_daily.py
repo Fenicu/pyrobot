@@ -531,3 +531,18 @@ def test_first_refresh_of_new_day_ignores_rate_limit() -> None:
     later = after + timedelta(minutes=3)
     held = decide(state, NO_SLEEP_OR_DEEDS, later, last_refresh={"daily": after})
     assert isinstance(held, Wait) and verdicts(held)["daily_refresh"] == "rate_limited"
+
+
+def test_teamless_character_has_no_daily_tasks() -> None:
+    # Задания дня — в меню команды: вне команды (в профиле нет тега) /crew бессмыслен.
+    decision = decide(awake(team_tag=None), DAILY, NOW)
+    assert picked(decision)[0] == "deed:harvest"
+    assert verdicts(decision)["daily_refresh"] == "no_team"
+    # Задания, оставшиеся от команды, дела не направляют и не выбираются.
+    left = tasks(offers("jobMoney_hard"), team("dconv"), team_tag=None)
+    decision = decide(left, DAILY, NOW)
+    assert picked(decision) == ("deed:harvest", {}, "focus harvest (0 today)")
+    assert verdicts(decision)["daily_refresh"] == "no_team"
+    # Тег в профиле или команда ещё неизвестна — как раньше.
+    assert picked(decide(awake(team_tag="SU"), DAILY, NOW))[0] == "daily_refresh"
+    assert picked(decide(tasks(chosen("jobMoney"), team_tag="SU"), DAILY, NOW))[0] == "deed:job"

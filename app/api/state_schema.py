@@ -89,7 +89,7 @@ class PublicState(BaseModel):
     team_task: Observed[TeamTask] | None = None
     daily_personal: Observed[PersonalTask] | None = None
     company: Observed[str] | None = None
-    team_tag: Observed[str] | None = None
+    team_tag: Observed[str | None] | None = None
     factory_wins: Observed[int] | None = None
     glory: Observed[int] | None = None
     factory_won_at: Observed[datetime] | None = None

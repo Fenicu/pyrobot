@@ -49,10 +49,14 @@ class DailyTasks(Obligations):
 
     def personal_today(self) -> PersonalTask | None:
         task: PersonalTask | None = self.value("daily_personal")
+        if self.teamless():
+            return None
         return task if task is not None and task.day == self.tasks_today() else None
 
     def team_today(self) -> TeamTask | None:
         task: TeamTask | None = self.value("team_task")
+        if self.teamless():
+            return None
         return task if task is not None and task.day == self.tasks_today() else None
 
     def midnight(self) -> datetime:
@@ -62,6 +66,10 @@ class DailyTasks(Obligations):
 
     def daily(self, busy: BusyState | None) -> Decision | None:
         if not self.feature_on("daily_pick") or self.metro_inside() is not None:
+            return None
+        if self.teamless():
+            # Экран заданий открывается только из меню команды.
+            self.reject("daily_refresh", {}, "no_team")
             return None
         start, midnight = day_start(self.tasks_today()), self.midnight()
         if self.now < start + MIDNIGHT_GUARD:

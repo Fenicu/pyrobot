@@ -176,6 +176,11 @@ class PlannerBase:
         until = self.cooldowns.get(key or scenario)
         return until is not None and until > self.now
 
+    def teamless(self) -> bool:
+        """В последнем профиле нет тега команды: задания дня и фабрика — только для команд."""
+        team = self.s.team_tag
+        return team is not None and team.value is None
+
     def stale_of(self, *fields: str) -> str | None:
         for name in fields:
             if getattr(self.s, name) is None or name in self.stale:

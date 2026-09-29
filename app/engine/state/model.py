@@ -224,7 +224,8 @@ class CharacterState(_Frozen):
     daily_personal: Obs[PersonalTask] | None = None
     # Своя компания — код, как в /buys_<код>_N, по значку перед именем в профиле (☣️ → bmesa).
     company: Obs[str] | None = None
-    team_tag: Obs[str] | None = None
+    # Тег команды из профиля и экрана команды; значение None — в профиле тега нет, не в команде.
+    team_tag: Obs[str | None] | None = None
     factory_wins: Obs[int] | None = None
     # Личная слава 🏆 с экрана команды.
     glory: Obs[int] | None = None

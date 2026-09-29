@@ -26,3 +26,6 @@ def test_prod_snapshot_learns_company_from_first_profile() -> None:
     assert classify_callback("buys_bmesa", own) is CommandClass.RISKY
     assert classify_text("/buys_stark_5", own) is CommandClass.ACTION
     assert classify_callback("buys_umbrl", own) is CommandClass.ACTION
+    # Команда автора — из того же профиля: сценарии команды (задания, фабрика) не выключаются.
+    team = load_state(after).team_tag
+    assert team is not None and team.value == "SU"

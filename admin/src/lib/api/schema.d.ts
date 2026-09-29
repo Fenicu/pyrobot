@@ -2001,7 +2001,7 @@ export interface components {
             tangerine_not_player?: components["schemas"]["Observed_str_"] | null;
             tangerine_ready_at?: components["schemas"]["Observed_datetime_"] | null;
             tangerines?: components["schemas"]["Observed_int_"] | null;
-            team_tag?: components["schemas"]["Observed_str_"] | null;
+            team_tag?: components["schemas"]["Observed_Union_str__NoneType__"] | null;
             team_task?: components["schemas"]["Observed_TeamTask_"] | null;
             upgrades?: components["schemas"]["Observed_Upgrades_"] | null;
             woke_at?: components["schemas"]["Observed_datetime_"] | null;

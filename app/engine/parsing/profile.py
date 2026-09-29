@@ -10,7 +10,8 @@ from app.engine.types import IncomingMessage
 
 _COMPACT = re.compile(
     r"\AБитва через (?P<battle_in>[^!\n]+)!\n\n"
-    r"(?P<prefix>[^\[\n]*)\[(?P<tag>[^\]]+)\][\xa0 ](?P<name>[^\n]+?)(?: (?P<pet>🐀|🐕))?\n"
+    # Тег команды — только у игрока в команде: «☣️💰[SU] Fenicu», без команды — «☣️Fenicu».
+    r"(?P<who>(?:[^\[\n]*\[(?P<tag>[^\]]+)\][\xa0 ])?[^\n]+?)(?: (?P<pet>🐀|🐕))?\n"
     r"🎚(?P<level>\d+)\s+🧵(?P<prof>\d+) \((?P<sub>[^)]+)\)\n"
     r"💡(?P<exp>" + NUM + r") из (?P<exp_next>" + NUM + r")\n"
     r"💵\$(?P<money>" + NUM + r")(?: 🌐\d+)? 🔋(?P<stamina>\d+)% /to_eat\n"
@@ -67,8 +68,10 @@ class ProfileCompact(Event):
     sleep_in_s: int | None
     busy_kind: str | None
     busy_left_s: int | None
-    # Своя компания — код по значку перед тегом команды (☣️ → bmesa).
+    # Своя компания — код по значку в начале строки имени (☣️ → bmesa).
     company: str | None = None
+    # Тег команды; None — персонаж не в команде.
+    team_tag: str | None = None
 
 
 def _busy(tail: str) -> tuple[str | None, int | None]:
@@ -118,7 +121,8 @@ def recognize_compact(msg: IncomingMessage) -> list[Event]:
             sleep_in_s=dur(sleep_in["t"]) if sleep_in else None,
             busy_kind=busy_kind,
             busy_left_s=busy_left,
-            company=company_of_mark(m["prefix"]),
+            company=company_of_mark(m["who"]),
+            team_tag=m["tag"],
         )
     ]
 

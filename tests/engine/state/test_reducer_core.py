@@ -167,10 +167,26 @@ def test_metrics_only_changed_fields() -> None:
     assert reducer.metrics(after, after) == {}
 
 
+def _reprofiled(reducer: StateReducer, state: dict, old: str, new: str) -> dict:
+    msg = fixture_at("profile", PROFILE, 10)
+    text = (msg.text or "").replace(old, new, 1)
+    assert text != msg.text
+    changed = replace(msg, text=text)
+    return reducer.apply(state, changed, PARSER.parse(changed))
+
+
 def test_unrecognized_company_mark_keeps_known_company() -> None:
     reducer = StateReducer()
     state = _profiled(reducer)
-    msg = fixture_at("profile", PROFILE, 10)
-    unmarked = replace(msg, text=(msg.text or "").replace("☣️[SU]", "[SU]", 1))
-    after = reducer.apply(state, unmarked, PARSER.parse(unmarked))
+    after = _reprofiled(reducer, state, "☣️[SU]", "[SU]")
     assert value(after, "money") == 867 and value(after, "company") == "bmesa"
+
+
+def test_team_tag_from_profile() -> None:
+    reducer = StateReducer()
+    state = _profiled(reducer)
+    assert value(state, "team_tag") == "SU"
+    # Без тега команды — персонаж вне команды: наблюдение есть, значение пустое.
+    teamless = _reprofiled(reducer, state, "☣️[SU]\xa0Fenicu", "☣️Fenicu")
+    assert value(teamless, "money") == 867 and value(teamless, "company") == "bmesa"
+    assert teamless["team_tag"] is not None and value(teamless, "team_tag") is None

@@ -183,7 +183,7 @@ class Obligations(PlannerBase):
 
     def factory_pending(self) -> bool:
         """Запись на сегодняшнюю битву за фабрику ещё нужна."""
-        if not self.feature_on("factory_signup"):
+        if not self.feature_on("factory_signup") or self.teamless():
             return False
         opens, closes = msk_at(self.now, FACTORY_OPEN), msk_at(self.now, FACTORY_CLOSE)
         if self.now >= closes:
@@ -197,6 +197,10 @@ class Obligations(PlannerBase):
         return won is None or won < msk_at(self.now, FACTORY_BATTLE, days=-1)
 
     def factory(self, busy: BusyState | None) -> Decision | None:
+        if self.feature_on("factory_signup") and self.teamless():
+            # Битвы за фабрику — между командами: без команды записи нет.
+            self.reject("factory_signup", {}, "no_team")
+            return None
         if not self.factory_pending():
             return None
         opens = msk_at(self.now, FACTORY_OPEN)
@@ -225,7 +229,7 @@ class Obligations(PlannerBase):
         """Отчёт о сегодняшней битве за фабрику (`/fb`, навигация — и во время дела): после 18:31,
         если персонаж сегодня записан, сегодняшний отчёт ещё не получен и сегодня запуска ещё не
         было; до 23:59. Во сне шаг не решается."""
-        if not self.feature_on("factory_report"):
+        if not self.feature_on("factory_report") or self.teamless():
             return None
         if self.now >= msk_at(self.now, FACTORY_REPORT_UNTIL) or not self.factory_joined():
             return None

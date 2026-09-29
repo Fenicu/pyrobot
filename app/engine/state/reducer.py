@@ -379,6 +379,8 @@ def _profile(p: _Patch, e: ProfileCompact) -> None:
     p.snap("battle_target", e.battle_target)
     if e.company is not None:
         p.snap("company", e.company)
+    # Тег пустой — персонаж не в команде.
+    p.snap("team_tag", e.team_tag)
     busy = None
     if e.busy_kind is not None and e.busy_left_s is not None:
         busy = BusyState(activity=e.busy_kind, until=p.at + timedelta(seconds=e.busy_left_s))
@@ -803,7 +805,7 @@ def _task_completed(p: _Patch, e: TaskCompleted) -> None:
 @_on(FactoryResult)
 def _factory_result(p: _Patch, e: FactoryResult) -> None:
     # Победа своей команды — следующую битву за фабрику команда пропускает.
-    tag: Obs[str] | None = p.get("team_tag")
+    tag: Obs[str | None] | None = p.get("team_tag")
     if tag is not None and e.winner == tag.value:
         p.snap("factory_won_at", p.at)
 

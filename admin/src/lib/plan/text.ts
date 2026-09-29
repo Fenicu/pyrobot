@@ -126,7 +126,8 @@ export const VERDICT: Record<string, string> = {
 	not_player: 'адресат не играет',
 	in_metro: 'уже в метро',
 	metro_unknown_screen: 'незнакомый экран метро',
-	reserved: '🔥 в запасе'
+	reserved: '🔥 в запасе',
+	no_team: 'не в команде'
 };
 
 /** Поля состояния в вердикте `stale:<поле>`. */

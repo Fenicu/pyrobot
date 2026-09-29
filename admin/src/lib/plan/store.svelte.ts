@@ -22,7 +22,6 @@ export const IGNORED = new Set([
 	'woke_at',
 	'upgrades',
 	'last_refusal',
-	'team_tag',
 	'factory_wins',
 	'glory',
 	'factory_call_at',
