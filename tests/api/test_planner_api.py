@@ -1,6 +1,8 @@
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from datetime import datetime
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -10,6 +12,7 @@ from app.engine.facade import OUTLOOK_TTL_S, EngineFacade
 from app.engine.gametime import MSK
 from app.engine.planner.decide import Outlook
 from app.engine.planner.loop import PlannerLoop
+from app.engine.planner.types import Act
 from tests.api.conftest import login
 from tests.engine.planner.test_decide import awake, m
 from tests.engine.planner.test_loop_outlook import CountingStore, rig
@@ -151,6 +154,65 @@ async def test_loop_wait_is_in_the_plan(planned: Planned, api_client: AsyncClien
         "wait_reason": "book_ready",
         "wake_at": "2026-09-29T14:42:54Z",
     }
+
+
+class Moving:
+    """Часы цикла, которые двигает тест."""
+
+    def __init__(self) -> None:
+        self.at = m(0)
+
+    def now(self) -> datetime:
+        return self.at
+
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+
+async def test_plan_shows_the_wait_the_loop_took(
+    planned: Planned, api_client: AsyncClient
+) -> None:
+    """Ожидание, которое принял step(), в плане видно и тогда, когда часы ушли вперёд и решение
+    плана уже другое; исполненное решение ожидание снимает."""
+    await login(api_client)
+    loop: PlannerLoop = planned.loop
+    clock = Moving()
+    loop._clock = clock
+    # 🔥 нет, тик регенерации — через 90 минут: цикл ждёт его, но проснётся через 30 (предел
+    # простоя).
+    loop._state = lambda: awake(motivation=0, motivation_next_at=m(90))
+    await loop.step()
+    waiting = {
+        "next_wake": "2026-09-26T11:30:03Z",
+        "wait_reason": "motivation",
+        "wake_at": "2026-09-26T10:30:00Z",
+    }
+
+    def wait_of(body: dict[str, Any]) -> dict[str, Any]:
+        return {k: body["loop"][k] for k in waiting}
+
+    body = (await api_client.get(URL)).json()
+    assert (body["decision"]["kind"], body["decision"]["reason"]) == ("wait", "motivation")
+    assert wait_of(body) == waiting
+    # Через 20 минут профиль устарел: план — обновить его, а цикл ещё спит до своего срока.
+    clock.at = m(20)
+    planned.tick.at += OUTLOOK_TTL_S
+    body = (await api_client.get(URL)).json()
+    assert body["now"] == "2026-09-26T10:20:00Z"
+    assert (body["decision"]["kind"], body["decision"]["scenario"]) == ("act", "refresh")
+    assert wait_of(body) == waiting
+    # Проснулся в срок и исполнил решение: ожидания нет.
+    executed: list[Act] = []
+
+    async def execute(act: Act, decision_id: int, *, dry_run: bool) -> None:
+        executed.append(act)
+
+    loop._execute = execute  # type: ignore[method-assign]
+    clock.at = m(30)
+    await loop.step()
+    body = (await api_client.get(URL)).json()
+    assert [a.scenario for a in executed] == ["refresh"]
+    assert wait_of(body) == dict.fromkeys(waiting)
 
 
 async def test_stale_busy_plan_is_by_last_known_data(
