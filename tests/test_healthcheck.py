@@ -24,6 +24,7 @@ def server() -> Iterator[str]:
     thread.start()
     yield str(srv.server_address[1])
     srv.shutdown()
+    srv.server_close()
 
 
 def test_check_by_status(server: str) -> None:
