@@ -110,7 +110,7 @@ export function basisText(plan: Outlook): string {
  * только бот), или тогда был свободен. */
 function staleBusyText(basis: NonNullable<Outlook['basis']>, now: Date): string {
 	const ended = basis.ended;
-	if (ended) return `Занятость устарела: ${activityLabel(ended.activity)} до ${fmtTime(ended.until)} — уже свободен`;
+	if (ended) return `Занятость устарела: ${activityLabel(ended.activity)} до ${fmtMoment(ended.until, now)} — уже свободен`;
 	return `Занятость устарела: по данным на ${fmtMoment(basis.busy_at, now)} — свободен`;
 }
 

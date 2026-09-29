@@ -186,6 +186,10 @@ describe('занятость устарела', () => {
 	it('наблюдение не сегодня — с датой', () => {
 		const old: Outlook = { ...stale, basis: { ...basis, since: '2026-09-26T20:10:00Z' } };
 		expect(basisText(old)).toBe('по последним данным (профиль — 26.09 23:10)');
+		const ended: Outlook = { ...stale, basis: { ...basis, ended: { activity: 'job', until: '2026-09-26T20:20:00Z' } } };
+		expect(nowView(ended, STALE_NOW).phase).toBe('Занятость устарела: работа до 26.09 23:20 — уже свободен');
+		const free: Outlook = { ...stale, basis: { ...basis, busy_at: '2026-09-26T20:10:00Z', ended: null } };
+		expect(nowView(free, STALE_NOW).phase).toBe('Занятость устарела: по данным на 26.09 23:10 — свободен');
 	});
 });
 
