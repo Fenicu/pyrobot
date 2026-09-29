@@ -135,6 +135,16 @@ function reservesText(plan: Outlook): string {
 	return `Держит 🔥: ${parts.join(', ')}`;
 }
 
+/** План снят до итога идущего запуска, и его решение — этот же запуск: тот же сценарий, и его
+ * параметры — те же у запуска (у запуска бывают ещё зафиксированные реестром). «После него» он не
+ * повторится, а следующее решение будет по его итогу. Параметры запуска неизвестны — не он. */
+function runsNow(plan: Outlook): boolean {
+	const d = plan.decision;
+	const { current, current_params: running } = plan.loop;
+	if (d.kind !== 'act' || d.scenario === null || d.scenario !== current || running === null) return false;
+	return Object.entries(d.params).every(([k, v]) => JSON.stringify(running[k]) === JSON.stringify(v));
+}
+
 /** `now` — часы экрана: наступил ли срок, до которого спит цикл. */
 export function nowView(plan: Outlook, now: Date): NowView {
 	const blocks = blockers(plan);
@@ -143,12 +153,7 @@ export function nowView(plan: Outlook, now: Date): NowView {
 	const common = { blockers: blocks.map((b) => b.text), phase: phaseText(plan), reserves: reservesText(plan) };
 	const wait = first ? null : loopWait(plan, now);
 	if (wait) return { ...common, decision: loopWaitText(plan, wait), at: wait.wake, then: `Тогда: ${decision.text}` };
-	// План снят до итога идущего сценария, и его решение — этот же сценарий: «после него» он не
-	// повторится, а следующее решение будет по его итогу.
-	const d = plan.decision;
-	if (d.kind === 'act' && d.scenario !== null && d.scenario === plan.loop.current) {
-		return { ...common, decision: '', at: null, then: '' };
-	}
+	if (runsNow(plan)) return { ...common, decision: '', at: null, then: '' };
 	return {
 		...common,
 		decision: first ? `${first.when} — ${decision.text}` : decision.text,

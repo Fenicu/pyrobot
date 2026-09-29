@@ -79,7 +79,7 @@ describe('«План бота» на фикстуре из бэкенд-тест
 	});
 
 	it('идёт сам сценарий решения — одна строка про него, без «после него — …»', () => {
-		card({ ...plan, loop: { ...plan.loop, current: 'lottery_buy' } });
+		card({ ...plan, loop: { ...plan.loop, current: 'lottery_buy', current_params: plan.decision.params } });
 		const now = screen.getByRole('region', { name: 'Сейчас' });
 		expect(now).toHaveTextContent('▶ Идёт сценарий: 🤑 билеты лотереи');
 		expect(now).not.toHaveTextContent('после него');

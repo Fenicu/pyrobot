@@ -61,17 +61,30 @@ describe('«Сейчас»', () => {
 		expect(view.decision).toBe('когда пауза снимется — 🤑 билеты лотереи (все — max)');
 	});
 
-	it('идёт сам сценарий решения — без повтора «после него — …»', () => {
-		// План снят до итога сценария: его решение — тот же сценарий, что уже идёт.
-		expect(nowView(withLoop({ current: 'lottery_buy' }), NOW)).toMatchObject({
+	it('идёт сам запуск решения — без повтора «после него — …»', () => {
+		// План снят до итога запуска: его решение — тот же сценарий с теми же параметрами (у запуска
+		// могут быть ещё зафиксированные реестром).
+		const running = { current: 'lottery_buy', current_params: { ...plan.decision.params, fixed: 1 } };
+		expect(nowView(withLoop(running), NOW)).toMatchObject({
 			blockers: ['▶ Идёт сценарий: 🤑 билеты лотереи'],
 			decision: '',
 			at: null,
 			then: ''
 		});
-		const paused = nowView(withLoop({ paused: true, ready: 'paused', current: 'lottery_buy' }), NOW);
+		const paused = nowView(withLoop({ paused: true, ready: 'paused', ...running }), NOW);
 		expect(paused.blockers).toEqual(['⏸ Планировщик на паузе', '▶ Идёт сценарий: 🤑 билеты лотереи']);
 		expect(paused.decision).toBe('');
+	});
+
+	it('идёт тот же сценарий с другими параметрами или с неизвестными — «после него — …» остаётся', () => {
+		const refresh: Outlook = {
+			...plan,
+			decision: { kind: 'act', scenario: 'refresh', params: { source: 'profile' }, reason: 'state needs busy', until: null }
+		};
+		const inventory = { ...refresh, loop: { ...plan.loop, current: 'refresh', current_params: { source: 'inventory' } } };
+		expect(nowView(inventory, NOW).decision).toBe('после него — 🔄 обновить экран (профиль)');
+		const unknown = { ...refresh, loop: { ...plan.loop, current: 'refresh', current_params: null } };
+		expect(nowView(unknown, NOW).decision).toBe('после него — 🔄 обновить экран (профиль)');
 	});
 
 	it('ожидание: причина и время следующего шага; во сне — пробуждение', () => {
