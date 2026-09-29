@@ -11,7 +11,7 @@ from app.db.base import Base
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name, disable_existing_loggers=False)
+    fileConfig(config.config_file_name, disable_existing_loggers=False, encoding="utf-8")
 target_metadata = Base.metadata
 
 

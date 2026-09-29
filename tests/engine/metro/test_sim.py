@@ -172,7 +172,7 @@ def _with_strong(maze: Maze) -> Maze:
 
 
 def _run1() -> Maze:
-    run = json.loads(RUN1.read_text())
+    run = json.loads(RUN1.read_text(encoding="utf-8"))
     symbols = {"⬛": "#", "⬜": ".", "🚪": "E"}
     cells = {tuple(map(int, k.split(","))): symbols[v] for k, v in run["cells"].items()}
     maze = Maze(cells, (0, 0))  # type: ignore[arg-type]

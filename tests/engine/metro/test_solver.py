@@ -59,7 +59,7 @@ def at(pos: tuple[int, int], footer: str = "entry", **kw: object) -> MetroMap:
 
 
 def test_replay_of_recorded_run_rebuilds_its_map_and_path() -> None:
-    run = json.loads(RUN1.read_text())
+    run = json.loads(RUN1.read_text(encoding="utf-8"))
     s = MetroSolver(POLICY, budget())
     started = False
     for msg in game_versions("metro", 3624441):
@@ -274,7 +274,7 @@ def test_snapshot_is_json() -> None:
 def test_replay_of_second_run_matches_its_snapshot() -> None:
     """Второй живой забег (решатель прототипа): отказы от NPC и сундука, стена, досрочный
     выход с отказом — те же 182 шага, 95 клеток, выход (14, −2) и итог, что и в снимке."""
-    run = json.loads(RUN2.read_text())
+    run = json.loads(RUN2.read_text(encoding="utf-8"))
     s = MetroSolver(POLICY, budget())
     started = False
     for msg in game_versions("metro", 3625352):

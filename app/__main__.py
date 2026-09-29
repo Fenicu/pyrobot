@@ -24,7 +24,7 @@ def _default_gateway(table: Path) -> str | None:
     """Шлюз маршрута по умолчанию (назначение и маска 0, флаги UP и GATEWAY; из нескольких — с
     меньшей метрикой). Таблицы нет — None; таблица не разбирается — None и запись в лог."""
     try:
-        lines = table.read_text().splitlines()[1:]
+        lines = table.read_text(encoding="utf-8").splitlines()[1:]
     except OSError:
         return None
     best: tuple[int, int] | None = None

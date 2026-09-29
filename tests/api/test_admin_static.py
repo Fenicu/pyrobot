@@ -54,9 +54,9 @@ def build_dir(tmp_path: Path) -> Path:
     (tmp_path / "index.html").write_text(INDEX, encoding="utf-8")
     immutable = tmp_path / "_app" / "immutable" / "entry"
     immutable.mkdir(parents=True)
-    (immutable / "start.B1.js").write_text("export const start = 1;\n")
-    (tmp_path / "_app" / "version.json").write_text('{"version":"1"}')
-    (tmp_path / "favicon.svg").write_text("<svg/>")
+    (immutable / "start.B1.js").write_text("export const start = 1;\n", encoding="utf-8")
+    (tmp_path / "_app" / "version.json").write_text('{"version":"1"}', encoding="utf-8")
+    (tmp_path / "favicon.svg").write_text("<svg/>", encoding="utf-8")
     return tmp_path
 
 
@@ -154,7 +154,9 @@ async def test_without_build_root_is_404(tmp_path: Path, admin_dir: str | None) 
 def test_real_build_index_hashes() -> None:
     # Стартовая страница настоящей сборки админки (`npm run build`, adapter-static): скрипт темы
     # в <head> до отрисовки и стартовый скрипт SvelteKit — оба разрешены CSP своими хешами.
-    html = (Path(__file__).parent.parent / "fixtures" / "admin" / "index.html").read_text()
+    html = (Path(__file__).parent.parent / "fixtures" / "admin" / "index.html").read_text(
+        encoding="utf-8"
+    )
     bodies, at = [], 0
     while (start := html.find("<script>", at)) != -1:
         start += len("<script>")

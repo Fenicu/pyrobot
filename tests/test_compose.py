@@ -30,7 +30,7 @@ def _config(tmp_path: Path, env: str | None = "POSTGRES_PASSWORD='x'\n") -> dict
         ],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     return json.loads(out.stdout)  # type: ignore[no-any-return]

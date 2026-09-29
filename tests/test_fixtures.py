@@ -85,7 +85,7 @@ def test_tool_numbers_same_second_edits(tmp_path: Path, monkeypatch: pytest.Monk
         {**base, "id": 7, "edit_date": "2026-09-26T01:00:05", "text": "c"},
         {**base, "id": 7, "edit_date": "2026-09-26T01:00:05", "text": "c"},
     ]
-    (live / "x.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    (live / "x.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\n", encoding="utf-8")
     monkeypatch.setenv("PYROBOT_RESEARCH", str(tmp_path))
     found = tool.find({7}, versions=True)
     assert [(key, rec["text"]) for key, rec in sorted(found.items())] == [

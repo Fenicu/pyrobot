@@ -38,7 +38,7 @@ def test_gateway_is_container_default_route(tmp_path: Path) -> None:
     # Прокси на этом же сервере приходит в контейнер с адреса шлюза сети проекта (docker-proxy):
     # его и только его — из маршрута по умолчанию контейнера (010014AC → 172.20.0.1).
     route = tmp_path / "route"
-    route.write_text(ROUTE)
+    route.write_text(ROUTE, encoding="utf-8")
     assert trusted_proxies("gateway", route) == "172.20.0.1"
     assert trusted_proxies("10.10.40.3, gateway", route) == "10.10.40.3,172.20.0.1"
     assert trusted_proxies("10.10.40.3", route) == "10.10.40.3"
@@ -47,7 +47,9 @@ def test_gateway_is_container_default_route(tmp_path: Path) -> None:
 def test_gateway_unknown_trusts_nobody(tmp_path: Path) -> None:
     # Маршрута по умолчанию нет (сеть none, запуск вне Docker) — X-Forwarded-For не верим никому.
     route = tmp_path / "route"
-    route.write_text(ROUTE.splitlines(keepends=True)[0] + ROUTE.splitlines(keepends=True)[2])
+    route.write_text(
+        ROUTE.splitlines(keepends=True)[0] + ROUTE.splitlines(keepends=True)[2], encoding="utf-8"
+    )
     assert trusted_proxies("gateway", route) == "127.0.0.1"
     assert trusted_proxies("gateway", tmp_path / "missing") == "127.0.0.1"
     assert trusted_proxies("192.168.1.10,gateway", tmp_path / "missing") == "192.168.1.10"
@@ -55,7 +57,7 @@ def test_gateway_unknown_trusts_nobody(tmp_path: Path) -> None:
 
 def test_uvicorn_resolves_gateway(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     route = tmp_path / "route"
-    route.write_text(ROUTE)
+    route.write_text(ROUTE, encoding="utf-8")
     monkeypatch.setattr("app.__main__.ROUTE_TABLE", route)
     monkeypatch.setenv("PYROBOT_FORWARDED_ALLOW_IPS", "gateway")
     cfg = AppConfig(_env_file=None, transport="fake")
@@ -81,7 +83,8 @@ def test_gateway_needs_up_and_gateway_flags_and_lowest_metric(tmp_path: Path) ->
             ("00000000", "010015AC", "0002", 0),
             ("00000000", "010016AC", "0003", 200),
             ("00000000", "010017AC", "0003", 100),
-        )
+        ),
+        encoding="utf-8",
     )
     assert trusted_proxies("gateway", route) == "172.23.0.1"
 
@@ -99,6 +102,6 @@ def test_broken_route_table_trusts_nobody(
 ) -> None:
     # Битая таблица маршрутов не роняет старт: шлюза нет, и это в логе.
     route = tmp_path / "route"
-    route.write_text(ROUTE + broken)
+    route.write_text(ROUTE + broken, encoding="utf-8")
     assert trusted_proxies("gateway", route) == "127.0.0.1"
     assert "route table" in caplog.text

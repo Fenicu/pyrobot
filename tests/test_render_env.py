@@ -21,7 +21,7 @@ def render(env: dict[str, str], *names: str) -> subprocess.CompletedProcess[str]
         ["bash", str(SCRIPT), *names],
         env={"PATH": os.environ["PATH"], **env},
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=False,
     )
 
@@ -44,7 +44,7 @@ def test_compose_reads_secrets_literally(tmp_path: Path) -> None:
         ["docker", "compose", "-f", "compose.yml", "config", "--format", "json"],
         cwd=tmp_path,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=True,
     )
     # В выводе config литеральный `$` записан как `$$`.
