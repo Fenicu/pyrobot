@@ -8,7 +8,13 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.db.base import Database
 from app.db.models import DecisionRow, ScenarioRunRow
 from app.engine.gametime import day_start
-from app.engine.planner.store import CLOSED_ON_RESTART, DEED_PREFIX, LAST_DONE, DecisionRecord
+from app.engine.planner.store import (
+    CLOSED_ON_RESTART,
+    DEED_PREFIX,
+    LAST_DONE,
+    NOT_STARTED,
+    DecisionRecord,
+)
 from app.engine.planner.types import Decision
 
 
@@ -151,3 +157,15 @@ class DbPlannerStore:
         async with self._db.sessions() as session:
             rows = await session.execute(query)
         return {scenario: int(n) for scenario, n in rows.all()}
+
+    async def runs_on_day(self, scenario: str, day: date) -> int:
+        start = day_start(day)
+        query = select(func.count()).where(
+            ScenarioRunRow.account_id == self._account_id,
+            ScenarioRunRow.scenario == scenario,
+            ScenarioRunRow.status.not_in(NOT_STARTED),
+            ScenarioRunRow.started_at >= start,
+            ScenarioRunRow.started_at < start + timedelta(days=1),
+        )
+        async with self._db.sessions() as session:
+            return int(await session.scalar(query) or 0)

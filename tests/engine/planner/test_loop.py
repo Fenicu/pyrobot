@@ -470,13 +470,87 @@ async def test_changed_metro_price_holds_metro_for_hours(world: World) -> None:
     assert rig.loop._cooldowns == {"metro": at + timedelta(hours=2)}
 
 
-async def test_old_factory_report_retried_in_quarter_hour(world: World) -> None:
-    # /fb отдал отчёт прошлой битвы: сегодняшняя ещё не посчитана — не спрашивать каждую минуту.
+def msk_at(day: int, hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 9, day, hour, minute, tzinfo=timezone(timedelta(hours=3))).astimezone(
+        UTC
+    )
+
+
+REPORT = Act("factory_report", {}, "factory_report")
+
+
+async def test_old_factory_report_backs_off_then_waits_for_next_day(world: World) -> None:
+    # /fb отдал отчёт прошлой битвы: повтор через 15, затем 30 минут, после третьей — до завтра.
     rig = Rig(world)
-    at = moment()
-    report = Act("factory_report", {}, "factory_report")
-    await rig.loop._after(report, ScenarioResult("nothing", "old_report"), at, at)
-    assert rig.loop._cooldowns == {"factory_report": at + timedelta(minutes=15)}
+    old = ScenarioResult("nothing", "old_report")
+    first, second, third = msk_at(28, 18, 31), msk_at(28, 18, 46), msk_at(28, 19, 16)
+    await rig.loop._after(REPORT, old, first, first)
+    assert rig.loop._cooldowns == {"factory_report": first + timedelta(minutes=15)}
+    await rig.loop._after(REPORT, old, second, second)
+    assert rig.loop._cooldowns == {"factory_report": second + timedelta(minutes=30)}
+    await rig.loop._after(REPORT, old, third, third)
+    assert rig.loop._cooldowns == {"factory_report": msk_at(29, 0)}
+
+
+async def test_old_factory_reports_at_most_three_fb_a_day(world: World) -> None:
+    # Серия старых отчётов с 18:31 до 23:59: попытка каждый раз, когда кулдаун позволяет.
+    rig = Rig(world)
+    old = ScenarioResult("nothing", "old_report")
+    tries: list[datetime] = []
+    at = msk_at(28, 18, 31)
+    while at < msk_at(29, 18, 32):
+        until = rig.loop._blocked().get("factory_report")
+        local = at.astimezone(timezone(timedelta(hours=3)))
+        window = (18, 31) <= (local.hour, local.minute) < (23, 59)
+        if window and (until is None or at >= until):
+            tries.append(at)
+            await rig.loop._after(REPORT, old, at, at)
+        at += timedelta(minutes=1)
+    assert tries == [
+        msk_at(28, 18, 31),
+        msk_at(28, 18, 46),
+        msk_at(28, 19, 16),
+        # Следующий день — снова с начала.
+        msk_at(29, 18, 31),
+    ]
+
+
+async def test_factory_report_tries_survive_restart(world: World) -> None:
+    # Три /fb уже были сегодня в прошлом процессе: новый процесс до завтра не спрашивает.
+    store = MemoryPlannerStore()
+    for minute in (31, 46, 76):
+        run_id = await store.run_started(
+            1, "factory_report", {}, msk_at(28, 18) + timedelta(minutes=minute)
+        )
+        await store.run_finished(run_id, "nothing", "old_report", msk_at(28, 20))
+    rig = Rig(world, store=store)
+    await rig.loop._factory_report_tries(msk_at(28, 20, 5))
+    assert rig.loop._blocked()["factory_report"] == msk_at(29, 0)
+    other = Rig(world, store=MemoryPlannerStore())
+    await other.loop._factory_report_tries(msk_at(28, 20, 5))
+    assert "factory_report" not in other.loop._blocked()
+    # Одна попытка до рестарта — после него счёт продолжается: вторая и третья, не три новых.
+    one = MemoryPlannerStore()
+    run_id = await one.run_started(1, "factory_report", {}, msk_at(28, 18, 31))
+    await one.run_finished(run_id, "nothing", "old_report", msk_at(28, 18, 31))
+    again = Rig(world, store=one)
+    await again.loop._factory_report_tries(msk_at(28, 18, 50))
+    old = ScenarioResult("nothing", "old_report")
+    await again.loop._after(REPORT, old, msk_at(28, 18, 50), msk_at(28, 18, 50))
+    assert again.loop._cooldowns["factory_report"] == msk_at(28, 19, 20)
+    await again.loop._after(REPORT, old, msk_at(28, 19, 20), msk_at(28, 19, 20))
+    assert again.loop._cooldowns["factory_report"] == msk_at(29, 0)
+
+
+async def test_factory_report_failures_count_toward_daily_tries(world: World) -> None:
+    rig = Rig(world)
+    at = msk_at(28, 18, 31)
+    await rig.loop._after(REPORT, ScenarioResult("failed", "timeout"), at, at)
+    assert rig.loop._cooldowns["factory_report"] == at + RETRY_AFTER
+    await rig.loop._after(REPORT, ScenarioResult("refused", "busy"), at, at)
+    assert rig.loop._cooldowns["factory_report"] == at + NOTHING_RETRY
+    await rig.loop._after(REPORT, ScenarioResult("failed", "timeout"), at, at)
+    assert rig.loop._cooldowns["factory_report"] == msk_at(29, 0)
 
 
 async def test_battle_refusal_holds_all_deeds(world: World) -> None:

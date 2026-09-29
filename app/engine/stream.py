@@ -273,6 +273,9 @@ class PublishingPlannerStore:
     async def done_on_day(self, day: date) -> dict[str, int]:
         return await self.inner.done_on_day(day)
 
+    async def runs_on_day(self, scenario: str, day: date) -> int:
+        return await self.inner.runs_on_day(scenario, day)
+
     def _run(self, run_id: int, scenario: str | None, status: str, reason: str = "") -> None:
         self.stream.publish(
             "scenario_run",

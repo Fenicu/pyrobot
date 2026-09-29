@@ -10,7 +10,7 @@ from typing import Any
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
-from app.engine.gametime import tasks_day, to_msk
+from app.engine.gametime import day_start, tasks_day, to_msk
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import Source
 from app.engine.metro.store import METRO_HISTORY, MetroRunStore
@@ -39,9 +39,12 @@ NOTHING_HOLD: dict[tuple[str, str], timedelta] = {
     # Тиража нет или продажа закрыта — до конца окна продажи не изменится.
     ("lottery_buy", "no_draw"): timedelta(minutes=30),
     ("lottery_buy", "lottery_closed"): timedelta(hours=2),
-    # /fb отдал отчёт не за сегодня: битва ещё не посчитана — повтор не чаще раза в 15 минут.
-    ("factory_report", "old_report"): timedelta(minutes=15),
 }
+# /fb отдал отчёт не за сегодня — битва ещё не посчитана. По корпусу сегодняшний отчёт готов почти
+# сразу (18:31, 19:02): старый после ~19:00 почти наверняка значит, что сегодняшнего не будет. Не
+# больше трёх /fb за день с растущей паузой (18:31 → 18:46 → 19:16), дальше — до следующего дня.
+FACTORY_REPORT_TRIES = 3
+FACTORY_REPORT_BACKOFF = (timedelta(minutes=15), timedelta(minutes=30))
 # Тираж мог открыться на секунды позже 19:17: «тиража нет» в начале окна продажи, до 19:30,
 # повторяется через 2 минуты.
 LOTTERY_LATE_OPEN = time(19, 30)
@@ -146,6 +149,9 @@ class PlannerLoop:
         self._reread = reread
         # Длительности прошлых забегов метро (бюджет по p90): из хранилища при первом решении.
         self._metro_durations: list[float] | None = None
+        # Запуски отчёта о фабрике (/fb) за день: при смене дня — из хранилища (переживает
+        # рестарт), дальше — по итогам своих запусков.
+        self._factory_tries: tuple[date, int] | None = None
         # Успешные запуски дел за день заданий (чередование основных дел): при смене дня — заново
         # из хранилища, дальше — по итогам своих запусков.
         self._done_today: tuple[date, dict[str, int]] | None = None
@@ -268,6 +274,7 @@ class PlannerLoop:
         if self._metro_durations is None:
             self._metro_durations = await self._load_metro_durations()
         done_today = await self._deeds_today(now)
+        await self._factory_report_tries(now)
         if settings.engine.mode != self._mode:
             self._held.clear()
             self._mode = settings.engine.mode
@@ -451,6 +458,35 @@ class PlannerLoop:
             self._done_today = (day, counts)
         return self._done_today[1]
 
+    async def _factory_report_tries(self, now: datetime) -> None:
+        """Запуски /fb за сегодня — из хранилища при смене дня: исчерпанные в прошлом процессе
+        попытки держат сценарий до завтра."""
+        day = tasks_day(now)
+        if self._factory_tries is not None and self._factory_tries[0] == day:
+            return
+        try:
+            tries = await self._store.runs_on_day("factory_report", day)
+        except Exception:
+            log.exception("factory report runs on %s not loaded", day)
+            # Без счётчика /fb не шлём вслепую: перечитаем через минуту.
+            self._hold("factory_report", now + NOTHING_RETRY)
+            return
+        self._factory_tries = (day, tries)
+        if tries >= FACTORY_REPORT_TRIES:
+            self._hold("factory_report", day_start(day + timedelta(days=1)))
+
+    def _hold(self, key: str, until: datetime) -> None:
+        current = self._cooldowns.get(key)
+        self._cooldowns[key] = until if current is None else max(current, until)
+
+    def _factory_report_try(self, started: datetime) -> int:
+        """Ещё одна попытка /fb в день её начала; номер попытки за день."""
+        day = tasks_day(started)
+        known = self._factory_tries
+        tries = (known[1] if known is not None and known[0] == day else 0) + 1
+        self._factory_tries = (day, tries)
+        return tries
+
     async def _load_metro_durations(self) -> list[float]:
         if self._metro_store is None:
             return []
@@ -493,6 +529,7 @@ class PlannerLoop:
             for held in DEEDS if is_deed else (key,):
                 self._held[held] = finished + SUPPRESSED_HOLD
             return
+        tries = self._factory_report_try(started) if name == "factory_report" else 0
         if result.status == "done":
             self._failures.pop(key, None)
             if self._last_done is not None:
@@ -508,17 +545,22 @@ class PlannerLoop:
             )
         if result.status in ("failed", "stopped"):
             await self._failed(key, result, finished)
-            return
-        if result.status == "nothing" or result.reason == "busy":
+        elif (name, result.reason) == ("factory_report", "old_report"):
+            backoff = FACTORY_REPORT_BACKOFF[min(tries, len(FACTORY_REPORT_BACKOFF)) - 1]
+            self._cooldowns[key] = finished + backoff
+        elif result.status == "nothing" or result.reason == "busy":
             hold = NOTHING_HOLD.get((name, result.reason), NOTHING_RETRY)
             if (name, result.reason) == ("lottery_buy", "no_draw"):
                 if LOTTERY_OPEN <= to_msk(finished).time() < LOTTERY_LATE_OPEN:
                     hold = LOTTERY_LATE_OPEN_HOLD
             self._cooldowns[key] = finished + hold
-            return
-        shared = is_deed and result.reason in SHARED_REFUSALS
-        for target in DEEDS if shared else (key,):
-            self._cooldowns[target] = finished + RETRY_AFTER
+        else:
+            shared = is_deed and result.reason in SHARED_REFUSALS
+            for target in DEEDS if shared else (key,):
+                self._cooldowns[target] = finished + RETRY_AFTER
+        if tries >= FACTORY_REPORT_TRIES:
+            # Третий /fb за день без сегодняшнего отчёта — до завтра, каким бы ни был исход.
+            self._cooldowns[key] = day_start(tasks_day(started) + timedelta(days=1))
 
     async def _failed(self, key: str, result: ScenarioResult, finished: datetime) -> None:
         count = self._failures.get(key, 0) + 1

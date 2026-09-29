@@ -14,6 +14,8 @@ LAST_DONE = ("done", "interrupted")
 DEED_PREFIX = "deed:"
 # Незавершённые запуски прошлого процесса: начатый мог исполниться, из очереди — точно нет.
 CLOSED_ON_RESTART = {"running": "interrupted", "queued": "cancelled"}
+# Запуски из очереди, которые так и не начались.
+NOT_STARTED = ("queued", "cancelled")
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +77,11 @@ class PlannerStore(Protocol):
     async def done_on_day(self, day: date) -> dict[str, int]:
         """Число успешных (`done`) запусков каждого дела `deed:*`, начатых в день заданий `day`
         (граница — 00:00 MSK)."""
+        ...
+
+    async def runs_on_day(self, scenario: str, day: date) -> int:
+        """Число запусков сценария, начатых в день заданий `day`, с любым исходом (кроме так и не
+        начатых из очереди)."""
         ...
 
 
@@ -169,3 +176,12 @@ class MemoryPlannerStore:
             if tasks_day(run.started_at) == day:
                 counts[run.scenario] = counts.get(run.scenario, 0) + 1
         return counts
+
+    async def runs_on_day(self, scenario: str, day: date) -> int:
+        return sum(
+            1
+            for run in self.runs
+            if run.scenario == scenario
+            and run.status not in NOT_STARTED
+            and tasks_day(run.started_at) == day
+        )

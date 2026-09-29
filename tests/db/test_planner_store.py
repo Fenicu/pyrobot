@@ -148,3 +148,26 @@ async def test_done_on_day_counts_done_deeds_by_msk_day(clean_db: Database, kind
     assert await store.done_on_day(date(2026, 9, 27)) == {"deed:harvest": 2, "deed:dconv": 1}
     assert await store.done_on_day(date(2026, 9, 26)) == {"deed:harvest": 1}
     assert await store.done_on_day(date(2026, 9, 25)) == {}
+
+
+@pytest.mark.parametrize("kind", ["db", "memory"])
+async def test_runs_on_day_counts_started_runs_of_scenario(clean_db: Database, kind: str) -> None:
+    store: DbPlannerStore | MemoryPlannerStore = (
+        DbPlannerStore(clean_db, account_id=1) if kind == "db" else MemoryPlannerStore()
+    )
+    msk = timezone(timedelta(hours=3))
+    midnight = datetime(2026, 9, 27, 0, 0, tzinfo=msk)
+    runs = [
+        ("factory_report", "nothing", midnight + timedelta(hours=18, minutes=31)),
+        ("factory_report", "failed", midnight + timedelta(hours=18, minutes=46)),
+        ("factory_report", "interrupted", midnight + timedelta(hours=19)),
+        ("factory_report", "nothing", midnight - timedelta(minutes=1)),
+        ("refresh", "done", midnight + timedelta(hours=19)),
+    ]
+    decided = await store.record(midnight, Act("factory_report", {}, "factory_report"))
+    for scenario, status, started in runs:
+        run = await store.run_started(decided, scenario, {}, started)
+        await store.run_finished(run, status, "", started)
+    assert await store.runs_on_day("factory_report", date(2026, 9, 27)) == 3
+    assert await store.runs_on_day("factory_report", date(2026, 9, 26)) == 1
+    assert await store.runs_on_day("factory_report", date(2026, 9, 28)) == 0
