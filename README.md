@@ -829,7 +829,7 @@ live не запускается); задания — `convDets` (перераб
 ```bash
 uv sync
 docker compose -f compose.dev.yml up -d   # Postgres для тестов
-uv run pytest -q
+PYTHONWARNDEFAULTENCODING=1 uv run pytest -q   # предупреждения — ошибки, как в CI
 uv run ruff check . && uv run ruff format --check .
 uv run mypy
 ```
@@ -3060,7 +3060,8 @@ docker compose -f compose.yml config          # нужен .env рядом (см
 ### CI/CD (деплой автора)
 
 **CI/CD** (`.forgejo/workflows/ci.yml`, Forgejo Actions): на push в `master`, на теги и по ручному
-запуску — `lint` (ruff, mypy) и `test` (pytest с сервисом Postgres) в контейнере uv (пакеты Python — из
+запуску — `lint` (ruff, mypy) и `test` (pytest с сервисом Postgres; предупреждения — ошибки,
+`PYTHONWARNDEFAULTENCODING=1`) в контейнере uv (пакеты Python — из
 devpi хоумлаба: `UV_DEFAULT_INDEX`, `uv export --frozen` с хешами → `uv pip sync --require-hashes` →
 `uv run --no-sync`; `uv sync` при другом индексе переписал бы `uv.lock`) и `admin` в
 контейнере `node:24-bookworm-slim` (git — через apt-прокси хоумлаба `10.10.40.23:3142`; `npm ci` из

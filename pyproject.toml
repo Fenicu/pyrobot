@@ -46,6 +46,9 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
+# Предупреждения — ошибки: устаревшее API и незакрытые ресурсы видны сразу, а не в сводке. Неявную
+# кодировку (EncodingWarning) Python выдаёт только с PYTHONWARNDEFAULTENCODING=1 — так в CI.
+filterwarnings = ["error"]
 markers = [
     "db: требует Postgres (docker compose -f compose.dev.yml up -d)",
     "corpus: требует ~/pyrobot-research",
