@@ -74,6 +74,15 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		expect(now).toHaveTextContent('когда пауза снимется — 🤑 билеты лотереи (все — max)');
 	});
 
+	it('идёт сам сценарий решения — одна строка про него, без «после него — …»', () => {
+		card({ ...plan, loop: { ...plan.loop, current: 'lottery_buy' } });
+		const now = screen.getByRole('region', { name: 'Сейчас' });
+		expect(now).toHaveTextContent('▶ Идёт сценарий: 🤑 билеты лотереи');
+		expect(now).not.toHaveTextContent('после него');
+		expect(within(now).getAllByText(/билеты лотереи/)).toHaveLength(1);
+		expect([...now.querySelectorAll('p')].every((p) => p.textContent?.trim())).toBe(true);
+	});
+
 	it('цикл спит до таймера: «Сейчас» — ожидание, действие — «тогда»', () => {
 		const at = '2026-09-27T16:42:54Z';
 		card({ ...plan, loop: { ...plan.loop, next_wake: at, wait_reason: 'book_ready', wake_at: at } });

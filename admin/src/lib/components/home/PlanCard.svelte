@@ -108,9 +108,11 @@
 					<h3 id="plan-now" class="mb-1 text-xs font-semibold tracking-wide text-fg-muted uppercase">Сейчас</h3>
 					{#if view.blockers.length > 0}
 						{#each view.blockers as line (line)}<p class="font-semibold text-warn-fg">{line}</p>{/each}
-						<p class="text-sm">
-							{view.decision}{#if view.at}{' — следующий шаг в '}<b>{fmtTime(view.at)}</b>{/if}
-						</p>
+						{#if view.decision}
+							<p class="text-sm">
+								{view.decision}{#if view.at}{' — следующий шаг в '}<b>{fmtTime(view.at)}</b>{/if}
+							</p>
+						{/if}
 					{:else}
 						<p class="font-semibold">
 							{view.decision}{#if view.at}<span class="font-normal">{' — следующий шаг в '}</span><b>{fmtTime(view.at)}</b>{/if}

@@ -61,6 +61,19 @@ describe('«Сейчас»', () => {
 		expect(view.decision).toBe('когда пауза снимется — 🤑 билеты лотереи (все — max)');
 	});
 
+	it('идёт сам сценарий решения — без повтора «после него — …»', () => {
+		// План снят до итога сценария: его решение — тот же сценарий, что уже идёт.
+		expect(nowView(withLoop({ current: 'lottery_buy' }), NOW)).toMatchObject({
+			blockers: ['▶ Идёт сценарий: 🤑 билеты лотереи'],
+			decision: '',
+			at: null,
+			then: ''
+		});
+		const paused = nowView(withLoop({ paused: true, ready: 'paused', current: 'lottery_buy' }), NOW);
+		expect(paused.blockers).toEqual(['⏸ Планировщик на паузе', '▶ Идёт сценарий: 🤑 билеты лотереи']);
+		expect(paused.decision).toBe('');
+	});
+
 	it('ожидание: причина и время следующего шага; во сне — пробуждение', () => {
 		const until = plan.wakeups[0]!.at;
 		const waiting: Outlook = { ...plan, decision: { kind: 'wait', scenario: null, params: {}, reason: 'busy', until } };

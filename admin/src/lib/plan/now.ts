@@ -9,7 +9,8 @@ export interface NowView {
 	/** Почему решение сейчас не исполняется или что идёт до него: пауза, неготовность, идущий
 	 * сценарий, ручная очередь — все, что есть, по порядку. */
 	blockers: string[];
-	/** Решение планировщика; при `blockers` — условное: «когда пауза снимется — …». */
+	/** Решение планировщика; при `blockers` — условное: «когда пауза снимется — …»; пусто —
+	 * решение и есть идущий сценарий. */
 	decision: string;
 	/** Момент следующего шага ожидания, ISO. */
 	at: string | null;
@@ -142,6 +143,12 @@ export function nowView(plan: Outlook, now: Date): NowView {
 	const common = { blockers: blocks.map((b) => b.text), phase: phaseText(plan), reserves: reservesText(plan) };
 	const wait = first ? null : loopWait(plan, now);
 	if (wait) return { ...common, decision: loopWaitText(plan, wait), at: wait.wake, then: `Тогда: ${decision.text}` };
+	// План снят до итога идущего сценария, и его решение — этот же сценарий: «после него» он не
+	// повторится, а следующее решение будет по его итогу.
+	const d = plan.decision;
+	if (d.kind === 'act' && d.scenario !== null && d.scenario === plan.loop.current) {
+		return { ...common, decision: '', at: null, then: '' };
+	}
 	return {
 		...common,
 		decision: first ? `${first.when} — ${decision.text}` : decision.text,
