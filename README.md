@@ -2979,7 +2979,10 @@ venv, `app/`, `alembic.ini` и статика админки в `/app/admin` (`P
 пользователя `pyrobot` (uid/gid 10001); том `/data` (`PYROBOT_DATA_DIR`) — сессия Telegram,
 принадлежит ему же. `HEALTHCHECK` — `python -m app.healthcheck /healthz` (`app/healthcheck.py`,
 код выхода 0 при ответе 200; тем же модулем деплой ждёт `/readyz`), команда по умолчанию — `python -m
-app`, миграции — `alembic upgrade head` в том же образе. Локальная сборка: без аргументов — из публичных
+app`, миграции — `alembic upgrade head` в том же образе. Базовые образы закреплены по digest
+(`образ:тег@sha256:…` в `FROM`): пересборка того же коммита даёт тот же рантайм и статику; обновить —
+`regctl image digest образ:тег` (или `docker buildx imagetools inspect образ:тег`) и новый digest в
+`FROM` отдельным коммитом. Локальная сборка: без аргументов — из публичных
 источников (deb.debian.org, PyPI, npmjs); зеркала хоумлаба — необязательные `APT_PROXY`,
 `PYPI_INDEX` и `NPM_REGISTRY`:
 

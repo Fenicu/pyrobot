@@ -3,7 +3,9 @@
 # Сборка окружения: версии и хеши — строго из uv.lock, пакеты — из PYPI_INDEX (по умолчанию PyPI;
 # uv sync --frozen качал бы строго по адресам файлов в uv.lock, мимо зеркала, поэтому — экспорт с
 # хешами); tgcrypto собирается из исходников.
-FROM ghcr.io/astral-sh/uv:0.11.9-python3.13-trixie-slim AS build
+# Базовые образы — по digest: пересборка того же коммита даёт тот же рантайм (обновление — README
+# «Образ»).
+FROM ghcr.io/astral-sh/uv:0.11.9-python3.13-trixie-slim@sha256:c77724b2edaed795cfd1614ce68d689f7b488801190e4934d7860a00b720871c AS build
 ARG APT_PROXY=""
 ARG PYPI_INDEX=https://pypi.org/simple
 RUN if [ -n "$APT_PROXY" ]; then \
@@ -26,7 +28,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Админка: SvelteKit собирается в статику строго по package-lock.json; пакеты — из NPM_REGISTRY (по
 # умолчанию npmjs, свой реестр npm подставит вместо registry.npmjs.org из lock-файла). TS-типы API —
 # закоммиченный schema.d.ts, openapi.json в контекст не входит.
-FROM node:24-bookworm-slim AS admin
+FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS admin
 ARG NPM_REGISTRY=https://registry.npmjs.org/
 WORKDIR /admin
 COPY admin/package.json admin/package-lock.json admin/.npmrc ./
@@ -37,7 +39,7 @@ RUN npm run build
 
 # Рантайм: тот же Python, что у сборки (venv ссылается на /usr/local/bin/python3.13), без uv и
 # компилятора; процесс — непривилегированный пользователь, сессия Telegram — в томе /data.
-FROM python:3.13-slim-trixie
+FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
 RUN groupadd --system --gid 10001 pyrobot \
     && useradd --system --uid 10001 --gid pyrobot --home-dir /app --no-create-home pyrobot \
     && mkdir -p /data \
