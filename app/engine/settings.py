@@ -49,7 +49,8 @@ class ChatsSection(BaseModel):
     tangerine_reply_to: int = 927136
     bulls_invite_chat_id: int | None = None
     # Чат команды для пересылки итогов задания и отчёта о фабрике; None — не пересылать. Только
-    # супергруппа (-100…) и не один из чатов выше: личный отчёт не должен уйти не туда.
+    # супергруппа (-100…) и не чат игры, SWINFO, канал смузи или мандарины: личный отчёт не должен
+    # уйти не туда. С чатом приглашений к биржевикам совпадать можно: там читаются только они.
     team_chat_id: int | None = Field(default=None, le=SUPERGROUP_MAX_ID)
 
     @field_validator("team_chat_id")
@@ -62,7 +63,6 @@ class ChatsSection(BaseModel):
                 "swinfo_chat_id",
                 "smoothie_channel_id",
                 "tangerine_chat_id",
-                "bulls_invite_chat_id",
             )
         }
         if value is not None and value in others:

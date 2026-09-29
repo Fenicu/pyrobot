@@ -201,10 +201,15 @@ def test_team_chat_only_other_supergroup(chat: int) -> None:
     assert err.value.errors()[0]["loc"] == ("chats", "team_chat_id")
 
 
-def test_team_chat_not_bulls_invite_chat() -> None:
+def test_team_chat_may_be_bulls_invite_chat() -> None:
+    # Чат команды — та же супергруппа, куда приходят приглашения на бой с биржевиками.
     bulls = apply_patch(Settings(), {"chats": {"bulls_invite_chat_id": -1001234567890}})
-    with pytest.raises(ValidationError):
-        apply_patch(bulls, {"chats": {"team_chat_id": -1001234567890}})
+    patched = apply_patch(bulls, {"chats": {"team_chat_id": -1001234567890}})
+    assert patched.chats.team_chat_id == patched.chats.bulls_invite_chat_id == -1001234567890
+    # Порядок не важен: чат приглашений задают вторым.
+    team = apply_patch(Settings(), {"chats": {"team_chat_id": -1001234567890}})
+    both = apply_patch(team, {"chats": {"bulls_invite_chat_id": -1001234567890}})
+    assert both.chats.team_chat_id == both.chats.bulls_invite_chat_id == -1001234567890
 
 
 # Версия настроек прода до основных дел: командный вес и явный список дел без прогулки.

@@ -48,3 +48,14 @@ def test_outgoing_and_empty_not_parsed() -> None:
     assert parser.parse(_msg(FLOOD, outgoing=True)) == []
     assert parser.parse(_msg(None)) == []
     assert parser.parse(_msg("")) == []
+
+
+def test_outgoing_forward_in_shared_team_and_invite_chat_not_parsed() -> None:
+    # Чат команды совпадает с чатом приглашений: пересылка бота (исходящее) не должна дать событий,
+    # иначе итог задания разобрался бы повторно и задвоил «Итоги».
+    team = -1001149209877
+    parser = default_parser(ChatsSection(bulls_invite_chat_id=team, team_chat_id=team))
+    forwarded = "Ты завершил задание в команде и заработал 90🏆."
+    assert parser.parse(_msg(forwarded, chat=team, outgoing=True)) == []
+    # И входящее сообщение с тем же текстом: в этом чате читаются только приглашения.
+    assert parser.parse(_msg(forwarded, chat=team)) == []
