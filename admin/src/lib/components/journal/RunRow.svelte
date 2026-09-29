@@ -25,20 +25,21 @@
 </script>
 
 <li>
+	<!-- Телефон: время, значок, счётчики — первой строкой, сценарий и ответ — второй; ПК — одной. -->
 	<button
 		type="button"
-		class="flex w-full items-baseline gap-2 border-b border-line-soft px-2 py-2 text-left text-sm hover:bg-surface-2"
+		class="grid w-full grid-cols-[auto_auto_minmax(0,1fr)_auto] items-baseline gap-x-2 gap-y-0.5 border-b border-line-soft px-2 py-2 text-left text-sm hover:bg-surface-2 md:flex"
 		aria-expanded={expanded}
 		onclick={ontoggle}
 	>
-		<time class="w-16 shrink-0 font-mono text-xs text-fg-faint md:w-24" datetime={group.started}
+		<time class="shrink-0 font-mono text-xs text-fg-faint md:w-24" datetime={group.started}
 			>{fmtMoment(group.started, now, true)}</time
 		>
 		<Pill tone={outcome.tone === 'ok' ? 'dec' : outcome.tone}>{outcome.tone === 'ok' ? 'запуск' : outcome.text}</Pill>
-		<span class="min-w-0 flex-1 truncate">
+		<span class="order-last col-span-4 line-clamp-2 min-w-0 md:order-none md:line-clamp-none md:flex-1 md:truncate">
 			<span class="font-medium">{title}</span>{#if reply}{' '}<span class="text-fg-muted">— {reply}</span>{/if}
 		</span>
-		<span class="hidden shrink-0 text-xs text-fg-faint sm:inline">{runCounts(group)}</span>
+		<span class="shrink-0 justify-self-end text-xs text-fg-faint">{runCounts(group)}</span>
 		<ChevronRight
 			class="size-4 shrink-0 self-center text-fg-faint transition-transform {expanded ? 'rotate-90' : ''}"
 			aria-hidden="true"

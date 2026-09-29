@@ -317,15 +317,16 @@ describe('Разбор решения: кандидаты', () => {
 });
 
 describe('Строка ленты', () => {
-	it('в одну строку с многоточием: текст без переносов pre-wrap', async () => {
+	it('на ПК — одна строка, на телефоне — две, с многоточием: текст без переносов pre-wrap', async () => {
 		const fetch = mockFetch(() => json(page));
 		const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
 		const feed = new JournalFeed(api);
 		await feed.reload();
 		render(JournalView, { api, feed, now: new Date('2026-09-27T20:27:51Z') });
 		const row = screen.getAllByRole('button', { name: /Ты отправился спать/ })[0]!;
-		const line = row.querySelector('.truncate')!;
+		const line = row.querySelector('.line-clamp-2')!;
 		expect(line).not.toBeNull();
+		expect(line).toHaveClass('md:truncate', 'col-span-2');
 		expect(line.querySelector('.ext-text')).toBeNull();
 	});
 });
