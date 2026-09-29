@@ -68,6 +68,7 @@ class FakeClient:
         self.responses: dict[str, Any] = {}
         self.chat: Any = None
         self.member: Any = None
+        self.resolved: list[int] = []
 
     async def connect(self) -> bool:
         if self.is_connected:
@@ -114,6 +115,7 @@ class FakeClient:
         err = self.errors.pop("ResolvePeer", None)
         if err is not None:
             raise err
+        self.resolved.append(chat_id)
         return NS(id=chat_id)
 
     def rnd_id(self) -> int:

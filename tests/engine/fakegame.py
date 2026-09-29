@@ -84,6 +84,9 @@ class FakeGame:
         while self._tasks:
             await asyncio.gather(*list(self._tasks))
 
+    async def resolve(self, chat_id: int) -> None:
+        return None
+
     async def send_text(self, chat_id: int, text: str, reply_to: int | None = None) -> int:
         self.sent.append(Sent("send", text, None, chat_id, reply_to))
         self._schedule(self._text, text, None)

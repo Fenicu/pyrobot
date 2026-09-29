@@ -41,6 +41,9 @@ class FakeTransport:
         self.group_fail_with: list[BaseException] = []
         self.group_checks: list[int] = []
         self.group_checked_at: list[float] = []
+        # Разрешения peer перед отправкой и что меняется, пока peer разрешается.
+        self.resolved: list[int] = []
+        self.on_resolve: Callable[[int], Awaitable[None]] | None = None
         self._next_id = 1000
         self._tasks: set[asyncio.Future[None]] = set()
 
@@ -54,6 +57,11 @@ class FakeTransport:
             task = asyncio.ensure_future(self.responder(rec))
             self._tasks.add(task)
             task.add_done_callback(self._tasks.discard)
+
+    async def resolve(self, chat_id: int) -> None:
+        self.resolved.append(chat_id)
+        if self.on_resolve is not None:
+            await self.on_resolve(chat_id)
 
     async def send_text(self, chat_id: int, text: str, reply_to: int | None = None) -> int:
         self._deliver(Sent("send", chat_id, text, None, time.monotonic()))

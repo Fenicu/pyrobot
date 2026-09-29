@@ -79,6 +79,49 @@ async def test_send_click_unauthorized_resets_client(tmp_path: Path, op: str) ->
     assert t.clients[0].invoked[-1][1]["retry_delay"] == 0
 
 
+async def test_send_and_click_use_peer_resolved_in_advance(tmp_path: Path) -> None:
+    # Шлюз разрешает peer заранее и проверяет команду вплотную перед RPC: между ними — ни одного
+    # обращения к Telegram.
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    await t.resolve(GAME)
+    await t.resolve(GAME)
+    assert t.client.resolved == [GAME]
+    await t.send_text(GAME, "😎Я")
+    await t.click(GAME, 1, "maze_up", 1.0)
+    assert t.client.resolved == [GAME]
+    assert [name for name, _ in t.client.invoked[-2:]] == ["SendMessage", "GetBotCallbackAnswer"]
+    # Без заранее разрешённого peer — как раньше, через resolve_peer.
+    await t.send_text(GAME + 1, "😎Я")
+    assert t.client.resolved == [GAME, GAME + 1]
+
+
+async def test_peer_cache_dropped_with_client(tmp_path: Path) -> None:
+    t = FakeKurigram(tmp_path)
+    await _online(t)
+    await t.resolve(GAME)
+    t.client.errors["GetState"] = rpc_error("SessionRevoked")
+    await t.probe()
+    _assert_reset(t)
+    await t.resolve(GAME)
+    assert t.clients[1].resolved == [GAME]
+
+
+async def test_resolve_errors(tmp_path: Path) -> None:
+    from pyrogram import errors
+
+    t = FakeKurigram(tmp_path)
+    lost = await _online(t)
+    t.client.errors["ResolvePeer"] = errors.FloodWait(7)
+    with pytest.raises(FloodWait):
+        await t.resolve(GAME)
+    t.client.errors["ResolvePeer"] = rpc_error("AuthKeyUnregistered")
+    with pytest.raises(TransportAuthLost):
+        await t.resolve(GAME)
+    _assert_reset(t)
+    assert lost == [1]
+
+
 async def test_reset_survives_stop_failure(tmp_path: Path) -> None:
     t = FakeKurigram(tmp_path)
     lost = await _online(t)

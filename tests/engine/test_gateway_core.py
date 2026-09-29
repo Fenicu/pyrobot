@@ -124,6 +124,27 @@ async def test_stock_class_rechecked_before_retry(rig: Rig) -> None:
     assert [s.payload for s in rig.transport.sent] == ["/buys_stark_5"]
 
 
+async def test_stock_class_rechecked_after_peer_resolved(rig: Rig) -> None:
+    # Peer чата разрешается до последней проверки: профиль со Stark пришёл, пока транспорт
+    # разрешал peer, — покупка уже своей акции не уходит.
+    async def new_profile(chat_id: int) -> None:
+        await asyncio.sleep(0.01)
+        rig.company = "stark"
+
+    rig.transport.on_resolve = new_profile
+    res = await rig.gw.submit(send("/buys_stark_5", expect=expect_text("Куплено")))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    assert rig.transport.sent == [] and rig.transport.resolved == [GAME]
+    # Компания не менялась — peer разрешён до отправки, команда уходит.
+    rig.transport.on_resolve = None
+    rig.company = "bmesa"
+    rig.reply_with("Куплено акций ⚡️Stark Ind.: 5")
+    res = await rig.gw.submit(send("/buys_stark_5", expect=expect_text("Куплено")))
+    assert res.status is ActionStatus.CONFIRMED
+    assert rig.transport.resolved == [GAME, GAME]
+    assert [s.payload for s in rig.transport.sent] == ["/buys_stark_5"]
+
+
 async def test_dry_run_suppresses_actions_but_sends_nav() -> None:
     dry = Settings(engine=LIVE.engine.model_copy(update={"mode": "dry_run"}))
     async for r in running_rig(dry):

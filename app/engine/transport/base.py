@@ -35,6 +35,11 @@ class TransportRejected(Exception):
 
 
 class Transport(Protocol):
+    async def resolve(self, chat_id: int) -> None:
+        """Разрешить peer чата заранее (с кешем): send_text и click после этого вызывают RPC без
+        ожидания, и шлюз проверяет команду вплотную перед отправкой."""
+        ...
+
     async def send_text(self, chat_id: int, text: str, reply_to: int | None = None) -> int: ...
 
     async def click(

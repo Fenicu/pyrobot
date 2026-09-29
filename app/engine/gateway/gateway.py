@@ -63,9 +63,10 @@ SOURCE_READ_TIMEOUT_S = 10.0
 
 
 class NotSent(Exception):
-    """Пересылка остановлена после чтения источника: исходное сообщение не то, что видела реакция
-    (правлено, удалено, не читается), или за время чтения что-то изменилось (чат команды, kill,
-    срок). До ForwardMessages дело не дошло."""
+    """Отправка остановлена последней проверкой в транспорте: у пересылки исходное сообщение не
+    то, что видела реакция (правлено, удалено, не читается), или за время чтения что-то изменилось
+    (чат команды, kill, срок); у команды и клика — пока разрешался peer (класс команды акций, kill,
+    срок). До RPC дело не дошло."""
 
     def __init__(self, status: ActionStatus, reason: str) -> None:
         super().__init__(reason)
@@ -741,6 +742,12 @@ class ActionGateway:
                 req.from_chat_id or 0, req.message_id or 0, req.chat_id
             )
             return str(sent) if sent else None
+        # Peer — заранее, а последняя проверка — после него: профиль, пришедший, пока peer
+        # разрешался, меняет класс команды акций. От проверки до RPC ожиданий нет.
+        await self._transport.resolve(req.chat_id)
+        blocked = self._check(p)
+        if blocked is not None:
+            raise NotSent(*blocked)
         if req.kind is ActionKind.SEND:
             await self._transport.send_text(req.chat_id, req.text or "", req.reply_to)
             return None

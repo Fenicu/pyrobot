@@ -167,6 +167,8 @@ class KurigramTransport:
         self._sink = sink
         self.on_auth_lost: Callable[[], Awaitable[None]] | None = None
         self._me: Any = None
+        # Peer чатов, разрешённые заранее (`resolve`), — для текущего клиента.
+        self._peers: dict[int, Any] = {}
         self._client = self._make_client()
 
     def _make_client(self) -> Any:
@@ -218,6 +220,7 @@ class KurigramTransport:
         if self._client is not client:
             return False
         self._me = None
+        self._peers = {}
         self._client = self._make_client()
         await _force_close(client)
         try:
@@ -347,12 +350,32 @@ class KurigramTransport:
     async def stop(self) -> None:
         await _force_close(self._client)
 
+    async def resolve(self, chat_id: int) -> None:
+        from pyrogram import errors
+
+        client = self._client
+        if chat_id in self._peers:
+            return
+        try:
+            peer = await client.resolve_peer(chat_id)
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        if client is self._client:
+            self._peers[chat_id] = peer
+
+    async def _peer(self, client: Any, chat_id: int) -> Any:
+        peer = self._peers.get(chat_id) if client is self._client else None
+        return peer if peer is not None else await client.resolve_peer(chat_id)
+
     async def send_text(self, chat_id: int, text: str, reply_to: int | None = None) -> int:
         from pyrogram import errors, raw
 
         client = self._client
         try:
-            peer = await client.resolve_peer(chat_id)
+            peer = await self._peer(client, chat_id)
             reply = raw.types.InputReplyToMessage(reply_to_msg_id=reply_to) if reply_to else None
             await client.invoke(
                 raw.functions.messages.SendMessage(
@@ -380,7 +403,7 @@ class KurigramTransport:
 
         client = self._client
         try:
-            peer = await client.resolve_peer(chat_id)
+            peer = await self._peer(client, chat_id)
             answer = await client.invoke(
                 raw.functions.messages.GetBotCallbackAnswer(
                     peer=peer, msg_id=message_id, data=data.encode()
