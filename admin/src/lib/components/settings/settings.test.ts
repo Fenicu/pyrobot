@@ -78,6 +78,11 @@ describe('Настройки', () => {
 		await user.click(screen.getByRole('switch', { name: 'Казино' }));
 		const bar = screen.getByRole('region', { name: 'Несохранённые изменения' });
 		expect(bar).toHaveTextContent('1 изменение · версия 13');
+		// До сохранения видно, что поменяется: раздел, название, было → станет.
+		const diff = within(bar).getByRole('list', { name: 'Что поменяется' });
+		expect(within(diff).getAllByRole('listitem').map((li) => li.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+			'Функции · Казино: выкл → вкл'
+		]);
 		expect(screen.getByText('изменено')).toBeInTheDocument();
 		await user.click(within(bar).getByRole('button', { name: 'Сохранить' }));
 		await vi.waitFor(() => expect(fetch.calls.some((c) => c.method === 'PATCH')).toBe(true));

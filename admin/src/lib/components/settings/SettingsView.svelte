@@ -4,8 +4,10 @@
 	import { errorText } from '$lib/api/errors';
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
 	import { ADVANCED_SECTIONS, settingHelp, settingLabel } from '$lib/settings/labels';
+	import { settingNames } from '$lib/settings/names';
 	import { settingPaths } from '$lib/settings/paths.svelte';
 	import { editable, leaves, pathKey, type Field, type Section } from '$lib/settings/schema';
+	import { fmtValue } from '$lib/settings/value';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import SettingField from './SettingField.svelte';
@@ -45,6 +47,16 @@
 			.filter((r) => r.fields.length > 0);
 	});
 	const count = $derived(editor.changes.length);
+	const nameOf = $derived(settingNames(editor.sections));
+	// Что поменяется при сохранении: раздел, название, было → станет.
+	const pending = $derived(
+		editor.changes.map((p) => ({
+			key: pathKey(p),
+			...nameOf(pathKey(p)),
+			before: fmtValue(editor.serverValue(p)),
+			after: fmtValue(editor.value(p))
+		}))
+	);
 
 	async function save() {
 		const result = await editor.save(() =>
@@ -160,6 +172,15 @@
 			role="region"
 			aria-label="Несохранённые изменения"
 		>
+			<ul class="max-h-28 w-full basis-full overflow-y-auto text-xs" aria-label="Что поменяется">
+				{#each pending as c (c.key)}
+					<li class="ext-text">
+						{#if c.section}<span class="text-fg-muted">{c.section} ·</span>{/if}
+						{c.label}: <span class="text-bad-fg line-through">{c.before}</span> →
+						<span class="text-ok-fg">{c.after}</span>
+					</li>
+				{/each}
+			</ul>
 			<span class="flex-1">
 				{count} {count === 1 ? 'изменение' : count < 5 ? 'изменения' : 'изменений'} · версия {editor.version}
 				{#if editor.goesLive}<span class="text-warn-fg"> · включает LIVE</span>{/if}
