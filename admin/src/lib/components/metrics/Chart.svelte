@@ -1,6 +1,7 @@
 <script lang="ts">
 	import uPlot from 'uplot';
 	import 'uplot/dist/uPlot.min.css';
+	import { AXIS_FONT, axisNumbers, axisSize, TIME_VALUES } from '$lib/metrics/axis';
 	import { TZ } from '$lib/util/format';
 
 	interface Props {
@@ -17,7 +18,11 @@
 	}
 
 	function options(width: number): uPlot.Options {
-		const axis = { stroke: css('--fg-muted', '#999'), grid: { stroke: css('--line-soft', '#333'), width: 1 } };
+		const axis = {
+			stroke: css('--fg-muted', '#999'),
+			font: AXIS_FONT,
+			grid: { stroke: css('--line-soft', '#333'), width: 1 }
+		};
 		return {
 			width,
 			height,
@@ -25,7 +30,14 @@
 			cursor: { drag: { x: true, y: false } },
 			tzDate: (ts) => uPlot.tzDate(new Date(ts * 1e3), TZ),
 			scales: { x: { time: true } },
-			axes: [axis, { ...axis, size: 70 }],
+			axes: [
+				{ ...axis, values: TIME_VALUES },
+				{
+					...axis,
+					values: (_u: uPlot, splits: number[]) => axisNumbers(splits),
+					size: (_u: uPlot, values: string[] | null) => axisSize(values)
+				}
+			],
 			series: [
 				{},
 				{
