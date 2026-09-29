@@ -26,5 +26,5 @@ def test_uv_lock_points_to_public_pypi() -> None:
         for f in [p.get("sdist", {}), *p.get("wheels", [])]
         if "url" in f
     ]
-    assert len(files) > 700
+    assert len(files) > 500
     assert [url for url in files if not url.startswith(FILES)] == [], FIX

@@ -21,6 +21,13 @@ def test_proxy_defaults_to_localhost(monkeypatch: pytest.MonkeyPatch) -> None:
     assert uvicorn_options(cfg)["forwarded_allow_ips"] == "127.0.0.1"
 
 
+def test_plain_asyncio_and_h11() -> None:
+    # uvloop вызывает asyncio.iscoroutinefunction (удаляется в Python 3.16), и к выходу 3.15 у него
+    # и httptools не было колёс: цикл и HTTP — стандартные, WebSocket боту не нужен.
+    opts = uvicorn_options(AppConfig(_env_file=None, transport="fake"))
+    assert (opts["loop"], opts["http"], opts["ws"]) == ("asyncio", "h11", "none")
+
+
 def test_open_requests_do_not_hold_shutdown() -> None:
     # Бесконечный SSE иначе держит SIGTERM до SIGKILL, и Runtime.stop не выполняется.
     cfg = AppConfig(_env_file=None, transport="fake")

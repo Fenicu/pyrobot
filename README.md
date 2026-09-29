@@ -1957,7 +1957,10 @@ uv run python -m app
 ```
 
 `app/__main__.py` поднимает uvicorn с одним воркером (`workers=1` — единственный процесс держит и
-HTTP, и MTProto-клиент, и очередь действий в одном event loop). `create_application` (`app/main.py`)
+HTTP, и MTProto-клиент, и очередь действий в одном event loop). Цикл — стандартный asyncio, HTTP —
+h11, без WebSocket (`loop="asyncio"`, `http="h11"`, `ws="none"`; uvicorn без `[standard]`): uvloop
+вызывает `asyncio.iscoroutinefunction`, который удаляется в Python 3.16, а к выходу 3.15 у uvloop
+и httptools не было колёс под него. `create_application` (`app/main.py`)
 собирает `Runtime`, порядок старта: настройки → админ (`ensure_admin`, если задан
 `PYROBOT_ADMIN_PASSWORD`) → единственный экземпляр (`app/db/lock.py`, `SingleInstanceLock` —
 Postgres advisory lock) → если лок не взят, движок не стартует, уведомление `second_instance`,

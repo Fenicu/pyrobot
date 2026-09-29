@@ -65,6 +65,11 @@ def uvicorn_options(cfg: AppConfig) -> dict[str, Any]:
         "host": cfg.http_host,
         "port": cfg.http_port,
         "workers": 1,
+        # Стандартный asyncio и h11 без WebSocket: uvloop и httptools не ставятся (uvicorn без
+        # [standard]), и выбор не зависит от того, что оказалось в окружении.
+        "loop": "asyncio",
+        "http": "h11",
+        "ws": "none",
         "log_level": cfg.log_level.lower(),
         "proxy_headers": True,
         "forwarded_allow_ips": trusted_proxies(cfg.forwarded_allow_ips),
