@@ -125,6 +125,24 @@ async def test_forward_in_feed_has_message_and_chat_title(
     assert (job["text"], job["message_id"], job["chat_title"]) == ("/job", None, None)
 
 
+async def test_feed_links_decision_and_steps_by_run(
+    container: Container, api_client: AsyncClient, clean_db: Database
+) -> None:
+    # По run_id админка собирает решение и шаги его запуска в одну строку хроники.
+    ids = await _seed(clean_db)
+    step = await _action(clean_db, _at(12), text="/job", run=ids["run"], source="scenario")
+    await login(api_client)
+    items = (await _page(api_client))["items"]
+    run_of = {(i["type"], i["id"]): i["run_id"] for i in items if i["type"] != "message"}  # type: ignore[attr-defined]
+    assert run_of == {
+        ("decision", ids["d2"]): None,
+        ("action", ids["a2"]): None,
+        ("action", step): ids["run"],
+        ("decision", ids["d1"]): ids["run"],
+        ("action", ids["a1"]): None,
+    }
+
+
 async def test_feed_cursor_pages_without_gaps(
     container: Container, api_client: AsyncClient, clean_db: Database
 ) -> None:

@@ -83,13 +83,14 @@ export function liveItem(event: LiveEvent, receivedAt: string): JournalItem | nu
 				data: d.data,
 				message_id: d.message_id ?? null,
 				chat_title: d.chat_title ?? null,
-				finished_at: null
+				finished_at: null,
+				run_id: d.scenario_run_id ?? null
 			};
 			return item;
 		}
 		case 'decision': {
-			const d = event.data;
-			const item: DecisionItem = { type: 'decision', ...d };
+			// Запуск решения появится позже — кадром scenario_run с decision_id.
+			const item: DecisionItem = { type: 'decision', ...event.data, run_id: null };
 			return item;
 		}
 		default:
@@ -117,7 +118,8 @@ export function actionItem(a: ActionOut): ActionItem {
 		data: typeof data === 'string' ? data : null,
 		message_id: typeof messageId === 'number' ? messageId : null,
 		chat_title: typeof chatTitle === 'string' ? chatTitle : null,
-		finished_at: a.finished_at
+		finished_at: a.finished_at,
+		run_id: a.scenario_run_id
 	};
 }
 
@@ -201,6 +203,11 @@ export class JournalFeed {
 			if (!this.#has(`action:${id}`) && this.#mayMatch(id, status)) void this.#fetchAction(id);
 			return;
 		}
+		if (event.type === 'scenario_run') {
+			const { id, decision_id } = event.data;
+			if (decision_id != null) this.#change(() => this.#linkRun(decision_id, id));
+			return;
+		}
 		if (event.type === 'action' && isActionCreated(event.data)) {
 			this.#remember(event.data.id, event.data.source);
 		}
@@ -263,6 +270,13 @@ export class JournalFeed {
 		const i = this.items.findIndex((it) => it.type === 'action' && it.id === id);
 		const row = this.items[i];
 		if (row?.type === 'action') this.items = this.items.with(i, { ...row, status, reason: reason || row.reason });
+	}
+
+	/** Запуск начат решением (кадр scenario_run): решение и шаги запуска — одна строка хроники. */
+	#linkRun(decisionId: number, runId: number): void {
+		const i = this.items.findIndex((it) => it.type === 'decision' && it.id === decisionId);
+		const row = this.items[i];
+		if (row?.type === 'decision' && row.run_id === null) this.items = this.items.with(i, { ...row, run_id: runId });
 	}
 
 	#prepend(item: JournalItem): void {

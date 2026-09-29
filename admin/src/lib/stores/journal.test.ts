@@ -128,6 +128,26 @@ function routed(actions: Record<number, object> = {}) {
 	return { f: new JournalFeed(api), pages, fetch };
 }
 
+describe('связи запуска в ленте', () => {
+	it('живое действие — со своим запуском, кадр начала запуска связывает с ним решение', async () => {
+		const { f } = feed([{ items: [], next_cursor: null }]);
+		await f.reload();
+		f.onEvent(ev('decision', { id: 500, at: '2026-09-27T20:30:00Z', kind: 'act', scenario: 'sleep', reason: 'sleep_deadline', until: null }));
+		expect(f.items[0]).toMatchObject({ type: 'decision', id: 500, run_id: null });
+		f.onEvent(ev('scenario_run', { id: 77, scenario: 'sleep', status: 'running', reason: '', decision_id: 500 }));
+		expect(f.items[0]).toMatchObject({ type: 'decision', id: 500, run_id: 77 });
+		f.onEvent(ev('action', {
+			id: 900, status: 'intent', reason: '', source: 'scenario', kind: 'send', chat_id: 1, text: '🛌Спать', data: null,
+			command_class: 'nav', scenario_run_id: 77
+		}));
+		expect(f.items[0]).toMatchObject({ type: 'action', id: 900, run_id: 77 });
+		// Кадры без решения (ручной запуск, конец запуска) ничего не связывают.
+		f.onEvent(ev('scenario_run', { id: 78, scenario: 'card', status: 'queued', reason: '', decision_id: null }));
+		f.onEvent(ev('scenario_run', { id: 77, scenario: null, status: 'done', reason: 'fell_asleep' }));
+		expect(f.items.find((i) => i.type === 'decision')).toMatchObject({ run_id: 77 });
+	});
+});
+
 describe('гонки и фильтры ленты', () => {
 	it('кадры во время загрузки первой страницы не теряются и не дублируются', async () => {
 		const { f, pages } = routed();

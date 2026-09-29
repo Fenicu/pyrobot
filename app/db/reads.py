@@ -118,6 +118,22 @@ class DbReads:
         items.sort(key=lambda i: (i.key.at, i.key.rank, i.key.id), reverse=True)
         return items[:limit]
 
+    async def decision_runs(self, decision_ids: Sequence[int]) -> dict[int, int]:
+        """Запуск, начатый решением: id решения → id его первого запуска (решения без запуска — нет
+        в ответе). Для ленты: по нему админка собирает решение и шаги запуска в одну строку."""
+        if not decision_ids:
+            return {}
+        async with self._db.sessions() as session:
+            rows = await session.execute(
+                select(ScenarioRunRow.decision_id, func.min(ScenarioRunRow.id))
+                .where(
+                    ScenarioRunRow.account_id == self._account_id,
+                    ScenarioRunRow.decision_id.in_(decision_ids),
+                )
+                .group_by(ScenarioRunRow.decision_id)
+            )
+            return {int(decision): int(run) for decision, run in rows if decision is not None}
+
     async def decision(self, decision_id: int) -> tuple[DecisionRow, list[ScenarioRunRow]] | None:
         async with self._db.sessions() as session:
             row = await session.get(DecisionRow, decision_id)

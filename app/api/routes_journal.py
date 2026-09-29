@@ -46,6 +46,8 @@ class ActionItem(BaseModel):
     message_id: int | None = None
     chat_title: str | None = None
     finished_at: datetime | None
+    # Запуск сценария, шагом которого идёт действие (ручная команда — None).
+    run_id: int | None
 
 
 class DecisionItem(BaseModel):
@@ -56,6 +58,8 @@ class DecisionItem(BaseModel):
     scenario: str | None
     reason: str
     until: datetime | None
+    # Запуск, начатый решением (ожидание и решение без запуска — None).
+    run_id: int | None
 
 
 JournalItem = Annotated[MessageItem | ActionItem | DecisionItem, Field(discriminator="type")]
@@ -135,7 +139,7 @@ def _feed_key(cursor: str) -> FeedKey:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid cursor") from exc
 
 
-def _item(row: Any) -> MessageItem | ActionItem | DecisionItem:
+def _item(row: Any, runs: dict[int, int]) -> MessageItem | ActionItem | DecisionItem:
     if isinstance(row, MessageRow):
         return MessageItem(
             id=row.id,
@@ -166,6 +170,7 @@ def _item(row: Any) -> MessageItem | ActionItem | DecisionItem:
             message_id=row.payload.get("message_id"),
             chat_title=row.payload.get("chat_title"),
             finished_at=row.finished_at,
+            run_id=row.scenario_run_id,
         )
     assert isinstance(row, DecisionRow)
     return DecisionItem(
@@ -175,6 +180,7 @@ def _item(row: Any) -> MessageItem | ActionItem | DecisionItem:
         scenario=row.scenario,
         reason=row.reason,
         until=row.until,
+        run_id=runs.get(row.id),
     )
 
 
@@ -203,8 +209,9 @@ async def journal(
     flt = FeedFilter(kinds, since, until, chat_id, status_, source)
     items = await c.reads.feed(flt, limit + 1, after)
     page = items[:limit]
+    runs = await c.reads.decision_runs([i.row.id for i in page if isinstance(i.row, DecisionRow)])
     return JournalPage(
-        items=[_item(i.row) for i in page],
+        items=[_item(i.row, runs) for i in page],
         next_cursor=_feed_cursor(page[-1].key) if len(items) > limit else None,
     )
 

@@ -240,7 +240,7 @@ class PublishingPlannerStore:
         self, decision_id: int, scenario: str, params: Mapping[str, Any], at: datetime
     ) -> int:
         run_id = await self.inner.run_started(decision_id, scenario, params, at)
-        self._run(run_id, scenario, "running")
+        self._run(run_id, scenario, "running", decision_id=decision_id)
         return run_id
 
     async def run_finished(self, run_id: int, status: str, reason: str, at: datetime) -> None:
@@ -280,8 +280,24 @@ class PublishingPlannerStore:
     async def runs_on_day(self, scenario: str, day: date) -> int:
         return await self.inner.runs_on_day(scenario, day)
 
-    def _run(self, run_id: int, scenario: str | None, status: str, reason: str = "") -> None:
+    def _run(
+        self,
+        run_id: int,
+        scenario: str | None,
+        status: str,
+        reason: str = "",
+        *,
+        decision_id: int | None = None,
+    ) -> None:
+        # decision_id — только в кадре начала запуска по решению: по нему лента журнала
+        # связывает решение с шагами запуска (в прочих кадрах и у ручного запуска — None).
         self.stream.publish(
             "scenario_run",
-            {"id": run_id, "scenario": scenario, "status": status, "reason": reason},
+            {
+                "id": run_id,
+                "scenario": scenario,
+                "status": status,
+                "reason": reason,
+                "decision_id": decision_id,
+            },
         )

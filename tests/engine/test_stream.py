@@ -133,6 +133,9 @@ async def test_planner_store_publishes_decisions_and_runs() -> None:
         ("scenario_run", "queued"),
         ("scenario_run", "running"),
     ]
+    # Решение, с которого начат запуск, — только в кадре начала запуска по решению.
+    runs = [e.data["decision_id"] for e in stream.history() if e.type == "scenario_run"]
+    assert runs == [decision, None, None, None]
 
 
 async def test_feed_publishes_messages_and_changed_state() -> None:

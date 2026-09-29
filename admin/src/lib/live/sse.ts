@@ -53,6 +53,8 @@ export interface SseScenarioRun {
 	scenario: string | null;
 	status: string;
 	reason: string;
+	/** Решение, с которого начат запуск: только в кадре начала; у сервера до 0.9 поля нет. */
+	decision_id?: number | null;
 }
 export interface SseNotification {
 	id: number;

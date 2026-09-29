@@ -717,6 +717,8 @@ export interface components {
             message_id?: number | null;
             /** Reason */
             reason: string;
+            /** Run Id */
+            run_id: number | null;
             /** Source */
             source: string;
             /** Status */
@@ -957,6 +959,8 @@ export interface components {
             kind: string;
             /** Reason */
             reason: string;
+            /** Run Id */
+            run_id: number | null;
             /** Scenario */
             scenario: string | null;
             /**

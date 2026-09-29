@@ -104,6 +104,17 @@
             "title": "Reason",
             "type": "string"
           },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -141,7 +152,8 @@
           "reason",
           "text",
           "data",
-          "finished_at"
+          "finished_at",
+          "run_id"
         ],
         "title": "ActionItem",
         "type": "object"
@@ -700,6 +712,17 @@
             "title": "Reason",
             "type": "string"
           },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
           "scenario": {
             "anyOf": [
               {
@@ -736,7 +759,8 @@
           "kind",
           "scenario",
           "reason",
-          "until"
+          "until",
+          "run_id"
         ],
         "title": "DecisionItem",
         "type": "object"
