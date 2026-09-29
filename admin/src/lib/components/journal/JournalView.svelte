@@ -3,10 +3,12 @@
 	import { errorText } from '$lib/api/errors';
 	import type { JournalItem } from '$lib/api/types';
 	import type { Confirmer } from '$lib/commands';
+	import { dayLabel } from '$lib/daily/text';
 	import { chronicle, type ChronicleRow } from '$lib/journal/chronicle';
 	import type { LiveEvent } from '$lib/live/sse';
 	import { keyOf, type JournalFeed } from '$lib/stores/journal.svelte';
 	import { clock } from '$lib/util/clock.svelte';
+	import { mskDay } from '$lib/util/format';
 	import { DESKTOP, media } from '$lib/util/media.svelte';
 	import Modal from '../Modal.svelte';
 	import FeedFilters from './FeedFilters.svelte';
@@ -41,6 +43,9 @@
 	const rows = $derived<ChronicleRow[]>(
 		grouped ? chronicle(feed.items) : feed.items.map((item) => ({ kind: 'item', key: keyOf(item), item }))
 	);
+	// Сутки по МСК: над первой строкой каждых суток — «Сегодня, 27.09» или «26.09 сб».
+	const dayOf = (row: ChronicleRow) => mskDay(new Date(row.kind === 'run' ? row.started : row.item.at));
+	const days = $derived(rows.map((row, i) => (i === 0 || dayOf(rows[i - 1]!) !== dayOf(row) ? dayOf(row) : null)));
 	let open = $state<string[]>([]);
 	const toggle = (key: string) => (open = open.includes(key) ? open.filter((k) => k !== key) : [...open, key]);
 	const selectedKey = $derived(current ? keyOf(current) : null);
@@ -84,7 +89,12 @@
 				<p class="p-3 text-sm text-fg-muted">Записей нет.</p>
 			{/if}
 			<ul>
-				{#each rows as row (row.key)}
+				{#each rows as row, i (row.key)}
+					{#if days[i]}
+						<li class="border-b border-line-soft bg-surface-2 px-2 py-1 text-xs font-semibold text-fg-muted">
+							<h3>{dayLabel(days[i]!, mskDay(now))}</h3>
+						</li>
+					{/if}
 					{#if row.kind === 'run'}
 						<RunRow
 							group={row}

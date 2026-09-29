@@ -136,6 +136,19 @@ describe('Журнал: хроника по запускам', () => {
 		expect(await screen.findByRole('dialog', { name: 'Действие' })).toBeInTheDocument();
 	});
 
+	it('над первой строкой суток — день по МСК', async () => {
+		const page = journalWithRuns();
+		// Последняя запись страницы — на сутки раньше.
+		const last = page.items.at(-1)!;
+		page.items[page.items.length - 1] = { ...last, at: '2026-09-26T18:00:00Z' } as typeof last;
+		await view((c) => (c.url.startsWith('/api/v1/journal') ? json(page) : undefined));
+		const list = screen.getByRole('region', { name: 'Лента' });
+		expect(within(list).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+			'Сегодня, 27.09',
+			'26.09 сб'
+		]);
+	});
+
 	it('с фильтром по типу — плоская лента', async () => {
 		const user = userEvent.setup();
 		await view((c) => (c.url.startsWith('/api/v1/journal') ? json(journalWithRuns()) : undefined));
