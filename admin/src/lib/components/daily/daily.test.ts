@@ -55,6 +55,35 @@ describe('карточка «Итоги дня» на главной', () => {
 		expect(within(card).queryByRole('list', { name: 'Разовое' })).toBeNull();
 	});
 
+	it('ошибка обновления — данные помечены устаревшими, время последней загрузки', () => {
+		render(DailyCard, {
+			day: today,
+			ledgerSince: daily.ledger_since,
+			error: { kind: 'network', status: 0, message: 'offline' },
+			now: NOW,
+			loadedAt: new Date('2026-09-28T11:31:00Z')
+		});
+		const card = screen.getByRole('region', { name: /Итоги дня/ });
+		expect(card).toHaveTextContent('Итоги дня · 28.09 (до 14:31)');
+		expect(within(card).getByRole('status')).toHaveTextContent('устарело · данные на 14:31 · не обновилось');
+	});
+
+	it('после полуночи МСК вчерашний ответ — не «сегодня»', () => {
+		// 29.09 00:05 MSK, последний ответ — от 28.09 23:59.
+		render(DailyCard, {
+			day: today,
+			ledgerSince: daily.ledger_since,
+			error: null,
+			now: new Date('2026-09-28T21:05:00Z'),
+			loadedAt: new Date('2026-09-28T20:59:00Z')
+		});
+		const card = screen.getByRole('region', { name: /Итоги дня/ });
+		expect(card).toHaveTextContent('Итоги дня · 29.09');
+		expect(card).not.toHaveTextContent('28.09 (до');
+		expect(within(card).queryByRole('list', { name: 'Изменение за день' })).toBeNull();
+		expect(within(card).getByRole('status')).toHaveTextContent('Итоги за 29.09 ещё не загружены · данные на 28.09 23:59');
+	});
+
 	it('загрузка и ошибка', () => {
 		const { unmount } = render(DailyCard, { day: null, ledgerSince: null, error: null, now: NOW });
 		expect(screen.getByRole('region', { name: /Итоги дня/ })).toHaveTextContent('Загрузка');
@@ -120,6 +149,35 @@ describe('страница «Итоги»', () => {
 		expect(cards[0]).toHaveTextContent(`разовое: ${today.income.reduce((a, k) => a + k.count, 0)} · потери: $218`);
 		await user.click(within(cards[1]!).getByRole('button', { name: /27\.09/ }));
 		expect(within(cards[1]!).getByRole('region', { name: 'Разбор дня 27.09' })).toBeInTheDocument();
+	});
+
+	it('после полуночи МСК «сегодня» — по текущему времени, а не по старому ответу', () => {
+		// 29.09 00:05 MSK, последний ответ — от 28.09 23:59, новый ещё не пришёл.
+		render(DailyView, {
+			data: daily,
+			error: null,
+			now: new Date('2026-09-28T21:05:00Z'),
+			loadedAt: new Date('2026-09-28T20:59:00Z')
+		});
+		const table = screen.getByRole('table', { name: 'Итоги по дням' });
+		expect(table).not.toHaveTextContent('Сегодня');
+		expect(within(table).getByRole('button', { name: /28\.09 пн \(до 23:59\)/ })).toBeInTheDocument();
+		expect(screen.getAllByRole('status')[0]).toHaveTextContent('Итоги за 29.09 ещё не загружены · данные на 28.09 23:59');
+		const cards = [...screen.getByRole('list', { name: 'Дни' }).querySelectorAll<HTMLElement>(':scope > li')];
+		expect(cards[0]).not.toHaveTextContent('Сегодня');
+	});
+
+	it('ошибка обновления — данные помечены устаревшими, время последней загрузки', () => {
+		render(DailyView, {
+			data: daily,
+			error: { kind: 'network', status: 0, message: 'offline' },
+			now: NOW,
+			loadedAt: new Date('2026-09-28T11:31:00Z')
+		});
+		expect(screen.getAllByRole('status')[0]).toHaveTextContent('устарело · данные на 14:31 · не обновилось');
+		const todayRow = within(screen.getByRole('table', { name: 'Итоги по дням' })).getAllByRole('row')[2]!;
+		expect(todayRow).toHaveTextContent('Сегодня, 28.09');
+		expect(todayRow).toHaveTextContent('(до 14:31)');
 	});
 
 	it('загрузка и ошибка', () => {

@@ -67,6 +67,12 @@
 		<CharacterCard state={character.state} stale={character.stale} {now} />
 		<TodayCard state={character.state} stale={character.stale} {now} />
 	</div>
-	<DailyCard day={daily.data?.days[0] ?? null} ledgerSince={daily.data?.ledger_since ?? null} error={daily.error} {now} />
+	<DailyCard
+		day={daily.data?.days[0] ?? null}
+		ledgerSince={daily.data?.ledger_since ?? null}
+		error={daily.error}
+		{now}
+		loadedAt={daily.loadedAt}
+	/>
 	<ControlsCard {api} status={engine.status} onchange={() => void engine.load()} />
 </div>

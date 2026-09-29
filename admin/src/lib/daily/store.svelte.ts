@@ -25,6 +25,8 @@ export class DailyStore {
 	data = $state<DailyOut | null>(null);
 	error = $state<ApiError | null>(null);
 	loading = $state(false);
+	/** Когда пришли показанные итоги: при ошибке обновления — время последней удачной загрузки. */
+	loadedAt = $state<Date | null>(null);
 	#api: Api;
 	#days: number;
 	#reloadMs: number;
@@ -71,6 +73,7 @@ export class DailyStore {
 			if (current()) {
 				this.data = out;
 				this.error = null;
+				this.loadedAt = new Date(this.#clock());
 			}
 		} catch (e) {
 			if (current() && e instanceof ApiFailure) this.error = e.error;

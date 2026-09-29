@@ -1,6 +1,6 @@
 /** Тексты «Итогов дня»: виды журнала прихода, ресурсы, знаки и счётчики — коды как в движке. */
 import type { DayOut, KindOut } from '$lib/api/types';
-import { fmtNum, TZ } from '$lib/util/format';
+import { fmtMoment, fmtNum, TZ } from '$lib/util/format';
 
 export interface KindLabel {
 	icon: string;
@@ -127,6 +127,28 @@ export function incomeCount(day: DayOut): number {
 /** 💵 потерь и трат за день (положительное число). */
 export function lossesMoney(day: DayOut): number {
 	return -day.losses.reduce((a, k) => a + (k.amounts.money ?? 0), 0);
+}
+
+/** Пометка устаревших итогов: «Итоги за 29.09 ещё не загружены · данные на 28.09 23:59 · не
+ * обновилось: …» — ответ прошлых суток (после полуночи МСК) — или «устарело · данные на 14:31 · не
+ * обновилось: …» — ошибка обновления; null — итоги свежие. */
+export function staleNote(opts: {
+	today: string;
+	first: string | null;
+	loadedAt: Date | null;
+	now: Date;
+	error: string | null;
+}): string | null {
+	const { today, first, loadedAt, now, error } = opts;
+	const behind = first !== null && first !== today;
+	if (!behind && error === null) return null;
+	return [
+		behind ? `Итоги за ${dayShort(today)} ещё не загружены` : 'устарело',
+		loadedAt ? `данные на ${fmtMoment(loadedAt, now)}` : '',
+		error !== null ? `не обновилось: ${error}` : ''
+	]
+		.filter(Boolean)
+		.join(' · ');
 }
 
 /** «27.09» из «2026-09-27». */

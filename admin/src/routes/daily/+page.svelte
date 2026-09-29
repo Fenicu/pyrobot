@@ -29,4 +29,4 @@
 	доход стартапа учтён). Разовое и потери — объясняющие события из журнала прихода: их суммы уже в
 	изменении. Среднее — по полным дням с данными за последние 7 дней. Клик по дню — его разбор.
 </p>
-<DailyView data={daily.data} error={daily.error} {now} />
+<DailyView data={daily.data} error={daily.error} {now} loadedAt={daily.loadedAt} />

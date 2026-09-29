@@ -45,11 +45,13 @@ describe('перечитывание итогов дня', () => {
 		await s.answer();
 		expect(store.loading).toBe(false);
 		expect(store.data?.days[0]?.day).toBe('2026-09-28');
+		expect(store.loadedAt).toEqual(new Date('2026-09-28T11:40:00Z'));
 		await vi.advanceTimersByTimeAsync(60_000);
 		await s.answer({ detail: 'boom' }, 500);
-		// Прежние данные остаются на экране, ошибка — рядом.
+		// Прежние данные остаются на экране, ошибка — рядом, время загрузки — последней удачной.
 		expect(store.data?.days[0]?.day).toBe('2026-09-28');
 		expect(store.error).not.toBeNull();
+		expect(store.loadedAt).toEqual(new Date('2026-09-28T11:40:00Z'));
 		store.stop();
 	});
 

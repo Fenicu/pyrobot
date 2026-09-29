@@ -10,33 +10,42 @@
 		itemsCount,
 		lossesMoney,
 		signed,
+		staleNote,
 		weekdayShort
 	} from '$lib/daily/text';
-	import { fmtNum, fmtTime } from '$lib/util/format';
+	import { fmtNum, fmtTime, mskDay } from '$lib/util/format';
 	import DayBreakdown from './DayBreakdown.svelte';
 
 	interface Props {
 		data: DailyOut | null;
 		error: ApiError | null;
 		now: Date;
+		/** Когда пришёл ответ (null — не известно: «до» — по `now`). */
+		loadedAt?: Date | null;
 	}
-	let { data, error, now }: Props = $props();
+	let { data, error, now, loadedAt = null }: Props = $props();
 
 	const days = $derived(data?.days ?? []);
-	const today = $derived(days[0]?.day ?? '');
+	// «Сегодня» — по текущему времени МСК; первый день ответа — сутки, на которые он получен (после
+	// полуночи, пока новый ответ не пришёл, это уже вчера).
+	const today = $derived(mskDay(now));
+	const first = $derived(days[0]?.day ?? null);
 	const since = $derived(data?.ledger_since ?? null);
 	const avg = $derived(average(days));
-	// Раскрытый день: по умолчанию — сегодня.
+	const stale = $derived(staleNote({ today, first, loadedAt, now, error: error ? errorText(error) : null }));
+	// Раскрытый день: по умолчанию — первый день ответа.
 	let picked = $state<string | null>(null);
-	const selected = $derived(picked ?? today);
+	const selected = $derived(picked ?? first ?? '');
 
 	const short = dayShort;
 	const beforeLedger = (d: DayOut) => since === null || d.day < since;
 	const sinceTitle = $derived(since ? `журнал прихода с ${short(since)}` : 'журнала прихода ещё нет');
 	const tone = (v: number | null | undefined) =>
 		v === null || v === undefined ? 'text-fg-faint' : v < 0 ? 'text-bad-fg' : v > 0 ? 'text-ok-fg' : 'text-fg-muted';
-	// Неполный — сегодня и день запуска журнала прихода; у дней до него пусты только столбцы журнала.
-	const note = (d: DayOut) => (d.day === today ? `до ${fmtTime(now)}` : d.day === since ? 'неполный' : '');
+	// Неполный — первый день ответа (до момента загрузки) и день запуска журнала прихода; у дней до
+	// него пусты только столбцы журнала.
+	const note = (d: DayOut) =>
+		d.day === first ? `до ${fmtTime(loadedAt ?? now)}` : d.day === since ? 'неполный' : '';
 
 	function toggle(day: string) {
 		picked = selected === day ? '' : day;
@@ -50,10 +59,10 @@
 		<p class="card text-sm text-fg-muted">Загрузка итогов…</p>
 	{/if}
 {:else}
-	{#if error}<p class="mb-2 text-xs text-bad-fg">Не обновилось: {errorText(error)}</p>{/if}
+	{#if stale}<p class="mb-2 text-xs {error ? 'text-bad-fg' : 'text-fg-muted'}" role="status">{stale}</p>{/if}
 
 	<!-- ПК: таблица за 30 дней -->
-	<div class="card hidden overflow-x-auto md:block">
+	<div class="card hidden overflow-x-auto md:block {stale ? 'opacity-60' : ''}">
 		<table class="w-full border-collapse text-sm tabular-nums" aria-label="Итоги по дням">
 			<thead>
 				<tr class="text-fg-muted">
@@ -119,7 +128,7 @@
 	</div>
 
 	<!-- Телефон: карточки дней -->
-	<ul class="space-y-2 md:hidden" aria-label="Дни">
+	<ul class="space-y-2 md:hidden {stale ? 'opacity-60' : ''}" aria-label="Дни">
 		{#each days as d (d.day)}
 			{@const open = selected === d.day}
 			<li class="card p-2.5">
