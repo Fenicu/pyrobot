@@ -9,9 +9,11 @@ from datetime import date, timedelta
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock, SystemClock
+from app.engine.commands import CommandClass
 from app.engine.events import Event
 from app.engine.gametime import day_start, tasks_day
 from app.engine.gateway.gateway import ActionGateway
+from app.engine.gateway.store import Closed
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.notify import NotifierPort
 from app.engine.parsing.crew import FactoryReport
@@ -50,6 +52,18 @@ def forward_target(msg: IncomingMessage, events: Sequence[Event]) -> Target | No
         if isinstance(event, FactoryReport) and event.battle_day == tasks_day(msg.origin):
             return Target(f"forward:factory:{event.day}", event.battle_day)
     return None
+
+
+async def notify_lost_forwards(notifier: NotifierPort, closed: Sequence[Closed]) -> int:
+    """Пересылки, прерванные падением прошлого процесса (при старте закрыты как outcome_unknown):
+    ушла ли копия — неизвестно, повтора нет (ключ израсходован), поэтому по каждой —
+    уведомление."""
+    lost = [c for c in closed if c.cls is CommandClass.FORWARD]
+    for c in lost:
+        text = f"forward {c.message_id} to team chat: outcome unknown (restart), not retried"
+        log.warning(text)
+        await notifier.notify("warn", "team_forward_unknown", text)
+    return len(lost)
 
 
 @dataclass(frozen=True, slots=True)

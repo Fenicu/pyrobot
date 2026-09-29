@@ -272,6 +272,40 @@ async def test_planner_refreshes_state_in_dry_run(clean_db: Database) -> None:
     assert list(runs[:1]) == ["refresh"]
 
 
+async def test_forward_left_by_previous_process_notified_not_retried(clean_db: Database) -> None:
+    # Процесс упал посреди пересылки в чат команды: ушла ли копия — неизвестно. При старте —
+    # отдельное уведомление, повтора нет (ключ израсходован), сверки нет.
+    store = DbActionStore(clean_db, 1)
+    team = -1001149209877
+    req = ActionRequest(
+        kind=ActionKind.FORWARD,
+        chat_id=team,
+        from_chat_id=GAME,
+        message_id=3625831,
+        idempotency_key=f"forward:{GAME}:3625831",
+        expect_content="h",
+    )
+    forwarded = await store.create(req, CommandClass.FORWARD, ActionStatus.SENT)
+    await store.create(
+        replace(req, message_id=3625832, idempotency_key=f"forward:{GAME}:3625832"),
+        CommandClass.FORWARD,
+        ActionStatus.CONFIRMED,
+    )
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    async with app.router.lifespan_context(app):
+        rows = [r for r in await runtime.notifier.recent() if r.code == "team_forward_unknown"]
+        assert len(rows) == 1 and "3625831" in rows[0].text
+        assert not any(
+            r.code == "actions_outcome_unknown" for r in await runtime.notifier.recent()
+        )
+        assert runtime.gateway.spending_blocked is None
+        assert runtime.transport.sent == []
+    stored = await store.get_by_key(f"forward:{GAME}:3625831")
+    assert stored is not None and stored.id == forwarded
+    assert (stored.status, stored.reason) == (ActionStatus.OUTCOME_UNKNOWN, "restart")
+
+
 async def test_start_interrupts_runs_left_by_previous_process(clean_db: Database) -> None:
     store = DbPlannerStore(clean_db, 1)
     moment = now()

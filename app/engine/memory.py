@@ -7,7 +7,7 @@ from typing import Any
 
 from app.engine.commands import CommandClass
 from app.engine.events import Event, Unrecognized
-from app.engine.gateway.store import CANCELLED, DuplicateKey, Obligation, StoredAction
+from app.engine.gateway.store import CANCELLED, Closed, DuplicateKey, Obligation, StoredAction
 from app.engine.gateway.types import ActionRequest, ActionStatus
 from app.engine.state.ledger import Effect, numbered
 from app.engine.types import IncomingMessage
@@ -140,7 +140,7 @@ class MemoryActionStore:
         action_id = self._keys.get(key)
         return self._stored(action_id) if action_id is not None else None
 
-    async def mark_unfinished_unknown(self) -> list[int]:
+    async def mark_unfinished_unknown(self) -> list[Closed]:
         ids = [
             i
             for i, r in self.rows.items()
@@ -149,7 +149,7 @@ class MemoryActionStore:
         ]
         for i in ids:
             await self.update(i, status=ActionStatus.OUTCOME_UNKNOWN, reason="restart")
-        return ids
+        return [Closed(i, self.rows[i].cls, self.rows[i].req.message_id) for i in ids]
 
     async def unreconciled(self) -> list[Obligation]:
         return [

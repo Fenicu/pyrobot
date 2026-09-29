@@ -511,7 +511,7 @@ async def test_cancel_marks_sent_row_and_restart_still_reconciles() -> None:
     assert res.status is ActionStatus.OUTCOME_UNKNOWN and res.reason == "cancelled"
     row = r.store.rows[1]
     assert row.status is ActionStatus.OUTCOME_UNKNOWN and row.reason == "cancelled"
-    assert await r.store.mark_unfinished_unknown() == [1]
+    assert [c.action_id for c in await r.store.mark_unfinished_unknown()] == [1]
     assert r.store.rows[1].reason == "restart"
 
 

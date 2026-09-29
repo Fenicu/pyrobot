@@ -7,7 +7,7 @@ from app.db.base import Database
 from app.db.models import ActionRow
 from app.db.planner import DbPlannerStore
 from app.engine.commands import CommandClass
-from app.engine.gateway.store import DuplicateKey, Obligation
+from app.engine.gateway.store import Closed, DuplicateKey, Obligation
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.planner.types import Wait
 
@@ -41,7 +41,9 @@ async def test_mark_unfinished_unknown(clean_db: Database) -> None:
     await store.update(b, status=ActionStatus.SENT, sent=True)
     c = await store.create(req, CommandClass.ACTION, ActionStatus.INTENT)
     await store.update(c, status=ActionStatus.CONFIRMED)
-    assert sorted(await store.mark_unfinished_unknown()) == [a, b]
+    closed = await store.mark_unfinished_unknown()
+    assert sorted(c.action_id for c in closed) == [a, b]
+    assert {c.cls for c in closed} == {CommandClass.ACTION}
 
 
 async def test_mark_unfinished_includes_cancelled_unknown(clean_db: Database) -> None:
@@ -51,7 +53,7 @@ async def test_mark_unfinished_includes_cancelled_unknown(clean_db: Database) ->
     await store.update(cancelled, status=ActionStatus.OUTCOME_UNKNOWN, reason="cancelled")
     timeout = await store.create(req, CommandClass.ACTION, ActionStatus.INTENT)
     await store.update(timeout, status=ActionStatus.OUTCOME_UNKNOWN, reason="timeout")
-    assert await store.mark_unfinished_unknown() == [cancelled]
+    assert [c.action_id for c in await store.mark_unfinished_unknown()] == [cancelled]
     assert await store.mark_unfinished_unknown() == []
 
 
@@ -67,7 +69,7 @@ async def test_obligations_survive_restart_until_reconciled(clean_db: Database) 
         CommandClass.NAV,
         ActionStatus.SENT,
     )
-    assert sorted(await store.mark_unfinished_unknown()) == [spend, nav]
+    assert sorted(c.action_id for c in await store.mark_unfinished_unknown()) == [spend, nav]
     assert await store.unreconciled() == [Obligation(spend, "send", "/harvest", None)]
     again = DbActionStore(clean_db, account_id=1)
     assert [o.action_id for o in await again.unreconciled()] == [spend]
@@ -85,7 +87,7 @@ async def test_forward_unknown_after_restart_is_not_an_obligation(clean_db: Data
         idempotency_key="forward:227859379:5",
     )
     forwarded = await store.create(req, CommandClass.FORWARD, ActionStatus.SENT)
-    assert await store.mark_unfinished_unknown() == [forwarded]
+    assert await store.mark_unfinished_unknown() == [Closed(forwarded, CommandClass.FORWARD, 5)]
     assert await store.unreconciled() == []
     async with clean_db.sessions() as session:
         row = await session.get(ActionRow, forwarded)

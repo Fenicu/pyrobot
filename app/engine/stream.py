@@ -14,7 +14,7 @@ from typing import Any
 
 from app.engine.bus import Delivery
 from app.engine.commands import CommandClass
-from app.engine.gateway.store import ActionStore, Obligation, StoredAction
+from app.engine.gateway.store import ActionStore, Closed, Obligation, StoredAction
 from app.engine.gateway.types import ActionRequest, ActionStatus
 from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Decision
@@ -199,7 +199,7 @@ class PublishingActionStore:
     async def get_by_key(self, key: str) -> StoredAction | None:
         return await self.inner.get_by_key(key)
 
-    async def mark_unfinished_unknown(self) -> list[int]:
+    async def mark_unfinished_unknown(self) -> list[Closed]:
         return await self.inner.mark_unfinished_unknown()
 
     async def unreconciled(self) -> list[Obligation]:

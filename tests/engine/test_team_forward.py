@@ -14,7 +14,7 @@ from app.engine.gateway.types import ActionStatus
 from app.engine.notify import Level
 from app.engine.parsing import default_parser
 from app.engine.settings import ChatsSection, Settings
-from app.engine.team_forward import TeamForward, forward_target
+from app.engine.team_forward import TeamForward, forward_target, notify_lost_forwards
 from app.engine.types import IncomingMessage
 from tests.engine.gateway_rig import LIVE, Rig
 from tests.engine.helpers import GAME, make_msg, until
@@ -405,3 +405,13 @@ async def test_source_edited_before_send_refused_and_notified(rig: ForwardRig) -
     assert (row.status, row.reason) == (ActionStatus.REFUSED, "source_changed")
     assert row.req.expect_content == task.content_hash()
     assert rig.notes.items == [("warn", "team_forward_failed")]
+
+
+async def test_lost_forwards_notified_each() -> None:
+    from app.engine.commands import CommandClass
+    from app.engine.gateway.store import Closed
+
+    notes = Notes()
+    closed = [Closed(1, CommandClass.ACTION, None), Closed(2, CommandClass.FORWARD, 5)]
+    assert await notify_lost_forwards(notes, closed) == 1
+    assert notes.items == [("warn", "team_forward_unknown")]

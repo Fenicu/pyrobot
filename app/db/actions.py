@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db.base import Database
 from app.db.models import ActionRow
 from app.engine.commands import CommandClass
-from app.engine.gateway.store import CANCELLED, DuplicateKey, Obligation, StoredAction
+from app.engine.gateway.store import CANCELLED, Closed, DuplicateKey, Obligation, StoredAction
 from app.engine.gateway.types import ActionRequest, ActionStatus
 
 # Неизвестный исход навигации и пересылки состояние игры не меняет: их не сверяют.
@@ -95,9 +95,9 @@ class DbActionStore:
             )
         return _stored(row) if row else None
 
-    async def mark_unfinished_unknown(self) -> list[int]:
+    async def mark_unfinished_unknown(self) -> list[Closed]:
         async with self._db.sessions() as session, session.begin():
-            rows = await session.scalars(
+            rows = await session.execute(
                 update(ActionRow)
                 .where(
                     ActionRow.account_id == self._account_id,
@@ -114,9 +114,12 @@ class DbActionStore:
                     reason="restart",
                     finished_at=datetime.now(UTC),
                 )
-                .returning(ActionRow.id)
+                .returning(ActionRow.id, ActionRow.command_class, ActionRow.payload)
             )
-            return [int(i) for i in rows]
+            return [
+                Closed(int(i), CommandClass(cls), payload.get("message_id"))
+                for i, cls, payload in rows
+            ]
 
     async def unreconciled(self) -> list[Obligation]:
         async with self._db.sessions() as session:

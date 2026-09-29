@@ -44,7 +44,7 @@ from app.engine.stream import (
     StreamFeed,
 )
 from app.engine.supervisor import Supervisor
-from app.engine.team_forward import TeamForward
+from app.engine.team_forward import TeamForward, notify_lost_forwards
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
@@ -154,7 +154,7 @@ class Runtime:
         actions = PublishingActionStore(
             DbActionStore(self.db, self.config.account_id), self.stream
         )
-        await actions.mark_unfinished_unknown()
+        await notify_lost_forwards(self.notifier, await actions.mark_unfinished_unknown())
         bus = Bus()
         react_age = self.settings.current.engine.recovered_react_max_age_min
         reducer = StateReducer()

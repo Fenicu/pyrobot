@@ -36,6 +36,16 @@ class Obligation:
     data: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class Closed:
+    """Действие прошлого процесса, закрытое при старте как outcome_unknown: класс и сообщение
+    (`payload.message_id`: клик — по чему, пересылка — что)."""
+
+    action_id: int
+    cls: CommandClass
+    message_id: int | None = None
+
+
 # Причина outcome_unknown для действия, прерванного остановкой шлюза посреди отправки;
 # такие строки при следующем старте сверяются так же, как незавершённые.
 CANCELLED = "cancelled"
@@ -66,7 +76,7 @@ class ActionStore(Protocol):
 
     async def get_by_key(self, key: str) -> StoredAction | None: ...
 
-    async def mark_unfinished_unknown(self) -> list[int]: ...
+    async def mark_unfinished_unknown(self) -> list[Closed]: ...
 
     async def unreconciled(self) -> list[Obligation]: ...
 
