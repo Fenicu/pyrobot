@@ -12,6 +12,10 @@ def check(path: str = "/healthz", port: str | None = None, timeout_s: float = 3.
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=timeout_s) as resp:
             return bool(resp.status == 200)
+    except urllib.error.HTTPError as exc:
+        # Ответ не 2xx приходит исключением с открытым соединением — закрыть его самим.
+        exc.close()
+        return False
     except (urllib.error.URLError, OSError):
         return False
 
