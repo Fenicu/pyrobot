@@ -29,6 +29,9 @@ DONE_CAPACITY = 256
 SPENT = frozenset({ActionStatus.CONFIRMED, ActionStatus.OUTCOME_UNKNOWN, ActionStatus.REFUSED})
 # Отказы по воле пользователя (сменил или выключил чат, остановил движок): без уведомления.
 DELIBERATE = frozenset({"team_chat_off", "team_chat_changed", "kill_switch"})
+# Окно пересылки от создания сообщения — не меньше этого: `recovered_react_max_age_min = 0`
+# выключает реакции на догнанное (их отсекает конвейер), а не пересылку свежего.
+MIN_WINDOW = timedelta(minutes=10)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +74,8 @@ class TeamForward:
 
     Подписчик шины только ставит пересылку в очередь; пересылает `run` — задача под супервизором.
     Пересылается только исходная ревизия (`revision == 0`) доставки, на которую можно реагировать,
-    не старше `engine.recovered_react_max_age_min` от создания сообщения; возраст проверяется ещё
+    не старше `engine.recovered_react_max_age_min` (но окно не меньше 10 минут) от создания
+    сообщения; возраст проверяется ещё
     раз перед отправкой. Отчёт о фабрике — только в сутки битвы: день сверяется перед постановкой
     в шлюз, а шлюз сверяет срок (полночь, `deadline`) перед каждой попыткой и ещё раз после чтения
     источника, прямо перед вызовом транспорта; TTL в шлюзе тоже не дальше полуночи. Шлюз перед
@@ -191,7 +195,8 @@ class TeamForward:
         """Остаток срока пересылки: окно возраста от создания сообщения, у пересылки с днём — и не
         дальше полуночи МСК после него."""
         now = self._clock.now()
-        window = timedelta(minutes=self._settings.current.engine.recovered_react_max_age_min)
+        age = self._settings.current.engine.recovered_react_max_age_min
+        window = max(timedelta(minutes=age), MIN_WINDOW)
         left = window - (now - item.msg.origin)
         if item.day is not None:
             left = min(left, _day_end(item.day) - now)

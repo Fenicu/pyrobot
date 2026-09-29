@@ -458,3 +458,22 @@ async def test_cancelled_mid_forward_notified_once_at_next_start() -> None:
     assert r.notes.items == [] and r.sent == []
     await r.gw.store.mark_unfinished_unknown()
     assert [code for _, code, _ in r.gw.store.notes] == ["team_forward_unknown"]
+
+
+@pytest.mark.parametrize(
+    ("minutes", "ttl"), [(0, 10 * 60 - 2), (5, 10 * 60 - 2), (30, 30 * 60 - 2)]
+)
+async def test_forward_window_at_least_ten_minutes(minutes: int, ttl: int) -> None:
+    # «Реагировать на догнанные не старше 0 мин» выключает реакции на догнанное, а не пересылку
+    # свежего: окно пересылки — не меньше 10 минут.
+    engine = LIVE.engine.model_copy(update={"recovered_react_max_age_min": minutes})
+    r = ForwardRig(TEAM_LIVE.model_copy(update={"engine": engine}))
+    r.start()
+    try:
+        await r.deliver(game_msg(*TASK))
+        await until(lambda: len(r.sent) == 1)
+        await r.settle()
+    finally:
+        await r.stop()
+    [row] = r.gw.store.rows.values()
+    assert row.req.ttl_s == ttl
