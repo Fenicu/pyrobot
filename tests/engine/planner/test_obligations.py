@@ -323,6 +323,14 @@ def test_dump_needs_own_company() -> None:
     assert verdicts(decision)["stocks_dump"] == "stale:company"
 
 
+def test_dump_skips_unrecognized_own_company() -> None:
+    # Значок в свежем профиле не распознан: своя неизвестна, а профиль заново её не покажет.
+    now = msk(12, 50)
+    decision = decide(dumping(now, company=None), only("stocks_dump"), now)
+    assert "refresh" not in verdicts(decision)
+    assert verdicts(decision)["stocks_dump"] == "company_unknown"
+
+
 def test_dump_ignores_quotes_seen_before_window() -> None:
     now = msk(12, 50)
     flat = Obs(value=dict.fromkeys(QUOTES, 10), at=msk(10))

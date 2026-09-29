@@ -1951,7 +1951,7 @@ export interface components {
             busy?: components["schemas"]["Observed_Union_BusyState__NoneType__"] | null;
             card_ready_at?: components["schemas"]["Observed_datetime_"] | null;
             cards?: components["schemas"]["Observed_int_"] | null;
-            company?: components["schemas"]["Observed_str_"] | null;
+            company?: components["schemas"]["Observed_Union_str__NoneType__"] | null;
             containers_medium?: components["schemas"]["Observed_int_"] | null;
             containers_small?: components["schemas"]["Observed_int_"] | null;
             daily_personal?: components["schemas"]["Observed_PersonalTask_"] | null;

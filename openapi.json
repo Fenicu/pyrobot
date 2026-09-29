@@ -3328,7 +3328,7 @@
           "company": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/Observed_str_"
+                "$ref": "#/components/schemas/Observed_Union_str__NoneType__"
               },
               {
                 "type": "null"

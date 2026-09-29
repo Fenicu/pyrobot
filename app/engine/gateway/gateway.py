@@ -493,6 +493,9 @@ class ActionGateway:
 
     def _check(self, p: _Pending) -> Blocked | None:
         def full_check() -> Blocked | None:
+            # Класс команд акций зависит от своей компании, а профиль мог прийти, пока команда
+            # ждала очереди или повтора: перед каждой отправкой — по текущему состоянию.
+            p.cls = command_class(p.req, self._own_company())
             blocked = self._static_checks(p.req, p.cls)
             if blocked is not None:
                 return blocked

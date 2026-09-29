@@ -38,7 +38,7 @@ describe('словари плана', () => {
 			'chosen', 'ok', 'busy', 'eating', 'no_motivation', 'no_money', 'no_details', 'no_value',
 			'battle_window', 'sleep_deadline', 'factory_window', 'uncertified', 'cooldown', 'rate_limited',
 			'not_feasible', 'no_hard_offer', 'cant_afford', 'sleep_not_allowed', 'market_closed', 'no_stock',
-			'not_player', 'in_metro', 'metro_unknown_screen', 'reserved', 'no_team'
+			'not_player', 'in_metro', 'metro_unknown_screen', 'reserved', 'no_team', 'company_unknown'
 		];
 		expect(verdicts.filter((v) => !(v in VERDICT))).toEqual([]);
 		expect(verdictText('stale:motivation')).toBe('нужно обновить: 🔥');

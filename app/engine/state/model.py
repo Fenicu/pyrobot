@@ -222,8 +222,9 @@ class CharacterState(_Frozen):
     last_refusal: Obs[RefusalState] | None = None
     team_task: Obs[TeamTask] | None = None
     daily_personal: Obs[PersonalTask] | None = None
-    # Своя компания — код, как в /buys_<код>_N, по значку перед именем в профиле (☣️ → bmesa).
-    company: Obs[str] | None = None
+    # Своя компания — код, как в /buys_<код>_N, по значку перед именем в профиле (☣️ → bmesa);
+    # значение None — значок в последнем профиле не распознан.
+    company: Obs[str | None] | None = None
     # Тег команды из профиля и экрана команды; значение None — в профиле тега нет, не в команде.
     team_tag: Obs[str | None] | None = None
     factory_wins: Obs[int] | None = None
@@ -269,9 +270,13 @@ def load_state(data: dict[str, Any]) -> CharacterState:
 
 
 def company_of(data: dict[str, Any]) -> str | None:
-    """Своя компания из снимка состояния; None — ещё не видели в профиле."""
-    company = load_state(data).company
-    return None if company is None else company.value
+    """Своя компания из снимка состояния; None — ещё не видели в профиле или значок не
+    распознан. Без разбора всего снимка: шлюз спрашивает её перед каждой отправкой."""
+    if data.get("schema_version") != SCHEMA_VERSION:
+        return None
+    seen = data.get("company")
+    value = seen.get("value") if isinstance(seen, dict) else None
+    return value if isinstance(value, str) else None
 
 
 def dump_state(state: CharacterState) -> dict[str, Any]:

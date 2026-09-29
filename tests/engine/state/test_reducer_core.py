@@ -175,11 +175,14 @@ def _reprofiled(reducer: StateReducer, state: dict, old: str, new: str) -> dict:
     return reducer.apply(state, changed, PARSER.parse(changed))
 
 
-def test_unrecognized_company_mark_keeps_known_company() -> None:
+def test_unrecognized_company_mark_forgets_company() -> None:
+    # Прежняя компания не держится: игрок мог перейти в другую, и тогда её акции бот считал бы
+    # чужими. Неизвестная своя — акции только вручную с подтверждением.
     reducer = StateReducer()
     state = _profiled(reducer)
     after = _reprofiled(reducer, state, "☣️[SU]", "[SU]")
-    assert value(after, "money") == 867 and value(after, "company") == "bmesa"
+    assert value(after, "money") == 867
+    assert after["company"] is not None and value(after, "company") is None
 
 
 def test_team_tag_from_profile() -> None:

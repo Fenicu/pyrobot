@@ -94,6 +94,15 @@ async def test_stocks_dump_without_own_company_does_nothing(world: World) -> Non
         "company_unknown",
         [],
     )
+    # Значок в профиле не распознан — тоже неизвестна.
+    state = await own_company(world, "🦄")
+    assert state.company is not None and state.company.value is None
+    result = await run_scenario(stocks_dump, context(world), state, params)
+    assert (result.status, result.reason, world.game.payloads()) == (
+        "nothing",
+        "company_unknown",
+        [],
+    )
 
 
 @certifies("stocks_dump")

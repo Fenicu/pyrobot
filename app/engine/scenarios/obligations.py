@@ -54,10 +54,10 @@ async def stocks_dump(
     ctx: ScenarioContext, state: CharacterState, params: Params
 ) -> ScenarioResult:
     keep, margin = int(params["keep"]), int(params["margin"])
-    if state.company is None:
+    own = state.company.value if state.company is not None else None
+    if own is None:
         # Какая акция своя — неизвестно: любая может ей оказаться.
         return ScenarioResult("nothing", "company_unknown")
-    own = state.company.value
     async with ctx.lease("stocks_dump"):
         opened = require(await ctx.send("/stock", expect_events(StockScreen)))
         screen = opened.first(StockScreen)

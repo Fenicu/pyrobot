@@ -164,6 +164,11 @@ class Obligations(PlannerBase):
             return None
         if (field := self.stale_of("money", "company")) is not None:
             return self.refresh("stocks_dump", field)
+        own: str | None = self.value("company")
+        if own is None:
+            # Значок в свежем профиле не распознан: своей может оказаться любая акция.
+            self.reject("stocks_dump", {}, "company_unknown")
+            return None
         keep = self.cfg.stocks.cash_floor + self.ticket_reserve() + self.night_hotel()
         # После покупки игра оставляет не меньше неснижаемого остатка биржи.
         floor = max(keep, limits.reserve) if limits is not None else keep
@@ -173,7 +178,6 @@ class Obligations(PlannerBase):
         quotes = self.s.stock_quotes
         margin = self.cfg.stocks.sell_cap_margin
         if quotes is not None and quotes.at >= start and limits is not None:
-            own = self.value("company")
             if not pick_stock(quotes.value, limits.min_buy, limits.max_sell, margin, own):
                 self.reject("stocks_dump", {}, "no_stock")
                 return None

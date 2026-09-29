@@ -85,6 +85,45 @@ async def test_own_company_stock_needs_manual_confirm(rig: Rig) -> None:
     assert res.status is ActionStatus.CONFIRMED
 
 
+async def test_stock_class_rechecked_before_send(rig: Rig) -> None:
+    # Покупка поставлена в очередь, пока своя компания — bmesa (stark — чужая); до отправки пришёл
+    # профиль со Stark: теперь это своя, и без подтверждения покупка не уходит.
+    lease = await rig.gw.acquire_lease("scenario")
+    queued = asyncio.create_task(
+        rig.gw.submit(send("/buys_stark_5", expect=expect_text("Куплено")))
+    )
+    await until(lambda: rig.gw.queue_size == 1)
+    rig.company = "stark"
+    await rig.gw.release_lease(lease)
+    res = await queued
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    assert rig.transport.sent == []
+    assert rig.store.rows[res.action_id or 0].cls is CommandClass.RISKY
+    # Своя стала неизвестна (значок не распознан) — тоже.
+    rig.company = "bmesa"
+    lease = await rig.gw.acquire_lease("scenario")
+    queued = asyncio.create_task(
+        rig.gw.submit(send("/buys_stark_5", expect=expect_text("Куплено")))
+    )
+    await until(lambda: rig.gw.queue_size == 1)
+    rig.company = None
+    await rig.gw.release_lease(lease)
+    assert (await queued).reason == "risky_requires_confirm"
+    assert rig.transport.sent == []
+
+
+async def test_stock_class_rechecked_before_retry(rig: Rig) -> None:
+    # Антифлуд на первую попытку, а до повтора своей стала Stark: повтор не уходит.
+    async def responder(rec: Sent) -> None:
+        rig.company = "stark"
+        await rig.deliver(make_msg("flood", msg_id=900), events=(AntiFlood(),))
+
+    rig.transport.responder = responder
+    res = await rig.gw.submit(send("/buys_stark_5", expect=expect_text("Куплено")))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    assert [s.payload for s in rig.transport.sent] == ["/buys_stark_5"]
+
+
 async def test_dry_run_suppresses_actions_but_sends_nav() -> None:
     dry = Settings(engine=LIVE.engine.model_copy(update={"mode": "dry_run"}))
     async for r in running_rig(dry):
