@@ -1,4 +1,5 @@
 /** Подписи игровых сущностей для экранов (коды — как в движке). */
+import { fmtMoment } from './format';
 
 export const ACTIVITY: Record<string, string> = {
 	harvest: 'добыча',
@@ -17,6 +18,13 @@ export const ACTIVITY: Record<string, string> = {
 
 export function activityLabel(code: string): string {
 	return ACTIVITY[code] ?? code;
+}
+
+/** Занятость из снимка: «работа до 21:34»; `until` прошёл по часам страницы — «… · уже свободен»
+ * (дела начинает только бот, а снимок обновится со следующим профилем). */
+export function busyText(busy: { activity: string; until: string }, now: Date): string {
+	const text = `${activityLabel(busy.activity)} до ${fmtMoment(busy.until, now)}`;
+	return Date.parse(busy.until) <= now.getTime() ? `${text} · уже свободен` : text;
 }
 
 /** Валюты лотереи и ресурсы: символы игры. */

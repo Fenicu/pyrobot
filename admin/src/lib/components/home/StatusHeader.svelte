@@ -3,7 +3,7 @@
 	import type { EngineStatus, PublicState } from '$lib/api/types';
 	import type { LiveStatus } from '$lib/live/connection.svelte';
 	import { fmtMoment, fmtRelative } from '$lib/util/format';
-	import { activityLabel, tgStateLabel } from '$lib/util/game';
+	import { busyText, tgStateLabel } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
 	import ConnectionDot from '../ConnectionDot.svelte';
 	import Pill from '../Pill.svelte';
@@ -51,7 +51,7 @@
 		<Pill>статус…</Pill>
 	{/if}
 	{#if busy}
-		<Pill title={fmtRelative(busy.until, now)}>{activityLabel(busy.activity)} до {fmtMoment(busy.until, now)}</Pill>
+		<Pill title={fmtRelative(busy.until, now)}>{busyText(busy, now)}</Pill>
 	{/if}
 	<span class="ml-auto"><ConnectionDot status={live} {retryIn} /></span>
 </section>

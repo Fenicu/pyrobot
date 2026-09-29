@@ -42,6 +42,23 @@ describe('Главная на снимке с прода', () => {
 		expect(card).toHaveTextContent('бои закончены · снова 28.09 13:10');
 	});
 
+	it('кончившееся дело по часам страницы — «уже свободен» в карточке и в шапке', () => {
+		// Сон в отеле до 05:05 MSK; часы страницы — 10 минут спустя.
+		const later = new Date('2026-09-28T02:15:09Z');
+		render(CharacterCard, { state: prod.state, stale: prod.stale, now: later });
+		const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
+		expect(within(card).getByText('Занятость').parentElement).toHaveTextContent('сон в отеле до 05:05 · уже свободен');
+		render(StatusHeader, { status, error: null, live: 'open', state: prod.state, now: later });
+		expect(screen.getByRole('region', { name: 'Статус' })).toHaveTextContent('сон в отеле до 05:05 · уже свободен');
+	});
+
+	it('идущее дело — без «уже свободен»', () => {
+		render(StatusHeader, { status, error: null, live: 'open', state: prod.state, now: NOW });
+		const header = screen.getByRole('region', { name: 'Статус' });
+		expect(header).toHaveTextContent('сон в отеле до 28.09 05:05');
+		expect(header).not.toHaveTextContent('уже свободен');
+	});
+
 	it('пустой снимок до первого сообщения', () => {
 		render(CharacterCard, { state: {}, stale: [], now: NOW });
 		expect(screen.getByText(/Снимка ещё нет/)).toBeInTheDocument();

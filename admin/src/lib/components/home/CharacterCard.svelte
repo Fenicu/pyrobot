@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PublicState } from '$lib/api/types';
-	import { fmtCompact, fmtMoment, fmtNum, fmtRelative } from '$lib/util/format';
-	import { activityLabel } from '$lib/util/game';
+	import { fmtCompact, fmtNum, fmtRelative } from '$lib/util/format';
+	import { busyText } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
 	import Meter from '../Meter.svelte';
 	import Row from './Row.svelte';
@@ -49,7 +49,7 @@
 		</Row>
 		<Row label="Занятость" stale={isStale('busy')}>
 			{#if busy}
-				{activityLabel(busy.activity)} до {fmtMoment(busy.until, now)}
+				{busyText(busy, now)}
 			{:else}
 				свободен
 			{/if}
