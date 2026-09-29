@@ -4,6 +4,7 @@
 	import { errorText } from '$lib/api/errors';
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
 	import { ADVANCED_SECTIONS, settingHelp, settingLabel } from '$lib/settings/labels';
+	import { settingPaths } from '$lib/settings/paths.svelte';
 	import { editable, leaves, pathKey, type Field, type Section } from '$lib/settings/schema';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -126,6 +127,10 @@
 					</li>
 				{/each}
 			</ul>
+			<label class="flex items-center gap-2 px-2 text-xs text-fg-faint">
+				<input type="checkbox" checked={settingPaths.show} onchange={(e) => settingPaths.set(e.currentTarget.checked)} />
+				пути настроек (для разработчика)
+			</label>
 		</nav>
 
 		<section class="card min-w-0" aria-label={q ? 'Найденные настройки' : section ? title(section) : 'Настройки'}>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
 	import { settingHelp, settingLabel } from '$lib/settings/labels';
+	import { settingPaths } from '$lib/settings/paths.svelte';
 	import { pathKey, type Field } from '$lib/settings/schema';
 	import { fmtValue } from '$lib/settings/value';
 	import Pill from '../Pill.svelte';
@@ -33,7 +34,8 @@
 {#if field.type.kind === 'group'}
 	<fieldset class="mt-3 rounded-md border border-line-soft p-2">
 		<legend class="px-1 text-xs font-semibold text-fg-muted uppercase">
-			{label} <span class="font-mono font-normal normal-case">({key})</span>
+			{label}{#if settingPaths.show}
+				<span class="font-mono font-normal normal-case">({key})</span>{/if}
 		</legend>
 		{#if help}<p class="mb-1 text-xs text-fg-muted">{help}</p>{/if}
 		{#each field.type.fields as child (pathKey(child.path))}
@@ -49,7 +51,7 @@
 			<div class="min-w-0 flex-1">
 				<label for={id} class="block text-sm {field.unused ? 'text-fg-muted' : ''}">
 					{label}
-					<span class="block font-mono text-[11px] text-fg-faint">{key}</span>
+					{#if settingPaths.show}<span class="block font-mono text-[11px] text-fg-faint">{key}</span>{/if}
 				</label>
 				{#if field.unused}<p id="{id}-unused" class="text-xs text-fg-muted">не используется ботом</p>{/if}
 			</div>

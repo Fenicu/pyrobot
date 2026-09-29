@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApi } from '$lib/api/client';
 import type { SettingsOut } from '$lib/api/types';
 import { SettingsEditor } from '$lib/settings/editor.svelte';
+import { settingPaths } from '$lib/settings/paths.svelte';
 import schemaJson from '$lib/settings/settings.schema.json';
 import { toasts } from '$lib/stores/toasts.svelte';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
@@ -53,6 +54,21 @@ describe('Настройки', () => {
 		const deeds = strategy.querySelector('[data-path="strategy.deeds"]')!;
 		expect(deeds).toHaveTextContent('не по умолч.');
 		expect(within(strategy).getByRole('group', { name: 'Основные дела' })).toHaveTextContent('harvest');
+	});
+
+	it('пути настроек — только по переключателю, выбор запоминается', async () => {
+		const user = userEvent.setup();
+		localStorage.removeItem('pyrobot.settings.paths');
+		settingPaths.set(false);
+		await view();
+		await user.click(screen.getByRole('button', { name: 'Сон' }));
+		const row = screen.getByRole('region', { name: 'Сон' }).querySelector('[data-path="sleep.duration_h"]')!;
+		expect(row).toHaveTextContent('Длительность сна, ч');
+		expect(row).not.toHaveTextContent('sleep.duration_h');
+		await user.click(screen.getByRole('checkbox', { name: 'пути настроек (для разработчика)' }));
+		expect(row).toHaveTextContent('sleep.duration_h');
+		expect(localStorage.getItem('pyrobot.settings.paths')).toBe('1');
+		settingPaths.set(false);
 	});
 
 	it('правка → панель «N изменений · версия V» → сохранение', async () => {
