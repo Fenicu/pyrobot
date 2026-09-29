@@ -1,0 +1,20 @@
+# Caddyfile для pyrobot: Caddy на том же сервере, что и бот. HTTPS Caddy получает сам (Let's
+# Encrypt): домен должен указывать на этот сервер, порты 80 и 443 — открыты.
+# bot.example.com — замени на свой домен; 127.0.0.1:8080 — PYROBOT_BIND и PYROBOT_PORT из .env.
+bot.example.com {
+	# Самые большие запросы API — килобайты; всё, что больше, отбрасывается до бота.
+	request_body {
+		max_size 1MB
+	}
+	# Пробы живости и готовности наружу не отдаются: HEALTHCHECK проверяет их внутри контейнера.
+	@probes path /healthz /readyz
+	respond @probes 404
+	# Сжатие — всему, кроме потока событий админки: кодировщик копит события в буфере, и они
+	# доходят до браузера с задержкой — админка «залипает».
+	@compressible not path /api/v1/events
+	encode @compressible zstd gzip
+	reverse_proxy 127.0.0.1:8080 {
+		# Поток событий: каждое событие уходит клиенту сразу, без буферизации.
+		flush_interval -1
+	}
+}

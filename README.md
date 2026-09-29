@@ -2649,6 +2649,9 @@ Telegram делается через админку или API уже работ
 
 ### Caddy на web
 
+Пример для любого сервера — `deploy/Caddyfile.example` (Caddy на том же сервере, домен-заглушка,
+те же правила: без сжатия и буферизации для `/api/v1/events`, пробы — 404, тело до 1 МБ).
+
 **Caddy на web** — `deploy/Caddyfile.sw.fenicu.com`: блок `sw.fenicu.com` → `http://10.10.40.20:8089`
 без Authelia (у админки своя авторизация), `flush_interval -1` для SSE, сжатие `encode zstd gzip` для
 всего, кроме `/api/v1/events` (matcher `not path`: сжатый SSE копится в буфере кодировщика, и события,
