@@ -16,16 +16,29 @@ ROUTE_TABLE = Path("/proc/net/route")
 GATEWAY = "gateway"
 
 
+# Флаги маршрута (linux/route.h): маршрут поднят и идёт через шлюз.
+RTF_UP, RTF_GATEWAY = 0x1, 0x2
+
+
 def _default_gateway(table: Path) -> str | None:
+    """Шлюз маршрута по умолчанию (назначение и маска 0, флаги UP и GATEWAY; из нескольких — с
+    меньшей метрикой). Таблицы нет — None; таблица не разбирается — None и запись в лог."""
     try:
         lines = table.read_text().splitlines()[1:]
     except OSError:
         return None
-    for line in lines:
-        fields = line.split()
-        if len(fields) > 2 and fields[1] == "00000000" and fields[2] != "00000000":
-            return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
-    return None
+    best: tuple[int, int] | None = None
+    try:
+        for line in lines:
+            _, dest, gateway, flags, _, _, metric, mask = line.split()[:8]
+            wanted = (int(flags, 16) & (RTF_UP | RTF_GATEWAY)) == (RTF_UP | RTF_GATEWAY)
+            if int(dest, 16) == 0 and int(mask, 16) == 0 and wanted:
+                candidate = (int(metric), int(gateway, 16))
+                best = candidate if best is None or candidate < best else best
+        return None if best is None else socket.inet_ntoa(struct.pack("<L", best[1]))
+    except (ValueError, struct.error) as exc:
+        log.warning("route table %s not parsed: %s", table, exc)
+        return None
 
 
 def trusted_proxies(value: str, table: Path | None = None) -> str:

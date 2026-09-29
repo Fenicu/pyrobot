@@ -60,3 +60,45 @@ def test_uvicorn_resolves_gateway(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     monkeypatch.setenv("PYROBOT_FORWARDED_ALLOW_IPS", "gateway")
     cfg = AppConfig(_env_file=None, transport="fake")
     assert uvicorn_options(cfg)["forwarded_allow_ips"] == "172.20.0.1"
+
+
+def _route(*rows: tuple[str, str, str, int]) -> str:
+    """Строки маршрутов: (назначение, шлюз, флаги, метрика), маска у маршрута по умолчанию — 0."""
+    head = ROUTE.splitlines(keepends=True)[0]
+    lines = []
+    for dst, gw, flags, metric in rows:
+        mask = "00000000" if dst == "00000000" else "0000FFFF"
+        lines.append(f"eth0\t{dst}\t{gw}\t{flags}\t0\t0\t{metric}\t{mask}\t0\t0\t0\n")
+    return head + "".join(lines)
+
+
+def test_gateway_needs_up_and_gateway_flags_and_lowest_metric(tmp_path: Path) -> None:
+    # RTF_UP (1) и RTF_GATEWAY (2); маршрутов по умолчанию несколько — с меньшей метрикой.
+    route = tmp_path / "route"
+    route.write_text(
+        _route(
+            ("00000000", "010014AC", "0001", 0),
+            ("00000000", "010015AC", "0002", 0),
+            ("00000000", "010016AC", "0003", 200),
+            ("00000000", "010017AC", "0003", 100),
+        )
+    )
+    assert trusted_proxies("gateway", route) == "172.23.0.1"
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        "eth0\t00000000\tZZZZZZZZ\t0003\t0\t0\t0\t00000000\t0\t0\t0\n",
+        "eth0\t00000000\t010014AC\n",
+        "eth0\t00000000\t010014AC\tXX\t0\t0\t0\t00000000\t0\t0\t0\n",
+    ],
+)
+def test_broken_route_table_trusts_nobody(
+    tmp_path: Path, broken: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Битая таблица маршрутов не роняет старт: шлюза нет, и это в логе.
+    route = tmp_path / "route"
+    route.write_text(ROUTE + broken)
+    assert trusted_proxies("gateway", route) == "127.0.0.1"
+    assert "route table" in caplog.text
