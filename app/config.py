@@ -20,7 +20,7 @@ class AppConfig(DbConfig):
     http_host: str = "0.0.0.0"
     http_port: int = 8080
     # Адрес(а) обратного прокси (Caddy), которому uvicorn доверяет X-Forwarded-For/-Proto:
-    # иначе лимитер входа видит всех клиентов одним адресом прокси.
+    # иначе лимитер входа видит всех клиентов одним адресом прокси; gateway — шлюз сети контейнера.
     forwarded_allow_ips: str = "127.0.0.1"
     cookie_secure: bool = True
     transport: Literal["kurigram", "fake"] = "kurigram"

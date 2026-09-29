@@ -7,8 +7,9 @@ x-app: &app
   env_file: .env
   environment:
     PYROBOT_DATABASE_URL: postgresql+asyncpg://pyrobot:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/pyrobot
-    # Прокси на этом же сервере приходит в контейнер с адреса шлюза сети Docker, а не 127.0.0.1.
-    PYROBOT_FORWARDED_ALLOW_IPS: ${PYROBOT_FORWARDED_ALLOW_IPS:-127.0.0.1,172.16.0.0/12,192.168.0.0/16}
+    # X-Forwarded-For — только от шлюза сети проекта: с его адреса в контейнер приходит прокси на
+    # этом же сервере (адрес бот берёт из маршрута по умолчанию при старте).
+    PYROBOT_FORWARDED_ALLOW_IPS: ${PYROBOT_FORWARDED_ALLOW_IPS:-gateway}
   depends_on:
     postgres:
       condition: service_healthy

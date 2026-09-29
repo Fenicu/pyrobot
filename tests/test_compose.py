@@ -77,8 +77,8 @@ def test_defaults_for_any_server(tmp_path: Path) -> None:
     bot = services["pyrobot"]
     assert _ports(bot) == [("127.0.0.1", "8080", 8080)]
     assert bot["image"] == "git.fenicu.com/fenicu/pyrobot:latest"
-    trusted = bot["environment"]["PYROBOT_FORWARDED_ALLOW_IPS"]
-    assert trusted == "127.0.0.1,172.16.0.0/12,192.168.0.0/16"
+    # Доверие — только шлюзу сети проекта (адрес бот узнаёт при старте), не подсетям целиком.
+    assert bot["environment"]["PYROBOT_FORWARDED_ALLOW_IPS"] == "gateway"
     # Сборка из исходников — только у бота: migrate берёт тот же образ, второй сборки нет.
     assert bot["build"]["context"] == str(tmp_path)
     assert "build" not in services["migrate"]
