@@ -49,7 +49,7 @@
 <section class="card" aria-labelledby="runner-title">
 	<div class="mb-2 flex flex-wrap items-center gap-2">
 		<h2 id="runner-title" class="font-mono text-sm font-semibold">{scenario.name}</h2>
-		{#if scenario.certified}<Pill tone="ok">серт.</Pill>{:else}<Pill>симуляция</Pill>{/if}
+		{#if !scenario.certified}<Pill>симуляция</Pill>{/if}
 	</div>
 	{#if !scenario.certified}
 		<p class="mb-2 text-xs text-warn-fg">
@@ -70,7 +70,7 @@
 	/>
 	{#if error}<p class="ext-text mt-2 text-sm text-bad-fg" role="alert">{error}</p>{/if}
 	<p class="mt-2 flex items-center gap-1 text-xs text-fg-faint">
-		<Play class="size-3" aria-hidden="true" /> ключ идемпотентности создаётся сам — двойной клик не запустит
-		дважды
+		<Play class="size-3" aria-hidden="true" /> запуск встанет в очередь и выполнится перед следующим решением
+		бота; повторное нажатие не запустит его дважды
 	</p>
 </section>

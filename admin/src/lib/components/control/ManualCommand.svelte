@@ -79,7 +79,8 @@
 		</button>
 	</form>
 	<p class="mt-1 text-xs text-fg-faint">
-		forbidden и donate не уйдут никогда · risky — только после подтверждения
+		донатные, опасные и незнакомые боту команды не уйдут никогда · необратимые траты — только после
+		подтверждения
 	</p>
 	{#if result}
 		<p class="ext-text mt-2 text-sm {tone[result.kind] ?? ''}" role="status">{result.text}</p>

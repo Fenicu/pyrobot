@@ -39,10 +39,10 @@
 						{#if Object.keys(s.required).length > 0}
 							<span class="text-xs text-fg-faint">{Object.keys(s.required).length} пар.</span>
 						{/if}
-						{#if s.certified}
-							<Pill tone="ok" title="Сертифицирован на настоящих кадрах">серт.</Pill>
-						{:else}
-							<Pill title="Не-nav шаги подавляются (simulate)">симуляция</Pill>
+						{#if !s.certified}
+							<Pill title="Не проверен на настоящих экранах игры: шаги, кроме навигации, не уходят в игру"
+								>симуляция</Pill
+							>
 						{/if}
 					</span>
 				</button>
