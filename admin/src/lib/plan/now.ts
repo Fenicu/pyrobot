@@ -76,11 +76,12 @@ interface LoopWait {
 }
 
 /** Цикл спит до своего таймера, а план на текущий момент — действие: оно будет, когда цикл
- * проснётся (раньше — только если придёт сообщение игры). */
-function loopWait(plan: Outlook): LoopWait | null {
+ * проснётся (раньше — только если придёт сообщение игры). Срок — по более позднему из моментов
+ * плана и часов экрана: план может быть из кеша сервера, а часы тикают раз в 30 с. */
+function loopWait(plan: Outlook, now: Date): LoopWait | null {
 	const { wait_reason: reason, wake_at: wake } = plan.loop;
 	if (plan.decision.kind !== 'act' || reason === null || wake === null) return null;
-	return Date.parse(wake) > Date.parse(plan.now) ? { reason, wake } : null;
+	return Date.parse(wake) > Math.max(Date.parse(plan.now), now.getTime()) ? { reason, wake } : null;
 }
 
 function loopWaitText(plan: Outlook, { reason, wake }: LoopWait): string {
@@ -133,12 +134,13 @@ function reservesText(plan: Outlook): string {
 	return `Держит 🔥: ${parts.join(', ')}`;
 }
 
-export function nowView(plan: Outlook): NowView {
+/** `now` — часы экрана: наступил ли срок, до которого спит цикл. */
+export function nowView(plan: Outlook, now: Date): NowView {
 	const blocks = blockers(plan);
 	const decision = decisionText(plan);
 	const first = blocks[0];
 	const common = { blockers: blocks.map((b) => b.text), phase: phaseText(plan), reserves: reservesText(plan) };
-	const wait = first ? null : loopWait(plan);
+	const wait = first ? null : loopWait(plan, now);
 	if (wait) return { ...common, decision: loopWaitText(plan, wait), at: wait.wake, then: `Тогда: ${decision.text}` };
 	return {
 		...common,

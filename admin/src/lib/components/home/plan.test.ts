@@ -1,6 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { tick } from 'svelte';
+import { describe, expect, it, vi } from 'vitest';
 import type { Outlook, StateOut } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
 import PlanCard from './PlanCard.svelte';
@@ -79,6 +80,26 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		const now = screen.getByRole('region', { name: 'Сейчас' });
 		expect(now).toHaveTextContent('⏳ ждёт: прочитать книгу — следующий шаг в 19:42');
 		expect(now).toHaveTextContent('Тогда: 🤑 билеты лотереи (все — max)');
+	});
+
+	it('срок сна цикла наступил — «Сейчас» перерисовано сразу, не дожидаясь тика часов главной', async () => {
+		const at = '2026-09-27T16:42:54Z';
+		vi.useFakeTimers({ now: NOW, toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+		try {
+			card({ ...plan, loop: { ...plan.loop, next_wake: at, wait_reason: 'book_ready', wake_at: at } });
+			const now = screen.getByRole('region', { name: 'Сейчас' });
+			expect(now).toHaveTextContent('⏳ ждёт: прочитать книгу');
+			await vi.advanceTimersByTimeAsync(Date.parse(at) - NOW.getTime() - 1_000);
+			await tick();
+			expect(now).toHaveTextContent('⏳ ждёт: прочитать книгу');
+			await vi.advanceTimersByTimeAsync(1_000);
+			await tick();
+			expect(now).toHaveTextContent('🤑 билеты лотереи (все — max)');
+			expect(now).not.toHaveTextContent('ждёт');
+			expect(now).not.toHaveTextContent('Тогда');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('во сне таймеры прохода «после пробуждения» — под подзаголовком', () => {

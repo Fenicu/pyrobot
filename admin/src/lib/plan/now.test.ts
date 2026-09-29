@@ -11,7 +11,7 @@ const withLoop = (loop: Partial<Outlook['loop']>): Outlook => ({ ...plan, loop: 
 
 describe('«Сейчас»', () => {
 	it('решение планировщика и занятость', () => {
-		expect(nowView(plan)).toEqual({
+		expect(nowView(plan, NOW)).toEqual({
 			blockers: [],
 			decision: '🤑 билеты лотереи (все — max)',
 			at: null,
@@ -29,7 +29,7 @@ describe('«Сейчас»', () => {
 				{ kind: 'metro', motivation: 2, at: '2026-09-27T17:21:00Z' }
 			]
 		};
-		expect(nowView(both).reserves).toBe('Держит 🔥: 1 под бой Горбушки в 19:38, 2 под метро (откроется в 20:21)');
+		expect(nowView(both, NOW).reserves).toBe('Держит 🔥: 1 под бой Горбушки в 19:38, 2 под метро (откроется в 20:21)');
 		const due: Outlook = {
 			...plan,
 			reserves: [
@@ -37,22 +37,22 @@ describe('«Сейчас»', () => {
 				{ kind: 'gorbushka', motivation: 3, at: plan.now }
 			]
 		};
-		expect(nowView(due).reserves).toBe('Держит 🔥: 2 под метро (уже доступно), 3 под бой Горбушки сейчас');
-		expect(nowView({ ...plan, reserves: [] }).reserves).toBe('');
+		expect(nowView(due, NOW).reserves).toBe('Держит 🔥: 2 под метро (уже доступно), 3 под бой Горбушки сейчас');
+		expect(nowView({ ...plan, reserves: [] }, NOW).reserves).toBe('');
 	});
 
 	it('пауза, неготовность, идущий сценарий, очередь — первыми, решение условное', () => {
-		expect(nowView(withLoop({ paused: true, ready: 'paused' }))).toMatchObject({
+		expect(nowView(withLoop({ paused: true, ready: 'paused' }), NOW)).toMatchObject({
 			blockers: ['⏸ Планировщик на паузе'],
 			decision: 'когда пауза снимется — 🤑 билеты лотереи (все — max)'
 		});
-		expect(nowView(withLoop({ ready: 'tg_offline' })).blockers).toEqual(['⛔ Решения не исполняются: Telegram не в сети']);
-		expect(nowView(withLoop({ current: 'deed:job' })).decision).toBe('после него — 🤑 билеты лотереи (все — max)');
-		expect(nowView(withLoop({ manual_queue: 2 })).blockers).toEqual(['🖐 Ручных запусков в очереди: 2']);
+		expect(nowView(withLoop({ ready: 'tg_offline' }), NOW).blockers).toEqual(['⛔ Решения не исполняются: Telegram не в сети']);
+		expect(nowView(withLoop({ current: 'deed:job' }), NOW).decision).toBe('после него — 🤑 билеты лотереи (все — max)');
+		expect(nowView(withLoop({ manual_queue: 2 }), NOW).blockers).toEqual(['🖐 Ручных запусков в очереди: 2']);
 	});
 
 	it('на паузе идущий ручной сценарий и очередь видны вместе с паузой', () => {
-		const view = nowView(withLoop({ paused: true, ready: 'paused', current: 'book', manual_queue: 1 }));
+		const view = nowView(withLoop({ paused: true, ready: 'paused', current: 'book', manual_queue: 1 }), NOW);
 		expect(view.blockers).toEqual([
 			'⏸ Планировщик на паузе',
 			'▶ Идёт сценарий: 📒 книга',
@@ -64,11 +64,11 @@ describe('«Сейчас»', () => {
 	it('ожидание: причина и время следующего шага; во сне — пробуждение', () => {
 		const until = plan.wakeups[0]!.at;
 		const waiting: Outlook = { ...plan, decision: { kind: 'wait', scenario: null, params: {}, reason: 'busy', until } };
-		expect(nowView(waiting)).toMatchObject({ decision: '⏳ ждёт: освободится', at: until });
+		expect(nowView(waiting, NOW)).toMatchObject({ decision: '⏳ ждёт: освободится', at: until });
 		const asleep: Outlook = { ...waiting, phase: 'asleep', busy: { activity: 'sleep_bridge', until } };
-		expect(nowView(asleep)).toMatchObject({ decision: '🛌 ждёт пробуждения', phase: 'Спит: сон под мостом до 19:50' });
+		expect(nowView(asleep, NOW)).toMatchObject({ decision: '🛌 ждёт пробуждения', phase: 'Спит: сон под мостом до 19:50' });
 		const idle: Outlook = { ...waiting, decision: { ...waiting.decision, reason: 'no_timers', until: null } };
-		expect(nowView(idle).decision).toBe('⏳ ждёт событий: таймеров нет');
+		expect(nowView(idle, NOW).decision).toBe('⏳ ждёт событий: таймеров нет');
 	});
 
 	it('ожидание отсрочки — с тем, чья она (не только «кончится отсрочка»)', () => {
@@ -79,7 +79,7 @@ describe('«Сейчас»', () => {
 			wakeups,
 			decision: { kind: 'wait', scenario: null, params: {}, reason: 'cooldown:deed:job', until }
 		};
-		expect(nowView(waiting).decision).toBe('⏳ ждёт: кончится отсрочка: работа');
+		expect(nowView(waiting, NOW).decision).toBe('⏳ ждёт: кончится отсрочка: работа');
 	});
 
 	it('дело — с причиной выбора', () => {
@@ -87,9 +87,9 @@ describe('«Сейчас»', () => {
 			...plan,
 			decision: { kind: 'act', scenario: 'deed:dconv', params: {}, reason: 'focus dconv (2 today)', until: null }
 		};
-		expect(nowView(deed).decision).toBe('⚙️→🔩 переработка (основное дело)');
+		expect(nowView(deed, NOW).decision).toBe('⚙️→🔩 переработка (основное дело)');
 		const team = { ...deed, decision: { ...deed.decision, reason: 'team dconv 60/120' } };
-		expect(nowView(team).decision).toBe('⚙️→🔩 переработка (под командное задание 60/120)');
+		expect(nowView(team, NOW).decision).toBe('⚙️→🔩 переработка (под командное задание 60/120)');
 	});
 });
 
@@ -98,40 +98,49 @@ describe('«Сейчас», пока цикл спит', () => {
 	const sleeping = withLoop({ next_wake: BOOK, wait_reason: 'book_ready', wake_at: BOOK });
 
 	it('решение — действие, а цикл ждёт таймера: сначала ожидание, действие — «тогда»', () => {
-		expect(nowView(sleeping)).toMatchObject({
+		expect(nowView(sleeping, NOW)).toMatchObject({
 			blockers: [],
 			decision: '⏳ ждёт: прочитать книгу',
 			at: BOOK,
 			then: 'Тогда: 🤑 билеты лотереи (все — max)'
 		});
 		const cooldown = withLoop({ next_wake: BOOK, wait_reason: 'cooldown:refresh:profile', wake_at: BOOK });
-		expect(nowView(cooldown).decision).toBe('⏳ ждёт: кончится отсрочка: обновить профиль');
+		expect(nowView(cooldown, NOW).decision).toBe('⏳ ждёт: кончится отсрочка: обновить профиль');
 	});
 
 	it('ожидание дольше предела простоя: проснётся раньше срока — время следующего шага по нему', () => {
 		const early = '2026-09-27T16:44:00Z';
-		const view = nowView(withLoop({ next_wake: '2026-09-27T19:05:03Z', wait_reason: 'sleep_window', wake_at: early }));
+		const view = nowView(withLoop({ next_wake: '2026-09-27T19:05:03Z', wait_reason: 'sleep_window', wake_at: early }), NOW);
 		expect(view).toMatchObject({ decision: '⏳ ждёт: сон 7 ч под мостом в 22:05', at: early });
 		expect(view.then).toBe('Тогда: 🤑 билеты лотереи (все — max)');
-		const idle = nowView(withLoop({ next_wake: null, wait_reason: 'no_timers', wake_at: early }));
+		const idle = nowView(withLoop({ next_wake: null, wait_reason: 'no_timers', wake_at: early }), NOW);
 		expect(idle).toMatchObject({ decision: '⏳ ждёт событий: таймеров нет', at: early });
 	});
 
 	it('срок ожидания наступил, цикл не ждёт или исполняет — действие как есть', () => {
 		const due = withLoop({ next_wake: plan.now, wait_reason: 'book_ready', wake_at: plan.now });
-		expect(nowView(due)).toMatchObject({ decision: '🤑 билеты лотереи (все — max)', at: null, then: '' });
-		expect(nowView(plan).then).toBe('');
+		expect(nowView(due, NOW)).toMatchObject({ decision: '🤑 билеты лотереи (все — max)', at: null, then: '' });
+		// Часы главной тикают раз в 30 с и могут отставать от свежего плана: срок — по плану.
+		expect(nowView(due, new Date(NOW.getTime() - 20_000)).then).toBe('');
+		expect(nowView(plan, NOW).then).toBe('');
 		const running = withLoop({ current: 'book', next_wake: BOOK, wait_reason: 'book_ready', wake_at: BOOK });
-		expect(nowView(running)).toMatchObject({
+		expect(nowView(running, NOW)).toMatchObject({
 			blockers: ['▶ Идёт сценарий: 📒 книга'],
 			decision: 'после него — 🤑 билеты лотереи (все — max)',
 			then: ''
 		});
 	});
 
+	it('срок наступил по текущим часам, хотя план снят раньше него, — действие как есть', () => {
+		// План — из кеша сервера или прочитан до пробуждения цикла, а часы главной уже позже.
+		const later = new Date(Date.parse(BOOK) + 1_000);
+		expect(Date.parse(plan.now)).toBeLessThan(Date.parse(BOOK));
+		expect(nowView(sleeping, later)).toMatchObject({ decision: '🤑 билеты лотереи (все — max)', at: null, then: '' });
+	});
+
 	it('пауза и неготовность — первыми, как раньше', () => {
 		const paused = withLoop({ paused: true, ready: 'paused', next_wake: BOOK, wait_reason: 'book_ready', wake_at: BOOK });
-		expect(nowView(paused)).toMatchObject({ decision: 'когда пауза снимется — 🤑 билеты лотереи (все — max)', then: '' });
+		expect(nowView(paused, NOW)).toMatchObject({ decision: 'когда пауза снимется — 🤑 билеты лотереи (все — max)', then: '' });
 	});
 
 	it('решение — ожидание: как раньше, без «тогда»', () => {
@@ -139,24 +148,25 @@ describe('«Сейчас», пока цикл спит', () => {
 			...sleeping,
 			decision: { kind: 'wait', scenario: null, params: {}, reason: 'busy', until: plan.wakeups[0]!.at }
 		};
-		expect(nowView(waiting)).toMatchObject({ decision: '⏳ ждёт: освободится', then: '' });
+		expect(nowView(waiting, NOW)).toMatchObject({ decision: '⏳ ждёт: освободится', then: '' });
 	});
 });
 
 describe('занятость устарела', () => {
 	const stale = fixture<Outlook>('outlook_stale');
+	const STALE_NOW = new Date(stale.now);
 	const basis = stale.basis!;
 
 	it('дело, которое уже кончилось, — свободен с его конца; остальное — по последним данным', () => {
-		expect(nowView(stale).phase).toBe('Занятость устарела: работа до 19:40 — уже свободен');
+		expect(nowView(stale, STALE_NOW).phase).toBe('Занятость устарела: работа до 19:40 — уже свободен');
 		expect(basisText(stale)).toBe('по последним данным (профиль — 19:21)');
 	});
 
 	it('наблюдалось «свободен» — с моментом наблюдения; неизвестная — как раньше', () => {
 		const free: Outlook = { ...stale, basis: { ...basis, ended: null } };
-		expect(nowView(free).phase).toBe('Занятость устарела: по данным на 19:24 — свободен');
+		expect(nowView(free, STALE_NOW).phase).toBe('Занятость устарела: по данным на 19:24 — свободен');
 		const unknown: Outlook = { ...stale, basis: null };
-		expect(nowView(unknown).phase).toBe('Занятость неизвестна или устарела');
+		expect(nowView(unknown, STALE_NOW).phase).toBe('Занятость неизвестна или устарела');
 		expect(basisText(unknown)).toBe('');
 	});
 

@@ -26,7 +26,19 @@
 	const PHONE_TIMERS = 5;
 	let more = $state(false);
 
-	const view = $derived(plan ? nowView(plan) : null);
+	// Срок, до которого спит цикл, наступает между тиками часов главной (раз в 30 с): «Сейчас»
+	// перерисовывается в сам срок.
+	let woke = $state<Date | null>(null);
+	const clock = $derived(woke !== null && woke.getTime() > now.getTime() ? woke : now);
+	$effect(() => {
+		const wake = plan?.loop.wake_at;
+		if (!wake) return;
+		const left = Date.parse(wake) - Date.now();
+		if (left <= 0) return;
+		const timer = setTimeout(() => (woke = new Date(wake)), left);
+		return () => clearTimeout(timer);
+	});
+	const view = $derived(plan ? nowView(plan, clock) : null);
 	// Занятость устарела: кроме решения, план — второй проход по последним известным значениям.
 	const basis = $derived(plan ? basisText(plan) : '');
 	const why = $derived(plan ? explain(plan, snapshot, now) : '');
