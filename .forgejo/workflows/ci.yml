@@ -179,11 +179,15 @@ jobs:
           chmod 600 "$KEY"
           # .env пересоздаётся целиком; значения — в литеральной форме Compose (render-env.sh),
           # чтобы `$` в секретах не интерполировался.
+          # Адрес apps в VLAN (к нему ходит Caddy с web), порт 8089 и доверие Caddy — явно: в
+          # compose.yml умолчания для обычного сервера (127.0.0.1:8080).
           export PYROBOT_IMAGE="$IMAGE:$TAG" PYROBOT_TRANSPORT=kurigram PYROBOT_ADMIN_LOGIN=admin \
-            PYROBOT_COOKIE_SECURE=true PYROBOT_LOG_LEVEL=INFO PYROBOT_FORWARDED_ALLOW_IPS=10.10.40.3
+            PYROBOT_COOKIE_SECURE=true PYROBOT_LOG_LEVEL=INFO PYROBOT_FORWARDED_ALLOW_IPS=10.10.40.3 \
+            PYROBOT_BIND=10.10.40.20 PYROBOT_PORT=8089
           bash deploy/render-env.sh PYROBOT_IMAGE POSTGRES_PASSWORD PYROBOT_TRANSPORT \
             PYROBOT_TG_API_ID PYROBOT_TG_API_HASH PYROBOT_ADMIN_LOGIN PYROBOT_ADMIN_PASSWORD \
-            PYROBOT_COOKIE_SECURE PYROBOT_LOG_LEVEL PYROBOT_FORWARDED_ALLOW_IPS > "$ENV_FILE"
+            PYROBOT_COOKIE_SECURE PYROBOT_LOG_LEVEL PYROBOT_FORWARDED_ALLOW_IPS \
+            PYROBOT_BIND PYROBOT_PORT > "$ENV_FILE"
           OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
           ssh "${OPTS[@]}" "$APPS" 'mkdir -p ~/pyrobot'
           scp "${OPTS[@]}" compose.yml deploy/remote-deploy.sh "$APPS:pyrobot/"

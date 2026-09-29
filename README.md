@@ -77,7 +77,7 @@ Userbot для автоматической игры в StartupWars (@StartupWar
   - [Экраны](#экраны)
 - [Образ и деплой](#образ-и-деплой)
   - [Образ](#образ)
-  - [Compose на apps](#compose-на-apps)
+  - [Compose](#compose)
   - [CI/CD](#cicd)
   - [Caddy на web](#caddy-на-web)
   - [Первый вход](#первый-вход)
@@ -439,7 +439,7 @@ uv run mypy
 | `PYROBOT_LOG_LEVEL` | Уровень логирования (DEBUG, INFO, WARNING, ERROR). Логгер `pyrogram` никогда не опускается ниже INFO: в DEBUG kurigram печатает код входа в Telegram. |
 | `PYROBOT_HTTP_HOST` | IP для привязки HTTP сервера. |
 | `PYROBOT_HTTP_PORT` | Порт для HTTP API. |
-| `PYROBOT_FORWARDED_ALLOW_IPS` | Адреса обратного прокси через запятую, чьим `X-Forwarded-For`/`X-Forwarded-Proto` доверяет uvicorn (`--proxy-headers`), по умолчанию `127.0.0.1`; в боевой — Caddy `10.10.40.3`. Без этого лимитер входа видит всех клиентов одним адресом прокси, а заголовок от чужого адреса игнорируется. |
+| `PYROBOT_FORWARDED_ALLOW_IPS` | Адреса обратного прокси через запятую, чьим `X-Forwarded-For`/`X-Forwarded-Proto` доверяет uvicorn (`--proxy-headers`), по умолчанию `127.0.0.1`, в `compose.yml` — `127.0.0.1,172.16.0.0/12,192.168.0.0/16` (сети Docker: прокси на том же сервере приходит в контейнер с адреса их шлюза), CIDR допустимы; у автора — Caddy `10.10.40.3`. Без этого лимитер входа видит всех клиентов одним адресом прокси, а заголовок от чужого адреса игнорируется. |
 | `PYROBOT_ACCOUNT_ID` | Внутренний `accounts.id` в базе pyrobot (по умолчанию 1), не ID игрока в игре. |
 | `PYROBOT_ADMIN_DIR` | Каталог собранной админки (`admin/build`), её отдаёт тот же FastAPI (по умолчанию `/app/admin` — так в образе). Нет каталога или `index.html` в нём — `/` отвечает 404 (разработка, тесты). |
 | `PYROBOT_PLANNER` | Планировщик принимает решения сам (по умолчанию `true`); `false` — движок только принимает сообщения и выполняет ручные команды и ручные запуски сценариев (цикл планировщика работает без собственных решений). |
@@ -2569,16 +2569,21 @@ docker build --build-arg APT_PROXY=http://10.10.40.23:3142 \
   --build-arg NPM_REGISTRY=http://10.10.40.8:4873/ -t pyrobot:local .
 ```
 
-### Compose на apps
+### Compose
 
-**Compose на apps** (`compose.yml`, каталог `/home/fenicu/pyrobot` на 10.10.40.20, рядом `.env`):
-`pyrobot` — бот из образа `PYROBOT_IMAGE` (по умолчанию `git.fenicu.com/fenicu/pyrobot:latest`,
-деплой подставляет тег), том `pyrobot-data` → `/data` (сессия Telegram), порт
-`${PYROBOT_BIND:-10.10.40.20}:${PYROBOT_PORT:-8089}` → 8080 (только адрес apps в VLAN — к нему ходит
-Caddy с web; 8080–8088 и 8090 на apps заняты другими сервисами), `PYROBOT_FORWARDED_ALLOW_IPS` по
-умолчанию `10.10.40.3`, `restart: unless-stopped`, ротация логов 5×10 МБ, лимит памяти `mem_limit:
-1g` (предохранитель: при утечке OOM убивает бота, а не соседей по apps, и `restart` поднимает его
-заново); `migrate` — тот же образ, профиль `migrate`, `alembic upgrade head`, запускается только
+**Compose** (`compose.yml`, рядом `.env`; у автора — каталог `/home/fenicu/pyrobot` на apps
+10.10.40.20): `pyrobot` — бот из образа `PYROBOT_IMAGE` (по умолчанию
+`git.fenicu.com/fenicu/pyrobot:latest`, деплой автора подставляет тег): `docker compose pull`
+скачивает готовый, `docker compose build` собирает из исходников (`build: .` — только у `pyrobot`,
+`migrate` берёт тот же образ; для сборки `PYROBOT_IMAGE=pyrobot:local`, чтобы своя сборка не
+называлась именем образа из реестра). Том `pyrobot-data` → `/data` (сессия Telegram), порт
+`${PYROBOT_BIND:-127.0.0.1}:${PYROBOT_PORT:-8080}` → 8080 (по умолчанию — только с этого сервера:
+обратный прокси или SSH-туннель; у автора `.env` задаёт `10.10.40.20:8089` — адрес apps в VLAN, к
+нему ходит Caddy с web, 8080–8088 и 8090 на apps заняты), `PYROBOT_FORWARDED_ALLOW_IPS` по
+умолчанию `127.0.0.1,172.16.0.0/12,192.168.0.0/16` — прокси на этом же сервере приходит в контейнер
+не с 127.0.0.1, а с адреса шлюза сети Docker из этих диапазонов (у автора — Caddy `10.10.40.3`),
+`restart: unless-stopped`, ротация логов 5×10 МБ, лимит памяти `mem_limit: 1g` (предохранитель: при
+утечке OOM убивает бота, а не соседей по серверу, и `restart` поднимает его заново); `migrate` — тот же образ, профиль `migrate`, `alembic upgrade head`, запускается только
 явно (`docker compose run --rm migrate`);
 `postgres` — `postgres:17`, том `pgdata`, healthcheck `pg_isready`; `backup` — `pg_dump
 --format=custom` при старте и дальше раз в сутки в

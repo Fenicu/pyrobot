@@ -1,5 +1,5 @@
-# Боевой compose на apps (10.10.40.20): бот, одноразовые миграции, Postgres и ежесуточный дамп.
-# Рядом лежит .env (пишет деплой из секретов Forgejo, см. README «Образ и деплой»).
+# pyrobot: бот с админкой, одноразовые миграции, Postgres и ежесуточный дамп. Настройки — в .env
+# рядом (шаблон — .env.example), установка по шагам — README «Установка».
 name: pyrobot
 
 x-app: &app
@@ -7,7 +7,8 @@ x-app: &app
   env_file: .env
   environment:
     PYROBOT_DATABASE_URL: postgresql+asyncpg://pyrobot:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/pyrobot
-    PYROBOT_FORWARDED_ALLOW_IPS: ${PYROBOT_FORWARDED_ALLOW_IPS:-10.10.40.3}
+    # Прокси на этом же сервере приходит в контейнер с адреса шлюза сети Docker, а не 127.0.0.1.
+    PYROBOT_FORWARDED_ALLOW_IPS: ${PYROBOT_FORWARDED_ALLOW_IPS:-127.0.0.1,172.16.0.0/12,192.168.0.0/16}
   depends_on:
     postgres:
       condition: service_healthy
@@ -20,17 +21,20 @@ x-app: &app
 services:
   pyrobot:
     <<: *app
+    # Готовый образ — docker compose pull; сборка из исходников — docker compose build
+    # (тогда в .env PYROBOT_IMAGE=pyrobot:local).
+    build: .
     restart: unless-stopped
     # Один процесс на аккаунт: второй экземпляр не возьмёт advisory lock и не запустит движок.
     ports:
-      - "${PYROBOT_BIND:-10.10.40.20}:${PYROBOT_PORT:-8089}:8080"
+      - "${PYROBOT_BIND:-127.0.0.1}:${PYROBOT_PORT:-8080}:8080"
     volumes:
       - pyrobot-data:/data
     stop_grace_period: 30s
-    # Предохранитель: при утечке OOM убивает бота, а не соседей по apps.
+    # Предохранитель: при утечке OOM убивает бота, а не соседей по серверу.
     mem_limit: 1g
 
-  # Одноразовый шаг деплоя: docker compose run --rm migrate
+  # Миграции базы — перед первым запуском и после каждого обновления: docker compose run --rm migrate
   migrate:
     <<: *app
     profiles: ["migrate"]
