@@ -36,7 +36,10 @@ class FakeTransport:
         # Проверка чатов команды: итог по чату (по умолчанию — участник группы) и вызовы.
         self.groups: dict[int, GroupCheck] = {}
         self.group_error: BaseException | None = None
+        # Ошибки, которыми падают очередные проверки (раньше `group_error`), и моменты проверок.
+        self.group_fail_with: list[BaseException] = []
         self.group_checks: list[int] = []
+        self.group_checked_at: list[float] = []
         self._next_id = 1000
         self._tasks: set[asyncio.Future[None]] = set()
 
@@ -77,6 +80,9 @@ class FakeTransport:
 
     async def check_group(self, chat_id: int) -> GroupCheck:
         self.group_checks.append(chat_id)
+        self.group_checked_at.append(time.monotonic())
+        if self.group_fail_with:
+            raise self.group_fail_with.pop(0)
         if self.group_error is not None:
             raise self.group_error
         return self.groups.get(chat_id, "ok")

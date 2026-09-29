@@ -55,6 +55,9 @@ _ABANDON_WRITE_S = 5.0
 RECONCILE_REASON = "reconcile_required"
 # Ключ ручного действия не записан: запрос проваливается, повтор тем же ключом безопасен.
 STORE_FAILED = "store_failed"
+# Чтение источника пересылки: клиент Telegram сам повторяет запросы (до ~160 с) — шлюз столько
+# не ждёт, не прочитали — не пересылаем.
+SOURCE_READ_TIMEOUT_S = 10.0
 
 
 class NotSent(Exception):
@@ -570,7 +573,7 @@ class ActionGateway:
         if p.cls is CommandClass.FORWARD:
             checked = (p.req.chat_id, self._settings.version)
             if self._group_ok != checked:
-                verdict = await self._check_group(p.req.chat_id)
+                verdict = await self._check_group(p)
                 if verdict != "ok":
                     return await self._record(p, ActionStatus.REFUSED, f"team_chat_{verdict}")
                 self._group_ok = checked
@@ -586,17 +589,27 @@ class ActionGateway:
                 return ActionResult(ActionStatus.REJECTED, reason="db_unavailable")
         return await self._attempts(p)
 
-    async def _check_group(self, chat_id: int) -> str:
+    async def _check_group(self, p: _Pending) -> str:
         """Перед первой пересылкой в чат (и первой после любого сохранения настроек): группа или
-        супергруппа, где аккаунт — участник. Отказ не кешируется — после добавления аккаунта в
-        группу следующая пересылка проверит заново."""
-        try:
-            return await self._transport.check_group(chat_id)
-        except TransportAuthLost:
-            return "auth_lost"
-        except Exception:
-            log.exception("team chat %s not checked", chat_id)
-            return "unavailable"
+        супергруппа, где аккаунт — участник. Запросы идут в общем темпе шлюза; FloodWait ставит
+        паузу шлюза и проверку повторяет в пределах TTL. Отказ не кешируется — после добавления
+        аккаунта в группу следующая пересылка проверит заново."""
+        chat_id = p.req.chat_id
+        while True:
+            await self._pace()
+            try:
+                return await self._transport.check_group(chat_id)
+            except FloodWait as fw:
+                now = self._clock.monotonic()
+                self._paused_until = max(self._paused_until, now + fw.seconds)
+                left = p.ttl - (now - p.enqueued)
+                if fw.seconds > MAX_FLOODWAIT_S or fw.seconds >= left:
+                    return "flood_wait"
+            except TransportAuthLost:
+                return "auth_lost"
+            except Exception:
+                log.exception("team chat %s not checked", chat_id)
+                return "unavailable"
 
     async def _record(self, p: _Pending, status: ActionStatus, reason: str) -> ActionResult:
         # Действие не дошло до INTENT — ключ идемпотентности не расходуется, чтобы тем же ключом
@@ -718,10 +731,12 @@ class ActionGateway:
 
     async def _check_source(self, req: ActionRequest) -> None:
         """Перед каждой попыткой пересылки исходное сообщение перечитывается из Telegram: правленое
-        после реакции, удалённое или непрочитанное не пересылается. Правка между этим чтением и
+        после реакции, удалённое или непрочитанное (в том числе за `SOURCE_READ_TIMEOUT_S`) не
+        пересылается. Правка между этим чтением и
         ForwardMessages остаётся гонкой — Telegram перешлёт текущую версию."""
         try:
-            current = await self._transport.fetch(req.from_chat_id or 0, req.message_id or 0)
+            async with asyncio.timeout(SOURCE_READ_TIMEOUT_S):
+                current = await self._transport.fetch(req.from_chat_id or 0, req.message_id or 0)
         except (FloodWait, TransportAuthLost):
             raise
         except Exception as exc:

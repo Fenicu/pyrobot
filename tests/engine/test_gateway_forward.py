@@ -334,3 +334,52 @@ async def test_deadline_ahead_forwarded() -> None:
     finally:
         await rig.stop()
     assert res.status is ActionStatus.CONFIRMED and len(rig.transport.sent) == 1
+
+
+async def test_hanging_source_read_is_unreadable(
+    rig: Rig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Чтение источника не держит шлюз дольше своего тайм-аута (в работе — 10 с).
+    import app.engine.gateway.gateway as gateway_module
+
+    monkeypatch.setattr(gateway_module, "SOURCE_READ_TIMEOUT_S", 0.05)
+    hang = asyncio.Event()
+
+    async def read_forever() -> None:
+        await hang.wait()
+
+    rig.transport.on_fetch = read_forever
+    res = await asyncio.wait_for(rig.gw.submit(forward()), 1)
+    assert res.status is ActionStatus.REFUSED and res.reason == "source_unreadable"
+    assert rig.transport.sent == []
+
+
+async def test_group_check_paced_like_other_requests(rig: Rig) -> None:
+    await _engine(rig, min_request_interval_s=0.2)
+    rig.reply_with("Ты отправился работать")
+    await rig.gw.submit(send("/job", expect=expect_text("работать"), source=Source.URGENT))
+    assert (await rig.gw.submit(forward())).status is ActionStatus.CONFIRMED
+    job, _ = rig.transport.sent
+    [checked] = rig.transport.group_checked_at
+    assert checked - job.at >= 0.19
+
+
+async def test_flood_wait_on_group_check_pauses_and_rechecks(rig: Rig) -> None:
+    from app.engine.transport.base import FloodWait
+
+    rig.transport.group_fail_with.append(FloodWait(0.1))
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.CONFIRMED
+    first, second = rig.transport.group_checked_at
+    assert second - first >= 0.09
+    assert rig.transport.group_checks == [TEAM, TEAM]
+
+
+async def test_long_flood_wait_on_group_check_refused_without_spending_key(rig: Rig) -> None:
+    from app.engine.transport.base import FloodWait
+
+    rig.transport.group_fail_with.append(FloodWait(3600))
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.REFUSED and res.reason == "team_chat_flood_wait"
+    assert rig.transport.sent == []
+    assert await rig.store.get_by_key(f"forward:{GAME}:5") is None
