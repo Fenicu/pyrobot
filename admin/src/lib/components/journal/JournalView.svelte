@@ -3,6 +3,7 @@
 	import { errorText } from '$lib/api/errors';
 	import type { JournalItem } from '$lib/api/types';
 	import type { Confirmer } from '$lib/commands';
+	import { chronicle, type ChronicleRow } from '$lib/journal/chronicle';
 	import type { LiveEvent } from '$lib/live/sse';
 	import { keyOf, type JournalFeed } from '$lib/stores/journal.svelte';
 	import { clock } from '$lib/util/clock.svelte';
@@ -11,6 +12,7 @@
 	import FeedFilters from './FeedFilters.svelte';
 	import FeedRow from './FeedRow.svelte';
 	import JournalDetail from './JournalDetail.svelte';
+	import RunRow from './RunRow.svelte';
 
 	interface Props {
 		api: Api;
@@ -30,6 +32,18 @@
 	const current = $derived(
 		selected ? (feed.items.find((i) => keyOf(i) === keyOf(selected!)) ?? selected) : null
 	);
+
+	// Хроника — в ленте «все»: запуск сценария (решение, шаги, ответы игры) — одна строка, раскрывается
+	// по клику. С фильтром по типу, статусу или источнику — плоская лента, запись за записью.
+	const grouped = $derived(
+		feed.filter.type === null && feed.filter.status === null && feed.filter.source === null
+	);
+	const rows = $derived<ChronicleRow[]>(
+		grouped ? chronicle(feed.items) : feed.items.map((item) => ({ kind: 'item', key: keyOf(item), item }))
+	);
+	let open = $state<string[]>([]);
+	const toggle = (key: string) => (open = open.includes(key) ? open.filter((k) => k !== key) : [...open, key]);
+	const selectedKey = $derived(current ? keyOf(current) : null);
 
 	$effect(() => {
 		if (!sentinel || typeof IntersectionObserver === 'undefined') return;
@@ -70,13 +84,24 @@
 				<p class="p-3 text-sm text-fg-muted">Записей нет.</p>
 			{/if}
 			<ul>
-				{#each feed.items as item (keyOf(item))}
-					<FeedRow
-						{item}
-						{now}
-						selected={current !== null && keyOf(current) === keyOf(item)}
-						onselect={(i) => (selected = i)}
-					/>
+				{#each rows as row (row.key)}
+					{#if row.kind === 'run'}
+						<RunRow
+							group={row}
+							{now}
+							expanded={open.includes(row.key)}
+							selected={selectedKey}
+							ontoggle={() => toggle(row.key)}
+							onselect={(i) => (selected = i)}
+						/>
+					{:else}
+						<FeedRow
+							item={row.item}
+							{now}
+							selected={selectedKey === row.key}
+							onselect={(i) => (selected = i)}
+						/>
+					{/if}
 				{/each}
 			</ul>
 			<div bind:this={sentinel} class="p-2 text-center">

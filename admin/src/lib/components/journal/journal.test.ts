@@ -7,6 +7,7 @@ import type { JournalPage } from '$lib/api/types';
 import { JournalFeed } from '$lib/stores/journal.svelte';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
+import { journalWithRuns } from '$lib/test/journal';
 import type { LiveEvent } from '$lib/live/sse';
 import { deferred, flush } from '$lib/test/deferred';
 import JournalView from './JournalView.svelte';
@@ -113,6 +114,35 @@ describe('Журнал на странице с прода', () => {
 		await vi.waitFor(() =>
 			expect(fetch.calls.filter((c) => c.url.startsWith('/api/v1/journal')).length).toBe(before + 1)
 		);
+	});
+});
+
+describe('Журнал: хроника по запускам', () => {
+	it('запуск сценария — одна строка: название, ответ игры, раскрывается шагами', async () => {
+		const user = userEvent.setup();
+		await view((c) => (c.url.startsWith('/api/v1/journal') ? json(journalWithRuns()) : undefined));
+		const list = screen.getByRole('region', { name: 'Лента' });
+		const sleep = within(list).getByRole('button', { name: /🛌 сон — Ты отправился спать красиво/ });
+		expect(sleep).toHaveTextContent('22:05:03');
+		expect(sleep).toHaveTextContent('3 команды · 4 сообщения');
+		expect(sleep).toHaveAttribute('aria-expanded', 'false');
+		// Шаги и ответы игры не дублируются отдельными строками.
+		expect(within(list).queryByRole('button', { name: /sleep_Hotel → fell_asleep/ })).toBeNull();
+		await user.click(sleep);
+		expect(sleep).toHaveAttribute('aria-expanded', 'true');
+		const steps = within(list).getByRole('list', { name: 'Шаги: 🛌 сон' });
+		expect(within(steps).getAllByRole('button')).toHaveLength(8);
+		await user.click(within(steps).getByRole('button', { name: /sleep_Hotel → fell_asleep/ }));
+		expect(await screen.findByRole('dialog', { name: 'Действие' })).toBeInTheDocument();
+	});
+
+	it('с фильтром по типу — плоская лента', async () => {
+		const user = userEvent.setup();
+		await view((c) => (c.url.startsWith('/api/v1/journal') ? json(journalWithRuns()) : undefined));
+		await user.click(screen.getByRole('button', { name: 'действия' }));
+		const list = screen.getByRole('region', { name: 'Лента' });
+		await vi.waitFor(() => expect(within(list).getByRole('button', { name: /sleep_Hotel → fell_asleep/ })).toBeInTheDocument());
+		expect(within(list).queryByRole('button', { name: /🛌 сон/ })).toBeNull();
 	});
 });
 
