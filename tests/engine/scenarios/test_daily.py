@@ -1,9 +1,7 @@
-import time
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
-from app.engine.gametime import MSK, tasks_day
 from app.engine.scenarios.context import ScenarioContext
 from app.engine.scenarios.daily import daily_pick, daily_refresh
 from app.engine.scenarios.library import run_scenario
@@ -11,7 +9,7 @@ from app.engine.state.model import CharacterState
 from app.engine.types import IncomingMessage
 from tests.engine.fakegame import GAME, World
 from tests.engine.scenarios.certify import certifies
-from tests.engine.scenarios.conftest import context
+from tests.engine.scenarios.conftest import ShiftClock, context
 
 CREW = ("crew", 3625758)
 OFFERS = ("daily", 3625760)
@@ -23,24 +21,6 @@ TASK = "jobMoney_hard"
 def open_screen(world: World, screen: tuple[str, int]) -> None:
     world.game.on_text("/crew", CREW)
     world.game.on_text("⏳Задания", screen)
-
-
-class ShiftClock:
-    """Часы впереди настоящих (шлюз принимает ответы не раньше момента отправки): через двое суток
-    в `offset` от полуночи MSK. По умолчанию — полдень: день заданий не сменится посреди теста,
-    когда бы его ни запустили."""
-
-    def __init__(self, offset: timedelta = timedelta(hours=12)) -> None:
-        real = datetime.now(UTC)
-        day = tasks_day(real) + timedelta(days=2)
-        target = datetime(day.year, day.month, day.day, tzinfo=MSK) + offset
-        self.shift = target - real
-
-    def now(self) -> datetime:
-        return datetime.now(UTC) + self.shift
-
-    def monotonic(self) -> float:
-        return time.monotonic()
 
 
 BEFORE_MIDNIGHT = -timedelta(seconds=30)
