@@ -59,6 +59,9 @@ python_version = "3.13"
 strict = true
 packages = ["app"]
 ignore_missing_imports = true
+# Устаревшее API (PEP 702, пометки typeshed): например, asyncio.iscoroutinefunction и политики
+# event loop, которые удаляются в Python 3.16, — ошибка уже сейчас, на 3.13.
+enable_error_code = ["deprecated"]
 
 [[tool.mypy.overrides]]
 module = ["app.db.migrations.*"]
