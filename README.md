@@ -2276,7 +2276,7 @@ no-cache` и `X-Accel-Buffering: no` отключают буферизацию �
 
 ```bash
 cd admin
-npm ci                      # реестр — verdaccio хоумлаба (admin/.npmrc), package-lock.json в git
+npm ci                      # строго по package-lock.json (в git, адреса — npmjs)
 npm run dev                 # Vite с прокси /api → PYROBOT_DEV_API (по умолчанию http://127.0.0.1:8080)
 PYROBOT_DEV_API=https://sw.fenicu.com npm run dev   # или прямо на прод
 npm run gen:api             # TS-типы из ../openapi.json → src/lib/api/schema.d.ts (файл в git)
@@ -2284,6 +2284,12 @@ npm run check               # svelte-check, предупреждения — о�
 npm run test                # vitest + @testing-library/svelte (jsdom) на реальных фикстурах
 npm run build               # статика в admin/build
 ```
+
+В `package-lock.json` все пакеты — с `https://registry.npmjs.org/`, это проверяет тест
+`src/lib/lockfile.test.ts`. Свой реестр (у автора — verdaccio хоумлаба) задаётся вне репозитория:
+`npm config set registry http://10.10.40.8:4873/` (пишет в `~/.npmrc`); `npm ci` сам берёт пакеты
+из него вместо npmjs (`replace-registry-host`), а `npm install` записывает новые пакеты с адресом
+своего реестра — перед коммитом их надо вернуть на npmjs (команда — в сообщении теста).
 
 Типы API генерируются `openapi-typescript` из `openapi.json` в корне (его выгружает `uv run python
 tools/openapi.py`): поменяли API — перевыгрузить схему и `npm run gen:api`, закоммитить оба файла;
@@ -2539,18 +2545,20 @@ CI сверяет, что `schema.d.ts` актуален. Сборка в Docker
 **Образ** (`Dockerfile`, многостадийный): стадия сборки — `ghcr.io/astral-sh/uv` с Python 3.13 и
 компилятором (tgcrypto собирается из исходников), `uv sync --frozen --no-dev` строго по `uv.lock`
 (индекс пакетов — devpi хоумлаба из `pyproject.toml`); стадия админки — `node:24-bookworm-slim`:
-`npm ci` строго по `admin/package-lock.json` (реестр — verdaccio хоумлаба из `admin/.npmrc`, кеш npm
-— `--mount=type=cache`) и `npm run build`, TS-типы API — закоммиченный `schema.d.ts` (`openapi.json`
+`npm ci` строго по `admin/package-lock.json` (реестр — build-arg `NPM_REGISTRY`, по умолчанию npmjs;
+кеш npm — `--mount=type=cache`) и `npm run build`, TS-типы API — закоммиченный `schema.d.ts` (`openapi.json`
 в контекст сборки не входит); рантайм — `python:3.13-slim-trixie` без uv, компилятора и node:
 venv, `app/`, `alembic.ini` и статика админки в `/app/admin` (`PYROBOT_ADMIN_DIR=/app/admin`). Процесс работает от непривилегированного
 пользователя `pyrobot` (uid/gid 10001); том `/data` (`PYROBOT_DATA_DIR`) — сессия Telegram,
 принадлежит ему же. `HEALTHCHECK` — `python -m app.healthcheck /healthz` (`app/healthcheck.py`,
 код выхода 0 при ответе 200; тем же модулем деплой ждёт `/readyz`), команда по умолчанию — `python -m
-app`, миграции — `alembic upgrade head` в том же образе. Локальная сборка (прокси apt хоумлаба —
-необязательный `APT_PROXY`):
+app`, миграции — `alembic upgrade head` в том же образе. Локальная сборка: без аргументов apt и npm
+— из публичных источников; зеркала хоумлаба — необязательные `APT_PROXY` и `NPM_REGISTRY`:
 
 ```bash
-docker build --build-arg APT_PROXY=http://10.10.40.23:3142 -t pyrobot:local .
+docker build -t pyrobot:local .
+docker build --build-arg APT_PROXY=http://10.10.40.23:3142 \
+  --build-arg NPM_REGISTRY=http://10.10.40.8:4873/ -t pyrobot:local .
 ```
 
 ### Compose на apps
@@ -2583,7 +2591,8 @@ docker compose -f compose.yml config          # нужен .env рядом (см
 
 **CI/CD** (`.forgejo/workflows/ci.yml`, Forgejo Actions): на push в `master`, на теги и по ручному
 запуску — `lint` (ruff, mypy) и `test` (pytest с сервисом Postgres) в контейнере uv и `admin` в
-контейнере `node:24-bookworm-slim` (git — через apt-прокси хоумлаба `10.10.40.23:3142`; `npm ci`,
+контейнере `node:24-bookworm-slim` (git — через apt-прокси хоумлаба `10.10.40.23:3142`; `npm ci` из
+verdaccio хоумлаба — `npm_config_registry`,
 `npm run gen:api` + `git diff --exit-code` — закоммиченный `schema.d.ts` совпадает с `openapi.json`,
 `npm run check`, `npm run test`, `npm run build`), затем `image` (ждёт все три) на хостовом раннере
 (`self-hosted`) собирает образ — поломка `Dockerfile` видна сразу. Сборка — `docker buildx build`

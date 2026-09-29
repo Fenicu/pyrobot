@@ -17,13 +17,15 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
-# Админка: SvelteKit собирается в статику (npm — verdaccio хоумлаба из admin/.npmrc, строго по
-# package-lock.json); TS-типы API — закоммиченный schema.d.ts, openapi.json в контекст не входит.
+# Админка: SvelteKit собирается в статику строго по package-lock.json; пакеты — из NPM_REGISTRY (по
+# умолчанию npmjs, свой реестр npm подставит вместо registry.npmjs.org из lock-файла). TS-типы API —
+# закоммиченный schema.d.ts, openapi.json в контекст не входит.
 FROM node:24-bookworm-slim AS admin
+ARG NPM_REGISTRY=https://registry.npmjs.org/
 WORKDIR /admin
 COPY admin/package.json admin/package-lock.json admin/.npmrc ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --no-audit --no-fund
+    npm ci --no-audit --no-fund --registry "$NPM_REGISTRY"
 COPY admin/ ./
 RUN npm run build
 
