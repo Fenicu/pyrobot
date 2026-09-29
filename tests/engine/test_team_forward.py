@@ -4,16 +4,17 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
 from app.engine.bus import Delivery
+from app.engine.gametime import MSK
 from app.engine.gateway.types import ActionStatus
 from app.engine.notify import Level
 from app.engine.parsing import default_parser
 from app.engine.settings import ChatsSection, Settings
-from app.engine.team_forward import TeamForward, forward_key
+from app.engine.team_forward import TeamForward, forward_target
 from app.engine.types import IncomingMessage
 from tests.engine.gateway_rig import LIVE, Rig
 from tests.engine.helpers import GAME, make_msg, until
@@ -101,9 +102,11 @@ async def _update(rig: ForwardRig, section: str, **values: object) -> None:
 def test_key_only_for_task_completed() -> None:
     task = game_msg(*TASK)
     events = default_parser(ChatsSection()).parse(task)
-    assert forward_key(task, events) == f"forward:{GAME}:{task.msg_id}"
+    target = forward_target(task, events)
+    assert target is not None and target.key == f"forward:{GAME}:{task.msg_id}"
+    assert target.day is None
     other = game_msg("items", 3516680)
-    assert forward_key(other, default_parser(ChatsSection()).parse(other)) is None
+    assert forward_target(other, default_parser(ChatsSection()).parse(other)) is None
 
 
 async def test_task_completed_forwarded_once(rig: ForwardRig) -> None:
@@ -311,7 +314,9 @@ async def test_today_factory_report_forwarded_once_per_day(rig: ForwardRig) -> N
     first = _report(3620025, "12.09.26")
     rig.clock.at = first.origin + timedelta(seconds=3)
     events = default_parser(ChatsSection()).parse(first)
-    assert forward_key(first, events) == "forward:factory:2026-09-12"
+    target = forward_target(first, events)
+    assert target is not None and target.key == "forward:factory:2026-09-12"
+    assert target.day == date(2026, 9, 12)
     await rig.deliver(first)
     await until(lambda: len(rig.sent) == 1)
     await rig.settle()
@@ -328,7 +333,7 @@ async def test_factory_report_of_other_day_not_forwarded(rig: ForwardRig) -> Non
     # 26.09 02:23 /fb отдал отчёт о битве 25.09.
     old = _report(3625108)
     rig.clock.at = old.origin + timedelta(seconds=3)
-    assert forward_key(old, default_parser(ChatsSection()).parse(old)) is None
+    assert forward_target(old, default_parser(ChatsSection()).parse(old)) is None
     await rig.deliver(old)
     await rig.settle()
     assert rig.sent == []
@@ -340,3 +345,47 @@ async def test_unverified_team_chat_notified(rig: ForwardRig) -> None:
     await rig.settle()
     assert rig.sent == []
     assert rig.notes.items == [("warn", "team_forward_failed")]
+
+
+def _late_report(hour: int, minute: int) -> IncomingMessage:
+    """Сегодняшний отчёт о фабрике (битва 12.09), созданный 12.09 в `hour:minute` MSK."""
+    created = datetime(2026, 9, 12, hour, minute, tzinfo=MSK).astimezone(UTC)
+    return replace(_report(3620025, "12.09.26"), date=created, created_at=created)
+
+
+async def test_factory_report_not_forwarded_after_battle_day() -> None:
+    # Отчёт создан в 23:55, очередь дошла до него в 00:02: окно возраста (10 мин) ещё открыто, но
+    # сутки битвы кончились — вчерашний отчёт не пересылается.
+    r = ForwardRig()
+    report = _late_report(23, 55)
+    r.clock.at = report.origin + timedelta(seconds=3)
+    await r.deliver(report)
+    assert r.reaction.queued == 1
+    r.clock.at = datetime(2026, 9, 13, 0, 2, tzinfo=MSK).astimezone(UTC)
+    r.start()
+    try:
+        await r.settle()
+    finally:
+        await r.stop()
+    assert r.gw.transport.sent == [] and r.gw.store.rows == {}
+    assert r.notes.items == []
+
+
+async def test_factory_report_ttl_ends_at_midnight(rig: ForwardRig) -> None:
+    # В 23:58 окно возраста — ещё почти 10 минут, но в очереди шлюза пересылка живёт до полуночи.
+    report = _late_report(23, 57)
+    rig.clock.at = report.origin + timedelta(minutes=1)
+    await rig.deliver(report)
+    await until(lambda: len(rig.sent) == 1)
+    await rig.settle()
+    [row] = rig.gw.store.rows.values()
+    assert row.req.ttl_s == 120
+
+
+async def test_task_ttl_is_age_window(rig: ForwardRig) -> None:
+    task = game_msg(*TASK)
+    await rig.deliver(task)
+    await until(lambda: len(rig.sent) == 1)
+    await rig.settle()
+    [row] = rig.gw.store.rows.values()
+    assert row.req.ttl_s == 10 * 60 - 2

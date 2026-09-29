@@ -5,12 +5,12 @@ import logging
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock, SystemClock
 from app.engine.events import Event
-from app.engine.gametime import tasks_day
+from app.engine.gametime import day_start, tasks_day
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.notify import NotifierPort
@@ -30,16 +30,25 @@ SPENT = frozenset({ActionStatus.CONFIRMED, ActionStatus.OUTCOME_UNKNOWN, ActionS
 DELIBERATE = frozenset({"team_chat_off", "team_chat_changed", "kill_switch"})
 
 
-def forward_key(msg: IncomingMessage, events: Sequence[Event]) -> str | None:
-    """Ключ идемпотентности пересылки сообщения в чат команды; None — не пересылается.
+@dataclass(frozen=True, slots=True)
+class Target:
+    """Пересылка сообщения: ключ идемпотентности и сутки МСК, только в которые она имеет смысл
+    (отчёт о фабрике — день битвы; None — без срока по дате)."""
+
+    key: str
+    day: date | None = None
+
+
+def forward_target(msg: IncomingMessage, events: Sequence[Event]) -> Target | None:
+    """Что и до какого дня пересылать в чат команды; None — не пересылается.
 
     Итог задания — своё сообщение; отчёт о фабрике — только за сегодня (день битвы в отчёте —
     день создания сообщения по Москве), один на день: каждый `/fb` присылает его заново."""
     for event in events:
         if isinstance(event, TaskCompleted):
-            return f"forward:{msg.chat_id}:{msg.msg_id}"
+            return Target(f"forward:{msg.chat_id}:{msg.msg_id}")
         if isinstance(event, FactoryReport) and event.battle_day == tasks_day(msg.origin):
-            return f"forward:factory:{event.day}"
+            return Target(f"forward:factory:{event.day}", event.battle_day)
     return None
 
 
@@ -47,6 +56,7 @@ def forward_key(msg: IncomingMessage, events: Sequence[Event]) -> str | None:
 class _Item:
     msg: IncomingMessage
     key: str
+    day: date | None
 
 
 class TeamForward:
@@ -56,8 +66,10 @@ class TeamForward:
     Подписчик шины только ставит пересылку в очередь; пересылает `run` — задача под супервизором.
     Пересылается только исходная ревизия (`revision == 0`) доставки, на которую можно реагировать,
     не старше `engine.recovered_react_max_age_min` от создания сообщения; возраст проверяется ещё
-    раз перед отправкой. Шлюз шлёт её не больше одного раза (ключ `forward:…`), при неясном исходе
-    без повтора — с уведомлением. Сбой процесса до постановки в очередь пересылку теряет."""
+    раз перед отправкой. Отчёт о фабрике — только в сутки битвы: день сверяется перед отправкой, а
+    TTL в шлюзе не дальше полуночи. Шлюз шлёт её не больше одного раза (ключ `forward:…`), при
+    неясном исходе без повтора — с уведомлением. Сбой процесса до постановки в очередь пересылку
+    теряет."""
 
     def __init__(
         self,
@@ -91,15 +103,18 @@ class TeamForward:
         chats = self._settings.current.chats
         if msg.chat_id != chats.game_chat_id or chats.team_chat_id is None:
             return
-        key = forward_key(msg, delivery.events)
-        if key is None or key in self._queued or key in self._done or self._left_s(msg) <= 0:
+        target = forward_target(msg, delivery.events)
+        if target is None or target.key in self._queued or target.key in self._done:
+            return
+        item = _Item(msg, target.key, target.day)
+        if self._left_s(item) <= 0:
             return
         try:
-            self._queue.put_nowait(_Item(msg, key))
+            self._queue.put_nowait(item)
         except asyncio.QueueFull:
-            log.warning("team forward %s dropped: queue full", key)
+            log.warning("team forward %s dropped: queue full", item.key)
             return
-        self._queued.add(key)
+        self._queued.add(item.key)
 
     async def run(self) -> None:
         while True:
@@ -117,7 +132,10 @@ class TeamForward:
         if team is None:
             log.info("team forward %s skipped: team chat off", item.key)
             return
-        left = self._left_s(msg)
+        if item.day is not None and tasks_day(self._clock.now()) != item.day:
+            log.info("team forward %s skipped: day %s is over", item.key, item.day)
+            return
+        left = self._left_s(item)
         if left <= 0:
             log.info("team forward %s skipped: message too old", item.key)
             return
@@ -152,9 +170,15 @@ class TeamForward:
                 f"forward {msg.msg_id} to team chat {status.value}: {reason}",
             )
 
-    def _left_s(self, msg: IncomingMessage) -> float:
+    def _left_s(self, item: _Item) -> float:
+        """Остаток срока пересылки: окно возраста от создания сообщения, у пересылки с днём — и не
+        дальше полуночи МСК после него."""
+        now = self._clock.now()
         window = timedelta(minutes=self._settings.current.engine.recovered_react_max_age_min)
-        return (window - (self._clock.now() - msg.origin)).total_seconds()
+        left = window - (now - item.msg.origin)
+        if item.day is not None:
+            left = min(left, day_start(item.day + timedelta(days=1)) - now)
+        return left.total_seconds()
 
     async def _warn(self, code: str, text: str) -> None:
         log.warning(text)
