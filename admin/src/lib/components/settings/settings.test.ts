@@ -27,9 +27,19 @@ async function view(patch?: (c: Call) => Response, current: () => SettingsOut = 
 }
 
 describe('Настройки', () => {
+	it('разделы: сначала часто нужные, технические — в «Дополнительно» в конце', async () => {
+		await view();
+		expect(screen.getByRole('region', { name: 'Функции' })).toBeInTheDocument();
+		const nav = screen.getByRole('navigation', { name: 'Секции настроек' });
+		const items = [...nav.querySelectorAll('li')].map((li) => li.textContent?.trim());
+		expect(items.slice(0, 4)).toEqual(['Функции', 'Стратегия и дела', 'Задания дня', 'Сон']);
+		expect(items.slice(-4)).toEqual(['Дополнительно', 'Движок', 'Telegram', 'Хранение']);
+	});
+
 	it('секция: поля по типам, только чтение, отличие от умолчания', async () => {
 		const user = userEvent.setup();
 		await view();
+		await user.click(screen.getByRole('button', { name: 'Движок' }));
 		const engine = screen.getByRole('region', { name: 'Движок' });
 		expect(within(engine).getByRole('combobox', { name: 'Режим' })).toHaveValue('live');
 		const killed = engine.querySelector('[data-path="engine.killed"]')!;
@@ -83,6 +93,7 @@ describe('Настройки', () => {
 	it('описание под полем, секции — своё; ⓘ раскрывает описание на телефоне', async () => {
 		const user = userEvent.setup();
 		await view();
+		await user.click(screen.getByRole('button', { name: 'Движок' }));
 		const engine = screen.getByRole('region', { name: 'Движок' });
 		expect(engine).toHaveTextContent('Режим, пауза, kill switch и темп шлюза');
 		const row = engine.querySelector('[data-path="engine.min_request_interval_s"]')!;

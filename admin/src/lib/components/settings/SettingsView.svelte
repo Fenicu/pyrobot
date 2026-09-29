@@ -3,7 +3,7 @@
 	import type { Api } from '$lib/api/client';
 	import { errorText } from '$lib/api/errors';
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
-	import { settingHelp, settingLabel } from '$lib/settings/labels';
+	import { ADVANCED_SECTIONS, settingHelp, settingLabel } from '$lib/settings/labels';
 	import { leaves, pathKey, type Field, type Section } from '$lib/settings/schema';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -24,6 +24,7 @@
 
 	const section = $derived(editor.sections.find((s) => s.name === active) ?? editor.sections[0] ?? null);
 	const title = (s: Section) => settingLabel(s.name, s.title);
+	const firstAdvanced = $derived(editor.sections.find((s) => ADVANCED_SECTIONS.includes(s.name))?.name ?? null);
 	const q = $derived(query.trim().toLowerCase());
 	// Поиск — по пути, подписи и описанию поля, а также по подписи и описанию его секции и вложенной
 	// группы: совпадение у группы находит все её поля.
@@ -99,6 +100,14 @@
 			<ul class="flex gap-1 overflow-x-auto lg:flex-col">
 				{#each editor.sections as s (s.name)}
 					{@const dirty = editor.changes.some((p) => p[0] === s.name)}
+					{#if s.name === firstAdvanced}
+						<li
+							class="shrink-0 self-center px-2 text-[11px] font-semibold tracking-wide whitespace-nowrap text-fg-faint uppercase lg:mt-2 lg:self-auto"
+							aria-hidden="true"
+						>
+							Дополнительно
+						</li>
+					{/if}
 					<li>
 						<button
 							type="button"

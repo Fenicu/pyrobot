@@ -10,21 +10,25 @@ export function settingHelp(path: string): string | undefined {
 	return SETTINGS_TEXT[path]?.help;
 }
 
-/** Порядок секций в меню (как в согласованном макете); остальные — после, в порядке схемы. */
+/** Порядок секций в меню: сначала то, что меняют чаще (механики, дела, сон, лотерея…), в конце —
+ * «Дополнительно»; остальные — после, в порядке схемы. */
 export const SECTION_ORDER = [
-	'engine',
 	'features',
 	'strategy',
 	'daily',
+	'sleep',
 	'lottery',
 	'battle',
 	'stocks',
-	'sleep',
 	'metro',
 	'food',
 	'levelup',
 	'tangerine',
 	'chats',
+	'engine',
 	'telegram',
 	'retention'
 ];
+
+/** «Дополнительно»: темп шлюза, сессия Telegram и хранение журнала — ставят один раз. */
+export const ADVANCED_SECTIONS = ['engine', 'telegram', 'retention'];
