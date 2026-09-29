@@ -67,7 +67,7 @@ PAIRS: dict[str, tuple[Any, CharacterState, dict[str, Any], list[tuple[str, Ref]
     ),
     "stocks_dump": (
         stocks_dump,
-        CharacterState(),
+        CharacterState(company=Obs(value="bmesa", at=datetime.now(UTC))),
         {"keep": 150, "margin": 5},
         [("/stock", ("stocks", 3624065)), ("/buys_stark_69", ("stocks", 3625255))],
     ),
@@ -78,6 +78,9 @@ PAIRS: dict[str, tuple[Any, CharacterState, dict[str, Any], list[tuple[str, Ref]
 @pytest.mark.parametrize("name", sorted(PAIRS))
 async def test_pause_does_not_split_screen_and_its_command(world: World, name: str) -> None:
     fn, state, params, chain = PAIRS[name]
+    if state.company is not None:
+        # Свою компанию шлюз берёт из профиля в состоянии конвейера (☣️ → bmesa).
+        await world.feed("profile", 3624478)
     for text, ref in chain:
         world.game.on_text(text, ref)
     result = await run_scenario(fn, context(world, paused=True), state, params)

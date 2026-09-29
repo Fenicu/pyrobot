@@ -44,6 +44,7 @@ _PROFILE = (
     "busy",
     "sleep_deadline",
     "sleep_allowed_at",
+    "company",
 )
 SOURCE = {
     **dict.fromkeys(_PROFILE, "profile"),

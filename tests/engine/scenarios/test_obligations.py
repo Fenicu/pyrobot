@@ -1,6 +1,6 @@
 import re
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -51,14 +51,49 @@ async def test_battle_target_without_menu_stops(world: World) -> None:
     )
 
 
+async def own_company(world: World, mark: str = "☣️") -> CharacterState:
+    """Профиль игрока компании со значком `mark`: у автора — ☣️Black Mesa."""
+    msg = game_msg("profile", 3624478)
+    text = (msg.text or "").replace("☣️[SU]", f"{mark}[SU]", 1)
+    now = datetime.now(UTC)
+    await world.pipeline.process(
+        replace(msg, text=text, date=now, received_at=now, created_at=now)
+    )
+    return world.state
+
+
 @certifies("stocks_dump")
 async def test_stocks_dump_buys_best_foreign_stock(world: World) -> None:
     world.game.on_text("/stock", ("stocks", 3624065))
     world.game.on_text("/buys_stark_69", ("stocks", 3625255))
     params = {"keep": 150, "margin": 5}
-    result = await run_scenario(stocks_dump, context(world), CharacterState(), params)
+    result = await run_scenario(stocks_dump, context(world), await own_company(world), params)
     assert result.status == "done"
     assert world.game.payloads() == ["/stock", "/buys_stark_69"]
+
+
+@certifies("stocks_dump")
+async def test_stocks_dump_skips_own_company(world: World) -> None:
+    world.game.on_text("/stock", ("stocks", 3624065))
+    params = {"keep": 150, "margin": 5}
+    state = await own_company(world, "⚡️")
+    result = await run_scenario(stocks_dump, context(world), state, params)
+    assert (result.status, result.reason, world.game.payloads()) == (
+        "nothing",
+        "no_stock",
+        ["/stock"],
+    )
+
+
+@certifies("stocks_dump")
+async def test_stocks_dump_without_own_company_does_nothing(world: World) -> None:
+    params = {"keep": 150, "margin": 5}
+    result = await run_scenario(stocks_dump, context(world), CharacterState(), params)
+    assert (result.status, result.reason, world.game.payloads()) == (
+        "nothing",
+        "company_unknown",
+        [],
+    )
 
 
 @certifies("stocks_dump")
@@ -69,7 +104,7 @@ async def test_stocks_dump_buys_best_foreign_stock(world: World) -> None:
 async def test_stocks_dump_nothing(world: World, fixture: int, keep: int, reason: str) -> None:
     world.game.on_text("/stock", ("stocks", fixture))
     params = {"keep": keep, "margin": 5}
-    result = await run_scenario(stocks_dump, context(world), CharacterState(), params)
+    result = await run_scenario(stocks_dump, context(world), await own_company(world), params)
     assert (result.status, result.reason, world.game.payloads()) == ("nothing", reason, ["/stock"])
 
 
@@ -77,7 +112,7 @@ async def test_stocks_dump_nothing(world: World, fixture: int, keep: int, reason
 async def test_stocks_dump_no_candidate_within_limits(world: World) -> None:
     world.game.on_text("/stock", ("stocks", 3624065))
     params = {"keep": 150, "margin": 60}
-    result = await run_scenario(stocks_dump, context(world), CharacterState(), params)
+    result = await run_scenario(stocks_dump, context(world), await own_company(world), params)
     assert (result.status, result.reason) == ("nothing", "no_stock")
 
 

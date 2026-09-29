@@ -54,6 +54,10 @@ async def stocks_dump(
     ctx: ScenarioContext, state: CharacterState, params: Params
 ) -> ScenarioResult:
     keep, margin = int(params["keep"]), int(params["margin"])
+    if state.company is None:
+        # Какая акция своя — неизвестно: любая может ей оказаться.
+        return ScenarioResult("nothing", "company_unknown")
+    own = state.company.value
     async with ctx.lease("stocks_dump"):
         opened = require(await ctx.send("/stock", expect_events(StockScreen)))
         screen = opened.first(StockScreen)
@@ -63,7 +67,7 @@ async def stocks_dump(
             return ScenarioResult("nothing", "market_closed")
         if screen.min_buy is None or screen.max_sell is None or screen.money is None:
             raise ScenarioStopped("unexpected_screen", opened)
-        pick = pick_stock(screen.quotes, screen.min_buy, screen.max_sell, margin)
+        pick = pick_stock(screen.quotes, screen.min_buy, screen.max_sell, margin, own)
         if pick is None:
             return ScenarioResult("nothing", "no_stock")
         company, price = pick

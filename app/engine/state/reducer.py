@@ -377,6 +377,8 @@ def _profile(p: _Patch, e: ProfileCompact) -> None:
     p.snap("motivation_next_at", p.later(e.motivation_next_in_s))
     p.snap("battle_at", p.later(e.battle_in_s))
     p.snap("battle_target", e.battle_target)
+    if e.company is not None:
+        p.snap("company", e.company)
     busy = None
     if e.busy_kind is not None and e.busy_left_s is not None:
         busy = BusyState(activity=e.busy_kind, until=p.at + timedelta(seconds=e.busy_left_s))

@@ -162,7 +162,7 @@ class Obligations(PlannerBase):
         if limits is not None and not limits.open_hour <= hour < limits.close_hour:
             self.reject("stocks_dump", {}, "market_closed")
             return None
-        if (field := self.stale_of("money")) is not None:
+        if (field := self.stale_of("money", "company")) is not None:
             return self.refresh("stocks_dump", field)
         keep = self.cfg.stocks.cash_floor + self.ticket_reserve() + self.night_hotel()
         # После покупки игра оставляет не меньше неснижаемого остатка биржи.
@@ -173,7 +173,8 @@ class Obligations(PlannerBase):
         quotes = self.s.stock_quotes
         margin = self.cfg.stocks.sell_cap_margin
         if quotes is not None and quotes.at >= start and limits is not None:
-            if not pick_stock(quotes.value, limits.min_buy, limits.max_sell, margin):
+            own = self.value("company")
+            if not pick_stock(quotes.value, limits.min_buy, limits.max_sell, margin, own):
                 self.reject("stocks_dump", {}, "no_stock")
                 return None
         return self.act("stocks_dump", {"keep": keep, "margin": margin}, "battle_soon")

@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-OWN_COMPANY = "bmesa"
-
 
 def pick_stock(
-    quotes: Mapping[str, int], min_buy: int, max_sell: int, margin: int
+    quotes: Mapping[str, int], min_buy: int, max_sell: int, margin: int, own: str
 ) -> tuple[str, int] | None:
-    """Самая дорогая чужая акция, которую можно купить и потом продать с запасом до лимита."""
+    """Самая дорогая чужая акция, которую можно купить и потом продать с запасом до лимита.
+
+    Акции своей компании `own` бот сам не покупает: ими распоряжается CEO компании."""
     candidates = [
         (price, company)
         for company, price in quotes.items()
-        if company != OWN_COMPANY and min_buy <= price <= max_sell - margin
+        if company != own and min_buy <= price <= max_sell - margin
     ]
     if not candidates:
         return None

@@ -1,6 +1,7 @@
 import asyncio
 import time
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -22,6 +23,7 @@ from app.engine.settings import (
     SettingsProvider,
     StaticSettings,
 )
+from app.engine.state.model import company_of
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from tests.engine.helpers import GAME, until
@@ -36,12 +38,14 @@ def build(
     planner: object | None = None,
     store: ActionStore | None = None,
     monotonic: Callable[[], float] = time.monotonic,
+    snapshot: dict[str, Any] | None = None,
 ) -> EngineFacade:
+    """Фасад на памяти; `snapshot` — снимок состояния, его подхватит `pipeline.load()`."""
     settings = settings or StaticSettings()
     bus = Bus()
-    pipeline = Pipeline(
-        journal=MemoryJournal(), parser=default_parser(), reducer=NullReducer(), bus=bus
-    )
+    journal = MemoryJournal()
+    journal.snapshot = (snapshot or {}, 0)
+    pipeline = Pipeline(journal=journal, parser=default_parser(), reducer=NullReducer(), bus=bus)
     gateway = ActionGateway(
         transport=FakeTransport(),
         store=store or MemoryActionStore(),
@@ -50,6 +54,7 @@ def build(
         boundary=lambda: pipeline.last_journal_id,
         clock=SystemClock(),
         state_version=lambda: pipeline.version,
+        own_company=lambda: company_of(pipeline.state),
     )
     bus.subscribe(gateway.on_delivery, priority=0)
     tg = TgAuthManager(backend or FakeTgBackend(authorized=authorized), expected_user_id=267519921)

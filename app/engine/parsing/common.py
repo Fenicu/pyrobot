@@ -46,6 +46,20 @@ COMPANIES = {
     "☣️Black Mesa": "bmesa",
 }
 COMPANY = "|".join(re.escape(name) for name in COMPANIES)
+# Значок компании перед именем игрока (☣️[SU] Fenicu) → код; VS16 игра ставит не всегда.
+_VS16 = "\ufe0f"
+COMPANY_MARKS = {
+    re.sub(r"\w.*", "", name).replace(_VS16, ""): code for name, code in COMPANIES.items()
+}
+
+
+def company_of_mark(prefix: str) -> str | None:
+    """Код компании по значку перед именем игрока; нет значка или их несколько — None."""
+    text = prefix.replace(_VS16, "")
+    found = {code for mark, code in COMPANY_MARKS.items() if mark in text}
+    return found.pop() if len(found) == 1 else None
+
+
 SKILLS = {
     "🔨Практика": "practice",
     "🎓Теория": "theory",

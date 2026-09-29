@@ -45,6 +45,8 @@ LatestLookup = Callable[[int, int], IncomingMessage | None]
 Boundary = Callable[[], int]
 CanSend = Callable[[], str | None]
 StateVersion = Callable[[], int]
+# Своя компания из профиля (код, как в /buys_<код>_N); None — пока неизвестна.
+OwnCompany = Callable[[], str | None]
 Blocked = tuple[ActionStatus, str]
 UncertainHook = Callable[[ActionRequest, int | None], None]
 DATE_SKEW = timedelta(seconds=2)
@@ -103,16 +105,20 @@ def _always_can_send() -> str | None:
     return None
 
 
+def _company_unknown() -> str | None:
+    return None
+
+
 def _keyed_manual(req: ActionRequest) -> bool:
     return req.source is Source.MANUAL and req.idempotency_key is not None
 
 
-def command_class(req: ActionRequest) -> CommandClass:
+def command_class(req: ActionRequest, own_company: str | None = None) -> CommandClass:
     if req.kind is ActionKind.FORWARD:
         return CommandClass.FORWARD
     if req.kind is ActionKind.SEND:
-        return classify_text(req.text or "")
-    return classify_callback(req.data or "")
+        return classify_text(req.text or "", own_company)
+    return classify_callback(req.data or "", own_company)
 
 
 def _answer_chat(req: ActionRequest) -> int:
@@ -147,8 +153,10 @@ class ActionGateway:
         can_send: CanSend = _always_can_send,
         on_uncertain: UncertainHook | None = None,
         state_version: StateVersion | None = None,
+        own_company: OwnCompany = _company_unknown,
     ) -> None:
         self._transport = transport
+        self._own_company = own_company
         self._can_send = can_send
         self._state_version = state_version
         self._store = store
@@ -214,7 +222,7 @@ class ActionGateway:
             if shared is not None:
                 return await asyncio.shield(shared)
         eng = self._settings.current.engine
-        cls = command_class(req)
+        cls = command_class(req, self._own_company())
         pending = _Pending(
             req=req,
             cls=cls,

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from app.engine.parsing.profile import ProfileCompact, recognize_compact
 from tests.fixtures import game_msg
 
@@ -61,3 +63,32 @@ def test_other_busy_variants() -> None:
     assert (_profile(3620232).busy_kind, _profile(3620232).busy_left_s) == ("eat", 169)
     assert (_profile(3618555).busy_kind, _profile(3618555).busy_left_s) == ("fight", 245)
     assert (_profile(3586615).busy_kind, _profile(3586615).busy_left_s) == ("sleep_hotel", 3120)
+
+
+def _with_mark(mark: str) -> ProfileCompact | None:
+    msg = game_msg("profile", 3624478)
+    text = (msg.text or "").replace("☣️[SU]", f"{mark}[SU]", 1)
+    events = recognize_compact(replace(msg, text=text))
+    return events[0] if events and isinstance(events[0], ProfileCompact) else None
+
+
+def test_own_company_from_mark_before_name() -> None:
+    # Своя компания — значок перед тегом команды: у автора ☣️ — Black Mesa.
+    assert _profile(3624478).company == "bmesa"
+    assert _profile(3536910).company == "bmesa"
+    marks = {"📯": "piper", "🤖": "hooli", "⚡️": "stark", "☂️": "umbrl", "🎩": "wayne"}
+    # Без VS16 значок тот же; рядом со значком компании бывают и другие (💰).
+    marks |= {"⚡": "stark", "☂️💰": "umbrl"}
+    assert {mark: _company(mark) for mark in marks} == marks
+
+
+def _company(mark: str) -> str | None:
+    profile = _with_mark(mark)
+    assert profile is not None, mark
+    return profile.company
+
+
+def test_unknown_company_mark_keeps_profile() -> None:
+    assert _company("") is None and _company("🦄") is None
+    profile = _with_mark("")
+    assert profile is not None and profile.money == _profile(3624478).money

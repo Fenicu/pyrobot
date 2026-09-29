@@ -38,6 +38,8 @@ class Rig:
         self.jid = 0
         self.block: str | None = None
         self.version = 0
+        # Своя компания из профиля: у автора — ☣️Black Mesa.
+        self.company: str | None = "bmesa"
         self.gw = ActionGateway(
             transport=self.transport,
             store=self.store,
@@ -47,6 +49,7 @@ class Rig:
             clock=clock or SystemClock(),
             can_send=lambda: self.block,
             state_version=lambda: self.version,
+            own_company=lambda: self.company,
         )
         self.task: asyncio.Task[None] | None = None
 

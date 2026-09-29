@@ -67,6 +67,24 @@ async def test_risky_needs_manual_confirm(rig: Rig) -> None:
     assert res.status is ActionStatus.CONFIRMED
 
 
+async def test_own_company_stock_needs_manual_confirm(rig: Rig) -> None:
+    # Своя компания — из профиля: её акции бот сам не трогает; неизвестна — никакие.
+    exp = expect_text("Куплено акций")
+    for company, text in (
+        ("bmesa", "/buys_bmesa_5"),
+        ("stark", "/buys_stark_5"),
+        (None, "/buys_piper_5"),
+    ):
+        rig.company = company
+        res = await rig.gw.submit(send(text, expect=exp))
+        assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm"), text
+    assert rig.transport.sent == []
+    rig.company = "stark"
+    rig.reply_with("Куплено акций ☣️Black Mesa: 5")
+    res = await rig.gw.submit(send("/buys_bmesa_5", expect=exp))
+    assert res.status is ActionStatus.CONFIRMED
+
+
 async def test_dry_run_suppresses_actions_but_sends_nav() -> None:
     dry = Settings(engine=LIVE.engine.model_copy(update={"mode": "dry_run"}))
     async for r in running_rig(dry):

@@ -27,6 +27,8 @@ def test_profile_snapshot() -> None:
     }
     assert value(state, "busy") is None
     assert value(state, "battle_target") == "📯Pied Piper"
+    # Своя компания — по значку ☣️ перед тегом команды.
+    assert value(state, "company") == "bmesa"
     assert value(state, "battle_at") == "2026-09-26T20:04:00Z"
     assert value(state, "sleep_deadline") == "2026-09-28T20:00:00Z"
     assert value(state, "sleep_allowed_at") == "2026-09-26T08:00:00Z"
@@ -163,3 +165,12 @@ def test_metrics_only_changed_fields() -> None:
     after = feed(reducer, state, "activities", 3517276, 1)
     assert reducer.metrics(state, after) == {"money": 837.0, "motivation": 71.0}
     assert reducer.metrics(after, after) == {}
+
+
+def test_unrecognized_company_mark_keeps_known_company() -> None:
+    reducer = StateReducer()
+    state = _profiled(reducer)
+    msg = fixture_at("profile", PROFILE, 10)
+    unmarked = replace(msg, text=(msg.text or "").replace("☣️[SU]", "[SU]", 1))
+    after = reducer.apply(state, unmarked, PARSER.parse(unmarked))
+    assert value(after, "money") == 867 and value(after, "company") == "bmesa"

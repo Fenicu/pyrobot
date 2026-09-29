@@ -88,6 +88,7 @@ class PublicState(BaseModel):
     last_refusal: Observed[RefusalState] | None = None
     team_task: Observed[TeamTask] | None = None
     daily_personal: Observed[PersonalTask] | None = None
+    company: Observed[str] | None = None
     team_tag: Observed[str] | None = None
     factory_wins: Observed[int] | None = None
     glory: Observed[int] | None = None

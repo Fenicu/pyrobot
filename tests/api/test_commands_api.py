@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
@@ -12,6 +13,7 @@ from app.db.base import Database
 from app.db.models import ActionRow
 from app.engine.facade import EngineFacade
 from app.engine.settings import EngineSection, Settings, StaticSettings
+from app.engine.state.model import CharacterState, Obs, dump_state
 from app.engine.transport.fake import FakeTransport, Sent
 from app.engine.types import Button
 from tests.api.conftest import login
@@ -35,9 +37,18 @@ async def running(container: Container) -> AsyncIterator[list[asyncio.Task[None]
 
 
 async def _start(
-    container: Container, db: Database, settings: Settings, tasks: list[asyncio.Task[None]]
+    container: Container,
+    db: Database,
+    settings: Settings,
+    tasks: list[asyncio.Task[None]],
+    company: str | None = None,
 ) -> tuple[EngineFacade, FakeTransport]:
-    f = build(settings=StaticSettings(settings), store=DbActionStore(db, 1))
+    snapshot = None
+    if company is not None:
+        seen = Obs(value=company, at=datetime.now(UTC))
+        snapshot = dump_state(CharacterState(company=seen))
+    f = build(settings=StaticSettings(settings), store=DbActionStore(db, 1), snapshot=snapshot)
+    await f.pipeline.load()
     container.facade = f
     tasks.append(asyncio.create_task(f.gateway.run()))
     transport = f.gateway._transport
@@ -175,6 +186,23 @@ async def test_risky_needs_confirm_token(
     code, again = await _send(api_client, h, "/ucon", "r1")
     assert code == 200 and again == body
     assert [s.payload for s in transport.sent] == ["/ucon"]
+
+
+async def test_own_company_stock_needs_confirm(
+    container: Container,
+    api_client: AsyncClient,
+    clean_db: Database,
+    running: list[asyncio.Task[None]],
+) -> None:
+    # Своя компания — из профиля: её акции вручную только с подтверждением, чужие — сразу.
+    f, transport = await _start(container, clean_db, LIVE, running, company="bmesa")
+    transport.responder = _reply(f, "Куплено акций")  # type: ignore[assignment]
+    h = {"X-CSRF-Token": await login(api_client)}
+    code, body = await _send(api_client, h, "/buys_bmesa_5", "s1")
+    assert code == 409 and body["detail"]["command_class"] == "risky"  # type: ignore[index]
+    code, body = await _send(api_client, h, "/buys_stark_5", "s2")
+    assert code == 200 and body["status"] == "confirmed"
+    assert [s.payload for s in transport.sent] == ["/buys_stark_5"]
 
 
 async def test_slow_command_is_pending_then_final(

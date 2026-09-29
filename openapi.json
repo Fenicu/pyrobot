@@ -3325,6 +3325,16 @@
               }
             ]
           },
+          "company": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_str_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "containers_medium": {
             "anyOf": [
               {

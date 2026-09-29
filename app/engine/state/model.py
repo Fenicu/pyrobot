@@ -222,6 +222,8 @@ class CharacterState(_Frozen):
     last_refusal: Obs[RefusalState] | None = None
     team_task: Obs[TeamTask] | None = None
     daily_personal: Obs[PersonalTask] | None = None
+    # Своя компания — код, как в /buys_<код>_N, по значку перед именем в профиле (☣️ → bmesa).
+    company: Obs[str] | None = None
     team_tag: Obs[str] | None = None
     factory_wins: Obs[int] | None = None
     # Личная слава 🏆 с экрана команды.
@@ -263,6 +265,12 @@ def load_state(data: dict[str, Any]) -> CharacterState:
     except ValidationError:
         log.exception("state snapshot invalid, starting empty")
         return CharacterState()
+
+
+def company_of(data: dict[str, Any]) -> str | None:
+    """Своя компания из снимка состояния; None — ещё не видели в профиле."""
+    company = load_state(data).company
+    return None if company is None else company.value
 
 
 def dump_state(state: CharacterState) -> dict[str, Any]:

@@ -23,6 +23,7 @@ from app.engine.settings import (
     apply_patch,
     settings_diff,
 )
+from app.engine.state.model import company_of
 from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
 
 if TYPE_CHECKING:
@@ -110,6 +111,9 @@ class EngineFacade:
 
     def state(self) -> tuple[int, dict[str, Any]]:
         return self.pipeline.version, self.pipeline.state
+
+    def own_company(self) -> str | None:
+        return company_of(self.pipeline.state)
 
     def status(self) -> EngineStatus:
         eng = self.settings.current.engine

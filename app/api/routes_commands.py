@@ -212,7 +212,7 @@ async def command_send(
     f: Annotated[EngineFacade, Depends(facade)],
 ) -> CommandOut:
     chat_id = f.settings.current.chats.game_chat_id
-    cls = classify_text(body.text)
+    cls = classify_text(body.text, f.own_company())
     return await _execute(
         c,
         f,
@@ -236,7 +236,7 @@ async def command_click(
     c: Annotated[Container, Depends(container)],
     f: Annotated[EngineFacade, Depends(facade)],
 ) -> CommandOut:
-    cls = classify_callback(body.callback_data)
+    cls = classify_callback(body.callback_data, f.own_company())
     return await _execute(
         c,
         f,

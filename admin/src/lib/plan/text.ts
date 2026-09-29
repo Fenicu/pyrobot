@@ -143,7 +143,8 @@ const FIELD_TEXT: Record<string, string> = {
 	books: 'книги',
 	cards: 'карты',
 	gorbushka: 'Горбушка',
-	food_stock: 'запас еды'
+	food_stock: 'запас еды',
+	company: 'своя компания'
 };
 
 export function verdictText(verdict: string): string {

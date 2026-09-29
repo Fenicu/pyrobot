@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.engine.parsing.common import COMPANIES
+
 
 class CommandClass(StrEnum):
     NAV = "nav"
@@ -36,7 +38,11 @@ _F, _D, _R, _N, _A = (
     CommandClass.NAV,
     CommandClass.ACTION,
 )
-_COMPANIES = r"(?:piper|hooli|stark|umbrl|wayne)"
+_COMPANIES = "(?:" + "|".join(COMPANIES.values()) + ")"
+# Акции: своя компания — только вручную и с подтверждением (ими распоряжается CEO компании),
+# чужие — обычное действие. Своя неизвестна — любая может ей оказаться.
+_STOCK_TEXT = re.compile(rf"/(?:buys|sells)_(?P<company>{_COMPANIES})_\d+\Z")
+_STOCK_CALLBACK = re.compile(rf"buys_(?P<company>{_COMPANIES})\Z")
 
 TEXT_RULES: tuple[Rule, ...] = (
     *_re(
@@ -90,8 +96,6 @@ TEXT_RULES: tuple[Rule, ...] = (
         _R,
         r"/ucon\Z",
         r"/v_(bee|snail|ladybug|ant)\Z",
-        r"/buys_bmesa_\d+\Z",
-        r"/sells_bmesa_\d+\Z",
         r"\+(🍀|👓|🔋|❤️|🔧)(🐀|🐕)\Z",
     ),
     *_exact(
@@ -278,8 +282,6 @@ TEXT_RULES: tuple[Rule, ...] = (
     ),
     *_re(
         _A,
-        rf"/buys_{_COMPANIES}_\d+\Z",
-        rf"/sells_{_COMPANIES}_\d+\Z",
         r"/unbox(_\w+)?\Z",
         r"/t_\w+\Z",
         r"join_fight_\w{11}\Z",
@@ -301,7 +303,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"pet_select_accept_",
     ),
     *_re(_D, r"mether_buy_coins\Z", r"maze_buf_coins_", r"spring_(roll_coins|regenerate)"),
-    *_re(_R, r"crew_change_", r"buys_bmesa\Z", r"sells_\w+\Z"),
+    *_re(_R, r"crew_change_", r"sells_\w+\Z"),
     *_re(
         _N,
         r"cancel_inline\Z",
@@ -322,7 +324,6 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"sleep_(7|8|9|10|11|12|Bridge|Hotel)\Z",
         r"sm_drop_[1-5]\Z",
         r"smoothie_accept\Z",
-        rf"buys_{_COMPANIES}\Z",
         r"pet_feast_accept_\w+\Z",
         r"spring_roll_smiles\Z",
         r"t_\w+_confirm\Z",
@@ -342,11 +343,21 @@ def _classify(value: str, rules: tuple[Rule, ...]) -> CommandClass:
     return CommandClass.FORBIDDEN
 
 
-def classify_text(text: str) -> CommandClass:
+def _stock(match: re.Match[str], own_company: str | None) -> CommandClass:
+    own = own_company is None or match["company"] == own_company
+    return CommandClass.RISKY if own else CommandClass.ACTION
+
+
+def classify_text(text: str, own_company: str | None = None) -> CommandClass:
+    """Класс команды; `own_company` — код своей компании (из профиля) для команд акций."""
+    if (m := _STOCK_TEXT.match(text.strip())) is not None:
+        return _stock(m, own_company)
     return _classify(text, TEXT_RULES)
 
 
-def classify_callback(data: str) -> CommandClass:
+def classify_callback(data: str, own_company: str | None = None) -> CommandClass:
+    if (m := _STOCK_CALLBACK.match(data.strip())) is not None:
+        return _stock(m, own_company)
     return _classify(data, CALLBACK_RULES)
 
 

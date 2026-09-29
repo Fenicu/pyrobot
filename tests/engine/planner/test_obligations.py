@@ -57,6 +57,7 @@ def state(now: datetime, **over: Any) -> CharacterState:
         # Битвы — в начале часа.
         "battle_at": now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=9),
         "battle_target": "📯Pied Piper",
+        "company": "bmesa",
         "sleep_deadline": at(40 * 60),
         "sleep_allowed_at": at(-60),
         "levelup_pending": False,
@@ -302,6 +303,24 @@ def test_dump_skipped_below_minimum_or_without_candidate() -> None:
     flat = dict.fromkeys(QUOTES, 10)
     decision = decide(dumping(now, stock_quotes=flat), only("stocks_dump"), now)
     assert verdicts(decision)["stocks_dump"] == "no_stock"
+
+
+def test_dump_skips_own_company() -> None:
+    # Своя компания — из профиля: её акции бот сам не покупает, какой бы она ни была.
+    now = msk(12, 50)
+    decision = decide(dumping(now, company="stark"), only("stocks_dump"), now)
+    assert verdicts(decision)["stocks_dump"] == "no_stock"
+    decision = decide(dumping(now, company="umbrl"), only("stocks_dump"), now)
+    assert act(decision) == ("stocks_dump", {"keep": 150 + 210, "margin": 5})
+
+
+def test_dump_needs_own_company() -> None:
+    # Своя компания неизвестна — сначала профиль, а не покупка наугад.
+    now = msk(12, 50)
+    unknown = dumping(now).model_copy(update={"company": None})
+    decision = decide(unknown, only("stocks_dump"), now)
+    assert act(decision) == ("refresh", {"source": "profile"})
+    assert verdicts(decision)["stocks_dump"] == "stale:company"
 
 
 def test_dump_ignores_quotes_seen_before_window() -> None:

@@ -72,7 +72,8 @@ N, A, R, F, D = (
     ],
 )
 def test_classify_text(text: str, expected: CommandClass) -> None:
-    assert classify_text(text) is expected
+    # Своя компания автора — ☣️Black Mesa: так у него на проде.
+    assert classify_text(text, "bmesa") is expected
 
 
 @pytest.mark.parametrize(
@@ -112,7 +113,29 @@ def test_classify_text(text: str, expected: CommandClass) -> None:
     ],
 )
 def test_classify_callback(data: str, expected: CommandClass) -> None:
-    assert classify_callback(data) is expected
+    assert classify_callback(data, "bmesa") is expected
+
+
+COMPANIES = ("piper", "hooli", "stark", "umbrl", "wayne", "bmesa")
+
+
+@pytest.mark.parametrize("own", COMPANIES)
+def test_own_company_stocks_need_confirm(own: str) -> None:
+    # Акциями своей компании распоряжается CEO: вручную — с подтверждением, сам бот — никогда.
+    for code in COMPANIES:
+        expected = R if code == own else A
+        assert classify_text(f"/buys_{code}_5", own) is expected, code
+        assert classify_text(f"/sells_{code}_1", own) is expected, code
+        assert classify_callback(f"buys_{code}", own) is expected, code
+        assert classify_callback(f"sells_{code}", own) is R, code
+
+
+def test_unknown_own_company_makes_every_stock_risky() -> None:
+    for code in COMPANIES:
+        assert classify_text(f"/buys_{code}_5") is R, code
+        assert classify_text(f" /sells_{code}_1 ") is R, code
+        assert classify_callback(f"buys_{code}") is R, code
+    assert classify_text("/buys_unknown_5", "bmesa") is F
 
 
 METRO_ACTIONS = [
@@ -233,6 +256,7 @@ def test_spring_smiles_action_and_maze_nothing_nav() -> None:
         ("/gt", "tangerine"),
         ("👍Записаться", "factory"),
         ("/sells_piper_10", "stocks_dump"),
+        ("/buys_bmesa_3", "stocks_dump"),
         ("join_fight_abcdefghijk", "bulls"),
         ("⚡️Stark Ind.", "battle"),
         ("🛡Защита", "battle"),
@@ -257,6 +281,7 @@ def test_feature_of_text(text: str, feature: str | None) -> None:
         ("sm_drop_3", "smoothie"),
         ("pet_feast_accept_1", "pet_feast"),
         ("buys_hooli", "stocks_dump"),
+        ("buys_bmesa", "stocks_dump"),
         ("t_convDets_hard_confirm", "daily_tasks"),
         ("tasksel_decline", None),
         ("rob_awake_35401851", "robbery_defense"),

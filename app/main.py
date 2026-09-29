@@ -35,7 +35,7 @@ from app.engine.reactions import RobberyDefense
 from app.engine.reconcile import Reconciler
 from app.engine.scenarios.context import History, Reread
 from app.engine.settings import Settings
-from app.engine.state.model import load_state
+from app.engine.state.model import company_of, load_state
 from app.engine.state.reducer import StateReducer
 from app.engine.stream import (
     EventStream,
@@ -181,6 +181,7 @@ class Runtime:
             clock=SystemClock(),
             can_send=self._can_send,
             state_version=lambda: pipeline.version,
+            own_company=lambda: company_of(pipeline.state),
         )
         pending = await actions.unreconciled()
         if pending:

@@ -13,7 +13,7 @@ from app.engine.memory import MemoryActionStore, MemoryJournal
 from app.engine.parsing import default_parser
 from app.engine.pipeline import Pipeline
 from app.engine.settings import ChatsSection, EngineSection, Settings, StaticSettings
-from app.engine.state.model import CharacterState, load_state
+from app.engine.state.model import CharacterState, company_of, load_state
 from app.engine.state.reducer import StateReducer
 from app.engine.types import IncomingMessage
 from tests.fixtures import game_msg
@@ -197,6 +197,7 @@ class World:
             latest=self.pipeline.latest,
             boundary=lambda: self.pipeline.last_journal_id,
             clock=SystemClock(),
+            own_company=lambda: company_of(self.pipeline.state),
         )
         self.bus.subscribe(self.gateway.on_delivery, priority=0)
         self._task: asyncio.Task[None] | None = None

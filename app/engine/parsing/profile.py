@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from app.engine.events import Event
-from app.engine.parsing.common import DURATION, NUM, dur, num
+from app.engine.parsing.common import DURATION, NUM, company_of_mark, dur, num
 from app.engine.types import IncomingMessage
 
 _COMPACT = re.compile(
@@ -67,6 +67,8 @@ class ProfileCompact(Event):
     sleep_in_s: int | None
     busy_kind: str | None
     busy_left_s: int | None
+    # Своя компания — код по значку перед тегом команды (☣️ → bmesa).
+    company: str | None = None
 
 
 def _busy(tail: str) -> tuple[str | None, int | None]:
@@ -116,6 +118,7 @@ def recognize_compact(msg: IncomingMessage) -> list[Event]:
             sleep_in_s=dur(sleep_in["t"]) if sleep_in else None,
             busy_kind=busy_kind,
             busy_left_s=busy_left,
+            company=company_of_mark(m["prefix"]),
         )
     ]
 
