@@ -18,7 +18,7 @@
 	{#each BALANCE as b (b.key)}
 		{@const delta = day.balance[b.key]?.delta ?? null}
 		<li title={b.title}>
-			{b.icon}
+			<span aria-hidden="true">{b.icon}</span><span class="sr-only">{b.title}</span>
 			{#if delta === null}
 				<span class="text-sm text-fg-faint">нет данных</span>
 			{:else}

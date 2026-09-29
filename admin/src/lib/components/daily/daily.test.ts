@@ -19,13 +19,15 @@ describe('карточка «Итоги дня» на главной', () => {
 		const balance = within(card).getByRole('list', { name: 'Изменение за день' });
 		const items = within(balance).getAllByRole('listitem');
 		expect(items.map((i) => i.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-			'💵 +$240',
-			'💡 +4 812',
-			'📚 +86',
-			'⚙️ −120',
-			'🔩 +64',
-			'🏆 +90'
+			'💵деньги +$240',
+			'💡опыт +4 812',
+			'📚знания +86',
+			'⚙️детали −120',
+			'🔩сырьё +64',
+			'🏆личная слава +90'
 		]);
+		expect(within(items[0]!).getByText('💵')).toHaveAttribute('aria-hidden', 'true');
+		expect(within(items[0]!).getByText('деньги')).toHaveClass('sr-only');
 		expect(items[3]!.querySelector('.text-bad-fg')).not.toBeNull();
 		const craft = within(card).getByRole('list', { name: 'Предметы для крафта' });
 		expect(craft).toHaveTextContent('Пуговица ×5');
@@ -49,7 +51,7 @@ describe('карточка «Итоги дня» на главной', () => {
 		};
 		render(DailyCard, { day, ledgerSince: daily.ledger_since, error: null, now: NOW });
 		const card = screen.getByRole('region', { name: /Итоги дня/ });
-		expect(within(card).getByRole('list', { name: 'Изменение за день' })).toHaveTextContent('💡 нет данных');
+		expect(within(card).getByRole('list', { name: 'Изменение за день' })).toHaveTextContent('💡опыт нет данных');
 		expect(card).toHaveTextContent('Уровень 70 → 71');
 		expect(card).toHaveTextContent('Предметов для крафта не было');
 		expect(within(card).queryByRole('list', { name: 'Разовое' })).toBeNull();
@@ -107,8 +109,13 @@ describe('страница «Итоги»', () => {
 		expect(rows).toHaveLength(1 + 1 + 30 + 1);
 		const avg = rows[1]!;
 		expect(avg).toHaveTextContent('среднее за 7 дней');
-		const header = within(rows[0]!).getAllByRole('columnheader').map((c) => c.textContent?.trim());
-		expect(header).toEqual(['День', '💵', '💡', '📚', '⚙️', '🔩', '🏆', 'Предметы', 'Разовое', 'Потери']);
+		// Значки — для глаз, читалке экрана — название (не только title).
+		const header = within(rows[0]!).getAllByRole('columnheader');
+		expect(header).toHaveLength(10);
+		for (const name of ['День', 'деньги', 'опыт', 'знания', 'детали', 'сырьё', 'личная слава', 'Предметы', 'Разовое', 'Потери']) {
+			expect(within(rows[0]!).getByRole('columnheader', { name })).toBeInTheDocument();
+		}
+		expect(within(rows[0]!).getByText('💵')).toHaveAttribute('aria-hidden', 'true');
 		const todayRow = rows[2]!;
 		expect(todayRow).toHaveTextContent('Сегодня, 28.09');
 		expect(todayRow).toHaveTextContent('(до 14:40)');

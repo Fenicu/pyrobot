@@ -67,7 +67,9 @@
 			<thead>
 				<tr class="text-fg-muted">
 					<th class="px-2 py-1.5 text-left font-medium">День</th>
-					{#each BALANCE as b (b.key)}<th class="px-2 py-1.5 text-right font-medium" title={b.title}>{b.icon}</th>{/each}
+					{#each BALANCE as b (b.key)}
+						<th class="px-2 py-1.5 text-right font-medium" title={b.title}><span aria-hidden="true">{b.icon}</span><span class="sr-only">{b.title}</span></th>
+					{/each}
 					<th class="px-2 py-1.5 text-right font-medium">Предметы</th>
 					<th class="px-2 py-1.5 text-right font-medium">Разовое</th>
 					<th class="px-2 py-1.5 text-right font-medium">Потери</th>
@@ -140,7 +142,7 @@
 					<span class="flex flex-wrap gap-x-3 gap-y-0.5 text-[13px]">
 						{#each BALANCE as b (b.key)}
 							{@const delta = d.balance[b.key]?.delta ?? null}
-							<span title={b.title}>{b.icon} <b class={tone(delta)}>{delta === null ? '—' : signed(delta)}</b></span>
+							<span title={b.title}><span aria-hidden="true">{b.icon}</span><span class="sr-only">{b.title}</span> <b class={tone(delta)}>{delta === null ? '—' : signed(delta)}</b></span>
 						{/each}
 					</span>
 					<span class="mt-0.5 block text-xs text-fg-faint">
