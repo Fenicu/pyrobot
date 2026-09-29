@@ -417,21 +417,25 @@ docker compose exec backup sh -c 'umask 077; pg_dump --format=custom --file=/bac
 миграции. Дамп — от той же или более старой версии бота, чем образ:
 
 ```bash
-# 1. На всякий случай — дамп текущей базы (как выше), затем остановить бот и backup
+# 1. Копия выбранного дампа под другим именем, дамп текущей базы на всякий случай, остановить бот и backup
+docker compose exec backup cp /backups/pyrobot-ГГГГ-ММ-ДД.dump /backups/restore.dump
 docker compose exec backup sh -c 'umask 077; pg_dump --format=custom --file=/backups/pyrobot-before-restore.dump'
 docker compose stop pyrobot backup
 # 2. Пересоздать пустую базу
 docker compose exec postgres dropdb -U pyrobot --force pyrobot
 docker compose exec postgres createdb -U pyrobot pyrobot
-# 3. Восстановить: первая же ошибка отменяет всё, база остаётся пустой
-docker compose run --rm backup 'pg_restore --exit-on-error --single-transaction --dbname pyrobot /backups/pyrobot-ГГГГ-ММ-ДД.dump'
+# 3. Восстановить из копии: первая же ошибка отменяет всё, база остаётся пустой
+docker compose run --rm backup 'pg_restore --exit-on-error --single-transaction --dbname pyrobot /backups/restore.dump'
 # 4. Довести схему до версии образа и запустить
 docker compose run --rm migrate
 docker compose up -d
 ```
 
-Ошибка на шаге 3 — база пустая, бот не запущен: проверь имя файла и повтори шаг 3 или верни базу
-из `pyrobot-before-restore.dump` теми же шагами 2–4.
+Копия нужна потому, что `backup` сразу после запуска (шаг 4) пишет дамп дня под именем
+`pyrobot-ГГГГ-ММ-ДД.dump` — сегодняшний исходный дамп он заменил бы восстановленной базой.
+`restore.dump` сам не удаляется (чистка трогает только `pyrobot-*.dump` старше 14 дней) — убери его,
+когда он больше не нужен. Ошибка на шаге 3 — база пустая, бот не запущен: проверь копию и повтори
+шаг 3 или верни базу из `pyrobot-before-restore.dump` теми же шагами 2–4.
 
 **Сессия Telegram** — в томе `/data` контейнера бота. Это вход в твой аккаунт: у кого файл сессии,
 тот действует от твоего имени без кода и пароля. Не копируй его без нужды и не выкладывай; утёк —
@@ -3035,8 +3039,9 @@ docker build --build-arg APT_PROXY=http://10.10.40.23:3142 \
 CSRF-токены сессий админки); читать и восстанавливать — из этого же контейнера, у него есть том и
 параметры подключения: восстановление — только в пустую базу (`dropdb`/`createdb` в `postgres` при
 остановленных `pyrobot` и `backup`), `docker compose run --rm backup 'pg_restore --exit-on-error
---single-transaction --dbname pyrobot /backups/pyrobot-<дата>.dump'`, затем `migrate` — порядок в
-«Установке», шаг 12: `--clean` поверх базы после новых миграций оставлял их таблицы.
+--single-transaction --dbname pyrobot /backups/restore.dump'` из копии дампа (`backup` при старте
+перезаписал бы сегодняшний `pyrobot-<дата>.dump`), затем `migrate` — порядок в «Установке», шаг 12:
+`--clean` поверх базы после новых миграций оставлял их таблицы.
 `PYROBOT_DATABASE_URL` собирается в compose из `POSTGRES_PASSWORD` (пароль — без символов,
 требующих URL-экранирования, например hex), остальное — из `.env`.
 Проверка локально:
