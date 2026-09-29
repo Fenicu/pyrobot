@@ -10,7 +10,7 @@ from app.api.routes_engine import facade
 from app.engine.facade import EngineFacade, PlannerUnavailable
 from app.engine.planner.decide import Phase
 from app.engine.planner.loop import PlanView
-from app.engine.planner.types import Act, WakeKind, Wakeup
+from app.engine.planner.types import Act, Candidate, WakeKind, Wakeup
 from app.engine.state.model import BusyState
 
 router = APIRouter(prefix="/api/v1", tags=["planner"])
@@ -119,11 +119,22 @@ class OutlookOut(BaseModel):
     hints: PlanHintsOut
     # 🔥, которые дела сейчас не тратят (`strategy.reserve_ahead_min`), по времени; пусто — нет.
     reserves: list[PlanReserveOut]
+    # «По данным на»: занятость устарела, но известна — момент её наблюдения. Решение и
+    # considered — на текущих данных (обновить занятость), а also_ready, wakeups, hints, reserves
+    # и basis_considered — второй проход, как если бы быстрые поля (занятость, 💵, 🔥, 🔋…) были
+    # такими, как тогда. null — всё на текущих данных.
+    basis_at: datetime | None
+    # Кандидаты второго прохода до его первого решения, без «выбрано» (оно — в also_ready).
+    basis_considered: list[PlanCandidateOut]
 
 
 def _timer(w: Wakeup, after_wake: bool) -> PlanTimerOut:
     # Окна по часам планировщик считает в МСК: наружу — единообразно в UTC.
     return PlanTimerOut(at=w.at.astimezone(UTC), kind=w.kind, key=w.key, after_wake=after_wake)
+
+
+def _candidate(c: Candidate) -> PlanCandidateOut:
+    return PlanCandidateOut(scenario=c.scenario, params=c.params, score=c.score, verdict=c.verdict)
 
 
 def _utc(moment: datetime | None) -> datetime | None:
@@ -152,12 +163,7 @@ def outlook_out(view: PlanView) -> OutlookOut:
         phase=o.phase,
         busy=o.busy,
         decision=decision,
-        considered=[
-            PlanCandidateOut(
-                scenario=c.scenario, params=c.params, score=c.score, verdict=c.verdict
-            )
-            for c in o.considered
-        ],
+        considered=[_candidate(c) for c in o.considered],
         also_ready=[
             PlanActOut(scenario=a.scenario, params=a.params, reason=a.reason) for a in o.also_ready
         ],
@@ -188,6 +194,8 @@ def outlook_out(view: PlanView) -> OutlookOut:
             PlanReserveOut(kind=r.kind, motivation=r.motivation, at=r.at.astimezone(UTC))
             for r in o.reserves
         ],
+        basis_at=_utc(o.basis_at),
+        basis_considered=[_candidate(c) for c in o.basis_considered],
     )
 
 

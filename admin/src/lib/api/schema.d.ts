@@ -1664,6 +1664,10 @@ export interface components {
         OutlookOut: {
             /** Also Ready */
             also_ready: components["schemas"]["PlanActOut"][];
+            /** Basis At */
+            basis_at: string | null;
+            /** Basis Considered */
+            basis_considered: components["schemas"]["PlanCandidateOut"][];
             busy: components["schemas"]["BusyState"] | null;
             /** Considered */
             considered: components["schemas"]["PlanCandidateOut"][];

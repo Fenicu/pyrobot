@@ -1,46 +1,27 @@
 {
- "now": "2026-09-27T16:30:00Z",
- "phase": "busy",
- "busy": {
-  "activity": "job",
-  "until": "2026-09-27T16:50:00Z"
- },
+ "now": "2026-09-27T16:50:00Z",
+ "phase": "unknown",
+ "busy": null,
  "decision": {
   "kind": "act",
-  "scenario": "lottery_buy",
+  "scenario": "refresh",
   "params": {
-   "reserve": 0,
-   "tickets_money": "max",
-   "keep_money": 0,
-   "tickets_knowledge": "max",
-   "keep_knowledge": 0,
-   "tickets_raw": "max",
-   "keep_raw": 0,
-   "tickets_details": "max",
-   "keep_details": 0
+   "source": "profile"
   },
-  "reason": "lottery_unknown",
+  "reason": "state needs busy",
   "until": null
  },
  "considered": [
   {
-   "scenario": "levelup",
+   "scenario": "state",
    "params": {},
    "score": null,
-   "verdict": "busy"
+   "verdict": "stale:busy"
   },
   {
-   "scenario": "lottery_buy",
+   "scenario": "refresh",
    "params": {
-    "reserve": 0,
-    "tickets_money": "max",
-    "keep_money": 0,
-    "tickets_knowledge": "max",
-    "keep_knowledge": 0,
-    "tickets_raw": "max",
-    "keep_raw": 0,
-    "tickets_details": "max",
-    "keep_details": 0
+    "source": "profile"
    },
    "score": null,
    "verdict": "chosen"
@@ -54,15 +35,14 @@
     "reply_to": 927136
    },
    "reason": "tangerine_ready"
+  },
+  {
+   "scenario": "deed:dconv",
+   "params": {},
+   "reason": "focus dconv (2 today)"
   }
  ],
  "wakeups": [
-  {
-   "at": "2026-09-27T16:50:03Z",
-   "kind": "busy",
-   "key": null,
-   "after_wake": false
-  },
   {
    "at": "2026-09-27T17:07:06Z",
    "kind": "book_ready",
@@ -73,6 +53,12 @@
    "at": "2026-09-27T17:07:11Z",
    "kind": "card_ready",
    "key": null,
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-27T17:20:03Z",
+   "kind": "cooldown",
+   "key": "lottery_buy",
    "after_wake": false
   },
   {
@@ -112,9 +98,9 @@
   "auto": true,
   "current": null,
   "manual_queue": 0,
-  "next_wake": null,
-  "wait_reason": null,
-  "wake_at": null
+  "next_wake": "2026-09-27T17:07:06Z",
+  "wait_reason": "book_ready",
+  "wake_at": "2026-09-27T17:07:06Z"
  },
  "focus": [
   {
@@ -148,6 +134,23 @@
    "at": "2026-09-27T17:21:00Z"
   }
  ],
- "basis_at": null,
- "basis_considered": []
+ "basis_at": "2026-09-27T16:24:00Z",
+ "basis_considered": [
+  {
+   "scenario": "lottery_buy",
+   "params": {
+    "reserve": 0,
+    "tickets_money": "max",
+    "keep_money": 0,
+    "tickets_knowledge": "max",
+    "keep_knowledge": 0,
+    "tickets_raw": "max",
+    "keep_raw": 0,
+    "tickets_details": "max",
+    "keep_details": 0
+   },
+   "score": null,
+   "verdict": "cooldown"
+  }
+ ]
 }

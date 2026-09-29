@@ -2494,6 +2494,25 @@
             "title": "Also Ready",
             "type": "array"
           },
+          "basis_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis At"
+          },
+          "basis_considered": {
+            "items": {
+              "$ref": "#/components/schemas/PlanCandidateOut"
+            },
+            "title": "Basis Considered",
+            "type": "array"
+          },
           "busy": {
             "anyOf": [
               {
@@ -2568,7 +2587,9 @@
           "loop",
           "focus",
           "hints",
-          "reserves"
+          "reserves",
+          "basis_at",
+          "basis_considered"
         ],
         "title": "OutlookOut",
         "type": "object"

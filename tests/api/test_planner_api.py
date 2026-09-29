@@ -11,7 +11,7 @@ from app.engine.gametime import MSK
 from app.engine.planner.decide import Outlook
 from app.engine.planner.loop import PlannerLoop
 from tests.api.conftest import login
-from tests.engine.planner.test_decide import awake
+from tests.engine.planner.test_decide import awake, m
 from tests.engine.planner.test_loop_outlook import CountingStore, rig
 from tests.engine.test_facade import build
 
@@ -101,6 +101,7 @@ async def test_outlook_reads_without_writing(planned: Planned, api_client: Async
     assert {t["kind"] for t in body["wakeups"]} >= {"gorbushka_comeback", "sleep_window"}
     assert body["hints"]["sleep_hours"] == 7
     assert body["reserves"] == []
+    assert body["basis_at"] is None and body["basis_considered"] == []
     store: CountingStore = planned.store
     assert store.decisions == [] and store.runs == []
     assert planned.facade.gateway.queue_size == 0
@@ -150,3 +151,18 @@ async def test_loop_wait_is_in_the_plan(planned: Planned, api_client: AsyncClien
         "wait_reason": "book_ready",
         "wake_at": "2026-09-29T14:42:54Z",
     }
+
+
+async def test_stale_busy_plan_is_by_data_at_its_observation(
+    planned: Planned, api_client: AsyncClient
+) -> None:
+    await login(api_client)
+    planned.loop._state = lambda: awake(m(-26))
+    body = (await api_client.get(URL)).json()
+    assert (body["phase"], body["decision"]["scenario"]) == ("unknown", "refresh")
+    assert [c["verdict"] for c in body["considered"]] == ["stale:busy", "chosen"]
+    assert body["basis_at"] == "2026-09-26T09:34:00Z"
+    assert {c["verdict"] for c in body["basis_considered"]} == {"ok"}
+    assert [a["scenario"] for a in body["also_ready"]] == ["deed:job"]
+    assert body["hints"]["next_deed"] == {"deed": "deed:job", "why": "best"}
+    assert body["wakeups"]

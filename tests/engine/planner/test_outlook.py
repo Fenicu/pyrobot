@@ -19,6 +19,7 @@ from app.engine.state.model import (
     BusyState,
     CharacterState,
     GorbushkaState,
+    Obs,
     PriceState,
     TeamTask,
 )
@@ -62,6 +63,71 @@ def test_unknown_busy_gives_only_the_decision() -> None:
     limited = view_of(state, last_refresh={"profile": m(-1)})
     assert limited.decision == Wait(w(1), "refresh:profile", limited.considered)
     assert reasons(limited.wakeups) == ["refresh:profile"]
+    assert view.basis_at is None and view.basis_considered == ()
+
+
+def test_doubtful_busy_is_unknown_too() -> None:
+    doubtful = Obs(value=None, at=m(-1), src="doubtful")
+    view = view_of(awake().model_copy(update={"busy": doubtful}))
+    assert view.phase == "unknown" and view.basis_at is None
+    assert view.basis_considered == () and view.also_ready == () and view.wakeups == ()
+
+
+# Профиль (занятость, 💵, 🔥, 🔋…) снят 26 минут назад: всё быстрое устарело.
+SEEN = m(-26)
+
+
+def test_stale_busy_plans_the_rest_by_data_at_its_observation() -> None:
+    view = view_of(awake(SEEN))
+    assert view.phase == "unknown" and view.busy is None
+    # Решение — то же, что у цикла: сначала обновить занятость.
+    assert act(view.decision) == ("refresh", {"source": "profile"})
+    assert [(c.scenario, c.verdict) for c in view.considered] == [
+        ("state", "stale:busy"),
+        ("refresh", "chosen"),
+    ]
+    # Остальное — второй проход по данным на момент наблюдения: персонаж свободен, 💵 и 🔥 те же.
+    assert view.basis_at == SEEN
+    assert [a.scenario for a in view.also_ready] == ["deed:job"]
+    assert view.hints.next_deed == NextDeed("deed:job", "best")
+    assert {"gorbushka_comeback", "sleep_window"} <= set(reasons(view.wakeups))
+    # Свои «выбрано» и «нужно обновить» второй проход в план не несёт: у выбранного им —
+    # «Готово», обновлять быстрые поля незачем, они — на момент наблюдения.
+    assert all(c.verdict == "ok" for c in view.basis_considered)
+    assert {c.scenario for c in view.basis_considered} == {
+        "deed:harvest",
+        "deed:learn",
+        "deed:dconv",
+        "deed:walk",
+    }
+
+
+def test_basis_pass_keeps_what_was_stale_already_then() -> None:
+    # 🔥 снята за 20 минут до занятости — устарела ещё тогда: второй проход просит обновить и её.
+    state = awake(SEEN, motivation=obs(40, age_min=46))
+    view = view_of(state)
+    assert act(view.decision) == ("refresh", {"source": "profile"})
+    verdicts = [(c.scenario, c.verdict) for c in view.basis_considered]
+    assert ("deeds", "stale:motivation") in verdicts
+    # Обновление профиля — само решение: в «Готово» его нет.
+    assert "refresh" not in [a.scenario for a in view.also_ready]
+    assert view.hints.next_deed is None
+
+
+def test_basis_pass_takes_motivation_before_the_regen_tick() -> None:
+    # Тик регенерации 🔥 — после наблюдения: по данным на тот момент 🔥 ещё 0, дела ждут её.
+    state = awake(SEEN, motivation=0, motivation_next_at=m(-10))
+    view = view_of(state)
+    deeds = {c.verdict for c in view.basis_considered if c.scenario.startswith("deed:")}
+    assert deeds == {"no_motivation"}
+    assert view.also_ready == ()
+
+
+def test_basis_pass_under_refresh_limit_keeps_the_wait() -> None:
+    view = view_of(awake(SEEN), last_refresh={"profile": m(-1)})
+    assert view.decision == Wait(w(1), "refresh:profile", view.considered)
+    assert view.wakeups[0].reason == "refresh:profile"
+    assert view.basis_at == SEEN and view.also_ready
 
 
 def test_asleep_shows_timers_after_wake_without_their_acts() -> None:

@@ -67,6 +67,10 @@ class Outlook:
     `wakeups` — таймеры всего прохода; `after_wake` — во сне таймеры прохода «как после
     пробуждения»; `focus` — основные дела и их запуски за день; `reserves` — 🔥, которые дела
     сейчас не тратят (под бой Горбушки, вход в метро).
+
+    `basis_at` — занятость устарела, но известна: решение — обновить её, а `also_ready`,
+    `wakeups`, `hints`, `reserves` и `basis_considered` (кандидаты до первого решения, без его
+    «выбрано») — второй проход «по данным на» момент её наблюдения.
     """
 
     phase: Phase
@@ -79,6 +83,8 @@ class Outlook:
     focus: tuple[tuple[str, int], ...]
     hints: PlanHints
     reserves: tuple[Reserve, ...]
+    basis_at: datetime | None = None
+    basis_considered: tuple[Candidate, ...] = ()
 
 
 class _Planner(DailyTasks):
@@ -103,7 +109,10 @@ class _Planner(DailyTasks):
         busy = self.busy()
         if busy is None and (field := self.stale_of("busy")) is not None:
             decision = self.refresh("state", field) or self.wait()
-            return self.view("unknown", None, decision, (), fresh)
+            seen = self.s.busy
+            if seen is None or seen.src == "doubtful":
+                return self.view("unknown", None, decision, (), fresh)
+            return self.basis(decision, seen.at, fresh)
         if busy is not None:
             self.wake(busy.until, "busy")
             if busy.activity.startswith("sleep_"):
@@ -113,6 +122,40 @@ class _Planner(DailyTasks):
                     step(None)
                 woke = self.after_wake(later.wakeups, busy.until + TIMER_MARGIN)
                 return self.view("asleep", busy, decision, (), fresh, woke)
+        return self.awake(busy, fresh)
+
+    def basis(self, decision: Decision, at: datetime, fresh: Callable[[], _Planner]) -> Outlook:
+        """Занятость устарела, но известна (последнее значение — «свободен»): решение — обновить
+        её, остальное — второй проход «по данным на `at`», момент её наблюдения. Первое действие
+        второго прохода — не решение цикла: оно в `also_ready` вместе с прочими, кроме самого
+        решения."""
+
+        def then() -> _Planner:
+            planner = fresh()
+            planner.stale = planner.stale_at(at)
+            return planner
+
+        later = then()
+        view = later.awake(later.busy(), then)
+        own = run_key(decision) if isinstance(decision, Act) else None
+        first = (view.decision,) if isinstance(view.decision, Act) else ()
+        return Outlook(
+            "unknown",
+            None,
+            decision,
+            decision.candidates,
+            tuple(a for a in first + view.also_ready if run_key(a) != own),
+            earliest((*self.wakeups, *view.wakeups)),
+            (),
+            view.focus,
+            view.hints,
+            view.reserves,
+            basis_at=at,
+            basis_considered=tuple(c for c in view.considered if c.verdict != "chosen"),
+        )
+
+    def awake(self, busy: BusyState | None, fresh: Callable[[], _Planner]) -> Outlook:
+        """Проход всех шагов, как у `decide`: первое решение и то, что готово за ним."""
         first: Decision | None = None
         ready: dict[str, Act] = {}
         for step in self.steps():

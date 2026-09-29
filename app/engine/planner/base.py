@@ -115,22 +115,28 @@ class PlannerBase:
         self.last_done = last_done
         self.metro_durations = metro_durations
         self.done_today: Mapping[str, int] = done_today or {}
-        volatile = timedelta(minutes=settings.engine.state_stale_after_min)
-        stale = set(stale_fields(state, now, volatile))
-        # После тика регенерации 🔥 наблюдение мотивации устарело независимо от возраста.
-        regen = state.motivation_next_at
-        seen = state.motivation
-        if seen is not None and regen is not None and regen.value is not None:
-            if seen.at < regen.value and regen.value + TIMER_MARGIN <= now:
-                stale.add("motivation")
-        # Прошедшая битва: время следующей известно только из свежего профиля.
-        battle = self.battle_time()
-        if battle is not None and battle + BATTLE_AFTER <= now:
-            stale.add("battle_at")
-        self.stale = frozenset(stale)
+        self.stale = self.stale_at(now)
         self.refresh_every = timedelta(seconds=settings.engine.refresh_min_interval_s)
         self.candidates: list[Candidate] = []
         self.wakeups: list[Wakeup] = []
+
+    def stale_at(self, basis: datetime) -> frozenset[str]:
+        """Устаревшие поля. `basis` раньше `now` — план «по данным на `basis`»: быстрые поля и 🔥
+        до тика регенерации — какими были тогда; битва, прошедшая к `now`, — как обычно: времени
+        следующей нет и в тех данных."""
+        volatile = timedelta(minutes=self.cfg.engine.state_stale_after_min) + (self.now - basis)
+        stale = set(stale_fields(self.s, self.now, volatile))
+        # После тика регенерации 🔥 наблюдение мотивации устарело независимо от возраста.
+        regen = self.s.motivation_next_at
+        seen = self.s.motivation
+        if seen is not None and regen is not None and regen.value is not None:
+            if seen.at < regen.value and regen.value + TIMER_MARGIN <= basis:
+                stale.add("motivation")
+        # Прошедшая битва: время следующей известно только из свежего профиля.
+        battle = self.battle_time()
+        if battle is not None and battle + BATTLE_AFTER <= self.now:
+            stale.add("battle_at")
+        return frozenset(stale)
 
     def value(self, name: str) -> Any:
         obs = getattr(self.s, name)
