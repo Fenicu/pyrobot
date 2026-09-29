@@ -14,8 +14,9 @@ LAST_DONE = ("done", "interrupted")
 DEED_PREFIX = "deed:"
 # Незавершённые запуски прошлого процесса: начатый мог исполниться, из очереди — точно нет.
 CLOSED_ON_RESTART = {"running": "interrupted", "queued": "cancelled"}
-# Запуски из очереди, которые так и не начались.
-NOT_STARTED = ("queued", "cancelled")
+# Запуски из очереди, которые так и не начались, и запуски, которые подавил kill switch или
+# остановка: команда реально не ушла, в дневной бюджет не считаются.
+NOT_STARTED = ("queued", "cancelled", "suppressed")
 
 
 @dataclass(frozen=True, slots=True)

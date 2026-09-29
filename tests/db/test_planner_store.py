@@ -171,3 +171,17 @@ async def test_runs_on_day_counts_started_runs_of_scenario(clean_db: Database, k
     assert await store.runs_on_day("factory_report", date(2026, 9, 27)) == 3
     assert await store.runs_on_day("factory_report", date(2026, 9, 26)) == 1
     assert await store.runs_on_day("factory_report", date(2026, 9, 28)) == 0
+
+
+@pytest.mark.parametrize("kind", ["db", "memory"])
+async def test_runs_on_day_excludes_suppressed_runs(clean_db: Database, kind: str) -> None:
+    store: DbPlannerStore | MemoryPlannerStore = (
+        DbPlannerStore(clean_db, account_id=1) if kind == "db" else MemoryPlannerStore()
+    )
+    msk = timezone(timedelta(hours=3))
+    midnight = datetime(2026, 9, 27, 0, 0, tzinfo=msk)
+    decided = await store.record(midnight, Act("factory_report", {}, "factory_report"))
+    # Kill switch подавил команду — /fb реально не ушёл, в дневной бюджет не считается.
+    run = await store.run_started(decided, "factory_report", {}, midnight + timedelta(hours=1))
+    await store.run_finished(run, "suppressed", "killed", midnight + timedelta(hours=1))
+    assert await store.runs_on_day("factory_report", date(2026, 9, 27)) == 0
