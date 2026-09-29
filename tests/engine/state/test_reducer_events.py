@@ -65,6 +65,27 @@ def test_factory_report_day_only_grows() -> None:
     assert value(state, "money") is None
 
 
+def test_factory_report_day_not_from_future() -> None:
+    # День битвы позже сегодняшнего (по Москве, на момент сообщения) не принимается: он «только
+    # растёт» и залип бы, отключив запрос сегодняшнего отчёта до той даты.
+    import re
+
+    reducer = StateReducer()
+    state = feed(reducer, {}, "crew", 3625108, 1)
+    report = fixture_at("crew", 3625108, 2)
+
+    def dated(day: str) -> object:
+        text = re.sub(r"фабрику \d+\.\d+\.\d+:", f"фабрику {day}:", report.text or "")
+        return replace(report, text=text)
+
+    future = dated("27.09.26")
+    state = reducer.apply(state, future, PARSER.parse(future))
+    assert value(state, "factory_report_day") == "2026-09-25"
+    today = dated("26.09.26")
+    state = reducer.apply(state, today, PARSER.parse(today))
+    assert value(state, "factory_report_day") == "2026-09-26"
+
+
 def test_closed_factory_screen_keeps_signup() -> None:
     reducer = StateReducer()
     state = feed(reducer, {}, "crew", 3624393, 1)

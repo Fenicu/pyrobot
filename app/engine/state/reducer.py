@@ -827,9 +827,11 @@ def _factory_call(p: _Patch, e: FactoryCall) -> None:
 
 @_on(FactoryReport)
 def _factory_report(p: _Patch, e: FactoryReport) -> None:
-    # /fb отдаёт последнюю битву с участием персонажа: день только растёт.
+    # /fb отдаёт последнюю битву с участием персонажа: день только растёт — и не дальше сегодня
+    # (иначе дата из будущего залипла бы и отключила запрос сегодняшнего отчёта).
     known: Obs[date] | None = p.get("factory_report_day")
-    if known is None or known.value <= e.battle_day:
+    fresh = known is None or known.value <= e.battle_day
+    if fresh and e.battle_day <= tasks_day(p.at):
         p.snap("factory_report_day", e.battle_day)
     key = f"factory:{e.day}"
     if p.first(key):
