@@ -57,6 +57,11 @@ RECONCILE_REASON = "reconcile_required"
 STORE_FAILED = "store_failed"
 
 
+class SourceRefused(Exception):
+    """Исходное сообщение пересылки не то, что видела реакция (правлено, удалено, не читается):
+    до ForwardMessages дело не дошло."""
+
+
 @dataclass(eq=False)
 class _Pending:
     req: ActionRequest
@@ -412,11 +417,11 @@ class ActionGateway:
 
     def _forward_checks(self, req: ActionRequest) -> Blocked | None:
         """Пересылка — только из чата игры и только в текущий чат команды (сверяется и перед
-        каждой попыткой). Kill отклоняет, dry_run подавляет; пауза и блок трат не мешают: в игре
-        пересылка ничего не меняет."""
+        каждой попыткой), с хешем содержимого, которое видела реакция. Kill отклоняет, dry_run
+        подавляет; пауза и блок трат не мешают: в игре пересылка ничего не меняет."""
         current = self._settings.current
         chats = current.chats
-        if req.message_id is None:
+        if req.message_id is None or req.expect_content is None:
             return ActionStatus.REJECTED, "forward_invalid"
         if req.from_chat_id != chats.game_chat_id:
             return ActionStatus.REJECTED, "forward_source"
@@ -636,6 +641,8 @@ class ActionGateway:
                     return await self._finish(p, ActionStatus.REFUSED, "auth_lost")
                 except TransportRejected as exc:
                     return await self._finish(p, ActionStatus.REFUSED, f"rejected:{exc}")
+                except SourceRefused as exc:
+                    return await self._finish(p, ActionStatus.REFUSED, str(exc))
                 except Exception as exc:
                     return await self._finish(
                         p, ActionStatus.OUTCOME_UNKNOWN, f"send_error:{type(exc).__name__}"
@@ -678,6 +685,7 @@ class ActionGateway:
 
     async def _transmit(self, req: ActionRequest, click_timeout: float) -> str | None:
         if req.kind is ActionKind.FORWARD:
+            await self._check_source(req)
             # Ответ пересылки — id сообщения в чате назначения (0 — Telegram его не вернул).
             sent = await self._transport.forward(
                 req.from_chat_id or 0, req.message_id or 0, req.chat_id
@@ -689,6 +697,22 @@ class ActionGateway:
         return await self._transport.click(
             req.chat_id, req.message_id or 0, req.data or "", click_timeout
         )
+
+    async def _check_source(self, req: ActionRequest) -> None:
+        """Перед каждой попыткой пересылки исходное сообщение перечитывается из Telegram: правленое
+        после реакции, удалённое или непрочитанное не пересылается. Правка между этим чтением и
+        ForwardMessages остаётся гонкой — Telegram перешлёт текущую версию."""
+        try:
+            current = await self._transport.fetch(req.from_chat_id or 0, req.message_id or 0)
+        except (FloodWait, TransportAuthLost):
+            raise
+        except Exception as exc:
+            log.warning("forward source %s not read: %r", req.message_id, exc)
+            raise SourceRefused("source_unreadable") from exc
+        if current is None:
+            raise SourceRefused("source_gone")
+        if current.content_hash() != req.expect_content:
+            raise SourceRefused("source_changed")
 
     async def _await_outcome(
         self, inflight: _InFlight, timeout_s: float

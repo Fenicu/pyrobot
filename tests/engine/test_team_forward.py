@@ -71,6 +71,8 @@ class ForwardRig:
         await self.gw.stop()
 
     async def deliver(self, msg: IncomingMessage, *, reactable: bool = True) -> None:
+        # Шлюз перечитывает исходное сообщение перед пересылкой: в Telegram оно такое же.
+        self.gw.transport.messages.setdefault((msg.chat_id, msg.msg_id), msg)
         events = tuple(default_parser(ChatsSection()).parse(msg))
         await self.reaction.on_delivery(Delivery(msg, events, 0, 1, reactable))
 
@@ -288,6 +290,7 @@ async def test_through_pipeline_once(rig: ForwardRig) -> None:
         bus=bus,
     )
     task = game_msg(*TASK)
+    rig.gw.transport.messages[(task.chat_id, task.msg_id)] = task
     await pipeline.process(task)
     await pipeline.process(task)
     # Догон отдаёт правленое сообщение как новое, но с ревизией правки.
@@ -389,3 +392,16 @@ async def test_task_ttl_is_age_window(rig: ForwardRig) -> None:
     await rig.settle()
     [row] = rig.gw.store.rows.values()
     assert row.req.ttl_s == 10 * 60 - 2
+
+
+async def test_source_edited_before_send_refused_and_notified(rig: ForwardRig) -> None:
+    task = game_msg(*TASK)
+    edited = replace(task, text=(task.text or "") + " ", revision=task.revision + 1)
+    rig.gw.transport.messages[(task.chat_id, task.msg_id)] = edited
+    await rig.deliver(task)
+    await rig.settle()
+    assert rig.sent == []
+    [row] = rig.gw.store.rows.values()
+    assert (row.status, row.reason) == (ActionStatus.REFUSED, "source_changed")
+    assert row.req.expect_content == task.content_hash()
+    assert rig.notes.items == [("warn", "team_forward_failed")]

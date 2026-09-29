@@ -28,6 +28,9 @@ class FakeTransport:
         self.fail_with: list[BaseException] = []
         self.toast: str | None = None
         self.messages: dict[tuple[int, int], IncomingMessage] = {}
+        # Перечитывания сообщений (`fetch`) и ошибки, которыми падают очередные из них.
+        self.fetches: list[tuple[int, int]] = []
+        self.fetch_fail_with: list[BaseException] = []
         # Проверка чатов команды: итог по чату (по умолчанию — участник группы) и вызовы.
         self.groups: dict[int, GroupCheck] = {}
         self.group_error: BaseException | None = None
@@ -63,6 +66,9 @@ class FakeTransport:
         return self._next_id
 
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
+        self.fetches.append((chat_id, message_id))
+        if self.fetch_fail_with:
+            raise self.fetch_fail_with.pop(0)
         return self.messages.get((chat_id, message_id))
 
     async def check_group(self, chat_id: int) -> GroupCheck:

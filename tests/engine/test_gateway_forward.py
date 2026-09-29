@@ -9,13 +9,20 @@ from app.engine.commands import CommandClass
 from app.engine.gateway.gateway import RECONCILE_REASON, command_class
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.settings import Settings
+from app.engine.types import IncomingMessage
 from tests.engine.gateway_rig import LIVE, Rig, expect_text, running_rig, send
-from tests.engine.helpers import GAME, until
+from tests.engine.helpers import GAME, make_msg, until
 
 TEAM = -1001149209877
 TEAM_LIVE = Settings(
     engine=LIVE.engine, chats=LIVE.chats.model_copy(update={"team_chat_id": TEAM})
 )
+
+
+def source(
+    msg_id: int = 5, text: str = "Ты завершил задание в команде и заработал 90🏆"
+) -> IncomingMessage:
+    return make_msg(text, msg_id=msg_id)
 
 
 def forward(msg_id: int = 5, **kw: object) -> ActionRequest:
@@ -25,6 +32,7 @@ def forward(msg_id: int = 5, **kw: object) -> ActionRequest:
         "from_chat_id": GAME,
         "message_id": msg_id,
         "idempotency_key": f"forward:{GAME}:{msg_id}",
+        "expect_content": source(msg_id).content_hash(),
         **kw,
     }
     return ActionRequest(**fields)  # type: ignore[arg-type]
@@ -33,6 +41,8 @@ def forward(msg_id: int = 5, **kw: object) -> ActionRequest:
 @pytest.fixture
 async def rig() -> AsyncIterator[Rig]:
     async for r in running_rig(TEAM_LIVE):
+        for msg_id in (5, 6, 7):
+            r.transport.messages[(GAME, msg_id)] = source(msg_id)
         yield r
 
 
@@ -197,3 +207,48 @@ async def test_team_chat_check_error_is_refusal(rig: Rig) -> None:
     res = await rig.gw.submit(forward())
     assert res.status is ActionStatus.REFUSED and res.reason == "team_chat_unavailable"
     assert rig.transport.sent == []
+
+
+async def test_source_reread_right_before_forward(rig: Rig) -> None:
+    assert (await rig.gw.submit(forward())).status is ActionStatus.CONFIRMED
+    assert rig.transport.fetches == [(GAME, 5)]
+
+
+async def test_edited_source_refused(rig: Rig) -> None:
+    # Игра поправила сообщение после того, как реакция его увидела: пересылается не оно.
+    rig.transport.messages[(GAME, 5)] = source(5, "Ты завершил задание в команде и заработал 0🏆")
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.REFUSED and res.reason == "source_changed"
+    assert rig.transport.sent == []
+    assert rig.store.rows[res.action_id or 0].status is ActionStatus.REFUSED
+
+
+async def test_deleted_source_refused(rig: Rig) -> None:
+    del rig.transport.messages[(GAME, 5)]
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.REFUSED and res.reason == "source_gone"
+    assert rig.transport.sent == []
+
+
+async def test_unreadable_source_refused(rig: Rig) -> None:
+    rig.transport.fetch_fail_with.append(OSError("network down"))
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.REFUSED and res.reason == "source_unreadable"
+    assert rig.transport.sent == []
+    assert rig.gw.spending_blocked is None
+
+
+async def test_forward_without_seen_content_rejected(rig: Rig) -> None:
+    res = await rig.gw.submit(forward(expect_content=None))
+    assert res.status is ActionStatus.REJECTED and res.reason == "forward_invalid"
+    assert rig.transport.sent == [] and rig.transport.fetches == []
+
+
+async def test_flood_wait_on_reread_waits_and_reads_again(rig: Rig) -> None:
+    from app.engine.transport.base import FloodWait
+
+    rig.transport.fetch_fail_with.append(FloodWait(0.05))
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.CONFIRMED
+    assert rig.transport.fetches == [(GAME, 5), (GAME, 5)]
+    assert len(rig.transport.sent) == 1
