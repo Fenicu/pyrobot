@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { tick } from 'svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Outlook, StateOut } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
 import PlanCard from './PlanCard.svelte';
@@ -16,6 +16,10 @@ function card(p: Outlook = plan) {
 }
 
 describe('«План бота» на фикстуре из бэкенд-теста', () => {
+	// Настоящее время — момент плана: карточка сверяет срок сна цикла с настоящими часами.
+	beforeEach(() => vi.useFakeTimers({ now: NOW, toFake: ['Date'] }));
+	afterEach(() => vi.useRealTimers());
+
 	it('«Сейчас», «Почему не другое», «Готово сейчас», «Дальше по времени»', () => {
 		const block = card();
 		const now = within(block).getByRole('region', { name: 'Сейчас' });
@@ -106,6 +110,22 @@ describe('«План бота» на фикстуре из бэкенд-тест
 			expect(now).toHaveTextContent('🤑 билеты лотереи (все — max)');
 			expect(now).not.toHaveTextContent('ждёт');
 			expect(now).not.toHaveTextContent('Тогда');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('план пришёл уже после срока сна цикла, часы главной отстают — «Сейчас» без «ждёт»', async () => {
+		// Часы главной — 19:30:00, план снят в 19:30:04 со сроком 19:30:05, ответ пришёл в 19:30:06.
+		const taken = '2026-09-27T16:30:04Z';
+		const at = '2026-09-27T16:30:05Z';
+		vi.useFakeTimers({ now: new Date('2026-09-27T16:30:06Z'), toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+		try {
+			card({ ...plan, now: taken, loop: { ...plan.loop, next_wake: at, wait_reason: 'book_ready', wake_at: at } });
+			await tick();
+			const now = screen.getByRole('region', { name: 'Сейчас' });
+			expect(now).toHaveTextContent('🤑 билеты лотереи (все — max)');
+			expect(now).not.toHaveTextContent('ждёт');
 		} finally {
 			vi.useRealTimers();
 		}

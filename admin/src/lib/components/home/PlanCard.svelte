@@ -27,14 +27,18 @@
 	let more = $state(false);
 
 	// Срок, до которого спит цикл, наступает между тиками часов главной (раз в 30 с): «Сейчас»
-	// перерисовывается в сам срок.
+	// перерисовывается в сам срок, а план, пришедший уже после срока, сразу сверяется с настоящим
+	// временем.
 	let woke = $state<Date | null>(null);
 	const clock = $derived(woke !== null && woke.getTime() > now.getTime() ? woke : now);
 	$effect(() => {
 		const wake = plan?.loop.wake_at;
 		if (!wake) return;
 		const left = Date.parse(wake) - Date.now();
-		if (left <= 0) return;
+		if (left <= 0) {
+			woke = new Date();
+			return;
+		}
 		const timer = setTimeout(() => (woke = new Date(wake)), left);
 		return () => clearTimeout(timer);
 	});
