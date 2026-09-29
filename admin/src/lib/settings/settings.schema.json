@@ -805,9 +805,16 @@
   "TelegramSection": {
    "properties": {
     "expected_user_id": {
-     "default": 267519921,
-     "title": "Expected User Id",
-     "type": "integer"
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Expected User Id"
     }
    },
    "title": "TelegramSection",

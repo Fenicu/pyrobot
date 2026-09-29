@@ -83,6 +83,18 @@ async def test_fake_runtime_login_to_ready(clean_db: Database) -> None:
             assert "team-forward" in app.state.runtime.supervisor._tasks
 
 
+async def test_first_login_binds_telegram_account(clean_db: Database) -> None:
+    app = create_application(_cfg())
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            await _login_tg(client)
+            values = (await client.get("/api/v1/settings")).json()["values"]
+            assert values["telegram"]["expected_user_id"] == 267519921
+            last = (await client.get("/api/v1/settings/history")).json()["items"][0]
+            assert last["changed_by"] == "system"
+            assert last["changes"] == {"telegram.expected_user_id": [None, 267519921]}
+
+
 async def test_second_runtime_does_not_start_engine(clean_db: Database) -> None:
     first = create_application(_cfg())
     second = create_application(_cfg())
@@ -343,7 +355,8 @@ async def test_runtime_streams_engine_events(clean_db: Database) -> None:
             await until(lambda: "message" in {e.type for e in runtime.stream.history()})
     kinds = [e.type for e in runtime.stream.history()]
     assert {"settings", "notification", "action", "message"} <= set(kinds)
-    paused = next(e for e in runtime.stream.history() if e.type == "settings")
+    # Первая версия настроек — привязка аккаунта при входе, пауза — последняя.
+    paused = [e for e in runtime.stream.history() if e.type == "settings"][-1]
     assert paused.data["paused"] is True
 
 

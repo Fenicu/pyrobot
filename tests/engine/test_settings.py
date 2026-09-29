@@ -20,7 +20,8 @@ def test_defaults_are_safe() -> None:
     s = Settings()
     assert s.engine.mode == "dry_run"
     assert s.engine.killed is False
-    assert s.telegram.expected_user_id == 267519921
+    # Аккаунт не привязан: привязку делает первый вход в Telegram.
+    assert s.telegram.expected_user_id is None
     assert s.chats.bulls_invite_chat_id is None
 
 

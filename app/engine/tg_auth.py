@@ -99,13 +99,16 @@ class TgAuthManager:
         self,
         backend: TgAuthBackend,
         *,
-        expected_user_id: int,
+        expected_user_id: int | None,
+        on_bind: Callable[[int], Awaitable[None]] | None = None,
         attempt_ttl_s: float = 600.0,
         notifier: NotifierPort | None = None,
     ) -> None:
         self._backend = backend
         self._notifier = notifier
+        # None — аккаунт не привязан: первый вход привязывает, дальше пускается только он.
         self._expected = expected_user_id
+        self._on_bind = on_bind
         self._ttl = attempt_ttl_s
         self._lock = asyncio.Lock()
         self._state = TgState.UNAUTHORIZED
@@ -254,7 +257,7 @@ class TgAuthManager:
         return attempt
 
     async def _accept(self, user_id: int) -> None:
-        if user_id != self._expected:
+        if self._expected is not None and user_id != self._expected:
             try:
                 await self._backend.log_out()
             except Exception:
@@ -271,11 +274,23 @@ class TgAuthManager:
             return
         self._user_id = user_id
         self._set(TgState.ONLINE)
+        if self._expected is None:
+            await self._bind(user_id)
         for cb in self._callbacks:
             try:
                 await cb()
             except Exception:
                 log.exception("online callback failed")
+
+    async def _bind(self, user_id: int) -> None:
+        # В памяти — сразу: не сохранилась привязка — до перезапуска всё равно пускается только он.
+        self._expected = user_id
+        if self._on_bind is None:
+            return
+        try:
+            await self._on_bind(user_id)
+        except Exception:
+            log.exception("telegram account binding not persisted")
 
     def _set(self, state: TgState, *, error: str | None = None) -> None:
         self._state = state

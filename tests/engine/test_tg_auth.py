@@ -205,3 +205,59 @@ async def test_sign_in_backend_failure_keeps_attempt() -> None:
         await mgr.submit_code(st.attempt_id or "", "s1", "12345")
     assert info.value.code == "sign_in_failed"
     assert mgr.status().state is TgState.AWAITING_CODE
+
+
+async def test_unbound_accepts_first_account_and_binds_it() -> None:
+    bound: list[int] = []
+
+    async def bind(user_id: int) -> None:
+        bound.append(user_id)
+
+    backend = FakeTgBackend(user_id=42)
+    mgr = TgAuthManager(backend, expected_user_id=None, on_bind=bind)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    assert st.state is TgState.ONLINE and st.user_id == 42 and bound == [42]
+    # Привязка держится и без перезапуска: после выхода чужой аккаунт уже не пройдёт.
+    await mgr.logout()
+    backend.user_id = 7
+    st = await mgr.start("+888", owner="s1")
+    st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    assert st.state is TgState.ERROR and st.error == "unexpected_user" and bound == [42]
+
+
+async def test_unbound_boot_binds_existing_session() -> None:
+    bound: list[int] = []
+
+    async def bind(user_id: int) -> None:
+        bound.append(user_id)
+
+    mgr = TgAuthManager(FakeTgBackend(authorized=True), expected_user_id=None, on_bind=bind)
+    assert (await mgr.boot()).state is TgState.ONLINE
+    assert bound == [EXPECTED]
+
+
+async def test_bound_account_is_not_rebound() -> None:
+    bound: list[int] = []
+
+    async def bind(user_id: int) -> None:
+        bound.append(user_id)
+
+    mgr = TgAuthManager(FakeTgBackend(authorized=True), expected_user_id=EXPECTED, on_bind=bind)
+    assert (await mgr.boot()).state is TgState.ONLINE
+    assert bound == []
+
+
+async def test_bind_failure_keeps_online_and_binding_in_memory() -> None:
+    async def bind(user_id: int) -> None:
+        raise ConnectionError("db down")
+
+    backend = FakeTgBackend(authorized=True, user_id=42)
+    mgr = TgAuthManager(backend, expected_user_id=None, on_bind=bind)
+    assert (await mgr.boot()).state is TgState.ONLINE
+    await mgr.logout()
+    backend.user_id = 7
+    st = await mgr.start("+888", owner="s1")
+    st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    assert st.error == "unexpected_user"

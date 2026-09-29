@@ -1,12 +1,13 @@
 """Первый вход без админки: вход админа, затем вход в Telegram через API сервиса.
 
-    uv run python tools/login.py https://sw.fenicu.com
+    uv run python tools/login.py https://<адрес админки>
 
 Спрашивает логин и пароль админа, телефон, код из Telegram и пароль 2FA. Коды и пароли вводятся
 без эха, не печатаются и не логируются; cookie сессии и CSRF-токен живут только в памяти процесса
 (cookie передаётся заголовком — так вход работает и напрямую по http внутри сети, где браузер не
 отправил бы Secure-cookie). В конце user_id вошедшего аккаунта сверяется с
-telegram.expected_user_id из настроек сервиса, сессия админа закрывается."""
+telegram.expected_user_id из настроек сервиса (не задан — первый вход привязывает аккаунт), сессия
+админа закрывается."""
 
 import asyncio
 import contextlib
@@ -125,20 +126,24 @@ async def login_flow(client: httpx.AsyncClient, ask: Ask, secret: Ask, say: Say)
     await api.login(ask("admin login [admin]: ").strip() or "admin", secret("admin password: "))
     try:
         settings = await api.call("GET", "/api/v1/settings")
-        expected = int(settings["values"]["telegram"]["expected_user_id"])
+        expected = settings["values"]["telegram"]["expected_user_id"]
         status = await _telegram(api, ask, secret, say)
         if status["state"] != "online":
             raise LoginFailed(f"telegram: {status['state']} {status['error'] or ''}".strip())
-        if status["user_id"] != expected:
-            raise LoginFailed(f"telegram user {status['user_id']} is not {expected}")
-        say(f"telegram online as {status['user_id']} (expected_user_id matches)")
+        user_id = int(status["user_id"])
+        if expected is None:
+            say(f"telegram online as {user_id} (account bound on first login)")
+        elif user_id != int(expected):
+            raise LoginFailed(f"telegram user {user_id} is not {expected}")
+        else:
+            say(f"telegram online as {user_id} (expected_user_id matches)")
     except Exception:
         # Сессия админа закрывается и при ошибке, но в отчёт идёт первопричина, а не сбой выхода.
         with contextlib.suppress(LoginFailed):
             await api.logout()
         raise
     await api.logout()
-    return expected
+    return user_id
 
 
 def main() -> None:

@@ -37,7 +37,8 @@ class EngineSection(BaseModel):
 
 
 class TelegramSection(BaseModel):
-    expected_user_id: int = 267519921
+    # None — аккаунт не привязан: первый успешный вход привязывает бота к вошедшему аккаунту.
+    expected_user_id: int | None = None
 
 
 class ChatsSection(BaseModel):

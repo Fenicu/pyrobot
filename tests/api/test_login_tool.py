@@ -7,6 +7,7 @@ from app.api.app import create_api
 from app.api.container import Container
 from app.db.base import Database
 from app.db.models import AuthSession
+from app.engine.settings import Settings, StaticSettings, TelegramSection
 from app.engine.transport.fake import FakeTgBackend
 from tests.api.conftest import PASSWORD
 from tests.engine.test_facade import build
@@ -37,8 +38,11 @@ class Console:
         self.shown.append(text)
 
 
-async def _client(container: Container, backend: FakeTgBackend) -> AsyncClient:
-    container.facade = build(authorized=backend.authorized, backend=backend)
+async def _client(
+    container: Container, backend: FakeTgBackend, bound: int | None = None
+) -> AsyncClient:
+    settings = StaticSettings(Settings(telegram=TelegramSection(expected_user_id=bound)))
+    container.facade = build(authorized=backend.authorized, backend=backend, settings=settings)
     await container.facade.tg.boot()
     return AsyncClient(transport=ASGITransport(app=create_api(container)), base_url="http://t")
 
@@ -70,6 +74,20 @@ async def test_already_online_needs_only_admin(container: Container, clean_db: D
     async with await _client(container, FakeTgBackend(authorized=True)) as client:
         assert await login_flow(client, console.ask, console.secret, console.say) == EXPECTED
     assert "telegram is already online" in console.shown
+    assert f"telegram online as {EXPECTED} (account bound on first login)" in console.shown
+
+
+async def test_bound_account_is_checked(container: Container, clean_db: Database) -> None:
+    console = Console([""], [PASSWORD])
+    async with await _client(container, FakeTgBackend(authorized=True), EXPECTED) as client:
+        assert await login_flow(client, console.ask, console.secret, console.say) == EXPECTED
+    assert f"telegram online as {EXPECTED} (expected_user_id matches)" in console.shown
+    # Привязку поменяли без перезапуска: сервис ещё под старым аккаунтом — скрипт это видит.
+    console = Console([""], [PASSWORD])
+    async with await _client(container, FakeTgBackend(authorized=True), 42) as client:
+        with pytest.raises(LoginFailed, match=f"telegram user {EXPECTED} is not 42"):
+            await login_flow(client, console.ask, console.secret, console.say)
+    assert await _open_sessions(clean_db) == 0
 
 
 async def test_unexpected_user_fails(container: Container, clean_db: Database) -> None:

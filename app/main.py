@@ -195,6 +195,7 @@ class Runtime:
         self.tg = TgAuthManager(
             backend,
             expected_user_id=self.settings.current.telegram.expected_user_id,
+            on_bind=self._bind_telegram,
             notifier=self.notifier,
         )
         if self._kurigram is not None:
@@ -292,6 +293,14 @@ class Runtime:
         self.stream.publish(
             "notification", {"id": row.id, "level": row.level, "code": row.code, "text": row.text}
         )
+
+    async def _bind_telegram(self, user_id: int) -> None:
+        def change(s: Settings) -> Settings:
+            telegram = s.telegram.model_copy(update={"expected_user_id": user_id})
+            return s.model_copy(update={"telegram": telegram})
+
+        await self.settings.update(change, changed_by="system")
+        log.info("telegram account %d bound", user_id)
 
     def _publish_settings(self, settings: Settings, version: int) -> None:
         engine = settings.engine
