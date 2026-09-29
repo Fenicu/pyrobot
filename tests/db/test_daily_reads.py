@@ -58,6 +58,7 @@ async def test_ledger_entries_from_day_and_first_day(clean_db: Database) -> None
                 chat_id=1,
                 msg_id=i,
                 revision=0,
+                content_hash="h",
                 seq=0,
             )
             for i, (d, kind, amounts, items) in enumerate(rows)

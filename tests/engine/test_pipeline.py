@@ -338,6 +338,32 @@ async def test_effects_reach_journal_once() -> None:
     ]
 
 
+async def lottery_edits_in_one_second(journal: Any) -> None:
+    """Экран лотереи и две покупки билета за 💵 правками одной секунды через конвейер."""
+    from app.engine.settings import ChatsSection
+    from app.engine.state.reducer import StateReducer
+    from tests.fixtures import game_msg, game_versions
+
+    pipe = Pipeline(
+        journal=journal, parser=default_parser(ChatsSection()), reducer=StateReducer(), bus=Bus()
+    )
+    await pipe.process(game_msg("lottery", 3626217))
+    opened, clicked = game_versions("lottery", 3626219)
+    await pipe.process(opened)
+    await pipe.process(clicked)
+    second = replace(clicked, text=(clicked.text or "").replace("1 из 10", "2 из 10"))
+    assert (second.revision, second.date) == (clicked.revision, clicked.date)
+    await pipe.process(second)
+
+
+async def test_two_edits_in_one_second_both_in_ledger() -> None:
+    journal = MemoryJournal()
+    await lottery_edits_in_one_second(journal)
+    assert [(e.kind, e.amounts) for _, e, _ in journal.ledger] == [
+        ("lottery_tickets", {"money": -30})
+    ] * 2
+
+
 async def test_commit_uncertain_then_conflict_reloads_snapshot() -> None:
     """Фиксация прошла, но ответ потерялся: повтор упирается в уже записанную ревизию — снимок и
     эффекты уже в журнале, состояние перечитывается из него, эффекты не задваиваются."""

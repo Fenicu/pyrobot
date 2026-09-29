@@ -147,8 +147,17 @@ class LedgerRow(Base):
 
     __tablename__ = "ledger"
     __table_args__ = (
+        # Ключ ряда сообщения (как у `messages`) и номер эффекта: правки одной секунды с разным
+        # содержимым — разные ряды, и эффект каждой пишется.
         UniqueConstraint(
-            "account_id", "chat_id", "msg_id", "revision", "kind", "seq", name="uq_ledger_effect"
+            "account_id",
+            "chat_id",
+            "msg_id",
+            "revision",
+            "content_hash",
+            "kind",
+            "seq",
+            name="uq_ledger_effect",
         ),
         Index("ix_ledger_account_day", "account_id", "day"),
     )
@@ -164,6 +173,7 @@ class LedgerRow(Base):
     chat_id: Mapped[int] = mapped_column(BigInteger)
     msg_id: Mapped[int] = mapped_column(BigInteger)
     revision: Mapped[int] = mapped_column(BigInteger)
+    content_hash: Mapped[str] = mapped_column(String(40))
     seq: Mapped[int] = mapped_column(Integer)
 
 

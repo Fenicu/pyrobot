@@ -30,16 +30,24 @@ def upgrade() -> None:
         sa.Column("chat_id", sa.BigInteger(), nullable=False),
         sa.Column("msg_id", sa.BigInteger(), nullable=False),
         sa.Column("revision", sa.BigInteger(), nullable=False),
+        sa.Column("content_hash", sa.String(length=40), nullable=False),
         sa.Column("seq", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["account_id"], ["accounts.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
-            "account_id", "chat_id", "msg_id", "revision", "kind", "seq", name="uq_ledger_effect"
+            "account_id",
+            "chat_id",
+            "msg_id",
+            "revision",
+            "content_hash",
+            "kind",
+            "seq",
+            name="uq_ledger_effect",
         ),
     )
     op.create_index("ix_ledger_account_day", "ledger", ["account_id", "day"], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index("ix_ledger_account_day", table_name="ledger")
+    # Индексы и ограничения уходят вместе с таблицей.
     op.drop_table("ledger")

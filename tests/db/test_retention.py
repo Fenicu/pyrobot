@@ -162,6 +162,7 @@ def _ledger(at: datetime, day: date) -> LedgerRow:
         chat_id=1,
         msg_id=int(at.timestamp()),
         revision=0,
+        content_hash="h",
         seq=0,
     )
 

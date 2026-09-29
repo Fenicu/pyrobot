@@ -153,7 +153,9 @@ class DbJournal:
 
     def _ledger(self, msg: IncomingMessage, effects: Sequence[Effect]) -> Any:
         """Эффекты — после вставки ревизии, в той же транзакции: повтор после сбоя фиксации
-        упирается в ревизию и их не задваивает; ключ эффекта уже есть — «уже записано»."""
+        упирается в ревизию и их не задваивает; ключ эффекта — ключ ряда сообщения (с хешем
+        содержимого) и номер, уже есть — «уже записано»."""
+        content_hash = msg.content_hash()
         rows = []
         for effect, seq in numbered(effects):
             at = effect.at or msg.date
@@ -168,6 +170,7 @@ class DbJournal:
                     "chat_id": msg.chat_id,
                     "msg_id": msg.msg_id,
                     "revision": msg.revision,
+                    "content_hash": content_hash,
                     "seq": seq,
                 }
             )

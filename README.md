@@ -411,8 +411,10 @@ uv run alembic upgrade head
 фабрики — самой битвы) и его дата по Москве `day`, вид `kind`, суммы `amounts` (JSONB, ненулевые со
 знаком: `money`, `exp`, `knowledge`, `details`, `raw`, `upgrades_white`/`_blue`/`_red`, `trophies` —
 🏆 за задания, `containers_small`/`_medium`), предметы крафта `items` (`{название: количество}`) и
-ссылка на ревизию `chat_id`, `msg_id`, `revision`, `seq` (номер эффекта этого вида в сообщении).
-Уникальность — `(account_id, chat_id, msg_id, revision, kind, seq)`, индекс
+ссылка на ряд сообщения `chat_id`, `msg_id`, `revision`, `content_hash`, `seq` (номер эффекта
+этого вида в сообщении). Уникальность — `(account_id, chat_id, msg_id, revision, content_hash, kind,
+seq)`: ключ ряда `messages` и номер эффекта — ревизия точна до секунды, и две правки одной секунды
+с разным содержимым (две покупки билета лотереи) — разные ряды, эффект каждой пишется; индекс
 `ix_ledger_account_day`. Старые сообщения в журнал прихода не переносятся: дни до его запуска
 «Итоги» показывают без разового и потерь (см. «Итоги дня»).
 

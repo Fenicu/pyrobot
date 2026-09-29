@@ -24,7 +24,7 @@ class MemoryJournal:
         # Журнал прихода: сообщение, эффект, номер эффекта этого вида в сообщении.
         self.ledger: list[tuple[IncomingMessage, Effect, int]] = []
         self._keys: set[tuple[int, int, int, str]] = set()
-        self._ledger_keys: set[tuple[int, int, int, str, int]] = set()
+        self._ledger_keys: set[tuple[int, int, int, str, str, int]] = set()
 
     async def load_state(self) -> tuple[dict[str, Any], int]:
         return self.snapshot
@@ -68,7 +68,7 @@ class MemoryJournal:
             (journal_id, e.first_line) for e in events if isinstance(e, Unrecognized)
         )
         for effect, seq in numbered(effects):
-            ledger_key = (msg.chat_id, msg.msg_id, msg.revision, effect.kind, seq)
+            ledger_key = (*key, effect.kind, seq)
             if ledger_key not in self._ledger_keys:
                 self._ledger_keys.add(ledger_key)
                 self.ledger.append((msg, effect, seq))
