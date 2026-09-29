@@ -222,10 +222,30 @@ describe('Настройки', () => {
 		await view();
 		const list = await screen.findByRole('list', { name: 'Версии настроек' });
 		const v8 = await within(list).findByRole('button', { name: /v8 / });
-		expect(v8).toHaveTextContent('features.daily_tasks → вкл; strategy.deeds → harvest, job, learn, dconv, walk, confa');
+		expect(v8).toHaveTextContent(
+			'Функции · Ежедневные задания → вкл; Стратегия и дела · Разрешённые дела → harvest, job, learn, dconv, walk, confa'
+		);
 		await user.click(v8);
 		expect(v8).toHaveAttribute('aria-expanded', 'true');
-		expect(within(list).getByLabelText('Изменения версии 8')).toHaveTextContent('features.daily_tasks выкл → вкл');
+		expect(within(list).getByLabelText('Изменения версии 8')).toHaveTextContent('Функции · Ежедневные задания выкл → вкл');
+		expect(within(list).getByLabelText('Изменения версии 8')).not.toHaveTextContent('features.daily_tasks');
+	});
+
+	it('история: «вернуть» кладёт прежнее значение в черновик, сохранение — как обычно', async () => {
+		const user = userEvent.setup();
+		const { editor } = await view();
+		const list = await screen.findByRole('list', { name: 'Версии настроек' });
+		await user.click(await within(list).findByRole('button', { name: /v13 / }));
+		await user.click(within(list).getByRole('button', { name: 'Вернуть «Функции · Лотерея»: выкл' }));
+		expect(editor.value(['features', 'lottery'])).toBe(false);
+		const bar = screen.getByRole('region', { name: 'Несохранённые изменения' });
+		expect(bar).toHaveTextContent('Функции · Лотерея: вкл → выкл');
+		// Значение уже в черновике — второй раз вернуть нечего.
+		expect(within(list).queryByRole('button', { name: /Вернуть «Функции · Лотерея»/ })).toBeNull();
+		// Паузу меняют кнопки на главной — вернуть её из истории нельзя.
+		await user.click(within(list).getByRole('button', { name: /v12 / }));
+		expect(within(list).getByLabelText('Изменения версии 12')).toHaveTextContent('Движок · Пауза планировщика вкл → выкл');
+		expect(within(within(list).getByLabelText('Изменения версии 12')).queryByRole('button')).toBeNull();
 	});
 
 	it('чужая версия из SSE перечитывает и историю', async () => {

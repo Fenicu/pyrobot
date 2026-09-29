@@ -162,7 +162,7 @@
 		</section>
 
 		<aside class="card">
-			<SettingsHistory {api} refresh={historyKey} {now} />
+			<SettingsHistory {api} {editor} refresh={historyKey} {now} />
 		</aside>
 	</div>
 

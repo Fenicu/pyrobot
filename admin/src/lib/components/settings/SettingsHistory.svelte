@@ -2,17 +2,37 @@
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { SettingsVersion } from '$lib/api/types';
+	import type { SettingsEditor } from '$lib/settings/editor.svelte';
+	import { settingNames } from '$lib/settings/names';
+	import { settingPaths } from '$lib/settings/paths.svelte';
+	import { same } from '$lib/settings/schema';
 	import { fmtValue } from '$lib/settings/value';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
 
 	interface Props {
 		api: Api;
+		/** Подписи настроек и «вернуть»: прежнее значение — в черновик, сохранение — как обычно. */
+		editor: SettingsEditor;
 		/** Меняется после сохранения или чужого изменения — перечитать. */
 		refresh?: number;
 		now?: Date;
 	}
-	let { api, refresh = 0, now: fixedNow }: Props = $props();
+	let { api, editor, refresh = 0, now: fixedNow }: Props = $props();
+	const nameOf = $derived(settingNames(editor.sections));
+	const named = (path: string) => {
+		const n = nameOf(path);
+		return n.section ? `${n.section} · ${n.label}` : n.label;
+	};
+	// Вернуть можно поле формы (не «только чтение»), если в черновике сейчас другое значение.
+	const revertable = (path: string, before: unknown) => {
+		const field = nameOf(path).field;
+		return field !== null && !field.readOnly && !same(editor.value(field.path), before);
+	};
+	function revert(path: string, before: unknown) {
+		const field = nameOf(path).field;
+		if (field) editor.set(field.path, JSON.parse(JSON.stringify(before ?? null)));
+	}
 	const now = $derived(fixedNow ?? clock.now);
 	let items = $state<SettingsVersion[]>([]);
 	let next = $state<number | null>(null);
@@ -41,7 +61,7 @@
 		const entries = Object.entries(v.changes);
 		const head = entries
 			.slice(0, 2)
-			.map(([path, [, after]]) => `${path} → ${fmtValue(after)}`)
+			.map(([path, [, after]]) => `${named(path)} → ${fmtValue(after)}`)
 			.join('; ');
 		return entries.length > 2 ? `${head}; ещё ${entries.length - 2}` : head;
 	}
@@ -67,10 +87,21 @@
 					<dl class="mb-2 space-y-1 text-xs" aria-label="Изменения версии {v.version}">
 						{#each Object.entries(v.changes) as [path, [before, after]] (path)}
 							<div>
-								<dt class="font-mono text-fg-muted">{path}</dt>
+								<dt class="text-fg-muted">
+									{named(path)}{#if settingPaths.show}
+										<span class="block font-mono">{path}</span>{/if}
+								</dt>
 								<dd class="ext-text">
 									<span class="text-bad-fg line-through">{fmtValue(before)}</span> →
 									<span class="text-ok-fg">{fmtValue(after)}</span>
+									{#if revertable(path, before)}
+										<button
+											type="button"
+											class="ml-1 rounded px-1 text-accent hover:bg-surface-2"
+											aria-label="Вернуть «{named(path)}»: {fmtValue(before)}"
+											onclick={() => revert(path, before)}>вернуть</button
+										>
+									{/if}
 								</dd>
 							</div>
 						{/each}
