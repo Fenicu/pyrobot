@@ -8,7 +8,7 @@ from app.api.deps import SessionContext, current_session
 from app.api.errors import AUTH, ENGINE_NOT_STARTED, error
 from app.api.routes_engine import facade
 from app.engine.facade import EngineFacade, PlannerUnavailable
-from app.engine.planner.decide import Phase
+from app.engine.planner.decide import Basis, Phase
 from app.engine.planner.loop import PlanView
 from app.engine.planner.types import Act, Candidate, WakeKind, Wakeup
 from app.engine.state.model import BusyState
@@ -103,6 +103,19 @@ class PlanHintsOut(BaseModel):
     next_deed: PlanNextDeedOut | None
 
 
+class PlanBasisOut(BaseModel):
+    # Старейшее из наблюдений, которые второй проход взял как свежие: «по последним данным
+    # (профиль — …)».
+    since: datetime
+    # Наблюдение занятости.
+    busy_at: datetime
+    # Дело, которое тогда шло и уже кончилось: свободен с его until (дела начинает только бот);
+    # null — тогда был свободен.
+    ended: BusyState | None
+    # Кандидаты второго прохода до его первого решения, без «выбрано» (оно — в also_ready).
+    considered: list[PlanCandidateOut]
+
+
 class OutlookOut(BaseModel):
     now: datetime
     # unknown — занятость неизвестна или устарела; asleep — сон; busy — занят делом; free.
@@ -119,13 +132,11 @@ class OutlookOut(BaseModel):
     hints: PlanHintsOut
     # 🔥, которые дела сейчас не тратят (`strategy.reserve_ahead_min`), по времени; пусто — нет.
     reserves: list[PlanReserveOut]
-    # «По данным на»: занятость устарела, но известна — момент её наблюдения. Решение и
-    # considered — на текущих данных (обновить занятость), а also_ready, wakeups, hints, reserves
-    # и basis_considered — второй проход, как если бы быстрые поля (занятость, 💵, 🔥, 🔋…) были
-    # такими, как тогда. null — всё на текущих данных.
-    basis_at: datetime | None
-    # Кандидаты второго прохода до его первого решения, без «выбрано» (оно — в also_ready).
-    basis_considered: list[PlanCandidateOut]
+    # Занятость устарела, но известна: решение и considered — на текущих данных (обновить
+    # занятость), а also_ready, wakeups, hints, reserves и basis.considered — второй проход по
+    # последним известным значениям (быстрые поля — 💵, 🔥, 🔋… — как бы давно ни были сняты).
+    # null — всё на текущих данных.
+    basis: PlanBasisOut | None
 
 
 def _timer(w: Wakeup, after_wake: bool) -> PlanTimerOut:
@@ -135,6 +146,16 @@ def _timer(w: Wakeup, after_wake: bool) -> PlanTimerOut:
 
 def _candidate(c: Candidate) -> PlanCandidateOut:
     return PlanCandidateOut(scenario=c.scenario, params=c.params, score=c.score, verdict=c.verdict)
+
+
+def _basis(b: Basis) -> PlanBasisOut:
+    ended = b.ended
+    return PlanBasisOut(
+        since=b.since.astimezone(UTC),
+        busy_at=b.busy_at.astimezone(UTC),
+        ended=ended.model_copy(update={"until": ended.until.astimezone(UTC)}) if ended else None,
+        considered=[_candidate(c) for c in b.considered],
+    )
 
 
 def _utc(moment: datetime | None) -> datetime | None:
@@ -194,8 +215,7 @@ def outlook_out(view: PlanView) -> OutlookOut:
             PlanReserveOut(kind=r.kind, motivation=r.motivation, at=r.at.astimezone(UTC))
             for r in o.reserves
         ],
-        basis_at=_utc(o.basis_at),
-        basis_considered=[_candidate(c) for c in o.basis_considered],
+        basis=_basis(o.basis) if o.basis is not None else None,
     )
 
 

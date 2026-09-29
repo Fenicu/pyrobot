@@ -27,14 +27,14 @@
 	let more = $state(false);
 
 	const view = $derived(plan ? nowView(plan) : null);
-	// Занятость устарела: кроме решения, план — второй проход по данным на момент её наблюдения.
+	// Занятость устарела: кроме решения, план — второй проход по последним известным значениям.
 	const basis = $derived(plan ? basisText(plan) : '');
 	const why = $derived(plan ? explain(plan, snapshot, now) : '');
 	const timers = $derived(plan?.wakeups.filter((t) => !t.after_wake) ?? []);
 	const later = $derived(plan?.wakeups.filter((t) => t.after_wake) ?? []);
 	const hidden = $derived(
 		(plan?.considered.length ?? 0) +
-			(plan?.basis_considered.length ?? 0) +
+			(plan?.basis?.considered.length ?? 0) +
 			(plan?.also_ready.length ?? 0) +
 			Math.max(timers.length + later.length - PHONE_TIMERS, 0)
 	);
@@ -122,10 +122,10 @@
 							{#each plan.considered as c, i (i)}{@render candidateRow(c)}{/each}
 						</ul>
 					{/if}
-					{#if basis && plan.basis_considered.length > 0}
+					{#if plan.basis && plan.basis.considered.length > 0}
 						<h4 class="mt-2 text-xs text-fg-faint">{basis}</h4>
 						<ul>
-							{#each plan.basis_considered as c, i (i)}{@render candidateRow(c)}{/each}
+							{#each plan.basis.considered as c, i (i)}{@render candidateRow(c)}{/each}
 						</ul>
 					{/if}
 				</section>

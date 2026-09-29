@@ -134,23 +134,30 @@
    "at": "2026-09-27T17:21:00Z"
   }
  ],
- "basis_at": "2026-09-27T16:24:00Z",
- "basis_considered": [
-  {
-   "scenario": "lottery_buy",
-   "params": {
-    "reserve": 0,
-    "tickets_money": "max",
-    "keep_money": 0,
-    "tickets_knowledge": "max",
-    "keep_knowledge": 0,
-    "tickets_raw": "max",
-    "keep_raw": 0,
-    "tickets_details": "max",
-    "keep_details": 0
-   },
-   "score": null,
-   "verdict": "cooldown"
-  }
- ]
+ "basis": {
+  "since": "2026-09-27T16:21:03Z",
+  "busy_at": "2026-09-27T16:24:00Z",
+  "ended": {
+   "activity": "job",
+   "until": "2026-09-27T16:40:00Z"
+  },
+  "considered": [
+   {
+    "scenario": "lottery_buy",
+    "params": {
+     "reserve": 0,
+     "tickets_money": "max",
+     "keep_money": 0,
+     "tickets_knowledge": "max",
+     "keep_knowledge": 0,
+     "tickets_raw": "max",
+     "keep_raw": 0,
+     "tickets_details": "max",
+     "keep_details": 0
+    },
+    "score": null,
+    "verdict": "cooldown"
+   }
+  ]
+ }
 }

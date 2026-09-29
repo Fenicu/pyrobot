@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, TIMER_MARGIN, Step
+from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, SOURCE, TIMER_MARGIN, Step
 from app.engine.planner.daily import DailyTasks
 from app.engine.planner.obligations import (
     DUMP_SPAN,
@@ -22,6 +22,7 @@ from app.engine.state.model import (
     ActivityStat,
     BusyState,
     CharacterState,
+    Obs,
     PriceState,
 )
 from app.engine.state.reducer import LOTTERY_CURRENCIES
@@ -58,6 +59,21 @@ class PlanHints:
 
 
 @dataclass(frozen=True, slots=True)
+class Basis:
+    """Занятость устарела, но известна: план сверх решения — по последним известным значениям.
+
+    `since` — старейшее из наблюдений, которые второй проход взял как свежие (быстрые поля, которые
+    читает планировщик); `busy_at` — наблюдение занятости; `ended` — дело, которое тогда шло и уже
+    кончилось (свободен с его `until`: дела начинает только бот), None — тогда был свободен;
+    `considered` — кандидаты второго прохода до его первого решения, без его «выбрано»."""
+
+    since: datetime
+    busy_at: datetime
+    ended: BusyState | None
+    considered: tuple[Candidate, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Outlook:
     """Проход планировщика для «Плана бота»: решение — то же, что у `decide`, плюс то, что
     осталось за ним на том же снимке.
@@ -68,9 +84,8 @@ class Outlook:
     пробуждения»; `focus` — основные дела и их запуски за день; `reserves` — 🔥, которые дела
     сейчас не тратят (под бой Горбушки, вход в метро).
 
-    `basis_at` — занятость устарела, но известна: решение — обновить её, а `also_ready`,
-    `wakeups`, `hints`, `reserves` и `basis_considered` (кандидаты до первого решения, без его
-    «выбрано») — второй проход «по данным на» момент её наблюдения.
+    `basis` — занятость устарела, но известна: решение — обновить её, а `also_ready`, `wakeups`,
+    `hints`, `reserves` и `basis.considered` — второй проход по последним известным значениям.
     """
 
     phase: Phase
@@ -83,8 +98,7 @@ class Outlook:
     focus: tuple[tuple[str, int], ...]
     hints: PlanHints
     reserves: tuple[Reserve, ...]
-    basis_at: datetime | None = None
-    basis_considered: tuple[Candidate, ...] = ()
+    basis: Basis | None = None
 
 
 class _Planner(DailyTasks):
@@ -112,7 +126,7 @@ class _Planner(DailyTasks):
             seen = self.s.busy
             if seen is None or seen.src == "doubtful":
                 return self.view("unknown", None, decision, (), fresh)
-            return self.basis(decision, seen.at, fresh)
+            return self.last_known(decision, seen, fresh)
         if busy is not None:
             self.wake(busy.until, "busy")
             if busy.activity.startswith("sleep_"):
@@ -124,21 +138,27 @@ class _Planner(DailyTasks):
                 return self.view("asleep", busy, decision, (), fresh, woke)
         return self.awake(busy, fresh)
 
-    def basis(self, decision: Decision, at: datetime, fresh: Callable[[], _Planner]) -> Outlook:
-        """Занятость устарела, но известна (последнее значение — «свободен»): решение — обновить
-        её, остальное — второй проход «по данным на `at`», момент её наблюдения. Первое действие
-        второго прохода — не решение цикла: оно в `also_ready` вместе с прочими, кроме самого
-        решения."""
+    def last_known(
+        self, decision: Decision, seen: Obs[BusyState | None], fresh: Callable[[], _Planner]
+    ) -> Outlook:
+        """Занятость устарела, но известна: наблюдалось «свободен» или дело, которое уже кончилось
+        (идущее до `until` не устаревает), — сейчас свободен. Решение — обновить её, остальное —
+        второй проход на последних известных значениях. Первое действие второго прохода — не
+        решение цикла: оно в `also_ready` вместе с прочими, кроме самого решения."""
 
         def then() -> _Planner:
             planner = fresh()
-            planner.stale = planner.stale_at(at)
+            planner.stale = planner.find_stale(last_known=True)
             return planner
 
         later = then()
         view = later.awake(later.busy(), then)
+        # Взятые как свежие — устаревшие сейчас, но не во втором проходе (занятость — всегда).
+        taken = (self.stale - later.stale) & SOURCE.keys()
+        since = min(getattr(self.s, name).at for name in taken)
         own = run_key(decision) if isinstance(decision, Act) else None
         first = (view.decision,) if isinstance(view.decision, Act) else ()
+        considered = tuple(c for c in view.considered if c.verdict != "chosen")
         return Outlook(
             "unknown",
             None,
@@ -150,8 +170,7 @@ class _Planner(DailyTasks):
             view.focus,
             view.hints,
             view.reserves,
-            basis_at=at,
-            basis_considered=tuple(c for c in view.considered if c.verdict != "chosen"),
+            Basis(since, seen.at, seen.value, considered),
         )
 
     def awake(self, busy: BusyState | None, fresh: Callable[[], _Planner]) -> Outlook:

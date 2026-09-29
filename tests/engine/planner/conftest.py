@@ -31,8 +31,9 @@ def outlook_matches_decide(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[Dec
         view = twin(self).outlook(lambda: twin(self))
         assert view.decision == decision
         assert view.considered == decision.candidates
-        # Второй проход «по данным на» своего «выбрано» не несёт: выбор — только у решения.
-        chosen = [c for c in view.considered + view.basis_considered if c.verdict == "chosen"]
+        # Второй проход по последним данным своего «выбрано» не несёт: выбор — только у решения.
+        basis = view.basis.considered if view.basis is not None else ()
+        chosen = [c for c in view.considered + basis if c.verdict == "chosen"]
         assert len(chosen) == (1 if isinstance(decision, Act) else 0)
         checked.append(decision)
         return decision

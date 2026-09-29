@@ -23,12 +23,19 @@ def test_fixture_covers_every_plan_section() -> None:
     ]
 
 
-def test_stale_fixture_plans_by_data_at_busy_observation() -> None:
+def test_stale_fixture_plans_by_last_known_data() -> None:
     plan = tool.build_stale()
     assert plan["phase"] == "unknown"
     assert plan["decision"]["scenario"] == "refresh"
-    assert plan["basis_at"] == "2026-09-27T16:24:00Z"
-    assert [c["verdict"] for c in plan["basis_considered"]] == ["cooldown"]
+    basis = plan["basis"]
+    # Работа кончилась до плана: свободен с её конца.
+    assert basis["busy_at"] == "2026-09-27T16:24:00Z"
+    assert basis["ended"] == {"activity": "job", "until": "2026-09-27T16:40:00Z"}
+    # Профиль снят раньше занятости, 💵 — позже: подпись — по старейшему взятому наблюдению.
+    assert basis["since"] == "2026-09-27T16:21:03Z"
+    state = tool._snapshot()
+    assert state["money"]["at"] > basis["busy_at"]
+    assert [c["verdict"] for c in basis["considered"]] == ["cooldown"]
     assert [a["scenario"] for a in plan["also_ready"]] == ["tangerine", "deed:dconv"]
     assert plan["hints"]["next_deed"] == {"deed": "deed:dconv", "why": "focus"}
     loop = plan["loop"]

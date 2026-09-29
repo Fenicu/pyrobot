@@ -5,6 +5,7 @@ from typing import Any
 from app.engine.gametime import tasks_day
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN
 from app.engine.planner.decide import (
+    Basis,
     NextDeed,
     Outlook,
     _Planner,
@@ -63,21 +64,26 @@ def test_unknown_busy_gives_only_the_decision() -> None:
     limited = view_of(state, last_refresh={"profile": m(-1)})
     assert limited.decision == Wait(w(1), "refresh:profile", limited.considered)
     assert reasons(limited.wakeups) == ["refresh:profile"]
-    assert view.basis_at is None and view.basis_considered == ()
+    assert view.basis is None
 
 
 def test_doubtful_busy_is_unknown_too() -> None:
     doubtful = Obs(value=None, at=m(-1), src="doubtful")
     view = view_of(awake().model_copy(update={"busy": doubtful}))
-    assert view.phase == "unknown" and view.basis_at is None
-    assert view.basis_considered == () and view.also_ready == () and view.wakeups == ()
+    assert view.phase == "unknown" and view.basis is None
+    assert view.also_ready == () and view.wakeups == ()
 
 
 # Профиль (занятость, 💵, 🔥, 🔋…) снят 26 минут назад: всё быстрое устарело.
 SEEN = m(-26)
 
 
-def test_stale_busy_plans_the_rest_by_data_at_its_observation() -> None:
+def basis_of(view: Outlook) -> Basis:
+    assert view.basis is not None
+    return view.basis
+
+
+def test_stale_busy_plans_the_rest_by_last_known_data() -> None:
     view = view_of(awake(SEEN))
     assert view.phase == "unknown" and view.busy is None
     # Решение — то же, что у цикла: сначала обновить занятость.
@@ -86,15 +92,15 @@ def test_stale_busy_plans_the_rest_by_data_at_its_observation() -> None:
         ("state", "stale:busy"),
         ("refresh", "chosen"),
     ]
-    # Остальное — второй проход по данным на момент наблюдения: персонаж свободен, 💵 и 🔥 те же.
-    assert view.basis_at == SEEN
+    # Остальное — второй проход на последних известных значениях: свободен, 💵 и 🔥 те же.
+    basis = basis_of(view)
+    assert (basis.since, basis.busy_at, basis.ended) == (SEEN, SEEN, None)
     assert [a.scenario for a in view.also_ready] == ["deed:job"]
     assert view.hints.next_deed == NextDeed("deed:job", "best")
     assert {"gorbushka_comeback", "sleep_window"} <= set(reasons(view.wakeups))
-    # Свои «выбрано» и «нужно обновить» второй проход в план не несёт: у выбранного им —
-    # «Готово», обновлять быстрые поля незачем, они — на момент наблюдения.
-    assert all(c.verdict == "ok" for c in view.basis_considered)
-    assert {c.scenario for c in view.basis_considered} == {
+    # Своё «выбрано» второй проход в план не несёт: выбранное им — в «Готово».
+    assert all(c.verdict == "ok" for c in basis.considered)
+    assert {c.scenario for c in basis.considered} == {
         "deed:harvest",
         "deed:learn",
         "deed:dconv",
@@ -102,32 +108,60 @@ def test_stale_busy_plans_the_rest_by_data_at_its_observation() -> None:
     }
 
 
-def test_basis_pass_keeps_what_was_stale_already_then() -> None:
-    # 🔥 снята за 20 минут до занятости — устарела ещё тогда: второй проход просит обновить и её.
-    state = awake(SEEN, motivation=obs(40, age_min=46))
-    view = view_of(state)
+def test_ended_deed_means_free_since_its_end() -> None:
+    # Работа наблюдалась 26 минут назад и кончилась 10 минут назад: дела начинает только бот —
+    # персонаж свободен с её конца, а не «по данным на момент наблюдения».
+    job = BusyState(activity="job", until=m(-10))
+    view = view_of(awake(SEEN, busy=job))
     assert act(view.decision) == ("refresh", {"source": "profile"})
-    verdicts = [(c.scenario, c.verdict) for c in view.basis_considered]
-    assert ("deeds", "stale:motivation") in verdicts
-    # Обновление профиля — само решение: в «Готово» его нет.
-    assert "refresh" not in [a.scenario for a in view.also_ready]
-    assert view.hints.next_deed is None
+    basis = basis_of(view)
+    assert (basis.busy_at, basis.ended) == (SEEN, job)
+    assert [a.scenario for a in view.also_ready] == ["deed:job"]
 
 
-def test_basis_pass_takes_motivation_before_the_regen_tick() -> None:
-    # Тик регенерации 🔥 — после наблюдения: по данным на тот момент 🔥 ещё 0, дела ждут её.
+def test_basis_pass_takes_the_latest_value_of_every_field() -> None:
+    # 💵 сняты минуту назад, уже после занятости: проход берёт их (на добычу 💵 не хватает), а
+    # подпись не приписывает им время занятости.
+    view = view_of(awake(SEEN, money=obs(20, age_min=1)))
+    basis = basis_of(view)
+    verdicts = {c.scenario: c.verdict for c in basis.considered}
+    assert verdicts["deed:harvest"] == "no_money"
+    assert basis.since == SEEN
+    # 🔥 снята за 20 минут до занятости — тоже последняя известная: время подписи — её.
+    older = basis_of(view_of(awake(SEEN, motivation=obs(40, age_min=46))))
+    assert (older.since, older.busy_at) == (m(-46), SEEN)
+    assert not [c for c in older.considered if c.verdict.startswith("stale:")]
+
+
+def test_basis_ignores_fields_the_planner_does_not_read() -> None:
+    # Опыт снят давно, но план его не читает: во время подписи он не попадает.
+    view = view_of(awake(SEEN, exp=obs(100, age_min=300)))
+    assert basis_of(view).since == SEEN
+
+
+def test_basis_pass_takes_motivation_even_after_the_regen_tick() -> None:
+    # Тик регенерации 🔥 — после наблюдения: последняя известная 🔥 — 0, дела ждут её.
     state = awake(SEEN, motivation=0, motivation_next_at=m(-10))
     view = view_of(state)
-    deeds = {c.verdict for c in view.basis_considered if c.scenario.startswith("deed:")}
+    deeds = {c.verdict for c in basis_of(view).considered if c.scenario.startswith("deed:")}
     assert deeds == {"no_motivation"}
     assert view.also_ready == ()
+
+
+def test_basis_pass_keeps_unknown_fields_unknown() -> None:
+    # Ненаблюдавшиеся и сомнительные поля последними известными не становятся.
+    state = awake(SEEN).model_copy(update={"details": Obs(value=5, at=m(-1), src="doubtful")})
+    view = view_of(state)
+    verdicts = [(c.scenario, c.verdict) for c in basis_of(view).considered]
+    assert ("deeds", "stale:details") in verdicts
+    assert view.hints.next_deed is None
 
 
 def test_basis_pass_under_refresh_limit_keeps_the_wait() -> None:
     view = view_of(awake(SEEN), last_refresh={"profile": m(-1)})
     assert view.decision == Wait(w(1), "refresh:profile", view.considered)
     assert view.wakeups[0].reason == "refresh:profile"
-    assert view.basis_at == SEEN and view.also_ready
+    assert basis_of(view).since == SEEN and view.also_ready
 
 
 def test_asleep_shows_timers_after_wake_without_their_acts() -> None:

@@ -1664,10 +1664,7 @@ export interface components {
         OutlookOut: {
             /** Also Ready */
             also_ready: components["schemas"]["PlanActOut"][];
-            /** Basis At */
-            basis_at: string | null;
-            /** Basis Considered */
-            basis_considered: components["schemas"]["PlanCandidateOut"][];
+            basis: components["schemas"]["PlanBasisOut"] | null;
             busy: components["schemas"]["BusyState"] | null;
             /** Considered */
             considered: components["schemas"]["PlanCandidateOut"][];
@@ -1761,6 +1758,22 @@ export interface components {
             reason: string;
             /** Scenario */
             scenario: string;
+        };
+        /** PlanBasisOut */
+        PlanBasisOut: {
+            /**
+             * Busy At
+             * Format: date-time
+             */
+            busy_at: string;
+            /** Considered */
+            considered: components["schemas"]["PlanCandidateOut"][];
+            ended: components["schemas"]["BusyState"] | null;
+            /**
+             * Since
+             * Format: date-time
+             */
+            since: string;
         };
         /** PlanCandidateOut */
         PlanCandidateOut: {

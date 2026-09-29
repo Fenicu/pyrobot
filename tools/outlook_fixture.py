@@ -83,17 +83,21 @@ def build() -> dict[str, Any]:
     return outlook_out(PlanView(NOW, view, _loop())).model_dump(mode="json")
 
 
-# Через 20 минут после основной фикстуры: занятость («свободен») и 🔥 сняты 26 минут назад, с ними
-# устарел весь профиль. Цикл решил ждать книгу и спит, а план на этот момент — обновить профиль.
+# Через 20 минут после основной фикстуры: занятость (работа до 19:40 MSK) и 🔥 сняты 26 минут
+# назад, остальной профиль — ещё раньше, 💵 — чуть позже занятости; быстрые поля устарели. Цикл
+# решил ждать книгу и спит, а план на этот момент — обновить профиль, остальное — по последним
+# данным.
 # Лотерею цикл отложил на полчаса («тиража нет»): во втором проходе есть отказ до его выбора.
 STALE_NOW = NOW + timedelta(minutes=20)
 STALE_SEEN = STALE_NOW - timedelta(minutes=26)
+STALE_JOB_END = STALE_NOW - timedelta(minutes=10)
 STALE_HOLDS = {"lottery_buy": STALE_NOW + timedelta(minutes=30)}
 
 
 def build_stale() -> dict[str, Any]:
     data = _snapshot()
-    data["busy"] = {"value": None, "at": _iso(STALE_SEEN), "src": "screen"}
+    job = {"activity": "job", "until": _iso(STALE_JOB_END)}
+    data["busy"] = {"value": job, "at": _iso(STALE_SEEN), "src": "screen"}
     data["motivation"] = {**data["motivation"], "at": _iso(STALE_SEEN)}
     state = load_state(data)
     view = outlook(state, Settings(), STALE_NOW, cooldowns=STALE_HOLDS, done_today=DONE_TODAY)

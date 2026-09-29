@@ -115,22 +115,22 @@ class PlannerBase:
         self.last_done = last_done
         self.metro_durations = metro_durations
         self.done_today: Mapping[str, int] = done_today or {}
-        self.stale = self.stale_at(now)
+        self.stale = self.find_stale()
         self.refresh_every = timedelta(seconds=settings.engine.refresh_min_interval_s)
         self.candidates: list[Candidate] = []
         self.wakeups: list[Wakeup] = []
 
-    def stale_at(self, basis: datetime) -> frozenset[str]:
-        """Устаревшие поля. `basis` раньше `now` — план «по данным на `basis`»: быстрые поля и 🔥
-        до тика регенерации — какими были тогда; битва, прошедшая к `now`, — как обычно: времени
-        следующей нет и в тех данных."""
-        volatile = timedelta(minutes=self.cfg.engine.state_stale_after_min) + (self.now - basis)
-        stale = set(stale_fields(self.s, self.now, volatile))
+    def find_stale(self, *, last_known: bool = False) -> frozenset[str]:
+        """Устаревшие поля. `last_known` — план «по последним данным»: быстрые поля по возрасту и
+        🔥 по тику регенерации не устаревают — берутся последние известные значения; сомнительные и
+        ненаблюдавшиеся, медленные поля и прошедшая битва — как обычно."""
+        volatile = timedelta(minutes=self.cfg.engine.state_stale_after_min)
+        stale = set(stale_fields(self.s, self.now, timedelta.max if last_known else volatile))
         # После тика регенерации 🔥 наблюдение мотивации устарело независимо от возраста.
         regen = self.s.motivation_next_at
         seen = self.s.motivation
-        if seen is not None and regen is not None and regen.value is not None:
-            if seen.at < regen.value and regen.value + TIMER_MARGIN <= basis:
+        if seen is not None and regen is not None and regen.value is not None and not last_known:
+            if seen.at < regen.value and regen.value + TIMER_MARGIN <= self.now:
                 stale.add("motivation")
         # Прошедшая битва: время следующей известно только из свежего профиля.
         battle = self.battle_time()

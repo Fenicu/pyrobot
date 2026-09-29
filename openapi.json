@@ -2494,24 +2494,15 @@
             "title": "Also Ready",
             "type": "array"
           },
-          "basis_at": {
+          "basis": {
             "anyOf": [
               {
-                "format": "date-time",
-                "type": "string"
+                "$ref": "#/components/schemas/PlanBasisOut"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Basis At"
-          },
-          "basis_considered": {
-            "items": {
-              "$ref": "#/components/schemas/PlanCandidateOut"
-            },
-            "title": "Basis Considered",
-            "type": "array"
+            ]
           },
           "busy": {
             "anyOf": [
@@ -2588,8 +2579,7 @@
           "focus",
           "hints",
           "reserves",
-          "basis_at",
-          "basis_considered"
+          "basis"
         ],
         "title": "OutlookOut",
         "type": "object"
@@ -2736,6 +2726,45 @@
           "reason"
         ],
         "title": "PlanActOut",
+        "type": "object"
+      },
+      "PlanBasisOut": {
+        "properties": {
+          "busy_at": {
+            "format": "date-time",
+            "title": "Busy At",
+            "type": "string"
+          },
+          "considered": {
+            "items": {
+              "$ref": "#/components/schemas/PlanCandidateOut"
+            },
+            "title": "Considered",
+            "type": "array"
+          },
+          "ended": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BusyState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "since": {
+            "format": "date-time",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "since",
+          "busy_at",
+          "ended",
+          "considered"
+        ],
+        "title": "PlanBasisOut",
         "type": "object"
       },
       "PlanCandidateOut": {

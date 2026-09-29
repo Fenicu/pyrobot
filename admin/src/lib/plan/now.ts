@@ -97,16 +97,24 @@ function loopWaitText(plan: Outlook, { reason, wake }: LoopWait): string {
 	return `⏳ ждёт: ${what}${later}`;
 }
 
-/** «по данным на 19:24»: занятость устарела, и остальное план считает на момент её наблюдения;
- * пусто — всё на текущих данных. */
+/** «по последним данным (профиль — 19:21)»: занятость устарела, и остальное план считает на
+ * последних известных значениях — время старейшего из них; пусто — всё на текущих данных. */
 export function basisText(plan: Outlook): string {
-	return plan.basis_at ? `по данным на ${fmtMoment(plan.basis_at, new Date(plan.now))}` : '';
+	const basis = plan.basis;
+	return basis ? `по последним данным (профиль — ${fmtMoment(basis.since, new Date(plan.now))})` : '';
+}
+
+/** Устаревшая занятость — сейчас свободен: дело, которое тогда шло, уже кончилось (дела начинает
+ * только бот), или тогда был свободен. */
+function staleBusyText(basis: NonNullable<Outlook['basis']>, now: Date): string {
+	const ended = basis.ended;
+	if (ended) return `Занятость устарела: ${activityLabel(ended.activity)} до ${fmtTime(ended.until)} — уже свободен`;
+	return `Занятость устарела: по данным на ${fmtMoment(basis.busy_at, now)} — свободен`;
 }
 
 function phaseText(plan: Outlook): string {
 	const busy = plan.busy;
-	// Последнее значение устаревшей занятости — всегда «свободен»: идущее дело до конца не устаревает.
-	if (plan.basis_at) return `Занятость устарела: ${basisText(plan)} — свободен`;
+	if (plan.basis) return staleBusyText(plan.basis, new Date(plan.now));
 	if (plan.phase === 'unknown') return 'Занятость неизвестна или устарела';
 	if (busy === null) return 'Свободен';
 	const what = activityLabel(busy.activity);
