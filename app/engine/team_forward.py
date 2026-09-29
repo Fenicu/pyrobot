@@ -5,7 +5,7 @@ import logging
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock, SystemClock
@@ -54,6 +54,11 @@ def forward_target(msg: IncomingMessage, events: Sequence[Event]) -> Target | No
     return None
 
 
+def _day_end(day: date) -> datetime:
+    """Полночь МСК после суток `day`."""
+    return day_start(day + timedelta(days=1))
+
+
 async def notify_lost_forwards(notifier: NotifierPort, closed: Sequence[Closed]) -> int:
     """Пересылки, прерванные падением прошлого процесса (при старте закрыты как outcome_unknown):
     ушла ли копия — неизвестно, повтора нет (ключ израсходован), поэтому по каждой —
@@ -80,11 +85,13 @@ class TeamForward:
     Подписчик шины только ставит пересылку в очередь; пересылает `run` — задача под супервизором.
     Пересылается только исходная ревизия (`revision == 0`) доставки, на которую можно реагировать,
     не старше `engine.recovered_react_max_age_min` от создания сообщения; возраст проверяется ещё
-    раз перед отправкой. Отчёт о фабрике — только в сутки битвы: день сверяется перед отправкой, а
-    TTL в шлюзе не дальше полуночи. Шлюз перед отправкой перечитывает исходное сообщение и
-    сверяет хеш содержимого с тем, что видела реакция (правленое — отказ с уведомлением), и шлёт
-    не больше одного раза (ключ `forward:…`), при неясном исходе без повтора — с уведомлением. Сбой
-    процесса до постановки в очередь пересылку теряет."""
+    раз перед отправкой. Отчёт о фабрике — только в сутки битвы: день сверяется перед постановкой
+    в шлюз, а шлюз сверяет срок (полночь, `deadline`) перед каждой попыткой и ещё раз после чтения
+    источника, прямо перед вызовом транспорта; TTL в шлюзе тоже не дальше полуночи. Шлюз перед
+    отправкой перечитывает исходное сообщение и сверяет хеш содержимого с тем, что видела реакция
+    (правленое — отказ с уведомлением), и шлёт не больше одного раза (ключ `forward:…`), при
+    неясном исходе без повтора — с уведомлением. Сбой процесса до постановки в очередь пересылку
+    теряет."""
 
     def __init__(
         self,
@@ -163,6 +170,7 @@ class TeamForward:
                 expect_content=msg.content_hash(),
                 source=Source.PLANNER,
                 ttl_s=left,
+                deadline=_day_end(item.day) if item.day is not None else None,
                 idempotency_key=item.key,
             )
         )
@@ -193,7 +201,7 @@ class TeamForward:
         window = timedelta(minutes=self._settings.current.engine.recovered_react_max_age_min)
         left = window - (now - item.msg.origin)
         if item.day is not None:
-            left = min(left, day_start(item.day + timedelta(days=1)) - now)
+            left = min(left, _day_end(item.day) - now)
         return left.total_seconds()
 
     async def _warn(self, code: str, text: str) -> None:

@@ -487,6 +487,8 @@ class ActionGateway:
                 return blocked
             if self._clock.monotonic() - p.enqueued >= p.ttl:
                 return ActionStatus.REJECTED, "expired"
+            if p.req.deadline is not None and self._clock.now() >= p.req.deadline:
+                return ActionStatus.REJECTED, "deadline"
             if p.req.kind is ActionKind.CLICK:
                 latest = self._latest(p.req.chat_id, p.req.message_id or 0)
                 if latest is None or p.req.data is None or latest.button(p.req.data) is None:

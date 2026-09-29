@@ -1,11 +1,14 @@
 """Команда шлюза `forward`: пересылка сообщения игры в чат команды со своей политикой."""
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import pytest
 
 from app.engine.commands import CommandClass
+from app.engine.gametime import MSK
 from app.engine.gateway.gateway import RECONCILE_REASON, command_class
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.settings import Settings
@@ -283,3 +286,51 @@ async def test_kill_during_source_read_not_forwarded(rig: Rig) -> None:
     res = await rig.gw.submit(forward())
     assert res.status is ActionStatus.REJECTED and res.reason == "kill_switch"
     assert rig.transport.sent == []
+
+
+class WallClock:
+    """Стенные часы теста; монотонные — настоящие."""
+
+    def __init__(self, at: datetime) -> None:
+        self.at = at
+
+    def now(self) -> datetime:
+        return self.at
+
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+
+def msk(day: int, hour: int, minute: int, second: int) -> datetime:
+    return datetime(2026, 9, day, hour, minute, second, tzinfo=MSK).astimezone(UTC)
+
+
+async def test_deadline_passed_during_source_read_not_forwarded() -> None:
+    # Чтение начато в 23:59:59, ответ пришёл в 00:00:01: срок пересылки — полночь.
+    clock = WallClock(msk(12, 23, 59, 59))
+    rig = Rig(TEAM_LIVE, clock=clock)
+    rig.transport.messages[(GAME, 5)] = source(5)
+
+    async def midnight() -> None:
+        clock.at = msk(13, 0, 0, 1)
+
+    rig.transport.on_fetch = midnight
+    rig.start()
+    try:
+        res = await rig.gw.submit(forward(deadline=msk(13, 0, 0, 0)))
+    finally:
+        await rig.stop()
+    assert res.status is ActionStatus.REJECTED and res.reason == "deadline"
+    assert rig.transport.fetches == [(GAME, 5)] and rig.transport.sent == []
+
+
+async def test_deadline_ahead_forwarded() -> None:
+    clock = WallClock(msk(12, 23, 59, 58))
+    rig = Rig(TEAM_LIVE, clock=clock)
+    rig.transport.messages[(GAME, 5)] = source(5)
+    rig.start()
+    try:
+        res = await rig.gw.submit(forward(deadline=msk(13, 0, 0, 0)))
+    finally:
+        await rig.stop()
+    assert res.status is ActionStatus.CONFIRMED and len(rig.transport.sent) == 1

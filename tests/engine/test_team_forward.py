@@ -48,10 +48,11 @@ class Notes:
 
 class ForwardRig:
     def __init__(self, settings: Settings = TEAM_LIVE) -> None:
-        self.gw = Rig(settings)
-        self.notes = Notes()
         task = game_msg(*TASK)
+        # Одни стенные часы у реакции и шлюза: сутки и срок сверяются по ним.
         self.clock = Frozen(task.origin + timedelta(seconds=2))
+        self.gw = Rig(settings, clock=self.clock)
+        self.notes = Notes()
         self.reaction = TeamForward(
             gateway=self.gw.gw,
             settings=self.gw.settings,
@@ -415,3 +416,30 @@ async def test_lost_forwards_notified_each() -> None:
     closed = [Closed(1, CommandClass.ACTION, None), Closed(2, CommandClass.FORWARD, 5)]
     assert await notify_lost_forwards(notes, closed) == 1
     assert notes.items == [("warn", "team_forward_unknown")]
+
+
+async def test_factory_report_not_forwarded_when_read_crosses_midnight(rig: ForwardRig) -> None:
+    # Реакция и очередь успели до полуночи, чтение источника начато в 23:59:59, а ответ пришёл в
+    # 00:00:01 — день битвы кончился прямо перед вызовом транспорта.
+    report = _late_report(23, 59)
+    rig.clock.at = datetime(2026, 9, 12, 23, 59, 59, tzinfo=MSK).astimezone(UTC)
+
+    async def midnight() -> None:
+        rig.clock.at = datetime(2026, 9, 13, 0, 0, 1, tzinfo=MSK).astimezone(UTC)
+
+    rig.gw.transport.on_fetch = midnight
+    await rig.deliver(report)
+    await until(lambda: rig.gw.transport.fetches != [])
+    await rig.settle()
+    assert rig.sent == []
+    [row] = rig.gw.store.rows.values()
+    assert (row.status, row.reason) == (ActionStatus.REJECTED, "deadline")
+    assert row.req.deadline == datetime(2026, 9, 13, tzinfo=MSK).astimezone(UTC)
+
+
+async def test_task_has_no_deadline(rig: ForwardRig) -> None:
+    await rig.deliver(game_msg(*TASK))
+    await until(lambda: len(rig.sent) == 1)
+    await rig.settle()
+    [row] = rig.gw.store.rows.values()
+    assert row.req.deadline is None

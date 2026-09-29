@@ -87,6 +87,10 @@ class ActionRequest:
     scenario_run_id: int | None = None
     # Пересылка (`FORWARD`): чат исходного сообщения `message_id`; `chat_id` — куда.
     from_chat_id: int | None = None
+    # Момент по стенным часам, с которого действие не отправляется (отчёт о фабрике — полночь МСК
+    # после дня битвы); сверяется перед каждой попыткой и после чтения источника пересылки. В
+    # отпечаток идемпотентности не входит.
+    deadline: datetime | None = None
 
     def payload(self) -> dict[str, object]:
         out: dict[str, object] = {
