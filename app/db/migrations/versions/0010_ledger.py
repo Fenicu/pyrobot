@@ -24,6 +24,7 @@ def upgrade() -> None:
         sa.Column("account_id", sa.Integer(), nullable=False),
         sa.Column("at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("day", sa.Date(), nullable=False),
+        sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("kind", sa.String(length=32), nullable=False),
         sa.Column("amounts", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("items", postgresql.JSONB(astext_type=sa.Text()), nullable=False),

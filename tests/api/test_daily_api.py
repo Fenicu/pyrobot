@@ -87,7 +87,8 @@ async def test_daily_from_metrics_and_ledger(
         4: (msk(27, 12), [Effect("book", {"exp": 457})]),
     }
     for msg_id, (at, items) in effects.items():
-        await journal.append(make_msg("x", msg_id=msg_id, date=at), [], None, 0, effects=items)
+        msg = make_msg("x", msg_id=msg_id, date=at, received_at=at)
+        await journal.append(msg, [], None, 0, effects=items)
     await login(api_client)
     body = (await api_client.get("/api/v1/daily", params={"days": 2})).json()
     assert body["ledger_since"] == "2026-09-27"

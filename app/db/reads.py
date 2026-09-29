@@ -21,7 +21,7 @@ from app.db.models import (
     UnrecognizedRow,
 )
 from app.engine.daily import LedgerEntry
-from app.engine.gametime import day_start
+from app.engine.gametime import day_start, tasks_day
 from app.engine.settings import Settings, settings_diff
 
 # Порядок типов записей на одном моменте: сообщение, потом действие, потом решение.
@@ -260,7 +260,9 @@ class DbReads:
         return out
 
     async def ledger_entries(self, first: date) -> tuple[list[LedgerEntry], date | None]:
-        """Записи журнала прихода с суток `first` и первый день журнала (None — журнал пуст)."""
+        """Записи журнала прихода с суток `first` и первый день журнала — сутки МСК самой ранней
+        записи (`recorded_at`), а не самого раннего эффекта: отчёт о прошлой битве датирован ею, но
+        дни до записи журнал не видел (None — журнал пуст)."""
         own = LedgerRow.account_id == self._account_id
         query = (
             select(LedgerRow.day, LedgerRow.kind, LedgerRow.amounts, LedgerRow.items)
@@ -269,7 +271,8 @@ class DbReads:
         )
         async with self._db.sessions() as session:
             rows = (await session.execute(query)).all()
-            since = await session.scalar(select(func.min(LedgerRow.day)).where(own))
+            started = await session.scalar(select(func.min(LedgerRow.recorded_at)).where(own))
+        since = tasks_day(started) if started is not None else None
         return [LedgerEntry(d, kind, amounts, items) for d, kind, amounts, items in rows], since
 
     async def metro_runs(self, limit: int, before: int | None) -> list[MetroRunRow]:

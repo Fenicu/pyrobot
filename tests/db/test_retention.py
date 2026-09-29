@@ -155,6 +155,7 @@ def _ledger(at: datetime, day: date) -> LedgerRow:
     return LedgerRow(
         account_id=1,
         at=at,
+        recorded_at=at,
         day=day,
         kind="book",
         amounts={"exp": 1},

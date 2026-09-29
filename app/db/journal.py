@@ -166,6 +166,7 @@ class DbJournal:
                     "account_id": self._account_id,
                     "at": at,
                     "day": tasks_day(at),
+                    "recorded_at": msg.received_at,
                     "kind": effect.kind,
                     "amounts": effect.amounts,
                     "items": effect.items,

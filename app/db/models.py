@@ -176,6 +176,9 @@ class LedgerRow(Base):
     # его дата по Москве.
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     day: Mapped[date] = mapped_column(Date)
+    # Когда журнал узнал об эффекте (получение сообщения): с него считается запуск журнала — отчёт
+    # о прошлой битве датирован битвой, но дни до записи журнал не видел.
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     kind: Mapped[str] = mapped_column(String(32))
     amounts: Mapped[dict[str, Any]]
     items: Mapped[dict[str, Any]]

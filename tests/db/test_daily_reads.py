@@ -51,6 +51,7 @@ async def test_ledger_entries_from_day_and_first_day(clean_db: Database) -> None
             LedgerRow(
                 account_id=1,
                 at=datetime(d.year, d.month, d.day, 12, tzinfo=UTC) - timedelta(hours=1),
+                recorded_at=datetime(d.year, d.month, d.day, 12, tzinfo=UTC),
                 day=d,
                 kind=kind,
                 amounts=amounts,
@@ -69,3 +70,22 @@ async def test_ledger_entries_from_day_and_first_day(clean_db: Database) -> None
         LedgerEntry(date(2026, 9, 27), "deed", {"exp": 2}, {"Нитки": 1}),
         LedgerEntry(date(2026, 9, 28), "task", {"trophies": 90}, {}),
     ]
+
+
+async def test_ledger_since_is_first_recording_not_effect_day(clean_db: Database) -> None:
+    # Журнал запущен 12.09: /fb в тот день отдал отчёт о битве 09.09 — эффект датирован 09.09, но
+    # дни до 12.09 журнал не видел и полными не становятся.
+    from app.db.journal import DbJournal
+    from app.engine.state.ledger import Effect
+    from tests.engine.helpers import make_msg
+
+    journal = DbJournal(clean_db, 1)
+    received = msk(12, 3, 12)
+    battle = msk(9, 18, 30)
+    report = make_msg("fb", msg_id=1, date=received, received_at=received)
+    await journal.append(report, [], None, 1, effects=[Effect("factory", {"exp": 1}, at=battle)])
+    book = make_msg("book", msg_id=2, date=msk(12, 9), received_at=msk(12, 9))
+    await journal.append(book, [], None, 1, effects=[Effect("book", {"exp": 5})])
+    entries, since = await DbReads(clean_db, 1).ledger_entries(date(2026, 9, 1))
+    assert [e.day for e in entries] == [date(2026, 9, 9), date(2026, 9, 12)]
+    assert since == date(2026, 9, 12)
