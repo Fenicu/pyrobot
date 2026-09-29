@@ -85,8 +85,10 @@ class ActionRequest:
     # Запуск сценария, шагом которого идёт действие (`actions.scenario_run_id`); у ручных
     # команд, реакций и сверки — None. В отпечаток идемпотентности (`payload`) не входит.
     scenario_run_id: int | None = None
-    # Пересылка (`FORWARD`): чат исходного сообщения `message_id`; `chat_id` — куда.
+    # Пересылка (`FORWARD`): чат исходного сообщения `message_id`; `chat_id` — куда, `chat_title`
+    # — его название по проверке Telegram (ставит шлюз; в журнале действия видно, куда ушло).
     from_chat_id: int | None = None
+    chat_title: str | None = None
     # Момент по стенным часам, с которого действие не отправляется (отчёт о фабрике — полночь МСК
     # после дня битвы); сверяется перед каждой попыткой и после чтения источника пересылки. В
     # отпечаток идемпотентности не входит.
@@ -103,6 +105,8 @@ class ActionRequest:
         }
         if self.from_chat_id is not None:
             out["from_chat_id"] = self.from_chat_id
+        if self.chat_title is not None:
+            out["chat_title"] = self.chat_title
         return out
 
 

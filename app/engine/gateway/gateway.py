@@ -168,9 +168,9 @@ class ActionGateway:
         self._spend_block: str | None = None
         self._keys: dict[str, asyncio.Future[ActionResult]] = {}
         self._closed = False
-        # Проверенный чат команды (группа, аккаунт в ней состоит) и версия настроек, при которой
-        # проверен: любое сохранение настроек (в том числе A → B → A) требует новой проверки.
-        self._group_ok: tuple[int, int] | None = None
+        # Проверенный чат команды (группа, аккаунт в ней состоит), версия настроек, при которой
+        # проверен (любое сохранение, в том числе A → B → A, требует новой проверки), и название.
+        self._group_ok: tuple[int, int, str | None] | None = None
 
     @property
     def queue_size(self) -> int:
@@ -571,12 +571,19 @@ class ActionGateway:
         if blocked is not None:
             return await self._record(p, *blocked)
         if p.cls is CommandClass.FORWARD:
-            checked = (p.req.chat_id, self._settings.version)
-            if self._group_ok != checked:
-                verdict = await self._check_group(p)
+            chat, version = p.req.chat_id, self._settings.version
+            known = self._group_ok
+            if known is not None and known[:2] == (chat, version):
+                title = known[2]
+            else:
+                verdict, title = await self._check_group(p)
                 if verdict != "ok":
+                    p.req = replace(p.req, chat_title=title)
+                    log.warning("team chat %s (%r) refused: %s", chat, title, verdict)
                     return await self._record(p, ActionStatus.REFUSED, f"team_chat_{verdict}")
-                self._group_ok = checked
+                log.info("team chat %s verified: %r", chat, title)
+                self._group_ok = (chat, version, title)
+            p.req = replace(p.req, chat_title=title)
         try:
             p.action_id = await self._store.create(p.req, p.cls, ActionStatus.INTENT)
         except DuplicateKey as dup:
@@ -589,7 +596,7 @@ class ActionGateway:
                 return ActionResult(ActionStatus.REJECTED, reason="db_unavailable")
         return await self._attempts(p)
 
-    async def _check_group(self, p: _Pending) -> str:
+    async def _check_group(self, p: _Pending) -> tuple[str, str | None]:
         """Перед первой пересылкой в чат (и первой после любого сохранения настроек): группа или
         супергруппа, где аккаунт — участник. Запросы идут в общем темпе шлюза; FloodWait ставит
         паузу шлюза и проверку повторяет в пределах TTL. Отказ не кешируется — после добавления
@@ -598,18 +605,19 @@ class ActionGateway:
         while True:
             await self._pace()
             try:
-                return await self._transport.check_group(chat_id)
+                info = await self._transport.check_group(chat_id)
+                return info.verdict, info.title
             except FloodWait as fw:
                 now = self._clock.monotonic()
                 self._paused_until = max(self._paused_until, now + fw.seconds)
                 left = p.ttl - (now - p.enqueued)
                 if fw.seconds > MAX_FLOODWAIT_S or fw.seconds >= left:
-                    return "flood_wait"
+                    return "flood_wait", None
             except TransportAuthLost:
-                return "auth_lost"
+                return "auth_lost", None
             except Exception:
                 log.exception("team chat %s not checked", chat_id)
-                return "unavailable"
+                return "unavailable", None
 
     async def _record(self, p: _Pending, status: ActionStatus, reason: str) -> ActionResult:
         # Действие не дошло до INTENT — ключ идемпотентности не расходуется, чтобы тем же ключом

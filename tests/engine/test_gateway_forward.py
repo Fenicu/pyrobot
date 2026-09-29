@@ -383,3 +383,23 @@ async def test_long_flood_wait_on_group_check_refused_without_spending_key(rig: 
     assert res.status is ActionStatus.REFUSED and res.reason == "team_chat_flood_wait"
     assert rig.transport.sent == []
     assert await rig.store.get_by_key(f"forward:{GAME}:5") is None
+
+
+async def test_team_chat_title_kept_in_action(rig: Rig) -> None:
+    # Название чата из проверки Telegram — в журнале действия: опечатку в ID видно сразу.
+    rig.transport.titles[TEAM] = "☣️ SU"
+    res = await rig.gw.submit(forward(5))
+    row = rig.store.rows[res.action_id or 0]
+    assert row.req.chat_title == "☣️ SU" and row.req.payload()["chat_title"] == "☣️ SU"
+    # Проверенный чат запомнен вместе с названием.
+    res = await rig.gw.submit(forward(6))
+    assert rig.store.rows[res.action_id or 0].req.chat_title == "☣️ SU"
+    assert rig.transport.group_checks == [TEAM]
+
+
+async def test_refused_team_chat_title_kept_in_action(rig: Rig) -> None:
+    rig.transport.groups[TEAM] = "not_member"
+    rig.transport.titles[TEAM] = "Чужая группа"
+    res = await rig.gw.submit(forward())
+    assert res.reason == "team_chat_not_member"
+    assert rig.store.rows[res.action_id or 0].req.chat_title == "Чужая группа"

@@ -5,7 +5,12 @@ import pytest
 
 from app.engine.notify import Level
 from app.engine.tg_auth import InvalidPhone, SendCodeRejected, TgAuthManager, TgState
-from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
+from app.engine.transport.base import (
+    FloodWait,
+    GroupInfo,
+    TransportAuthLost,
+    TransportRejected,
+)
 from tests.engine.helpers import GAME
 from tests.engine.kurigram_fakes import EXPECTED, FakeKurigram, rpc_error
 
@@ -344,10 +349,10 @@ async def test_forward_unresolved_peer_is_refusal_not_unknown(
     assert all(name != "ForwardMessages" for name, _ in t.client.invoked)
 
 
-def _chat(kind: str) -> object:
+def _chat(kind: str, title: str | None = "☣️ SU") -> object:
     from pyrogram import enums
 
-    return NS(type=getattr(enums.ChatType, kind))
+    return NS(type=getattr(enums.ChatType, kind), title=title)
 
 
 def _member(status: str) -> object:
@@ -373,7 +378,8 @@ async def test_check_group(tmp_path: Path, kind: str, status: str, verdict: str)
     await _online(t)
     t.client.chat = _chat(kind)
     t.client.member = _member(status)
-    assert await t.check_group(-1001149209877) == verdict
+    # Название — чтобы опечатку в ID было видно в логе и журнале действия.
+    assert await t.check_group(-1001149209877) == GroupInfo(verdict, "☣️ SU")
 
 
 @pytest.mark.parametrize(
@@ -390,7 +396,7 @@ async def test_check_group_errors(tmp_path: Path, where: str, error: str, verdic
     t.client.chat = _chat("SUPERGROUP")
     t.client.member = _member("MEMBER")
     t.client.errors[where] = rpc_error(error)
-    assert await t.check_group(-1001149209877) == verdict
+    assert (await t.check_group(-1001149209877)).verdict == verdict
 
 
 async def test_check_group_unauthorized_resets_client(tmp_path: Path) -> None:

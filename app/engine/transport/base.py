@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 if TYPE_CHECKING:
@@ -8,6 +9,15 @@ if TYPE_CHECKING:
 
 # Проверка чата команды: группа или супергруппа, где аккаунт — участник (`ok`).
 GroupCheck = Literal["ok", "not_group", "not_member", "unavailable"]
+
+
+@dataclass(frozen=True, slots=True)
+class GroupInfo:
+    """Итог проверки чата команды и его название в Telegram (None — чат не прочитан): по
+    названию в логе и журнале действия видно опечатку в ID."""
+
+    verdict: GroupCheck
+    title: str | None = None
 
 
 class FloodWait(Exception):
@@ -40,6 +50,6 @@ class Transport(Protocol):
         """Текущая версия сообщения из Telegram; None — сообщения нет."""
         ...
 
-    async def check_group(self, chat_id: int) -> GroupCheck:
-        """Чат — группа или супергруппа, и аккаунт в ней состоит."""
+    async def check_group(self, chat_id: int) -> GroupInfo:
+        """Чат — группа или супергруппа, и аккаунт в ней состоит; название чата."""
         ...
