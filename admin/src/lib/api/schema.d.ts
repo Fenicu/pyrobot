@@ -1190,8 +1190,20 @@ export interface components {
              */
             type: "message";
         };
+        /** MetricEvent */
+        MetricEvent: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Scenario */
+            scenario: string;
+        };
         /** MetricsOut */
         MetricsOut: {
+            /** Events */
+            events: components["schemas"]["MetricEvent"][];
             /** Initial */
             initial: {
                 [key: string]: [

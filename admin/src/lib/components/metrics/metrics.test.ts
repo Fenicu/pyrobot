@@ -30,7 +30,10 @@ describe('Метрики', () => {
 		const fetch = mockFetch(() => json(fixture('metrics_today')));
 		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
 		render(MetricsView, { api, now: new Date('2026-09-27T20:27:51Z') });
-		expect(await screen.findByRole('img', { name: 'График: 💵 деньги · 47, точек 127' })).toBeInTheDocument();
+		// Метки — удачные запуски, которые двигают метрики: два слива налички в акции и сон (фикстура
+		// метрик того же дня, события — по журналу 27.09).
+		expect(await screen.findByRole('img', { name: 'График: 💵 деньги · 47, точек 127, меток 3' })).toBeInTheDocument();
+		expect(screen.getByText('Метки на графиках: 📈 слив налички в акции · 🛌 сон')).toBeInTheDocument();
 		expect(fetch.calls[0]?.url).toContain('from=2026-09-26T21%3A00%3A00.000Z');
 		const money = created.find((c) => c.opts.series[1]?.label === '💵 деньги · 47');
 		expect(money?.data[1].at(-1)).toBe(47);

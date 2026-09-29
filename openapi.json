@@ -1405,8 +1405,34 @@
         "title": "MessageItem",
         "type": "object"
       },
+      "MetricEvent": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "scenario": {
+            "title": "Scenario",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "scenario"
+        ],
+        "title": "MetricEvent",
+        "type": "object"
+      },
       "MetricsOut": {
         "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/MetricEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
           "initial": {
             "additionalProperties": {
               "maxItems": 2,
@@ -1461,6 +1487,7 @@
         "required": [
           "series",
           "initial",
+          "events",
           "next_cursor"
         ],
         "title": "MetricsOut",

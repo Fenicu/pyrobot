@@ -18,7 +18,11 @@ describe('ряды метрик', () => {
 	});
 
 	it('значение на начало окна ставится в его начало', () => {
-		const data: MetricsData = { series: { money: [['2026-09-27T10:00:00Z', 5]] }, initial: { money: ['2026-09-20T00:00:00Z', 3] } };
+		const data: MetricsData = {
+			series: { money: [['2026-09-27T10:00:00Z', 5]] },
+			initial: { money: ['2026-09-20T00:00:00Z', 3] },
+			events: []
+		};
 		expect(stepSeries(data, 'money', win)).toEqual([
 			[win.from.getTime() / 1000, new Date('2026-09-27T10:00:00Z').getTime() / 1000, win.to.getTime() / 1000],
 			[3, 5, 5]
@@ -26,9 +30,14 @@ describe('ряды метрик', () => {
 		expect(stepSeries(data, 'books', win)).toEqual([[], []]);
 	});
 
-	it('страницы подгружаются до конца окна, initial — с первой', async () => {
+	it('страницы подгружаются до конца окна, initial и события — с первой', async () => {
 		const pages = [
-			{ series: { money: [['2026-09-27T10:00:00Z', 1]] }, initial: { money: ['2026-09-26T00:00:00Z', 9] }, next_cursor: 'c1' },
+			{
+				series: { money: [['2026-09-27T10:00:00Z', 1]] },
+				initial: { money: ['2026-09-26T00:00:00Z', 9] },
+				events: [{ at: '2026-09-27T10:30:00Z', scenario: 'stocks_dump' }, { at: 5 }],
+				next_cursor: 'c1'
+			},
 			{ series: { money: [['2026-09-27T11:00:00Z', 2]], exp: [['2026-09-27T11:00:00Z', 7]] }, initial: {}, next_cursor: null }
 		];
 		const fetch = mockFetch(() => json(pages.shift()));
@@ -36,6 +45,8 @@ describe('ряды метрик', () => {
 		const out = await loadMetrics(api, win, ['money', 'exp']);
 		expect(out.series.money).toEqual([['2026-09-27T10:00:00Z', 1], ['2026-09-27T11:00:00Z', 2]]);
 		expect(out.initial).toEqual({ money: ['2026-09-26T00:00:00Z', 9] });
+		// Битое событие отброшено; сервер без events — пустой список.
+		expect(out.events).toEqual([{ at: '2026-09-27T10:30:00Z', scenario: 'stocks_dump' }]);
 		expect(fetch.calls[1]?.url).toContain('cursor=c1');
 		expect(fetch.calls[0]?.url).toContain('fields=money%2Cexp');
 	});

@@ -2,19 +2,54 @@
 	import uPlot from 'uplot';
 	import 'uplot/dist/uPlot.min.css';
 	import { AXIS_FONT, axisNumbers, axisSize, TIME_VALUES } from '$lib/metrics/axis';
+	import type { Marker } from '$lib/metrics/events';
 	import { TZ } from '$lib/util/format';
 
 	interface Props {
 		label: string;
 		data: [number[], number[]];
 		height?: number;
+		/** События окна — пунктирные вертикали со значком наверху (слив в акции, сон…). */
+		markers?: Marker[];
 	}
-	let { label, data, height = 140 }: Props = $props();
+	let { label, data, height = 140, markers = [] }: Props = $props();
 	let box = $state<HTMLDivElement>();
 	let chart: uPlot | null = null;
 
 	function css(name: string, fallback: string): string {
 		return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+	}
+
+	/** Метки поверх графика: линия на каждое событие, значок — если не наезжает на соседний. */
+	function drawMarkers(u: uPlot, marks: Marker[]) {
+		if (marks.length === 0) return;
+		const ratio = uPlot.pxRatio;
+		const { left, top, width, height: h } = u.bbox;
+		const ctx = u.ctx;
+		ctx.save();
+		// Состояние контекста после серий uPlot — с прозрачной заливкой: цвет значка задаётся явно.
+		ctx.globalAlpha = 1;
+		ctx.strokeStyle = css('--fg-faint', '#777');
+		ctx.fillStyle = css('--fg-muted', '#999');
+		ctx.lineWidth = ratio;
+		ctx.setLineDash([3 * ratio, 3 * ratio]);
+		ctx.font = `${12 * ratio}px system-ui, sans-serif`;
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'top';
+		let lastIcon = Number.NEGATIVE_INFINITY;
+		for (const m of marks) {
+			const x = Math.round(u.valToPos(m.x, 'x', true));
+			if (x < left || x > left + width) continue;
+			ctx.beginPath();
+			ctx.moveTo(x, top);
+			ctx.lineTo(x, top + h);
+			ctx.stroke();
+			if (x - lastIcon >= 16 * ratio) {
+				ctx.fillText(m.icon, x, top + ratio);
+				lastIcon = x;
+			}
+		}
+		ctx.restore();
 	}
 
 	function options(width: number): uPlot.Options {
@@ -27,6 +62,7 @@
 			width,
 			height,
 			legend: { show: false },
+			hooks: { draw: [(u: uPlot) => drawMarkers(u, markers)] },
 			cursor: { drag: { x: true, y: false } },
 			tzDate: (ts) => uPlot.tzDate(new Date(ts * 1e3), TZ),
 			scales: { x: { time: true } },
@@ -72,6 +108,6 @@
 	{#if data[0].length === 0}
 		<p class="rounded-md bg-surface-2 p-3 text-xs text-fg-faint">Нет данных за период.</p>
 	{:else}
-		<div bind:this={box} class="w-full" role="img" aria-label="График: {label}, точек {data[0].length}"></div>
+		<div bind:this={box} class="w-full" role="img" aria-label="График: {label}, точек {data[0].length}{markers.length ? `, меток ${markers.length}` : ''}"></div>
 	{/if}
 </figure>

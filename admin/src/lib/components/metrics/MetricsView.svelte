@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
+	import { legend, markers } from '$lib/metrics/events';
 	import { loadMetrics, METRICS, stepSeries, type MetricsData, type Window } from '$lib/metrics/series';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtNum, mskDay, mskDayStart } from '$lib/util/format';
@@ -22,6 +23,7 @@
 	let loading = $state(false);
 	let error = $state('');
 	let win = $state<Window | null>(null);
+	const marks = $derived(data ? markers(data.events) : []);
 
 	const DAY = 86_400_000;
 	const PERIODS: { value: Period; label: string }[] = [
@@ -123,10 +125,11 @@
 		</p>
 	{/if}
 	{#if data && win}
+		{#if marks.length}<p class="text-xs text-fg-muted">Метки на графиках: {legend(marks)}</p>{/if}
 		<div class="grid gap-3 lg:grid-cols-2">
 			{#each METRICS.filter((m) => fields.includes(m.key)) as m (m.key)}
 				<div class="card">
-					<Chart label="{m.label} · {latest(m.key)}" data={stepSeries(data, m.key, win)} />
+					<Chart label="{m.label} · {latest(m.key)}" data={stepSeries(data, m.key, win)} markers={marks} />
 				</div>
 			{/each}
 		</div>

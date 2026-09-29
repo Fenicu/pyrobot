@@ -1,4 +1,5 @@
 import { call, type Api } from '$lib/api/client';
+import type { MetricEvent } from './events';
 
 /** Поля метрик (`METRIC_FIELDS` движка) с подписями. */
 export const METRICS: { key: string; label: string }[] = [
@@ -16,16 +17,26 @@ export const METRICS: { key: string; label: string }[] = [
 
 export type Point = [string, number];
 
-/** Ряды метрик окна: точки `[момент, значение]` по полю и значение на начало окна. */
+/** Ряды метрик окна: точки `[момент, значение]` по полю, значение на начало окна и события окна
+ * (удачные запуски, которые двигают метрики, — метки на графиках). */
 export interface MetricsData {
 	series: Record<string, Point[]>;
 	initial: Record<string, Point>;
+	events: MetricEvent[];
 }
 
 interface RawPage {
 	series: Record<string, unknown[]>;
 	initial: Record<string, unknown>;
+	/** У сервера до 0.9 поля нет. */
+	events?: unknown[];
 	next_cursor: string | null;
+}
+
+function event(raw: unknown): MetricEvent | null {
+	if (typeof raw !== 'object' || raw === null) return null;
+	const { at, scenario } = raw as Record<string, unknown>;
+	return typeof at === 'string' && typeof scenario === 'string' ? { at, scenario } : null;
 }
 
 function point(raw: unknown): Point | null {
@@ -52,7 +63,7 @@ export async function loadMetrics(
 	fields: string[],
 	{ signal, onProgress }: LoadOptions = {}
 ): Promise<MetricsData> {
-	const out: MetricsData = { series: {}, initial: {} };
+	const out: MetricsData = { series: {}, initial: {}, events: [] };
 	let cursor: string | null = null;
 	let points = 0;
 	for (let page = 0; ; page++) {
@@ -75,6 +86,7 @@ export async function loadMetrics(
 				const p = point(raw);
 				if (p) out.initial[key] = p;
 			}
+			out.events = (res.events ?? []).flatMap((raw) => event(raw) ?? []);
 		}
 		for (const [key, list] of Object.entries(res.series)) {
 			const target = (out.series[key] ??= []);

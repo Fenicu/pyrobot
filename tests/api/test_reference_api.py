@@ -9,7 +9,9 @@ from app.db.journal import DbJournal
 from app.db.metro import DbMetroRunStore
 from app.db.models import MetricRow
 from app.db.notifications import DbNotifier
+from app.db.planner import DbPlannerStore
 from app.engine.events import Unrecognized
+from app.engine.planner.types import Act
 from tests.api.conftest import login
 from tests.engine.helpers import make_msg
 
@@ -69,10 +71,36 @@ async def test_metrics_window_fields_and_paging(
         )
     ).json()
     assert sum(len(v) for v in rest["series"].values()) == 2 and rest["initial"] == {}
+    assert rest["events"] == []
     bad = await api_client.get("/api/v1/metrics", params={"fields": "money,password"})
     assert bad.status_code == 422
     too_many = await api_client.get("/api/v1/metrics", params={"limit": 5001})
     assert too_many.status_code == 422
+
+
+async def test_metrics_events_are_done_runs_that_move_metrics(
+    container: Container, api_client: AsyncClient, clean_db: Database
+) -> None:
+    planner = DbPlannerStore(clean_db, 1)
+
+    async def run(scenario: str, start: int, status: str = "done") -> None:
+        decision = await planner.record(_at(start), Act(scenario, {}, "test"))
+        run_id = await planner.run_started(decision, scenario, {}, _at(start))
+        await planner.run_finished(run_id, status, "", _at(start + 1))
+
+    await run("stocks_dump", 1)
+    await run("sleep", 5)
+    await run("lottery_buy", 3, status="failed")
+    await run("refresh", 4)
+    await run("metro", 20)
+    await login(api_client)
+    window = {"from": _at(0).isoformat(), "to": _at(10).isoformat()}
+    body = (await api_client.get("/api/v1/metrics", params=window)).json()
+    # Только удачные, только те, что двигают метрики, и только кончившиеся в окне.
+    assert body["events"] == [
+        {"at": _at(2).isoformat().replace("+00:00", "Z"), "scenario": "stocks_dump"},
+        {"at": _at(6).isoformat().replace("+00:00", "Z"), "scenario": "sleep"},
+    ]
 
 
 async def test_metro_runs_list_and_detail(

@@ -13,15 +13,25 @@ from app.engine.state.reducer import METRIC_FIELDS
 
 router = APIRouter(prefix="/api/v1", tags=["reference"])
 DEFAULT_WINDOW = timedelta(hours=24)
+# Сценарии, после которых заметно меняются деньги, 🔋 и опыт: метки на графиках метрик.
+EVENT_SCENARIOS = ("stocks_dump", "lottery_buy", "sleep", "gorbushka", "metro")
 MAX_ACK = 500
 
 Point = tuple[datetime, float]
+
+
+class MetricEvent(BaseModel):
+    at: datetime
+    scenario: str
 
 
 class MetricsOut(BaseModel):
     series: dict[str, list[Point]]
     # Последнее значение до начала окна (только на первой странице).
     initial: dict[str, Point]
+    # Удачные запуски, которые двигают метрики, по концу в окне — метки на графиках (только на
+    # первой странице): слив налички в акции, лотерея, сон, Горбушка, метро.
+    events: list[MetricEvent]
     next_cursor: str | None
 
 
@@ -139,10 +149,12 @@ async def metrics(
     for p in page:
         series.setdefault(p.key, []).append((p.ts, p.value))
     initial = {} if cursor else await c.reads.metrics_before(keys, start)
+    runs = [] if cursor else await c.reads.runs_done(EVENT_SCENARIOS, start, end)
     last = page[-1] if page else None
     return MetricsOut(
         series=series,
         initial=initial,
+        events=[MetricEvent(at=at, scenario=scenario) for at, scenario in runs],
         next_cursor=(
             encode_cursor([last.ts.isoformat(), last.id])
             if last is not None and len(points) > limit
