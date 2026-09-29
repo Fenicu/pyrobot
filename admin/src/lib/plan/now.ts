@@ -1,9 +1,9 @@
 /** «Сейчас» и строка пояснения «Плана бота». */
-import type { Outlook, PublicState } from '$lib/api/types';
+import type { Outlook, PublicState, WakeKind } from '$lib/api/types';
 import { fmtNum, fmtTime, mskDay } from '$lib/util/format';
 import { activityLabel, PERSONAL_TASK } from '$lib/util/game';
 import { val } from '$lib/util/observed';
-import { actDetail, deedTag, deedText, readyText, scenarioText, timerLine } from './text';
+import { actDetail, deedTag, deedText, readyText, scenarioText, timerLine, WAKE } from './text';
 
 export interface NowView {
 	/** Почему решение сейчас не исполняется или что идёт до него: пауза, неготовность, идущий
@@ -13,6 +13,8 @@ export interface NowView {
 	decision: string;
 	/** Момент следующего шага ожидания, ISO. */
 	at: string | null;
+	/** Цикл спит, а решение — действие: «Тогда: …» — что он сделает, проснувшись; иначе пусто. */
+	then: string;
 	/** Занятость по взгляду планировщика. */
 	phase: string;
 	/** «Держит 🔥: …» — запасы от дел; пусто — запаса нет. */
@@ -50,18 +52,49 @@ function deedReason(reason: string): string {
 	return '';
 }
 
+const NO_TIMERS = '⏳ ждёт событий: таймеров нет';
+
 function decisionText(plan: Outlook): { text: string; at: string | null } {
 	const d = plan.decision;
 	if (d.kind === 'act' && d.scenario !== null) {
 		const detail = d.scenario.startsWith('deed:') ? deedReason(d.reason) : actDetail(d.scenario, d.params, plan);
 		return { text: `${scenarioText(d.scenario)}${detail ? ` (${detail})` : ''}`, at: null };
 	}
-	if (d.reason === 'no_timers') return { text: '⏳ ждёт событий: таймеров нет', at: null };
+	if (d.reason === 'no_timers') return { text: NO_TIMERS, at: null };
 	const timer = plan.wakeups.find((t) => !t.after_wake && t.at === d.until) ?? plan.wakeups[0];
 	if (plan.phase === 'asleep' && timer?.kind === 'busy') return { text: '🛌 ждёт пробуждения', at: d.until };
 	// timerLine несёт ключ (чей это кулдаун, какой источник обновить) — голый текст WAKE[kind] его теряет.
 	const what = timer ? timerLine(timer, plan).text.toLowerCase() : d.reason;
 	return { text: `⏳ ждёт: ${what}`, at: d.until };
+}
+
+interface LoopWait {
+	/** `kind` или `kind:key` таймера, как в журнале, либо `no_timers`. */
+	reason: string;
+	/** Когда цикл проснётся сам, ISO. */
+	wake: string;
+}
+
+/** Цикл спит до своего таймера, а план на текущий момент — действие: оно будет, когда цикл
+ * проснётся (раньше — только если придёт сообщение игры). */
+function loopWait(plan: Outlook): LoopWait | null {
+	const { wait_reason: reason, wake_at: wake } = plan.loop;
+	if (plan.decision.kind !== 'act' || reason === null || wake === null) return null;
+	return Date.parse(wake) > Date.parse(plan.now) ? { reason, wake } : null;
+}
+
+function loopWaitText(plan: Outlook, { reason, wake }: LoopWait): string {
+	if (reason === 'no_timers') return NO_TIMERS;
+	const until = plan.loop.next_wake;
+	const [kind = reason, ...rest] = reason.split(':');
+	const key = rest.length > 0 ? rest.join(':') : null;
+	const what =
+		kind in WAKE
+			? timerLine({ at: until ?? wake, kind: kind as WakeKind, key, after_wake: false }, plan).text.toLowerCase()
+			: reason;
+	// Проснётся раньше срока (предел простоя цикла) — срок самого ожидания рядом.
+	const later = until !== null && Date.parse(until) !== Date.parse(wake) ? ` в ${fmtTime(until)}` : '';
+	return `⏳ ждёт: ${what}${later}`;
 }
 
 function phaseText(plan: Outlook): string {
@@ -88,12 +121,14 @@ export function nowView(plan: Outlook): NowView {
 	const blocks = blockers(plan);
 	const decision = decisionText(plan);
 	const first = blocks[0];
+	const common = { blockers: blocks.map((b) => b.text), phase: phaseText(plan), reserves: reservesText(plan) };
+	const wait = first ? null : loopWait(plan);
+	if (wait) return { ...common, decision: loopWaitText(plan, wait), at: wait.wake, then: `Тогда: ${decision.text}` };
 	return {
-		blockers: blocks.map((b) => b.text),
+		...common,
 		decision: first ? `${first.when} — ${decision.text}` : decision.text,
 		at: decision.at,
-		phase: phaseText(plan),
-		reserves: reservesText(plan)
+		then: ''
 	};
 }
 

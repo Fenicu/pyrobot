@@ -73,6 +73,14 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		expect(now).toHaveTextContent('когда пауза снимется — 🤑 билеты лотереи (все — max)');
 	});
 
+	it('цикл спит до таймера: «Сейчас» — ожидание, действие — «тогда»', () => {
+		const at = '2026-09-27T16:42:54Z';
+		card({ ...plan, loop: { ...plan.loop, next_wake: at, wait_reason: 'book_ready', wake_at: at } });
+		const now = screen.getByRole('region', { name: 'Сейчас' });
+		expect(now).toHaveTextContent('⏳ ждёт: прочитать книгу — следующий шаг в 19:42');
+		expect(now).toHaveTextContent('Тогда: 🤑 билеты лотереи (все — max)');
+	});
+
 	it('во сне таймеры прохода «после пробуждения» — под подзаголовком', () => {
 		const until = plan.wakeups[0]!.at;
 		const asleep: Outlook = {

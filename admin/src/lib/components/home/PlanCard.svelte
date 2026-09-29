@@ -86,6 +86,7 @@
 						<p class="font-semibold">
 							{view.decision}{#if view.at}<span class="font-normal">{' — следующий шаг в '}</span><b>{fmtTime(view.at)}</b>{/if}
 						</p>
+						{#if view.then}<p class="text-sm">{view.then}</p>{/if}
 					{/if}
 					<p class="text-xs text-fg-muted">{view.phase}</p>
 					{#if view.reserves}<p class="text-xs text-fg-muted">{view.reserves}</p>{/if}
