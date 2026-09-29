@@ -86,6 +86,20 @@ export const ACTION_STATUS: Record<string, string> = {
 	rejected: 'отклонено'
 };
 
+/** Что за команда у действия: текст или кнопка; пересылка — «→ чат команды «название»,
+ * сообщение #id» (название — из проверки чата Telegram, по нему видна опечатка в ID). */
+export function actionCommand(
+	kind: string,
+	p: { text?: unknown; data?: unknown; message_id?: unknown; chat_title?: unknown }
+): string {
+	if (kind === 'forward') {
+		const title = typeof p.chat_title === 'string' && p.chat_title ? ` «${p.chat_title}»` : '';
+		return `→ чат команды${title}, сообщение #${p.message_id ?? '?'}`;
+	}
+	const command = p.text ?? p.data;
+	return command === null || command === undefined ? '—' : String(command);
+}
+
 /** Тон значка статуса действия или запуска. */
 export function statusTone(status: string): 'ok' | 'warn' | 'bad' | 'muted' {
 	if (['confirmed', 'done', 'online'].includes(status)) return 'ok';

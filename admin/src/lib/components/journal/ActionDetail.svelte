@@ -5,7 +5,7 @@
 	import type { LiveEvent } from '$lib/live/sse';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
-	import { ACTION_STATUS, SOURCE, statusTone } from '$lib/util/game';
+	import { ACTION_STATUS, actionCommand, SOURCE, statusTone } from '$lib/util/game';
 	import Pill from '../Pill.svelte';
 	import KV from './KV.svelte';
 	import RunSteps from './RunSteps.svelte';
@@ -44,8 +44,9 @@
 		});
 	});
 
-	const command = $derived(
-		action ? String(action.payload.text ?? action.payload.data ?? '—') : ''
+	const command = $derived(action ? actionCommand(action.kind, action.payload) : '');
+	const chatTitle = $derived(
+		action && typeof action.payload.chat_title === 'string' ? action.payload.chat_title : null
 	);
 </script>
 
@@ -62,6 +63,9 @@
 		{#if action.reason}<KV label="Причина"><span class="ext-text">{action.reason}</span></KV>{/if}
 		<KV label="Команда"><span class="ext-text font-mono text-xs">{command}</span></KV>
 		<KV label="Вид">{action.kind} · {action.command_class}</KV>
+		{#if action.kind === 'forward'}
+			<KV label="Куда"><span class="ext-text">{chatTitle ? `«${chatTitle}»` : 'название не известно'} · {action.chat_id}</span></KV>
+		{/if}
 		<KV label="Источник">{SOURCE[action.source] ?? action.source}</KV>
 		{#if action.idempotency_key}<KV label="Ключ"><span class="font-mono text-xs break-all">{action.idempotency_key}</span></KV>{/if}
 		<KV label="Попытки">{action.attempts}</KV>

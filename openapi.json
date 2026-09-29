@@ -43,6 +43,17 @@
             "title": "Chat Id",
             "type": "integer"
           },
+          "chat_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Title"
+          },
           "command_class": {
             "title": "Command Class",
             "type": "string"
@@ -77,6 +88,17 @@
           "kind": {
             "title": "Kind",
             "type": "string"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
           },
           "reason": {
             "title": "Reason",

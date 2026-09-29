@@ -13,6 +13,7 @@ import JournalView from './JournalView.svelte';
 import ActionDetail from './ActionDetail.svelte';
 import DecisionDetail from './DecisionDetail.svelte';
 import RunSteps from './RunSteps.svelte';
+import { actionCommand } from '$lib/util/game';
 
 const page = fixture<JournalPage>('journal_page');
 
@@ -283,5 +284,80 @@ describe('Строка ленты', () => {
 		const line = row.querySelector('.truncate')!;
 		expect(line).not.toBeNull();
 		expect(line.querySelector('.ext-text')).toBeNull();
+	});
+});
+
+describe('Пересылка в журнале', () => {
+	const forwardPayload = {
+		text: null,
+		data: null,
+		reply_to: null,
+		message_id: 3625831,
+		from_chat_id: 227859379,
+		chat_title: '☣️ SU',
+		expect_content: 'h',
+		expect_revision: null
+	};
+	const forwardAction = {
+		...fixture<object>('action_detail'),
+		id: 900,
+		kind: 'forward',
+		chat_id: -1001149209877,
+		source: 'planner',
+		command_class: 'forward',
+		payload: forwardPayload,
+		reason: 'sent',
+		answer: '4242',
+		match_detail: null,
+		idempotency_key: 'forward:227859379:3625831',
+		scenario_run_id: 35
+	};
+	const forwardItem = {
+		type: 'action',
+		id: 900,
+		at: '2026-09-27T19:10:00Z',
+		source: 'planner',
+		kind: 'forward',
+		chat_id: -1001149209877,
+		command_class: 'forward',
+		status: 'confirmed',
+		reason: 'sent',
+		text: null,
+		data: null,
+		message_id: 3625831,
+		chat_title: '☣️ SU',
+		finished_at: '2026-09-27T19:10:01Z'
+	};
+
+	it('строка ленты, разбор и шаг запуска — «→ чат команды «…», сообщение #…», а не «—»', async () => {
+		const user = userEvent.setup();
+		await view((c) => {
+			if (c.url.startsWith('/api/v1/journal')) return json({ items: [forwardItem], next_cursor: null });
+			if (c.url === '/api/v1/actions/900') return json(forwardAction);
+			if (c.url === '/api/v1/scenario-runs/35')
+				return json({
+					id: 35, decision_id: 345, scenario: 'factory_report', params: {}, started_at: '2026-09-27T19:09:58Z',
+					finished_at: '2026-09-27T19:10:02Z', status: 'done', reason: 'won', requested_by: null,
+					metro_run_id: null, actions: [forwardAction]
+				});
+			return undefined;
+		});
+		const list = screen.getByRole('region', { name: 'Лента' });
+		expect(list).toHaveTextContent('план · → чат команды «☣️ SU», сообщение #3625831');
+		await user.click(within(list).getByRole('button', { name: /чат команды/ }));
+		const sheet = await screen.findByRole('dialog', { name: 'Действие' });
+		expect(await within(sheet).findByText(/Действие #900/)).toBeInTheDocument();
+		expect(sheet).toHaveTextContent('→ чат команды «☣️ SU», сообщение #3625831');
+		expect(sheet).toHaveTextContent('Куда «☣️ SU» · -1001149209877');
+		const steps = await within(sheet).findByRole('list', { name: 'Шаги запуска #35' });
+		expect(steps).toHaveTextContent('→ чат команды «☣️ SU», сообщение #3625831');
+		expect(steps).not.toHaveTextContent('—');
+	});
+
+	it('без названия чата — только номер сообщения', () => {
+		expect(actionCommand('forward', { message_id: 5 })).toBe('→ чат команды, сообщение #5');
+		expect(actionCommand('send', { text: '/job' })).toBe('/job');
+		expect(actionCommand('click', { data: 'sleep_Hotel', message_id: 5 })).toBe('sleep_Hotel');
+		expect(actionCommand('send', {})).toBe('—');
 	});
 });

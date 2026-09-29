@@ -81,6 +81,8 @@ export function liveItem(event: LiveEvent, receivedAt: string): JournalItem | nu
 				reason: d.reason,
 				text: d.text,
 				data: d.data,
+				message_id: d.message_id ?? null,
+				chat_title: d.chat_title ?? null,
 				finished_at: null
 			};
 			return item;
@@ -99,6 +101,8 @@ export function liveItem(event: LiveEvent, receivedAt: string): JournalItem | nu
 export function actionItem(a: ActionOut): ActionItem {
 	const text = a.payload.text;
 	const data = a.payload.data;
+	const messageId = a.payload.message_id;
+	const chatTitle = a.payload.chat_title;
 	return {
 		type: 'action',
 		id: a.id,
@@ -111,6 +115,8 @@ export function actionItem(a: ActionOut): ActionItem {
 		reason: a.reason,
 		text: typeof text === 'string' ? text : null,
 		data: typeof data === 'string' ? data : null,
+		message_id: typeof messageId === 'number' ? messageId : null,
+		chat_title: typeof chatTitle === 'string' ? chatTitle : null,
 		finished_at: a.finished_at
 	};
 }

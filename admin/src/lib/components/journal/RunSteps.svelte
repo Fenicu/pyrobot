@@ -5,7 +5,7 @@
 	import { isActionCreated, type LiveEvent, type SseActionCreated } from '$lib/live/sse';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment, fmtSpan, toDate } from '$lib/util/format';
-	import { ACTION_STATUS, statusTone } from '$lib/util/game';
+	import { ACTION_STATUS, actionCommand, statusTone } from '$lib/util/game';
 	import { pretty } from '$lib/util/text';
 	import Pill from '../Pill.svelte';
 
@@ -48,7 +48,7 @@
 			source: d.source,
 			kind: d.kind,
 			chat_id: d.chat_id,
-			payload: { text: d.text, data: d.data },
+			payload: { text: d.text, data: d.data, message_id: d.message_id ?? null, chat_title: d.chat_title ?? null },
 			command_class: d.command_class,
 			status: d.status,
 			reason: d.reason,
@@ -125,7 +125,7 @@
 				{#each run.actions as a (a.id)}
 					<li class="flex items-baseline gap-2 text-xs">
 						<span class="font-mono text-fg-faint">{fmtMoment(a.created_at, now, true)}</span>
-						<span class="ext-text min-w-0 flex-1 truncate">{a.payload.text ?? a.payload.data ?? '—'}</span>
+						<span class="ext-text min-w-0 flex-1 truncate">{actionCommand(a.kind, a.payload)}</span>
 						<Pill tone={statusTone(a.status)}>{ACTION_STATUS[a.status] ?? a.status}</Pill>
 						{#if a.reason}<span class="ext-text text-fg-muted">{a.reason}</span>{/if}
 					</li>

@@ -168,6 +168,8 @@ class PublishingActionStore:
                 "chat_id": req.chat_id,
                 "text": req.text,
                 "data": req.data,
+                "message_id": req.message_id,
+                "chat_title": req.chat_title,
                 "command_class": cls.value,
                 "scenario_run_id": req.scenario_run_id,
             },

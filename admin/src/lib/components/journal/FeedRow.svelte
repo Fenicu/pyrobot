@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { JournalItem } from '$lib/api/types';
 	import { fmtMoment } from '$lib/util/format';
-	import { ACTION_STATUS, SOURCE, statusTone } from '$lib/util/game';
+	import { ACTION_STATUS, actionCommand, SOURCE, statusTone } from '$lib/util/game';
 	import { firstLine } from '$lib/util/text';
 	import Pill from '../Pill.svelte';
 
@@ -20,7 +20,7 @@
 			return {
 				pill: bad ? (ACTION_STATUS[item.status] ?? item.status) : 'действие',
 				tone: bad ? tone : ('ok' as const),
-				text: `${SOURCE[item.source] ?? item.source} · ${item.text ?? item.data ?? '—'}`,
+				text: `${SOURCE[item.source] ?? item.source} · ${actionCommand(item.kind, item)}`,
 				tail: item.reason || (ACTION_STATUS[item.status] ?? item.status)
 			};
 		}

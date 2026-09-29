@@ -30,7 +30,7 @@ async def _action(db: Database, at: datetime, **kw: object) -> int:
         source=kw.get("source", "planner"),
         kind=kw.get("kind", "send"),
         chat_id=kw.get("chat_id", GAME),
-        payload={"text": kw.get("text", "/job"), "data": None},
+        payload=kw.get("payload", {"text": kw.get("text", "/job"), "data": None}),
         command_class="action",
         status=kw.get("status", "confirmed"),
         reason="",
@@ -105,6 +105,24 @@ async def test_feed_merges_types_newest_first(
     assert (act["status"], act["source"], act["text"]) == ("rejected", "manual", "/harvest")
     dec = next(i for i in items if i["id"] == ids["d1"] and i["type"] == "decision")  # type: ignore[attr-defined]
     assert (dec["kind"], dec["scenario"], dec["reason"]) == ("act", "deed:job", "best_score")
+
+
+async def test_forward_in_feed_has_message_and_chat_title(
+    container: Container, api_client: AsyncClient, clean_db: Database
+) -> None:
+    payload = {
+        "text": None,
+        "data": None,
+        "message_id": 3625831,
+        "from_chat_id": GAME,
+        "chat_title": "☣️ SU",
+    }
+    await _action(clean_db, _at(5), kind="forward", chat_id=-1001149209877, payload=payload)
+    await _action(clean_db, _at(6), text="/job")
+    await login(api_client)
+    fwd, job = reversed((await _page(api_client))["items"])  # type: ignore[call-overload]
+    assert (fwd["kind"], fwd["message_id"], fwd["chat_title"]) == ("forward", 3625831, "☣️ SU")
+    assert (job["text"], job["message_id"], job["chat_title"]) == ("/job", None, None)
 
 
 async def test_feed_cursor_pages_without_gaps(

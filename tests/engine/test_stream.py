@@ -97,6 +97,22 @@ async def test_action_created_frame_carries_scenario_run() -> None:
     assert [e.data["scenario_run_id"] for e in stream.history()] == [34, None]
 
 
+async def test_forward_created_frame_carries_message_and_chat_title() -> None:
+    # Журнал показывает пересылку «→ чат команды «…», сообщение #…», а не «—».
+    stream = EventStream(epoch="e1")
+    store = PublishingActionStore(MemoryActionStore(), stream)
+    fwd = ActionRequest(
+        kind=ActionKind.FORWARD,
+        chat_id=-1001149209877,
+        from_chat_id=GAME,
+        message_id=3625831,
+        chat_title="☣️ SU",
+    )
+    await store.create(fwd, CommandClass.FORWARD, ActionStatus.INTENT)
+    [frame] = stream.history()
+    assert (frame.data["message_id"], frame.data["chat_title"]) == (3625831, "☣️ SU")
+
+
 async def test_planner_store_publishes_decisions_and_runs() -> None:
     stream = EventStream(epoch="e1")
     store = PublishingPlannerStore(MemoryPlannerStore(), stream)

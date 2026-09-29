@@ -42,6 +42,9 @@ class ActionItem(BaseModel):
     reason: str
     text: str | None
     data: str | None
+    # Сообщение действия (клик — по чему, пересылка — что) и название чата пересылки.
+    message_id: int | None = None
+    chat_title: str | None = None
     finished_at: datetime | None
 
 
@@ -160,6 +163,8 @@ def _item(row: Any) -> MessageItem | ActionItem | DecisionItem:
             reason=row.reason,
             text=row.payload.get("text"),
             data=row.payload.get("data"),
+            message_id=row.payload.get("message_id"),
+            chat_title=row.payload.get("chat_title"),
             finished_at=row.finished_at,
         )
     assert isinstance(row, DecisionRow)

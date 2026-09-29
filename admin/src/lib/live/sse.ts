@@ -28,6 +28,9 @@ export interface SseActionCreated {
 	chat_id: number;
 	text: string | null;
 	data: string | null;
+	/** Сообщение действия и название чата пересылки; у сервера до 0.7 полей нет. */
+	message_id?: number | null;
+	chat_title?: string | null;
 	command_class: string;
 	/** Запуск сценария, шагом которого идёт действие; у сервера до 0.4 поля нет — null. */
 	scenario_run_id: number | null;

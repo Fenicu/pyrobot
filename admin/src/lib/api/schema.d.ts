@@ -701,6 +701,8 @@ export interface components {
             at: string;
             /** Chat Id */
             chat_id: number;
+            /** Chat Title */
+            chat_title?: string | null;
             /** Command Class */
             command_class: string;
             /** Data */
@@ -711,6 +713,8 @@ export interface components {
             id: number;
             /** Kind */
             kind: string;
+            /** Message Id */
+            message_id?: number | null;
             /** Reason */
             reason: string;
             /** Source */
