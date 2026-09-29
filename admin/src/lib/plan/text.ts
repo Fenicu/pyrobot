@@ -228,7 +228,8 @@ export function timerLine(t: PlanTimer, plan: Outlook): TimerLine {
 			break;
 		case 'sleep_window':
 			text = `Сон ${plan.hints.sleep_hours} ч${sleepPlace(plan)}`;
-			detail = plan.hints.sleep_place === null ? '' : 'на текущих деньгах';
+			// Место сна — по деньгам; при устаревшей занятости таймеры — второй проход на последних.
+			if (plan.hints.sleep_place !== null) detail = plan.basis ? 'по последним данным о деньгах' : 'на текущих деньгах';
 			break;
 		case 'lottery_open':
 			text = `${base.text} (${lotteryTickets(plan)})`;

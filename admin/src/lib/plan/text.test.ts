@@ -69,6 +69,10 @@ describe('словари плана', () => {
 	it('строки таймеров: сон с местом, лотерея из настроек, цель битвы', () => {
 		const sleep = plan.wakeups.find((t) => t.kind === 'sleep_window')!;
 		expect(timerLine(sleep, plan)).toEqual({ icon: '🛌', text: 'Сон 7 ч под мостом', detail: 'на текущих деньгах' });
+		// Второй проход при устаревшей занятости — на последних известных деньгах, как и весь раздел.
+		const stale = fixture<Outlook>('outlook_stale');
+		const later = stale.wakeups.find((t) => t.kind === 'sleep_window')!;
+		expect(timerLine(later, stale).detail).toBe('по последним данным о деньгах');
 		const dump = plan.wakeups.find((t) => t.kind === 'stocks_dump')!;
 		expect(timerLine(dump, plan).detail).toBe('цель 📯Pied Piper');
 		expect(lotteryTickets(plan)).toBe('все — max');
