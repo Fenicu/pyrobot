@@ -140,10 +140,11 @@ jobs:
             echo "$REGISTRY_TOKEN" | docker login git.fenicu.com -u "$REGISTRY_USER" --password-stdin
             OUTPUT=(--push -t "$IMAGE:$TAG" -t "$IMAGE:latest")
           fi
-          # Прокси apt и verdaccio хоумлаба; без них — deb.debian.org и npmjs.
+          # Прокси apt, verdaccio и devpi хоумлаба; без них образ собирается из публичных источников.
           docker buildx build --builder "$B" --platform linux/amd64 --provenance=false \
             --build-arg APT_PROXY=http://10.10.40.23:3142 \
             --build-arg NPM_REGISTRY=http://10.10.40.8:4873/ \
+            --build-arg PYPI_INDEX=http://10.10.40.8:3141/root/pypi/+simple/ \
             "${OUTPUT[@]}" .
 
   # Выкатка на apps по тегу: compose.yml, .env из секретов и скрипт выкатки по ssh, дальше на apps

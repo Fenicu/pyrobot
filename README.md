@@ -410,6 +410,10 @@ live не запускается); задания — `convDets` (перераб
 
 ## Разработка
 
+`pyproject.toml` и `uv.lock` указывают на devpi автора (зеркало PyPI в домашней сети). Вне её — с
+PyPI: `UV_DEFAULT_INDEX=https://pypi.org/simple uv sync` (uv перепишет адреса в `uv.lock` на PyPI, версии
+те же; эти изменения не коммитить). Образ от этого не зависит — см. «Образ».
+
 ```bash
 uv sync
 docker compose -f compose.dev.yml up -d   # Postgres для тестов
@@ -2543,8 +2547,10 @@ CI сверяет, что `schema.d.ts` актуален. Сборка в Docker
 ### Образ
 
 **Образ** (`Dockerfile`, многостадийный): стадия сборки — `ghcr.io/astral-sh/uv` с Python 3.13 и
-компилятором (tgcrypto собирается из исходников), `uv sync --frozen --no-dev` строго по `uv.lock`
-(индекс пакетов — devpi хоумлаба из `pyproject.toml`); стадия админки — `node:24-bookworm-slim`:
+компилятором (tgcrypto собирается из исходников), версии и хеши пакетов — строго из `uv.lock`: `uv
+export --frozen --no-dev` в requirements с хешами и `uv pip sync --require-hashes` из индекса
+build-arg `PYPI_INDEX` (по умолчанию PyPI) — адреса файлов в `uv.lock` ведут на devpi хоумлаба, `uv
+sync --frozen` скачивал бы по ним; стадия админки — `node:24-bookworm-slim`:
 `npm ci` строго по `admin/package-lock.json` (реестр — build-arg `NPM_REGISTRY`, по умолчанию npmjs;
 кеш npm — `--mount=type=cache`) и `npm run build`, TS-типы API — закоммиченный `schema.d.ts` (`openapi.json`
 в контекст сборки не входит); рантайм — `python:3.13-slim-trixie` без uv, компилятора и node:
@@ -2552,12 +2558,14 @@ venv, `app/`, `alembic.ini` и статика админки в `/app/admin` (`P
 пользователя `pyrobot` (uid/gid 10001); том `/data` (`PYROBOT_DATA_DIR`) — сессия Telegram,
 принадлежит ему же. `HEALTHCHECK` — `python -m app.healthcheck /healthz` (`app/healthcheck.py`,
 код выхода 0 при ответе 200; тем же модулем деплой ждёт `/readyz`), команда по умолчанию — `python -m
-app`, миграции — `alembic upgrade head` в том же образе. Локальная сборка: без аргументов apt и npm
-— из публичных источников; зеркала хоумлаба — необязательные `APT_PROXY` и `NPM_REGISTRY`:
+app`, миграции — `alembic upgrade head` в том же образе. Локальная сборка: без аргументов — из публичных
+источников (deb.debian.org, PyPI, npmjs); зеркала хоумлаба — необязательные `APT_PROXY`,
+`PYPI_INDEX` и `NPM_REGISTRY`:
 
 ```bash
 docker build -t pyrobot:local .
 docker build --build-arg APT_PROXY=http://10.10.40.23:3142 \
+  --build-arg PYPI_INDEX=http://10.10.40.8:3141/root/pypi/+simple/ \
   --build-arg NPM_REGISTRY=http://10.10.40.8:4873/ -t pyrobot:local .
 ```
 
@@ -2598,7 +2606,8 @@ verdaccio хоумлаба — `npm_config_registry`,
 (`self-hosted`) собирает образ — поломка `Dockerfile` видна сразу. Сборка — `docker buildx build`
 своим builder'ом `builder-pyrobot` (драйвер `docker-container`: BuildKit независимо от настроек
 демона; без `--use`, чтобы не переключать общий builder хоста),
-`--platform linux/amd64 --provenance=false`, как у соседних проектов. Без тега результат остаётся
+`--platform linux/amd64 --provenance=false`, как у соседних проектов, с зеркалами хоумлаба
+(`APT_PROXY`, `PYPI_INDEX`, `NPM_REGISTRY` — см. «Образ»). Без тега результат остаётся
 только в кэше builder'а (`--output type=cacheonly`); по тегу `vX.Y.Z` тот же вызов с `--push`
 публикует образ в registry Forgejo как `git.fenicu.com/fenicu/pyrobot:<тег>` и `:latest` (тег
 другого вида — ошибка), локальных образов на раннере не остаётся. `deploy` выкатывает его на apps:

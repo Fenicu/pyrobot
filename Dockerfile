@@ -1,8 +1,11 @@
 # syntax=docker/dockerfile:1
 
-# Сборка окружения: uv ставит зависимости строго по uv.lock; tgcrypto собирается из исходников.
+# Сборка окружения: версии и хеши — строго из uv.lock, пакеты — из PYPI_INDEX (по умолчанию PyPI;
+# адреса файлов в uv.lock — зеркало автора, поэтому не uv sync, а экспорт с хешами); tgcrypto
+# собирается из исходников.
 FROM ghcr.io/astral-sh/uv:0.11.9-python3.13-trixie-slim AS build
 ARG APT_PROXY=""
+ARG PYPI_INDEX=https://pypi.org/simple
 RUN if [ -n "$APT_PROXY" ]; then \
         echo "Acquire::http::Proxy \"$APT_PROXY\";" > /etc/apt/apt.conf.d/00proxy; \
     fi \
@@ -15,7 +18,10 @@ ENV UV_COMPILE_BYTECODE=1 \
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+    uv export --frozen --no-dev --no-emit-project --no-header -q -o /tmp/requirements.txt \
+    && uv venv --no-config /app/.venv \
+    && uv pip sync --no-config --python /app/.venv/bin/python --default-index "$PYPI_INDEX" \
+        --require-hashes /tmp/requirements.txt
 
 # Админка: SvelteKit собирается в статику строго по package-lock.json; пакеты — из NPM_REGISTRY (по
 # умолчанию npmjs, свой реестр npm подставит вместо registry.npmjs.org из lock-файла). TS-типы API —
