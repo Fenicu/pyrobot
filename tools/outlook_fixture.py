@@ -52,6 +52,10 @@ def _seen(value: Any, src: str = "screen") -> dict[str, Any]:
     return {"value": value, "at": _iso(SEEN), "src": src}
 
 
+# Адресат мандаринов по умолчанию не задан: у фикстуры — как у сохранённого экземпляра.
+SETTINGS = Settings.model_validate({"chats": {"tangerine_reply_to": 927136}})
+
+
 def _snapshot() -> dict[str, Any]:
     data: dict[str, Any] = _shifted(json.loads(STATE.read_text(encoding="utf-8"))["state"])
     # Немного 🔥 — чтобы в подсказке было основное дело, которое бот возьмёт следующим.
@@ -80,7 +84,7 @@ def build() -> dict[str, Any]:
     data = _snapshot()
     data["busy"] = _seen({"activity": "job", "until": _iso(NOW + timedelta(minutes=20))})
     data["levelup_pending"] = _seen(True)
-    view = outlook(load_state(data), Settings(), NOW, done_today=DONE_TODAY)
+    view = outlook(load_state(data), SETTINGS, NOW, done_today=DONE_TODAY)
     return outlook_out(PlanView(NOW, view, _loop())).model_dump(mode="json")
 
 
@@ -101,7 +105,7 @@ def build_stale() -> dict[str, Any]:
     data["busy"] = {"value": job, "at": _iso(STALE_SEEN), "src": "screen"}
     data["motivation"] = {**data["motivation"], "at": _iso(STALE_SEEN)}
     state = load_state(data)
-    view = outlook(state, Settings(), STALE_NOW, cooldowns=STALE_HOLDS, done_today=DONE_TODAY)
+    view = outlook(state, SETTINGS, STALE_NOW, cooldowns=STALE_HOLDS, done_today=DONE_TODAY)
     book = next(w.at for w in view.wakeups if w.kind == "book_ready")
     loop = _loop(("book_ready", book))
     return outlook_out(PlanView(STALE_NOW, view, loop)).model_dump(mode="json")

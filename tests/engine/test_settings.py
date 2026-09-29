@@ -76,7 +76,8 @@ def test_phase4_defaults_follow_spec() -> None:
 
 def test_battle_target_must_be_known() -> None:
     with pytest.raises(ValidationError):
-        Settings.model_validate({"battle": {"target": "☣️Black Mesa"}})
+        Settings.model_validate({"battle": {"target": "Black Mesa"}})
+    assert Settings.model_validate({"battle": {"target": "☣️Black Mesa"}}).battle.target
     assert Settings().features.battle
     with pytest.raises(ValidationError):
         Settings.model_validate({"tangerine": {"interval_h": 10}})

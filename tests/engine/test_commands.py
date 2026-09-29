@@ -36,6 +36,7 @@ N, A, R, F, D = (
         ("⛏Добывать", A),
         ("/harvest", A),
         ("📯Pied Piper", A),
+        ("☣️Black Mesa", A),
         ("🛡Защита", A),
         ("/buys_stark_12", A),
         ("/sells_umbrl_3", A),

@@ -262,7 +262,8 @@ class Obligations(PlannerBase):
         return self.act("bulls_join", {"code": invite.value}, "bulls_invite")
 
     def tangerine(self, busy: BusyState | None) -> Decision | None:
-        if not self.feature_on("tangerine"):
+        reply_to = self.cfg.chats.tangerine_reply_to
+        if not self.feature_on("tangerine") or reply_to is None:
             return None
         last = self.last_done.get("tangerine")
         if last is not None:
@@ -279,8 +280,7 @@ class Obligations(PlannerBase):
             self.reject("tangerine", {}, "not_player")
             self.wake(refused.at + NOT_PLAYER_PAUSE, "tangerine_not_player")
             return None
-        chats = self.cfg.chats
-        params = {"chat": chats.tangerine_chat_id, "reply_to": chats.tangerine_reply_to}
+        params = {"chat": self.cfg.chats.tangerine_chat_id, "reply_to": reply_to}
         return self.act("tangerine", params, "tangerine_ready")
 
     def smoothie(self, busy: BusyState | None) -> Decision | None:

@@ -10,6 +10,7 @@
        "⚡️Stark Ind.",
        "☂️Umbrella",
        "🎩Wayne Ent.",
+       "☣️Black Mesa",
        "🛡Защита"
       ],
       "type": "string"
@@ -25,6 +26,7 @@
       "⚡️Stark Ind.",
       "☂️Umbrella",
       "🎩Wayne Ent.",
+      "☣️Black Mesa",
       "🛡Защита"
      ],
      "title": "Target",
@@ -74,9 +76,16 @@
      "type": "integer"
     },
     "tangerine_reply_to": {
-     "default": 927136,
-     "title": "Tangerine Reply To",
-     "type": "integer"
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Tangerine Reply To"
     },
     "team_chat_id": {
      "anyOf": [

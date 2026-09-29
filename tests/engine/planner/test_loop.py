@@ -712,7 +712,12 @@ async def test_not_playing_recipient_notified(world: World) -> None:
         name: name == "tangerine" for name in type(world.settings.current.features).model_fields
     }
     await world.settings.update(
-        lambda s: s.model_copy(update={"features": s.features.model_copy(update=only_tangerine)}),
+        lambda s: s.model_copy(
+            update={
+                "features": s.features.model_copy(update=only_tangerine),
+                "chats": s.chats.model_copy(update={"tangerine_reply_to": 927136}),
+            }
+        ),
         changed_by="test",
     )
     world.game.on_text("/gt", ("tangerine", 3599304))

@@ -232,6 +232,7 @@ TEXT_RULES: tuple[Rule, ...] = (
         "⚡️Stark Ind.",
         "☂️Umbrella",
         "🎩Wayne Ent.",
+        "☣️Black Mesa",
         "🛡Защита",
         "👍Записаться",
         "👎Выписаться",
@@ -371,7 +372,10 @@ _FEATURE_TEXT: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"/gt\Z", "tangerine"),
         (r"(👍Записаться|👎Выписаться)\Z", "factory"),
         (r"join_fight_\w{11}\Z", "bulls"),
-        (r"(📯Pied Piper|🤖Hooli|⚡️Stark Ind\.|☂️Umbrella|🎩Wayne Ent\.|🛡Защита)\Z", "battle"),
+        (
+            r"(📯Pied Piper|🤖Hooli|⚡️Stark Ind\.|☂️Umbrella|🎩Wayne Ent\.|☣️Black Mesa|🛡Защита)\Z",
+            "battle",
+        ),
         (rf"/(buys|sells)_{_COMPANIES}_\d+\Z", "stocks_dump"),
     )
 )

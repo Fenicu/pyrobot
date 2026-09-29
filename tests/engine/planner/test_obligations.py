@@ -528,10 +528,20 @@ def test_bulls_busy() -> None:
 # --- мандарин и смузи
 
 
+TANGERINE_ON = only("tangerine", chats={"tangerine_reply_to": 927136})
+
+
+def test_tangerine_needs_recipient() -> None:
+    # Адресат мандаринов — выбор игрока: по умолчанию не задан, и /gt не уходит.
+    decision = decide(state(NOON), only("tangerine"), NOON)
+    assert "tangerine" not in verdicts(decision)
+    assert act(decide(state(NOON), TANGERINE_ON, NOON)) == ("tangerine", TANGERINE)
+
+
 def test_tangerine_first_send_and_interval() -> None:
-    assert act(decide(state(NOON), only("tangerine"), NOON)) == ("tangerine", TANGERINE)
+    assert act(decide(state(NOON), TANGERINE_ON, NOON)) == ("tangerine", TANGERINE)
     last = {"tangerine": NOON - timedelta(hours=10)}
-    decision = decide(state(NOON), only("tangerine"), NOON, last_done=last)
+    decision = decide(state(NOON), TANGERINE_ON, NOON, last_done=last)
     assert isinstance(decision, Wait)
     # Запуск стартует раньше, чем /gt реально уходит: минута запаса к кулдауну игры.
     assert decision.until == NOON + timedelta(hours=10) + READY_SLACK + TIMER_MARGIN
@@ -539,14 +549,14 @@ def test_tangerine_first_send_and_interval() -> None:
 
 def test_tangerine_refusals() -> None:
     cooldown = state(NOON, tangerine_ready_at=NOON + timedelta(hours=2))
-    waiting = decide(cooldown, only("tangerine"), NOON)
+    waiting = decide(cooldown, TANGERINE_ON, NOON)
     assert isinstance(waiting, Wait)
     assert waiting.until == NOON + timedelta(hours=2) + READY_SLACK + TIMER_MARGIN
     refused = state(NOON, tangerine_not_player=Obs(value="Настя", at=NOON - timedelta(hours=1)))
-    decision = decide(refused, only("tangerine"), NOON)
+    decision = decide(refused, TANGERINE_ON, NOON)
     assert verdicts(decision)["tangerine"] == "not_player"
     old = state(NOON, tangerine_not_player=Obs(value="Настя", at=NOON - timedelta(hours=25)))
-    assert act(decide(old, only("tangerine"), NOON))[0] == "tangerine"
+    assert act(decide(old, TANGERINE_ON, NOON))[0] == "tangerine"
 
 
 def test_smoothie_today_recipe() -> None:

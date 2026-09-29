@@ -49,7 +49,12 @@ def required(scenario: str, name: str) -> Param:
         ("stocks_dump", "keep", [0, 10_000], [-1, False, 1.5]),
         ("tangerine", "chat", [-1001377961602, 0], [True, "1", 1.0]),
         ("refresh", "source", ["profile", "gorbushka"], ["bank", "", 1, None]),
-        ("battle_target", "target", ["📯Pied Piper", "🛡Защита"], ["☣️Black Mesa", "piper"]),
+        (
+            "battle_target",
+            "target",
+            ["📯Pied Piper", "☣️Black Mesa", "🛡Защита"],
+            ["Hooli", "piper"],
+        ),
         (
             "daily_pick",
             "task",

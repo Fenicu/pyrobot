@@ -47,7 +47,8 @@ class ChatsSection(BaseModel):
     swinfo_user_id: int = 376592453
     smoothie_channel_id: int = -1001356300612
     tangerine_chat_id: int = -1001377961602
-    tangerine_reply_to: int = 927136
+    # Сообщение того, кому дарить мандарины (/gt уходит ответом на него); None — не дарить.
+    tangerine_reply_to: int | None = None
     bulls_invite_chat_id: int | None = None
     # Чат команды для пересылки итогов задания и отчёта о фабрике; None — не пересылать. Только
     # супергруппа (-100…) и не чат игры, SWINFO, канал смузи или мандарины: личный отчёт не должен
@@ -140,7 +141,15 @@ class LevelupSection(BaseModel):
     policy: Literal["balanced"] = Field(default="balanced", json_schema_extra=UNUSED)
 
 
-Target = Literal["📯Pied Piper", "🤖Hooli", "⚡️Stark Ind.", "☂️Umbrella", "🎩Wayne Ent.", "🛡Защита"]
+Target = Literal[
+    "📯Pied Piper",
+    "🤖Hooli",
+    "⚡️Stark Ind.",
+    "☂️Umbrella",
+    "🎩Wayne Ent.",
+    "☣️Black Mesa",
+    "🛡Защита",
+]
 
 
 class BattleSection(BaseModel):

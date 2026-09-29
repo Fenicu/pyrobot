@@ -187,7 +187,7 @@ def test_asleep_sets_only_battle_target() -> None:
 
 
 def test_busy_pass_splits_considered_and_also_ready() -> None:
-    settings = config({"features": {"tangerine": True}})
+    settings = config({"features": {"tangerine": True}, "chats": {"tangerine_reply_to": 927136}})
     comeback = GorbushkaState(state="done", comeback_at=m(-1))
     state = awake(busy=JOB, levelup_pending=True, prizebox=True, gorbushka=comeback)
     view = view_of(state, settings)
