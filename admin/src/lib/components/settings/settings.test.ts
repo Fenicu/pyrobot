@@ -36,15 +36,17 @@ describe('Настройки', () => {
 		expect(items.slice(-4)).toEqual(['Дополнительно', 'Движок', 'Telegram', 'Хранение']);
 	});
 
-	it('секция: поля по типам, только чтение, отличие от умолчания', async () => {
+	it('секция: поля по типам, kill и пауза — только на главной, отличие от умолчания', async () => {
 		const user = userEvent.setup();
 		await view();
 		await user.click(screen.getByRole('button', { name: 'Движок' }));
 		const engine = screen.getByRole('region', { name: 'Движок' });
 		expect(within(engine).getByRole('combobox', { name: 'Режим' })).toHaveValue('live');
-		const killed = engine.querySelector('[data-path="engine.killed"]')!;
-		expect(killed).toHaveTextContent('выкл');
-		expect(killed).toHaveTextContent('только чтение');
+		for (const path of ['engine.killed', 'engine.kill_reason', 'engine.paused']) {
+			expect(engine.querySelector(`[data-path="${path}"]`)).toBeNull();
+		}
+		expect(engine).not.toHaveTextContent('только чтение');
+		expect(engine).toHaveTextContent('Пауза и kill — кнопками на главной');
 		expect(within(engine).getAllByRole('switch').length).toBe(2);
 		await user.click(screen.getByRole('button', { name: 'Стратегия и дела' }));
 		const strategy = screen.getByRole('region', { name: 'Стратегия и дела' });
@@ -95,7 +97,7 @@ describe('Настройки', () => {
 		await view();
 		await user.click(screen.getByRole('button', { name: 'Движок' }));
 		const engine = screen.getByRole('region', { name: 'Движок' });
-		expect(engine).toHaveTextContent('Режим, пауза, kill switch и темп шлюза');
+		expect(engine).toHaveTextContent('Режим и темп шлюза');
 		const row = engine.querySelector('[data-path="engine.min_request_interval_s"]')!;
 		const help = within(row as HTMLElement).getByText(/Минимальный интервал между любыми двумя отправками/);
 		// На ПК описание видно всегда (md:block), на телефоне скрыто до нажатия ⓘ.

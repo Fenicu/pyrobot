@@ -12,7 +12,7 @@ export const SETTINGS_TEXT: Record<string, SettingText> = {
 	// --- engine
 	engine: {
 		label: 'Движок',
-		help: 'Режим, пауза, kill switch и темп шлюза: когда и как команды уходят в игру.'
+		help: 'Режим и темп шлюза: когда и как команды уходят в игру. Пауза и kill — кнопками на главной.'
 	},
 	'engine.mode': {
 		label: 'Режим',

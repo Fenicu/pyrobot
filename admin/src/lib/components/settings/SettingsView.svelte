@@ -4,7 +4,7 @@
 	import { errorText } from '$lib/api/errors';
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
 	import { ADVANCED_SECTIONS, settingHelp, settingLabel } from '$lib/settings/labels';
-	import { leaves, pathKey, type Field, type Section } from '$lib/settings/schema';
+	import { editable, leaves, pathKey, type Field, type Section } from '$lib/settings/schema';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import SettingField from './SettingField.svelte';
@@ -40,7 +40,7 @@
 			});
 		};
 		return editor.sections
-			.map((s) => ({ section: s, fields: leaves(s.fields).filter(hit) }))
+			.map((s) => ({ section: s, fields: leaves(editable(s.fields)).filter(hit) }))
 			.filter((r) => r.fields.length > 0);
 	});
 	const count = $derived(editor.changes.length);
@@ -140,7 +140,7 @@
 				<h2 class="card-title">{title(section)}</h2>
 				{@const about = settingHelp(section.name) ?? section.description}
 				{#if about}<p class="mb-1 text-xs text-fg-muted">{about}</p>{/if}
-				{#each section.fields as f (pathKey(f.path))}<SettingField {editor} field={f} />{/each}
+				{#each editable(section.fields) as f (pathKey(f.path))}<SettingField {editor} field={f} />{/each}
 			{/if}
 		</section>
 

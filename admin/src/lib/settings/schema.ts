@@ -166,6 +166,17 @@ export function leaves(fields: Field[]): Field[] {
 	return fields.flatMap((f) => (f.type.kind === 'group' ? leaves(f.type.fields) : [f]));
 }
 
+/** Поля для формы: без «только чтение» (kill, причина kill, пауза — их меняют кнопки на главной) и
+ * без групп, в которых после этого ничего не осталось. */
+export function editable(fields: Field[]): Field[] {
+	return fields.flatMap((f) => {
+		if (f.readOnly) return [];
+		if (f.type.kind !== 'group') return [f];
+		const inner = editable(f.type.fields);
+		return inner.length ? [{ ...f, type: { ...f.type, fields: inner } }] : [];
+	});
+}
+
 /** Изменённые листья черновика относительно значений сервера. */
 export function changedPaths(sections: Section[], base: Json, draft: Json): Path[] {
 	return sections

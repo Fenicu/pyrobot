@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { SettingsOut } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
-import { buildChanges, changedPaths, leaves, sectionsOf, setAt, type Field, type JsonSchema } from './schema';
+import {
+	buildChanges,
+	changedPaths,
+	editable,
+	leaves,
+	sectionsOf,
+	setAt,
+	type Field,
+	type JsonSchema
+} from './schema';
 import generated from './settings.schema.json';
 
 const settings = fixture<SettingsOut>('settings');
@@ -20,6 +29,17 @@ describe('форма по схеме настроек с прода', () => {
 			'stocks', 'tangerine', 'metro', 'daily', 'lottery', 'retention'
 		]);
 		expect(sections.find((s) => s.name === 'features')?.description).toMatch(/Включённые механики/);
+	});
+
+	it('форма — без полей «только чтение»: kill, его причина и пауза меняются на главной', () => {
+		const shown = sections.flatMap((s) => leaves(editable(s.fields))).map((f) => f.path.join('.'));
+		expect(shown).not.toContain('engine.killed');
+		expect(shown).not.toContain('engine.kill_reason');
+		expect(shown).not.toContain('engine.paused');
+		expect(shown).toContain('engine.mode');
+		// Остальное — на месте, группы тоже.
+		expect(shown).toHaveLength(sections.flatMap((s) => leaves(s.fields)).length - 3);
+		expect(shown).toContain('lottery.keep.money');
 	});
 
 	it('типы полей', () => {
