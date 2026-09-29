@@ -60,6 +60,11 @@ class PlanLoopOut(BaseModel):
     current: str | None
     manual_queue: int
     next_wake: datetime | None
+    # Причина ожидания, в котором цикл спит (`kind`/`kind:key` таймера или `no_timers`), и когда
+    # он проснётся сам: `next_wake`, но не позже предела простоя (30 мин) от решения; сообщение
+    # игры будит раньше. null — цикл не ждёт: исполняет, не готов или ещё не решал.
+    wait_reason: str | None
+    wake_at: datetime | None
 
 
 class PlanFocusOut(BaseModel):
@@ -121,6 +126,10 @@ def _timer(w: Wakeup, after_wake: bool) -> PlanTimerOut:
     return PlanTimerOut(at=w.at.astimezone(UTC), kind=w.kind, key=w.key, after_wake=after_wake)
 
 
+def _utc(moment: datetime | None) -> datetime | None:
+    return moment.astimezone(UTC) if moment is not None else None
+
+
 def outlook_out(view: PlanView) -> OutlookOut:
     o = view.outlook
     d = o.decision
@@ -159,7 +168,9 @@ def outlook_out(view: PlanView) -> OutlookOut:
             auto=loop.auto,
             current=loop.current,
             manual_queue=loop.manual_queue,
-            next_wake=loop.next_wake,
+            next_wake=_utc(loop.next_wake),
+            wait_reason=loop.wait_reason,
+            wake_at=_utc(loop.wake_at),
         ),
         focus=[PlanFocusOut(deed=deed, today=today) for deed, today in o.focus],
         hints=PlanHintsOut(

@@ -2939,6 +2939,29 @@
               }
             ],
             "title": "Ready"
+          },
+          "wait_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wait Reason"
+          },
+          "wake_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wake At"
           }
         },
         "required": [
@@ -2947,7 +2970,9 @@
           "auto",
           "current",
           "manual_queue",
-          "next_wake"
+          "next_wake",
+          "wait_reason",
+          "wake_at"
         ],
         "title": "PlanLoopOut",
         "type": "object"

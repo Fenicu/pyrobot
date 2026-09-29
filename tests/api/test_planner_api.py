@@ -7,6 +7,7 @@ from httpx import AsyncClient
 
 from app.api.container import Container
 from app.engine.facade import OUTLOOK_TTL_S, EngineFacade
+from app.engine.gametime import MSK
 from app.engine.planner.decide import Outlook
 from app.engine.planner.loop import PlannerLoop
 from tests.api.conftest import login
@@ -94,6 +95,8 @@ async def test_outlook_reads_without_writing(planned: Planned, api_client: Async
         "current": None,
         "manual_queue": 0,
         "next_wake": None,
+        "wait_reason": None,
+        "wake_at": None,
     }
     assert {t["kind"] for t in body["wakeups"]} >= {"gorbushka_comeback", "sleep_window"}
     assert body["hints"]["sleep_hours"] == 7
@@ -133,3 +136,17 @@ async def test_loop_state_is_fresh_over_cached_pass(
     assert planned.passes == 1
     assert again["decision"] == first["decision"]
     assert (first["loop"]["ready"], again["loop"]["ready"]) == (None, "tg_offline")
+
+
+async def test_loop_wait_is_in_the_plan(planned: Planned, api_client: AsyncClient) -> None:
+    await login(api_client)
+    loop: PlannerLoop = planned.loop
+    # Таймеры по часам планировщик считает в МСК: наружу — в UTC, как у остальных моментов плана.
+    loop.next_wake = datetime(2026, 9, 29, 17, 42, 54, tzinfo=MSK)
+    loop._waiting = ("book_ready", loop.next_wake)
+    body = (await api_client.get(URL)).json()
+    assert {k: body["loop"][k] for k in ("next_wake", "wait_reason", "wake_at")} == {
+        "next_wake": "2026-09-29T14:42:54Z",
+        "wait_reason": "book_ready",
+        "wake_at": "2026-09-29T14:42:54Z",
+    }

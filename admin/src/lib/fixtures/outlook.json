@@ -112,7 +112,9 @@
   "auto": true,
   "current": null,
   "manual_queue": 0,
-  "next_wake": null
+  "next_wake": null,
+  "wait_reason": null,
+  "wake_at": null
  },
  "focus": [
   {

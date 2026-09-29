@@ -1824,6 +1824,10 @@ export interface components {
             paused: boolean;
             /** Ready */
             ready: string | null;
+            /** Wait Reason */
+            wait_reason: string | null;
+            /** Wake At */
+            wake_at: string | null;
         };
         /** PlanNextDeedOut */
         PlanNextDeedOut: {

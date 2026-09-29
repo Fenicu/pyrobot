@@ -60,7 +60,14 @@ def build() -> dict[str, Any]:
     data["metro_ready_at"] = _seen(_iso(NOW + timedelta(minutes=50)), "derived")
     view = outlook(load_state(data), Settings(), NOW, done_today=DONE_TODAY)
     loop = LoopView(
-        paused=False, ready=None, auto=True, current=None, manual_queue=0, next_wake=None
+        paused=False,
+        ready=None,
+        auto=True,
+        current=None,
+        manual_queue=0,
+        next_wake=None,
+        wait_reason=None,
+        wake_at=None,
     )
     return outlook_out(PlanView(NOW, view, loop)).model_dump(mode="json")
 

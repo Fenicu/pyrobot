@@ -87,6 +87,11 @@ class LoopView:
     current: str | None
     manual_queue: int
     next_wake: datetime | None
+    # Ожидание, в котором цикл спит: его причина (как в журнале) и когда цикл проснётся сам —
+    # `next_wake`, но не позже `max_idle_s` от решения; сообщение игры будит раньше. None — цикл
+    # не ждёт.
+    wait_reason: str | None
+    wake_at: datetime | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +165,7 @@ class PlannerLoop:
         self._lottery_short: tuple[int, dict[str, int]] | None = None
         self.current: str | None = None
         self.next_wake: datetime | None = None
+        self._waiting: tuple[str, datetime] | None = None
         # Отметка цикла: растёт при каждом изменении его входов (решение, запуск, очередь).
         self.revision = 0
         # Задача цикла идёт: до старта и в паузе супервизора после падения — нет.
@@ -267,6 +273,7 @@ class PlannerLoop:
         now = self._clock.now()
         if self._ready() is not None:
             self.next_wake = None
+            self._waiting = None
             return self._poll_s
         settings = self._settings.current
         if self._last_done is None:
@@ -293,6 +300,7 @@ class PlannerLoop:
             return await self._wait(now, decision)
         self._last_wait = None
         self.next_wake = None
+        self._waiting = None
         decision_id = await self._store.record(now, decision)
         # Режим запуска — тот, в котором принято решение.
         await self._execute(decision, decision_id, dry_run=settings.engine.mode == "dry_run")
@@ -345,6 +353,8 @@ class PlannerLoop:
             current=self.current,
             manual_queue=len(self._manual),
             next_wake=self.next_wake,
+            wait_reason=self._waiting[0] if self._waiting is not None else None,
+            wake_at=self._waiting[1] if self._waiting is not None else None,
         )
 
     async def _peek_today(self, now: datetime) -> dict[str, int]:
@@ -383,9 +393,11 @@ class PlannerLoop:
             await self._store.record(now, decision)
             self._last_wait = record
         self.next_wake = decision.until
-        if decision.until is None:
-            return self._max_idle_s
-        return min(max((decision.until - now).total_seconds(), 0.0), self._max_idle_s)
+        wake = now + timedelta(seconds=self._max_idle_s)
+        if decision.until is not None:
+            wake = max(min(decision.until, wake), now)
+        self._waiting = (decision.reason, wake)
+        return (wake - now).total_seconds()
 
     async def _execute(self, act: Act, decision_id: int, *, dry_run: bool) -> None:
         spec = SCENARIOS[act.scenario]

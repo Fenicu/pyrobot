@@ -250,3 +250,46 @@ async def test_revision_marks_loop_changes() -> None:
     await loop.request("book", {}, key="k1", by="admin")
     marks.append(loop.revision)
     assert marks == sorted(set(marks))
+
+
+async def test_loop_view_tells_what_the_loop_waits_for() -> None:
+    loop, _, _ = rig(awake(motivation=0, motivation_next_at=m(20)))
+    view = loop.loop_view()
+    assert (view.wait_reason, view.wake_at) == (None, None)
+    await loop.step()
+    view = loop.loop_view()
+    assert (view.wait_reason, view.next_wake, view.wake_at) == ("motivation", w(20), w(20))
+
+
+async def test_long_wait_wakes_the_loop_after_max_idle() -> None:
+    # Ожидание дольше max_idle_s: цикл проснётся раньше срока и решит заново.
+    loop, _, _ = rig(awake(motivation=0, motivation_next_at=m(90)))
+    await loop.step()
+    view = loop.loop_view()
+    assert (view.wait_reason, view.next_wake) == ("motivation", w(90))
+    assert view.wake_at == m(30)
+
+
+async def test_act_and_not_ready_clear_the_wait() -> None:
+    state = {"now": awake(motivation=0)}
+    ready: dict[str, str | None] = {"now": None}
+    loop, _, _ = rig(state["now"])
+    loop._state = lambda: state["now"]
+    loop._ready = lambda: ready["now"]
+
+    async def execute(act: Act, decision_id: int, *, dry_run: bool) -> None:
+        pass
+
+    loop._execute = execute  # type: ignore[method-assign]
+    await loop.step()
+    assert loop.loop_view().wait_reason == "motivation"
+    state["now"] = awake()
+    await loop.step()
+    view = loop.loop_view()
+    assert (view.wait_reason, view.next_wake, view.wake_at) == (None, None, None)
+    state["now"] = awake(motivation=0)
+    await loop.step()
+    ready["now"] = "tg_offline"
+    await loop.step()
+    view = loop.loop_view()
+    assert (view.wait_reason, view.next_wake, view.wake_at) == (None, None, None)
