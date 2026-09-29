@@ -326,8 +326,8 @@ class DbReads:
 
     async def notifications(
         self, *, unread: bool, level: str | None, limit: int, before: int | None
-    ) -> tuple[list[NotificationRow], int]:
-        """Страница уведомлений от новых к старым и общее число непрочитанных."""
+    ) -> tuple[list[NotificationRow], int, int]:
+        """Страница уведомлений от новых к старым, число непрочитанных и из них warn и error."""
         own = NotificationRow.account_id == self._account_id
         query = select(NotificationRow).where(own).order_by(NotificationRow.id.desc()).limit(limit)
         if unread:
@@ -336,15 +336,16 @@ class DbReads:
             query = query.where(NotificationRow.level == level)
         if before is not None:
             query = query.where(NotificationRow.id < before)
-        count = (
-            select(func.count())
+        alert = NotificationRow.level.in_(("warn", "error"))
+        counts = (
+            select(func.count(), func.count().filter(alert))
             .select_from(NotificationRow)
             .where(own, NotificationRow.read.is_(False))
         )
         async with self._db.sessions() as session:
             rows = list(await session.scalars(query))
-            total = await session.scalar(count)
-        return rows, int(total or 0)
+            total, alerts = (await session.execute(counts)).one()
+        return rows, int(total), int(alerts)
 
     async def read_notifications(self, up_to_id: int) -> int:
         async with self._db.sessions() as session, session.begin():

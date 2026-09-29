@@ -1791,11 +1791,16 @@
           "unread": {
             "title": "Unread",
             "type": "integer"
+          },
+          "unread_alerts": {
+            "title": "Unread Alerts",
+            "type": "integer"
           }
         },
         "required": [
           "items",
           "unread",
+          "unread_alerts",
           "next_before"
         ],
         "title": "NotificationsPage",

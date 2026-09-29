@@ -90,6 +90,8 @@ class NotificationOut(BaseModel):
 class NotificationsPage(BaseModel):
     items: list[NotificationOut]
     unread: int
+    # Из непрочитанных — warn и error: их считает значок в меню, info (пауза, режим) — нет.
+    unread_alerts: int
     next_before: int | None
 
 
@@ -233,13 +235,14 @@ async def notifications(
     before: Annotated[int | None, Query(ge=1)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> NotificationsPage:
-    rows, total = await c.reads.notifications(
+    rows, total, alerts = await c.reads.notifications(
         unread=unread, level=level, limit=limit + 1, before=before
     )
     page = rows[:limit]
     return NotificationsPage(
         items=[NotificationOut.model_validate(r, from_attributes=True) for r in page],
         unread=total,
+        unread_alerts=alerts,
         next_before=page[-1].id if len(rows) > limit else None,
     )
 

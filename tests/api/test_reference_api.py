@@ -155,13 +155,14 @@ async def test_notifications_list_and_read(
         "task_failed:planner",
         "engine_paused",
     ]
-    assert body["unread"] == 3
+    assert (body["unread"], body["unread_alerts"]) == (3, 2)
     errors = (await api_client.get("/api/v1/notifications", params={"level": "error"})).json()
     assert [n["code"] for n in errors["items"]] == ["task_failed:planner"]
     middle = body["items"][1]["id"]
     r = await api_client.post("/api/v1/notifications/read", headers=h, json={"up_to_id": middle})
     assert r.json() == {"read": 2}
     unread = (await api_client.get("/api/v1/notifications", params={"unread": True})).json()
-    assert [n["code"] for n in unread["items"]] == ["reconcile_stuck"] and unread["unread"] == 1
+    assert [n["code"] for n in unread["items"]] == ["reconcile_stuck"]
+    assert (unread["unread"], unread["unread_alerts"]) == (1, 1)
     page = (await api_client.get("/api/v1/notifications", params={"limit": 1})).json()
     assert page["next_before"] == page["items"][0]["id"]

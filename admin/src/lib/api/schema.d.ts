@@ -1332,6 +1332,8 @@ export interface components {
             next_before: number | null;
             /** Unread */
             unread: number;
+            /** Unread Alerts */
+            unread_alerts: number;
         };
         /** Observed[GorbushkaState] */
         Observed_GorbushkaState_: {

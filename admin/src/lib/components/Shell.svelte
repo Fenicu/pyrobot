@@ -43,7 +43,7 @@
 		<item.icon class="size-4 shrink-0" aria-hidden="true" />
 		<span class="flex-1">{item.label}</span>
 		{#if badge(item) > 0}
-			<span class="pill pill-bad" aria-label="непрочитанных: {badge(item)}">{badge(item)}</span>
+			<span class="pill pill-bad" aria-label="непрочитанных предупреждений и ошибок: {badge(item)}">{badge(item)}</span>
 		{/if}
 	</a>
 {/snippet}
