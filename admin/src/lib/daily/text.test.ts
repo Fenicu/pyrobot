@@ -7,6 +7,7 @@ import {
 	amountsText,
 	average,
 	dayLabel,
+	emptyTailStart,
 	incomeCount,
 	incomeText,
 	itemsCount,
@@ -79,5 +80,26 @@ describe('словари итогов дня', () => {
 		expect(avg.balance.raw).toBe(Math.round(raw.reduce((a, b) => a + b, 0) / 3));
 		expect(avg.items).toBe(Math.round(full.reduce((a, d) => a + itemsCount(d), 0) / 5));
 		expect(average([today]).balance.money).toBeNull();
+	});
+});
+
+describe('дни без данных в конце ответа', () => {
+	const empty = (day: string): DayOut => ({ ...daily.days.at(-1)!, day });
+	const full = daily.days[1]!;
+
+	it('на проде: 22 дня до запуска бота сворачиваются, дни с балансом — нет', () => {
+		expect(emptyTailStart(daily.days, daily.ledger_since)).toBe(8);
+		expect(daily.days[8]!.day).toBe('2026-09-20');
+	});
+
+	it('один пустой день и пустые дни в середине не сворачиваются', () => {
+		expect(emptyTailStart([full, empty('2026-09-01')], null)).toBe(2);
+		expect(emptyTailStart([full, empty('2026-09-02'), empty('2026-09-01'), full], null)).toBe(4);
+	});
+
+	it('день с уровнем или после запуска журнала прихода — не пустой', () => {
+		const levelled = { ...empty('2026-09-02'), level: full.level ?? { from: 70, to: 71 } };
+		expect(emptyTailStart([full, levelled, empty('2026-09-01')], null)).toBe(3);
+		expect(emptyTailStart([full, empty('2026-09-02'), empty('2026-09-01')], '2026-09-01')).toBe(3);
 	});
 });

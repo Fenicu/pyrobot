@@ -162,6 +162,19 @@ export function weekdayShort(day: string): string {
 	return weekday.format(new Date(`${day}T12:00:00+03:00`));
 }
 
+/** Самые старые дни ответа подряд без данных — ни изменения баланса, ни уровня, ни журнала прихода
+ * (бот ещё не работал): индекс, с которого они сворачиваются в одну строку «с … по … — нет данных».
+ * Один такой день не сворачивается; хвоста нет — `days.length`. */
+export function emptyTailStart(days: DayOut[], ledgerSince: string | null): number {
+	const empty = (d: DayOut) =>
+		(ledgerSince === null || d.day < ledgerSince) &&
+		d.level === null &&
+		BALANCE.every(({ key }) => (d.balance[key]?.delta ?? null) === null);
+	let start = days.length;
+	while (start > 0 && empty(days[start - 1]!)) start--;
+	return days.length - start >= 2 ? start : days.length;
+}
+
 /** «Сегодня, 28.09» или «27.09 вс». */
 export function dayLabel(day: string, today: string): string {
 	return day === today ? `Сегодня, ${dayShort(day)}` : `${dayShort(day)} ${weekdayShort(day)}`;

@@ -6,6 +6,7 @@
 		BALANCE,
 		dayLabel,
 		dayShort,
+		emptyTailStart,
 		incomeCount,
 		itemsCount,
 		lossesMoney,
@@ -31,6 +32,13 @@
 	const today = $derived(mskDay(now));
 	const first = $derived(days[0]?.day ?? null);
 	const since = $derived(data?.ledger_since ?? null);
+	// Самые старые дни без данных (бот ещё не работал) — одной строкой, а не столбцом прочерков.
+	const tail = $derived(emptyTailStart(days, since));
+	const shown = $derived(days.slice(0, tail));
+	const hidden = $derived(days.slice(tail));
+	const hiddenRange = $derived(
+		hidden.length ? `${dayShort(hidden.at(-1)!.day)}–${dayShort(hidden[0]!.day)} — нет данных` : ''
+	);
 	const avg = $derived(average(days));
 	const stale = $derived(staleNote({ today, first, loadedAt, now, error: error ? errorText(error) : null }));
 	// Раскрытый день: по умолчанию — первый день ответа.
@@ -68,7 +76,10 @@
 				<tr class="text-fg-muted">
 					<th class="px-2 py-1.5 text-left font-medium">День</th>
 					{#each BALANCE as b (b.key)}
-						<th class="px-2 py-1.5 text-right font-medium" title={b.title}><span aria-hidden="true">{b.icon}</span><span class="sr-only">{b.title}</span></th>
+						<th class="px-2 py-1.5 text-right align-bottom font-medium">
+							<span aria-hidden="true">{b.icon}</span>
+							<span class="block text-[11px] leading-tight font-normal text-fg-faint">{b.title}</span>
+						</th>
 					{/each}
 					<th class="px-2 py-1.5 text-right font-medium">Предметы</th>
 					<th class="px-2 py-1.5 text-right font-medium">Разовое</th>
@@ -85,7 +96,7 @@
 					<td class="px-2 py-1.5 text-right">{fmtNum(avg.income)}</td>
 					<td class="px-2 py-1.5 text-right">{avg.losses === null ? '—' : `$${fmtNum(avg.losses)}`}</td>
 				</tr>
-				{#each days as d (d.day)}
+				{#each shown as d (d.day)}
 					{@const open = selected === d.day}
 					{@const lost = lossesMoney(d)}
 					<tr class="border-t border-line-soft {open ? 'bg-accent-soft' : ''}">
@@ -124,14 +135,22 @@
 						</tr>
 					{/if}
 				{/each}
+				{#if hidden.length}
+					<tr class="border-t border-line-soft text-fg-faint">
+						<td colspan={BALANCE.length + 4} class="px-2 py-1.5">{hiddenRange}</td>
+					</tr>
+				{/if}
 			</tbody>
 		</table>
 		{#if since}<p class="mt-2 text-xs text-fg-faint">Разовое, предметы и потери — из журнала прихода с {short(since)}.</p>{/if}
 	</div>
 
 	<!-- Телефон: карточки дней -->
+	<p class="mb-2 text-xs text-fg-faint md:hidden">
+		{BALANCE.map((b) => `${b.icon} ${b.title}`).join(' · ')}
+	</p>
 	<ul class="space-y-2 md:hidden {stale ? 'opacity-60' : ''}" aria-label="Дни">
-		{#each days as d (d.day)}
+		{#each shown as d (d.day)}
 			{@const open = selected === d.day}
 			<li class="card p-2.5">
 				<button type="button" class="w-full text-left" aria-expanded={open} onclick={() => toggle(d.day)}>
@@ -160,5 +179,6 @@
 				{/if}
 			</li>
 		{/each}
+		{#if hidden.length}<li class="card p-2.5 text-sm text-fg-faint">{hiddenRange}</li>{/if}
 	</ul>
 {/if}

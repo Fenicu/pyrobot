@@ -105,8 +105,10 @@ describe('страница «Итоги»', () => {
 		render(DailyView, { data: daily, error: null, now: NOW });
 		const table = screen.getByRole('table', { name: 'Итоги по дням' });
 		const rows = within(table).getAllByRole('row');
-		// Заголовок, среднее, 30 дней и раскрытый разбор сегодня.
-		expect(rows).toHaveLength(1 + 1 + 30 + 1);
+		// Заголовок, среднее, 8 дней с данными, 22 дня до запуска бота одной строкой и раскрытый разбор
+		// сегодня.
+		expect(rows).toHaveLength(1 + 1 + 8 + 1 + 1);
+		expect(rows.at(-1)).toHaveTextContent('30.08–20.09 — нет данных');
 		const avg = rows[1]!;
 		expect(avg).toHaveTextContent('среднее за 7 дней');
 		// Значки — для глаз, читалке экрана — название (не только title).
@@ -123,7 +125,7 @@ describe('страница «Итоги»', () => {
 		const yesterday = rows[4]!;
 		expect(yesterday).toHaveTextContent('27.09 вс');
 		expect(yesterday).toHaveTextContent('+2 105');
-		const beforeLedger = within(table).getByRole('row', { name: /20\.09/ });
+		const beforeLedger = within(table).getByRole('row', { name: /21\.09 пн/ });
 		expect(within(beforeLedger).getAllByTitle(/журнал прихода с 22\.09/)).toHaveLength(3);
 		expect(beforeLedger).not.toHaveTextContent('неполный');
 		// День запуска журнала — неполный; ноль — без цвета прихода.
@@ -150,7 +152,9 @@ describe('страница «Итоги»', () => {
 		render(DailyView, { data: daily, error: null, now: NOW });
 		const list = screen.getByRole('list', { name: 'Дни' });
 		const cards = [...list.querySelectorAll<HTMLElement>(':scope > li')];
-		expect(cards).toHaveLength(30);
+		expect(cards).toHaveLength(8 + 1);
+		expect(cards.at(-1)).toHaveTextContent('30.08–20.09 — нет данных');
+		expect(screen.getByText(/💵 деньги · 💡 опыт/)).toBeInTheDocument();
 		expect(cards[0]).toHaveTextContent('Сегодня, 28.09');
 		expect(cards[0]).toHaveTextContent('до 14:40');
 		expect(cards[0]).toHaveTextContent(`разовое: ${today.income.reduce((a, k) => a + k.count, 0)} · потери: $218`);
