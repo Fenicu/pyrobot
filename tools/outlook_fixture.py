@@ -68,6 +68,7 @@ def _loop(wait: tuple[str, datetime] | None = None) -> LoopView:
         ready=None,
         auto=True,
         current=None,
+        current_params=None,
         manual_queue=0,
         next_wake=at,
         wait_reason=reason,

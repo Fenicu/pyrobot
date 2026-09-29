@@ -2959,6 +2959,18 @@
             ],
             "title": "Current"
           },
+          "current_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Params"
+          },
           "manual_queue": {
             "title": "Manual Queue",
             "type": "integer"
@@ -3019,6 +3031,7 @@
           "ready",
           "auto",
           "current",
+          "current_params",
           "manual_queue",
           "next_wake",
           "wait_reason",

@@ -1833,6 +1833,10 @@ export interface components {
             auto: boolean;
             /** Current */
             current: string | null;
+            /** Current Params */
+            current_params: {
+                [key: string]: unknown;
+            } | null;
             /** Manual Queue */
             manual_queue: number;
             /** Next Wake */

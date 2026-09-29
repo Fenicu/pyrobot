@@ -96,6 +96,7 @@ async def test_outlook_reads_without_writing(planned: Planned, api_client: Async
         "ready": None,
         "auto": False,
         "current": None,
+        "current_params": None,
         "manual_queue": 0,
         "next_wake": None,
         "wait_reason": None,
@@ -154,6 +155,17 @@ async def test_loop_wait_is_in_the_plan(planned: Planned, api_client: AsyncClien
         "wait_reason": "book_ready",
         "wake_at": "2026-09-29T14:42:54Z",
     }
+
+
+async def test_running_params_are_in_the_plan(planned: Planned, api_client: AsyncClient) -> None:
+    await login(api_client)
+    loop: PlannerLoop = planned.loop
+    loop.current, loop.current_params = "refresh", {"source": "inventory"}
+    body = (await api_client.get(URL)).json()
+    assert (body["loop"]["current"], body["loop"]["current_params"]) == (
+        "refresh",
+        {"source": "inventory"},
+    )
 
 
 class Moving:

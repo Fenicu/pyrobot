@@ -85,6 +85,8 @@ class LoopView:
     # Планировщик принимает свои решения (иначе — только ручные запуски).
     auto: bool
     current: str | None
+    # Параметры идущего запуска (с зафиксированными в реестре); None — ничего не идёт.
+    current_params: dict[str, Any] | None
     manual_queue: int
     next_wake: datetime | None
     # Ожидание, в котором цикл спит: его причина (как в журнале) и когда цикл проснётся сам —
@@ -164,6 +166,7 @@ class PlannerLoop:
         # Нехватка, которую последний запуск лотереи увидел сверх запасов: (тираж, валюты).
         self._lottery_short: tuple[int, dict[str, int]] | None = None
         self.current: str | None = None
+        self.current_params: dict[str, Any] | None = None
         self.next_wake: datetime | None = None
         self._waiting: tuple[str, datetime] | None = None
         # Отметка цикла: растёт при каждом изменении его входов (решение, запуск, очередь).
@@ -351,6 +354,7 @@ class PlannerLoop:
             ready=self._ready(),
             auto=self._auto,
             current=self.current,
+            current_params=self.current_params,
             manual_queue=len(self._manual),
             next_wake=self.next_wake,
             wait_reason=self._waiting[0] if self._waiting is not None else None,
@@ -432,6 +436,7 @@ class PlannerLoop:
             run_id=run_id,
         )
         self.current = act.scenario
+        self.current_params = dict(act.params)
         self.revision += 1
         try:
             result = await run_scenario(spec.fn, ctx, self._state(), act.params)
@@ -440,6 +445,7 @@ class PlannerLoop:
             result = ScenarioResult("failed", "crashed")
         finally:
             self.current = None
+            self.current_params = None
             self.revision += 1
         if result.reason == "paused":
             result = replace(result, status="stopped")

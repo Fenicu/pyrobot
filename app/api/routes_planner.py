@@ -58,6 +58,9 @@ class PlanLoopOut(BaseModel):
     # Планировщик принимает свои решения (иначе цикл исполняет только ручные запуски).
     auto: bool
     current: str | None
+    # Параметры идущего запуска (с зафиксированными в реестре): чтобы отличить, например,
+    # обновление инвентаря от обновления профиля; null — ничего не идёт.
+    current_params: dict[str, Any] | None
     manual_queue: int
     next_wake: datetime | None
     # Причина ожидания, в котором цикл спит (`kind`/`kind:key` таймера или `no_timers`), и когда
@@ -194,6 +197,7 @@ def outlook_out(view: PlanView) -> OutlookOut:
             ready=loop.ready,
             auto=loop.auto,
             current=loop.current,
+            current_params=loop.current_params,
             manual_queue=loop.manual_queue,
             next_wake=_utc(loop.next_wake),
             wait_reason=loop.wait_reason,

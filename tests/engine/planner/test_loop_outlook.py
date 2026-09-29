@@ -6,10 +6,12 @@ from typing import Any
 import pytest
 
 from app.engine.metro.store import MemoryMetroRunStore
-from app.engine.planner.loop import PlannerLoop
+from app.engine.planner import loop as loop_module
+from app.engine.planner.loop import LoopView, PlannerLoop
 from app.engine.planner.store import DecisionRecord, MemoryPlannerStore
 from app.engine.planner.types import Act, Wait
 from app.engine.scenarios.library import ScenarioResult
+from app.engine.scenarios.registry import ScenarioSpec
 from app.engine.settings import Settings, StaticSettings
 from app.engine.state.model import CharacterState
 from tests.engine.planner.test_decide import BASE, NOW, awake, config, m, w
@@ -293,3 +295,27 @@ async def test_act_and_not_ready_clear_the_wait() -> None:
     await loop.step()
     view = loop.loop_view()
     assert (view.wait_reason, view.next_wake, view.wake_at) == (None, None, None)
+
+
+async def test_loop_view_tells_what_runs_with_its_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Идущий запуск — со своими параметрами (и зафиксированными в реестре): по одному имени
+    # обновление инвентаря не отличить от обновления профиля.
+    loop, store, _ = rig(awake())
+    seen: list[LoopView] = []
+
+    async def fake(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        seen.append(loop.loop_view())
+        return ScenarioResult("done", "ok")
+
+    spec = ScenarioSpec("refresh", fake, True, {"fixed": 1})
+    monkeypatch.setitem(loop_module.SCENARIOS, "refresh", spec)
+    act = Act("refresh", {"source": "inventory"}, "state needs books")
+    await loop._execute(act, await store.record(NOW, act), dry_run=False)
+    await loop.request("refresh", {"source": "profile"}, key="k1", by="admin")
+    await loop.run_manual()
+    assert [(v.current, v.current_params) for v in seen] == [
+        ("refresh", {"fixed": 1, "source": "inventory"}),
+        ("refresh", {"fixed": 1, "source": "profile"}),
+    ]
+    view = loop.loop_view()
+    assert (view.current, view.current_params) == (None, None)

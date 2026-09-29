@@ -97,6 +97,7 @@
   "ready": null,
   "auto": true,
   "current": null,
+  "current_params": null,
   "manual_queue": 0,
   "next_wake": "2026-09-27T17:07:06Z",
   "wait_reason": "book_ready",
