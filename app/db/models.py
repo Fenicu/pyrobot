@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -160,6 +161,14 @@ class LedgerRow(Base):
             name="uq_ledger_effect",
         ),
         Index("ix_ledger_account_day", "account_id", "day"),
+        # Итог, который приходит разными сообщениями (отчёты фабрики и битвы), — один ряд.
+        Index(
+            "uq_ledger_outcome_key",
+            "account_id",
+            "outcome_key",
+            unique=True,
+            postgresql_where=text("outcome_key IS NOT NULL"),
+        ),
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
@@ -175,6 +184,8 @@ class LedgerRow(Base):
     revision: Mapped[int] = mapped_column(BigInteger)
     content_hash: Mapped[str] = mapped_column(String(40))
     seq: Mapped[int] = mapped_column(Integer)
+    # Постоянный ключ итога (`factory:<день битвы>`, `battle:<отпечаток отчёта>`), у прочих NULL.
+    outcome_key: Mapped[str | None] = mapped_column(String(64))
 
 
 class UnrecognizedRow(Base):

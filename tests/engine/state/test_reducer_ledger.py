@@ -1,7 +1,7 @@
 """Эффекты редьюсера для журнала прихода: ровно один на применённое изменение."""
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.engine.gametime import MSK
@@ -159,6 +159,7 @@ def test_factory_report_dated_by_battle_once_per_day() -> None:
                 "upgrades_red": 1,
             },
             at=battle,
+            key="factory:2026-09-09",
         ),
     )
     # Второй /fb — новое сообщение с тем же отчётом.
@@ -166,11 +167,30 @@ def test_factory_report_dated_by_battle_once_per_day() -> None:
     assert reduce(reducer, state, second)[1] == ()
 
 
-def test_battle_report_dated_by_battle_hour() -> None:
+def test_battle_report_dated_by_battle_hour_and_known_by_text() -> None:
     reducer = StateReducer()
     report = game_msg("screens", 3613861)
     state, effects = reduce(reducer, {}, report)
     # Отчёт о битве в 22 часа запрошен 24.08 в 08:46 — это битва 23.08.
     battle = datetime(2026, 8, 23, 22, 0, tzinfo=MSK).astimezone(UTC)
-    assert effects == (Effect("battle", {"exp": 1, "money": -191}, at=battle),)
+    [event] = PARSER.parse(report)
+    key = f"battle:{event.digest}"  # type: ignore[attr-defined]
+    assert effects == (Effect("battle", {"exp": 1, "money": -191}, at=battle, key=key),)
     assert reduce(reducer, state, replace(report, msg_id=report.msg_id + 1))[1] == ()
+    # Тот же отчёт спустя 3 дня (в корпусе: 10.03 и 13.03 — одинаковый текст): по вычисленному
+    # часу это была бы новая битва, по тексту — та же.
+    later = report.date + timedelta(days=3)
+    again = replace(report, msg_id=report.msg_id + 2, date=later, created_at=later)
+    assert reduce(reducer, state, again)[1] == ()
+
+
+def test_other_battle_at_same_hour_is_new() -> None:
+    reducer = StateReducer()
+    report = game_msg("screens", 3613861)
+    state, _ = reduce(reducer, {}, report)
+    later = report.date + timedelta(days=1)
+    text = (report.text or "").replace("-$191", "-$200")
+    other = replace(report, msg_id=report.msg_id + 2, date=later, created_at=later, text=text)
+    [effect] = reduce(reducer, state, other)[1]
+    assert effect.at == datetime(2026, 8, 24, 22, 0, tzinfo=MSK).astimezone(UTC)
+    assert effect.amounts == {"exp": 1, "money": -200}

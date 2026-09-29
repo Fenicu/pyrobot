@@ -154,7 +154,9 @@ class DbJournal:
     def _ledger(self, msg: IncomingMessage, effects: Sequence[Effect]) -> Any:
         """Эффекты — после вставки ревизии, в той же транзакции: повтор после сбоя фиксации
         упирается в ревизию и их не задваивает; ключ эффекта — ключ ряда сообщения (с хешем
-        содержимого) и номер, уже есть — «уже записано»."""
+        содержимого) и номер, уже есть — «уже записано». Постоянный ключ итога (`outcome_key`,
+        частичный уникальный индекс) уже есть — тоже «уже записано»: отчёт той же битвы из
+        другого сообщения второго ряда не даёт, сколько бы времени ни прошло."""
         content_hash = msg.content_hash()
         rows = []
         for effect, seq in numbered(effects):
@@ -172,8 +174,8 @@ class DbJournal:
                     "revision": msg.revision,
                     "content_hash": content_hash,
                     "seq": seq,
+                    "outcome_key": effect.key,
                 }
             )
-        return (
-            pg_insert(LedgerRow).values(rows).on_conflict_do_nothing(constraint="uq_ledger_effect")
-        )
+        # Без цели конфликта: пропуск по любому уникальному ключу — и эффекта, и итога.
+        return pg_insert(LedgerRow).values(rows).on_conflict_do_nothing()

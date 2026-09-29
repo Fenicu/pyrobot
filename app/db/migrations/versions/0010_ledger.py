@@ -32,6 +32,7 @@ def upgrade() -> None:
         sa.Column("revision", sa.BigInteger(), nullable=False),
         sa.Column("content_hash", sa.String(length=40), nullable=False),
         sa.Column("seq", sa.Integer(), nullable=False),
+        sa.Column("outcome_key", sa.String(length=64), nullable=True),
         sa.ForeignKeyConstraint(["account_id"], ["accounts.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
@@ -46,6 +47,13 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_ledger_account_day", "ledger", ["account_id", "day"], unique=False)
+    op.create_index(
+        "uq_ledger_outcome_key",
+        "ledger",
+        ["account_id", "outcome_key"],
+        unique=True,
+        postgresql_where=sa.text("outcome_key IS NOT NULL"),
+    )
 
 
 def downgrade() -> None:

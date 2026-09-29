@@ -26,7 +26,12 @@ from tests.fixtures import game_msg
         (3613862, BattleMenu(battle_in_s=4 * 3600 + 13 * 60)),
         (
             3613861,
-            BattleReport(hour=22, rewards=Rewards(exp=1, money=-191, stamina=0), contribution=0),
+            BattleReport(
+                hour=22,
+                rewards=Rewards(exp=1, money=-191, stamina=0),
+                contribution=0,
+                digest="a082c8d0daa94dd6",
+            ),
         ),
         (3610934, InfoScreen(name="pets")),
         (3559757, InfoScreen(name="pets")),

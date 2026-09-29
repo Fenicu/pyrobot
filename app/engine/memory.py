@@ -25,6 +25,7 @@ class MemoryJournal:
         self.ledger: list[tuple[IncomingMessage, Effect, int]] = []
         self._keys: set[tuple[int, int, int, str]] = set()
         self._ledger_keys: set[tuple[int, int, int, str, str, int]] = set()
+        self._outcome_keys: set[str] = set()
 
     async def load_state(self) -> tuple[dict[str, Any], int]:
         return self.snapshot
@@ -69,9 +70,12 @@ class MemoryJournal:
         )
         for effect, seq in numbered(effects):
             ledger_key = (*key, effect.kind, seq)
-            if ledger_key not in self._ledger_keys:
-                self._ledger_keys.add(ledger_key)
-                self.ledger.append((msg, effect, seq))
+            if ledger_key in self._ledger_keys or effect.key in self._outcome_keys:
+                continue
+            self._ledger_keys.add(ledger_key)
+            if effect.key is not None:
+                self._outcome_keys.add(effect.key)
+            self.ledger.append((msg, effect, seq))
         return journal_id
 
 

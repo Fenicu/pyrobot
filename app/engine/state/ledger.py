@@ -28,12 +28,15 @@ AMOUNT_KEYS = (
 class Effect:
     """Эффект одного события: вид (`deed`, `book`, `hotel`, …), суммы по `AMOUNT_KEYS` (со
     знаком, без нулей) и предметы крафта. `at` — момент исхода, если это не момент ревизии
-    сообщения (отчёты битвы и фабрики датируются самой битвой)."""
+    сообщения (отчёты битвы и фабрики датируются самой битвой). `key` — постоянный ключ итога,
+    который приходит разными сообщениями (отчёты фабрики и битвы на каждый запрос): в журнале
+    прихода с этим ключом один ряд на весь срок его хранения."""
 
     kind: str
     amounts: dict[str, int]
     items: dict[str, int] = field(default_factory=dict)
     at: datetime | None = None
+    key: str | None = None
 
 
 def numbered(effects: Iterable[Effect]) -> Iterator[tuple[Effect, int]]:

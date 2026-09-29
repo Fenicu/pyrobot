@@ -364,6 +364,34 @@ async def test_two_edits_in_one_second_both_in_ledger() -> None:
     ] * 2
 
 
+async def factory_report_again_after_horizon(journal: Any) -> None:
+    """Отчёт о фабрике за 09.09 (/fb 12.09) и тот же отчёт через 15 дней — ключ `applied`
+    редьюсера (14 дней) уже забыт."""
+    from app.engine.settings import ChatsSection
+    from app.engine.state.reducer import OUTCOME_HORIZON, StateReducer
+    from tests.fixtures import game_msg
+
+    pipe = Pipeline(
+        journal=journal, parser=default_parser(ChatsSection()), reducer=StateReducer(), bus=Bus()
+    )
+    report = game_msg("crew", 3620025)
+    await pipe.process(report)
+    later = report.date + OUTCOME_HORIZON + timedelta(days=1)
+    # Любое сообщение после горизонта: редьюсер чистит ключи `applied` старше 14 дней.
+    other = game_msg("items", 3516680)
+    await pipe.process(replace(other, date=later, created_at=later))
+    await pipe.process(replace(report, msg_id=report.msg_id + 9000, date=later, created_at=later))
+
+
+async def test_factory_report_once_after_reducer_forgets_it() -> None:
+    journal = MemoryJournal()
+    await factory_report_again_after_horizon(journal)
+    assert [(e.kind, e.key) for _, e, _ in journal.ledger] == [
+        ("factory", "factory:2026-09-09"),
+        ("book", None),
+    ]
+
+
 async def test_commit_uncertain_then_conflict_reloads_snapshot() -> None:
     """Фиксация прошла, но ответ потерялся: повтор упирается в уже записанную ревизию — снимок и
     эффекты уже в журнале, состояние перечитывается из него, эффекты не задваиваются."""

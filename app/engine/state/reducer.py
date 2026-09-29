@@ -210,13 +210,15 @@ class _Patch:
         sums: dict[str, int],
         items: Mapping[str, int] | None = None,
         at: datetime | None = None,
+        key: str | None = None,
     ) -> None:
         if sums or items:
-            self.effects.append(Effect(kind, sums, dict(items or {}), at))
+            self.effects.append(Effect(kind, sums, dict(items or {}), at, key))
 
     def first(self, key: str) -> bool:
         """Итог, который приходит разными сообщениями (каждый /fb, /battle), — один раз по своему
-        ключу, а не по сообщению."""
+        ключу, а не по сообщению. Ключ живёт в `applied` 14 дней; дольше его держит журнал прихода
+        (тот же ключ у эффекта — постоянный ключ ряда)."""
         if key in self.applied or self.origin < self.horizon:
             return False
         self.applied[key] = self.origin
@@ -829,9 +831,10 @@ def _factory_report(p: _Patch, e: FactoryReport) -> None:
     known: Obs[date] | None = p.get("factory_report_day")
     if known is None or known.value <= e.battle_day:
         p.snap("factory_report_day", e.battle_day)
-    if p.first(f"factory:{e.day}"):
+    key = f"factory:{e.day}"
+    if p.first(key):
         battle = datetime.combine(e.battle_day, FACTORY_BATTLE, tzinfo=MSK)
-        p.effect("factory", amounts(e.rewards), at=battle.astimezone(UTC))
+        p.effect("factory", amounts(e.rewards), at=battle.astimezone(UTC), key=key)
 
 
 def battle_moment(hour: int, seen: datetime) -> datetime:
@@ -845,9 +848,11 @@ def battle_moment(hour: int, seen: datetime) -> datetime:
 
 @_on(BattleReport)
 def _battle_report(p: _Patch, e: BattleReport) -> None:
-    battle = battle_moment(e.hour, p.origin)
-    if p.first(f"battle:{battle.isoformat()}"):
-        p.effect("battle", amounts(e.rewards), at=battle)
+    # Даты в отчёте нет, а /battle отдаёт последнюю битву с участием — бывает и трёхдневной
+    # давности: битва узнаётся по тексту отчёта, а не по вычисленному часу.
+    key = f"battle:{e.digest}"
+    if p.first(key):
+        p.effect("battle", amounts(e.rewards), at=battle_moment(e.hour, p.origin), key=key)
 
 
 @_on(BullsInvite)

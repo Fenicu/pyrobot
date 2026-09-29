@@ -160,3 +160,40 @@ async def test_ledger_not_written_without_message_row(clean_db: Database) -> Non
     assert await journal.append(msg, [], None, 1, effects=[Effect("book", {"exp": 1})]) is None
     async with clean_db.sessions() as session:
         assert await session.scalar(select(func.count()).select_from(LedgerRow)) == 0
+
+
+async def test_factory_report_once_for_ledger_lifetime(clean_db: Database) -> None:
+    # Постоянный ключ отчёта (вид и день битвы) в БД: второй эффект за ту же битву — не пишется,
+    # даже когда редьюсер свой ключ уже забыл.
+    from sqlalchemy import select
+
+    from app.db.models import LedgerRow
+    from tests.engine.test_pipeline import factory_report_again_after_horizon
+
+    await factory_report_again_after_horizon(DbJournal(clean_db, account_id=1))
+    async with clean_db.sessions() as session:
+        rows = (await session.scalars(select(LedgerRow).order_by(LedgerRow.id))).all()
+    assert [(r.kind, r.day.isoformat(), r.outcome_key) for r in rows] == [
+        ("factory", "2026-09-09", "factory:2026-09-09"),
+        ("book", "2026-09-27", None),
+    ]
+
+
+async def test_outcome_key_unique_across_messages(clean_db: Database) -> None:
+    from sqlalchemy import select
+
+    from app.db.models import LedgerRow
+    from app.engine.state.ledger import Effect
+
+    journal = DbJournal(clean_db, account_id=1)
+    once = Effect("battle", {"exp": 1}, key="battle:abc")
+    plain = Effect("book", {"exp": 5})
+    await journal.append(make_msg("a", msg_id=1), [], None, 1, effects=[once, plain])
+    await journal.append(make_msg("b", msg_id=2), [], None, 1, effects=[once, plain])
+    async with clean_db.sessions() as session:
+        rows = (await session.scalars(select(LedgerRow).order_by(LedgerRow.id))).all()
+    assert [(r.kind, r.msg_id, r.outcome_key) for r in rows] == [
+        ("battle", 1, "battle:abc"),
+        ("book", 1, None),
+        ("book", 2, None),
+    ]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field, replace
 from typing import ClassVar
@@ -127,12 +128,15 @@ class BattleMenu(Event):
 @dataclass(frozen=True, slots=True, kw_only=True)
 class BattleReport(Event):
     """Отчёт уже прошедшей битвы по запросу (/battle): час битвы по Москве, награды (💡, ±💵, 🔋
-    после битвы) и вклад «🏆Твой вклад». В состояние не идёт."""
+    после битвы), вклад «🏆Твой вклад» и отпечаток текста `digest`: даты в отчёте нет, а повторный
+    /battle отдаёт тот же текст (снимок навыков на битву, награды) — по нему битва узнаётся. В
+    состояние не идёт."""
 
     kind: ClassVar[str] = "battle_report"
     hour: int
     rewards: Rewards = field(default_factory=Rewards)
     contribution: int | None = None
+    digest: str = ""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -219,6 +223,7 @@ def recognize_screens(msg: IncomingMessage) -> list[Event]:
                 hour=int(m["hour"]),
                 rewards=rewards,
                 contribution=num(contribution["n"]) if contribution else None,
+                digest=hashlib.sha1(text.encode()).hexdigest()[:16],
             )
         ]
     if text.startswith(_LOTTERY_WIN):
