@@ -31,6 +31,8 @@ class FakeTransport:
         # Перечитывания сообщений (`fetch`) и ошибки, которыми падают очередные из них.
         self.fetches: list[tuple[int, int]] = []
         self.fetch_fail_with: list[BaseException] = []
+        # Выполняется посреди чтения: что меняется, пока ответ Telegram в пути.
+        self.on_fetch: Callable[[], Awaitable[None]] | None = None
         # Проверка чатов команды: итог по чату (по умолчанию — участник группы) и вызовы.
         self.groups: dict[int, GroupCheck] = {}
         self.group_error: BaseException | None = None
@@ -67,6 +69,8 @@ class FakeTransport:
 
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         self.fetches.append((chat_id, message_id))
+        if self.on_fetch is not None:
+            await self.on_fetch()
         if self.fetch_fail_with:
             raise self.fetch_fail_with.pop(0)
         return self.messages.get((chat_id, message_id))

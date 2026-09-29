@@ -252,3 +252,34 @@ async def test_flood_wait_on_reread_waits_and_reads_again(rig: Rig) -> None:
     assert res.status is ActionStatus.CONFIRMED
     assert rig.transport.fetches == [(GAME, 5), (GAME, 5)]
     assert len(rig.transport.sent) == 1
+
+
+async def test_team_chat_rechecked_after_switch_back(rig: Rig) -> None:
+    # A → B → A: проверка A не переживает смену настройки — группу могли покинуть, чат сменить.
+    other = -1002222222222
+    assert (await rig.gw.submit(forward(5))).status is ActionStatus.CONFIRMED
+    await _team(rig, other)
+    assert (await rig.gw.submit(forward(6, chat_id=other))).status is ActionStatus.CONFIRMED
+    await _team(rig, TEAM)
+    assert (await rig.gw.submit(forward(7))).status is ActionStatus.CONFIRMED
+    assert rig.transport.group_checks == [TEAM, other, TEAM]
+
+
+async def test_team_chat_changed_during_source_read_not_forwarded(rig: Rig) -> None:
+    async def switch() -> None:
+        await _team(rig, -1002222222222)
+
+    rig.transport.on_fetch = switch
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.REJECTED and res.reason == "team_chat_changed"
+    assert rig.transport.fetches == [(GAME, 5)] and rig.transport.sent == []
+
+
+async def test_kill_during_source_read_not_forwarded(rig: Rig) -> None:
+    async def kill() -> None:
+        await rig.gw.kill("test")
+
+    rig.transport.on_fetch = kill
+    res = await rig.gw.submit(forward())
+    assert res.status is ActionStatus.REJECTED and res.reason == "kill_switch"
+    assert rig.transport.sent == []

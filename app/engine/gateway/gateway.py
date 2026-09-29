@@ -57,9 +57,15 @@ RECONCILE_REASON = "reconcile_required"
 STORE_FAILED = "store_failed"
 
 
-class SourceRefused(Exception):
-    """Исходное сообщение пересылки не то, что видела реакция (правлено, удалено, не читается):
-    до ForwardMessages дело не дошло."""
+class NotSent(Exception):
+    """Пересылка остановлена после чтения источника: исходное сообщение не то, что видела реакция
+    (правлено, удалено, не читается), или за время чтения что-то изменилось (чат команды, kill,
+    срок). До ForwardMessages дело не дошло."""
+
+    def __init__(self, status: ActionStatus, reason: str) -> None:
+        super().__init__(reason)
+        self.status = status
+        self.reason = reason
 
 
 @dataclass(eq=False)
@@ -159,8 +165,9 @@ class ActionGateway:
         self._spend_block: str | None = None
         self._keys: dict[str, asyncio.Future[ActionResult]] = {}
         self._closed = False
-        # Чаты команды, где проверено: группа и аккаунт в ней состоит.
-        self._groups_ok: set[int] = set()
+        # Проверенный чат команды (группа, аккаунт в ней состоит) и версия настроек, при которой
+        # проверен: любое сохранение настроек (в том числе A → B → A) требует новой проверки.
+        self._group_ok: tuple[int, int] | None = None
 
     @property
     def queue_size(self) -> int:
@@ -558,11 +565,13 @@ class ActionGateway:
         blocked = self._check(p)
         if blocked is not None:
             return await self._record(p, *blocked)
-        if p.cls is CommandClass.FORWARD and p.req.chat_id not in self._groups_ok:
-            verdict = await self._check_group(p.req.chat_id)
-            if verdict != "ok":
-                return await self._record(p, ActionStatus.REFUSED, f"team_chat_{verdict}")
-            self._groups_ok.add(p.req.chat_id)
+        if p.cls is CommandClass.FORWARD:
+            checked = (p.req.chat_id, self._settings.version)
+            if self._group_ok != checked:
+                verdict = await self._check_group(p.req.chat_id)
+                if verdict != "ok":
+                    return await self._record(p, ActionStatus.REFUSED, f"team_chat_{verdict}")
+                self._group_ok = checked
         try:
             p.action_id = await self._store.create(p.req, p.cls, ActionStatus.INTENT)
         except DuplicateKey as dup:
@@ -576,8 +585,9 @@ class ActionGateway:
         return await self._attempts(p)
 
     async def _check_group(self, chat_id: int) -> str:
-        """Перед первой пересылкой в чат: группа или супергруппа, где аккаунт — участник. Отказ
-        не кешируется — после добавления аккаунта в группу следующая пересылка проверит заново."""
+        """Перед первой пересылкой в чат (и первой после любого сохранения настроек): группа или
+        супергруппа, где аккаунт — участник. Отказ не кешируется — после добавления аккаунта в
+        группу следующая пересылка проверит заново."""
         try:
             return await self._transport.check_group(chat_id)
         except TransportAuthLost:
@@ -626,7 +636,7 @@ class ActionGateway:
             answer: str | None = None
             try:
                 try:
-                    answer = await self._transmit(req, eng.click_answer_timeout_s)
+                    answer = await self._transmit(p, eng.click_answer_timeout_s)
                 except FloodWait as fw:
                     now = self._clock.monotonic()
                     self._paused_until = max(self._paused_until, now + fw.seconds)
@@ -641,8 +651,8 @@ class ActionGateway:
                     return await self._finish(p, ActionStatus.REFUSED, "auth_lost")
                 except TransportRejected as exc:
                     return await self._finish(p, ActionStatus.REFUSED, f"rejected:{exc}")
-                except SourceRefused as exc:
-                    return await self._finish(p, ActionStatus.REFUSED, str(exc))
+                except NotSent as exc:
+                    return await self._finish(p, exc.status, exc.reason)
                 except Exception as exc:
                     return await self._finish(
                         p, ActionStatus.OUTCOME_UNKNOWN, f"send_error:{type(exc).__name__}"
@@ -683,9 +693,15 @@ class ActionGateway:
             )
             return await self._finish(p, status, outcome.detail, answer=answer, match=outcome)
 
-    async def _transmit(self, req: ActionRequest, click_timeout: float) -> str | None:
+    async def _transmit(self, p: _Pending, click_timeout: float) -> str | None:
+        req = p.req
         if req.kind is ActionKind.FORWARD:
             await self._check_source(req)
+            # Чтение — сетевой запрос: пока ответ был в пути, могли смениться чат команды, kill,
+            # режим, срок. Последняя сверка — синхронно, прямо перед вызовом транспорта.
+            blocked = self._check(p)
+            if blocked is not None:
+                raise NotSent(*blocked)
             # Ответ пересылки — id сообщения в чате назначения (0 — Telegram его не вернул).
             sent = await self._transport.forward(
                 req.from_chat_id or 0, req.message_id or 0, req.chat_id
@@ -708,11 +724,11 @@ class ActionGateway:
             raise
         except Exception as exc:
             log.warning("forward source %s not read: %r", req.message_id, exc)
-            raise SourceRefused("source_unreadable") from exc
+            raise NotSent(ActionStatus.REFUSED, "source_unreadable") from exc
         if current is None:
-            raise SourceRefused("source_gone")
+            raise NotSent(ActionStatus.REFUSED, "source_gone")
         if current.content_hash() != req.expect_content:
-            raise SourceRefused("source_changed")
+            raise NotSent(ActionStatus.REFUSED, "source_changed")
 
     async def _await_outcome(
         self, inflight: _InFlight, timeout_s: float
