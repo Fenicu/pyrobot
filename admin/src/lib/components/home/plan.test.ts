@@ -99,6 +99,32 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		expect(screen.getByRole('region', { name: 'Сейчас' })).toHaveTextContent('🛌 ждёт пробуждения — следующий шаг в 19:50');
 	});
 
+	it('занятость устарела, цикл спит: план — по данным на момент её наблюдения', () => {
+		const stale = fixture<Outlook>('outlook_stale');
+		render(PlanCard, { plan: stale, error: null, state: prod.state, now: new Date(stale.now) });
+		const now = screen.getByRole('region', { name: 'Сейчас' });
+		expect(now).toHaveTextContent('⏳ ждёт: прочитать книгу — следующий шаг в 20:07');
+		expect(now).toHaveTextContent('Тогда: 🔄 обновить экран (профиль)');
+		expect(now).toHaveTextContent('Занятость устарела: по данным на 19:24 — свободен');
+
+		// Решение — на текущих данных, под подзаголовком — второй проход.
+		const why = screen.getByRole('region', { name: 'Почему не другое' });
+		const [decision, basis] = within(why).getAllByRole('list');
+		expect(within(decision!).getAllByRole('listitem').map((r) => r.dataset.verdict)).toEqual(['stale:busy', 'chosen']);
+		expect(within(why).getByRole('heading', { name: 'по данным на 19:24' })).toBeInTheDocument();
+		const rows = within(basis!).getAllByRole('listitem');
+		expect(rows.map((r) => r.dataset.verdict)).toEqual(['cooldown']);
+		expect(rows[0]).toHaveTextContent('🤑 билеты лотереи');
+		expect(rows[0]).toHaveTextContent('отсрочка · до 20:20');
+
+		const ready = screen.getByRole('region', { name: 'Готово сейчас · по данным на 19:24' });
+		expect(ready).toHaveTextContent('🍊 мандарин');
+		expect(ready).toHaveTextContent('⚙️→🔩 переработка');
+
+		const next = screen.getByRole('region', { name: 'Дальше по времени · по данным на 19:24' });
+		expect(within(next).getAllByRole('listitem')[0]).toHaveTextContent('Прочитать книгу');
+	});
+
 	it('на телефоне — «Сейчас» и первые 5 событий, остальное под «Ещё»', async () => {
 		const user = userEvent.setup();
 		card();

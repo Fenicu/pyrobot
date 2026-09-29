@@ -1,6 +1,6 @@
 /** «Сейчас» и строка пояснения «Плана бота». */
 import type { Outlook, PublicState, WakeKind } from '$lib/api/types';
-import { fmtNum, fmtTime, mskDay } from '$lib/util/format';
+import { fmtMoment, fmtNum, fmtTime, mskDay } from '$lib/util/format';
 import { activityLabel, PERSONAL_TASK } from '$lib/util/game';
 import { val } from '$lib/util/observed';
 import { actDetail, deedTag, deedText, readyText, scenarioText, timerLine, WAKE } from './text';
@@ -97,8 +97,16 @@ function loopWaitText(plan: Outlook, { reason, wake }: LoopWait): string {
 	return `⏳ ждёт: ${what}${later}`;
 }
 
+/** «по данным на 19:24»: занятость устарела, и остальное план считает на момент её наблюдения;
+ * пусто — всё на текущих данных. */
+export function basisText(plan: Outlook): string {
+	return plan.basis_at ? `по данным на ${fmtMoment(plan.basis_at, new Date(plan.now))}` : '';
+}
+
 function phaseText(plan: Outlook): string {
 	const busy = plan.busy;
+	// Последнее значение устаревшей занятости — всегда «свободен»: идущее дело до конца не устаревает.
+	if (plan.basis_at) return `Занятость устарела: ${basisText(plan)} — свободен`;
 	if (plan.phase === 'unknown') return 'Занятость неизвестна или устарела';
 	if (busy === null) return 'Свободен';
 	const what = activityLabel(busy.activity);

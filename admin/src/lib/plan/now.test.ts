@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Outlook, StateOut } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
-import { explain, nowView } from './now';
+import { basisText, explain, nowView } from './now';
 
 const plan = fixture<Outlook>('outlook');
 const prod = fixture<StateOut>('state');
@@ -140,6 +140,23 @@ describe('«Сейчас», пока цикл спит', () => {
 			decision: { kind: 'wait', scenario: null, params: {}, reason: 'busy', until: plan.wakeups[0]!.at }
 		};
 		expect(nowView(waiting)).toMatchObject({ decision: '⏳ ждёт: освободится', then: '' });
+	});
+});
+
+describe('занятость устарела', () => {
+	const stale = fixture<Outlook>('outlook_stale');
+
+	it('по данным на момент её наблюдения — свободен; неизвестная — как раньше', () => {
+		expect(nowView(stale).phase).toBe('Занятость устарела: по данным на 19:24 — свободен');
+		expect(basisText(stale)).toBe('по данным на 19:24');
+		const unknown: Outlook = { ...stale, basis_at: null, basis_considered: [] };
+		expect(nowView(unknown).phase).toBe('Занятость неизвестна или устарела');
+		expect(basisText(unknown)).toBe('');
+	});
+
+	it('наблюдение не сегодня — с датой', () => {
+		const old: Outlook = { ...stale, basis_at: '2026-09-26T20:10:00Z' };
+		expect(basisText(old)).toBe('по данным на 26.09 23:10');
 	});
 });
 

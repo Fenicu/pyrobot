@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { errorText, type ApiError } from '$lib/api/errors';
-	import type { Outlook, PlanTimer, PublicState } from '$lib/api/types';
-	import { explain, nowView } from '$lib/plan/now';
+	import type { Outlook, PlanCandidate, PlanTimer, PublicState } from '$lib/api/types';
+	import { basisText, explain, nowView } from '$lib/plan/now';
 	import {
 		actDetail,
 		candidateDetail,
@@ -27,11 +27,16 @@
 	let more = $state(false);
 
 	const view = $derived(plan ? nowView(plan) : null);
+	// Занятость устарела: кроме решения, план — второй проход по данным на момент её наблюдения.
+	const basis = $derived(plan ? basisText(plan) : '');
 	const why = $derived(plan ? explain(plan, snapshot, now) : '');
 	const timers = $derived(plan?.wakeups.filter((t) => !t.after_wake) ?? []);
 	const later = $derived(plan?.wakeups.filter((t) => t.after_wake) ?? []);
 	const hidden = $derived(
-		(plan?.considered.length ?? 0) + (plan?.also_ready.length ?? 0) + Math.max(timers.length + later.length - PHONE_TIMERS, 0)
+		(plan?.considered.length ?? 0) +
+			(plan?.basis_considered.length ?? 0) +
+			(plan?.also_ready.length ?? 0) +
+			Math.max(timers.length + later.length - PHONE_TIMERS, 0)
 	);
 	const phoneOnly = (i: number) => (i >= PHONE_TIMERS && !more ? 'hidden md:grid' : 'grid');
 	const extra = $derived(more ? '' : 'hidden md:block');
@@ -47,6 +52,18 @@
 			.join(' ')
 	);
 </script>
+
+{#snippet candidateRow(c: PlanCandidate)}
+	{@const detail = candidateDetail(c, plan!)}
+	<li class="flex items-baseline justify-between gap-2 py-0.5 text-sm" data-verdict={c.verdict}>
+		<span class="min-w-0">
+			{scenarioText(c.scenario)}{#if c.verdict === 'chosen'}{@const what = actDetail(c.scenario, c.params, plan!)}{#if what}<span class="text-fg-faint">{` · ${what}`}</span>{/if}{/if}
+		</span>
+		<Pill tone={verdictTone(c.verdict)}>
+			{verdictText(c.verdict)}{detail ? ` · ${detail}` : ''}
+		</Pill>
+	</li>
+{/snippet}
 
 {#snippet timerRow(t: PlanTimer, i: number)}
 	{@const line = timerLine(t, plan!)}
@@ -102,17 +119,13 @@
 						<p class="text-sm text-fg-faint">Других вариантов в этом решении не было.</p>
 					{:else}
 						<ul>
-							{#each plan.considered as c, i (i)}
-								{@const detail = candidateDetail(c, plan)}
-								<li class="flex items-baseline justify-between gap-2 py-0.5 text-sm" data-verdict={c.verdict}>
-									<span class="min-w-0">
-										{scenarioText(c.scenario)}{#if c.verdict === 'chosen'}{@const what = actDetail(c.scenario, c.params, plan)}{#if what}<span class="text-fg-faint">{` · ${what}`}</span>{/if}{/if}
-									</span>
-									<Pill tone={verdictTone(c.verdict)}>
-										{verdictText(c.verdict)}{detail ? ` · ${detail}` : ''}
-									</Pill>
-								</li>
-							{/each}
+							{#each plan.considered as c, i (i)}{@render candidateRow(c)}{/each}
+						</ul>
+					{/if}
+					{#if basis && plan.basis_considered.length > 0}
+						<h4 class="mt-2 text-xs text-fg-faint">{basis}</h4>
+						<ul>
+							{#each plan.basis_considered as c, i (i)}{@render candidateRow(c)}{/each}
 						</ul>
 					{/if}
 				</section>
@@ -120,7 +133,7 @@
 				{#if plan.also_ready.length > 0}
 					<section id="plan-ready-panel" aria-labelledby="plan-ready" class={extra}>
 						<h3 id="plan-ready" class="mb-1 text-xs font-semibold tracking-wide text-fg-muted uppercase">
-							Готово сейчас <span class="font-normal normal-case">· на текущем снимке</span>
+							Готово сейчас <span class="font-normal normal-case">· {basis || 'на текущем снимке'}</span>
 						</h3>
 						<ul class="text-sm">
 							{#each plan.also_ready as a (a.scenario + JSON.stringify(a.params))}
@@ -135,7 +148,7 @@
 
 			<section aria-labelledby="plan-next" class="min-w-0">
 				<h3 id="plan-next" class="mb-1 text-xs font-semibold tracking-wide text-fg-muted uppercase">
-					Дальше по времени
+					Дальше по времени {#if basis}<span class="font-normal normal-case">· {basis}</span>{/if}
 				</h3>
 				{#if timers.length + later.length === 0}
 					<p class="text-sm text-fg-faint">Таймеров нет: бот ждёт событий.</p>
