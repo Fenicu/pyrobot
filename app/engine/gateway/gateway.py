@@ -66,7 +66,7 @@ class NotSent(Exception):
     """Отправка остановлена последней проверкой в транспорте: у пересылки исходное сообщение не
     то, что видела реакция (правлено, удалено, не читается), или за время чтения что-то изменилось
     (чат команды, kill, срок); у команды и клика — пока разрешался peer (класс команды акций, kill,
-    срок). До RPC дело не дошло."""
+    срок) или peer не разрешился (`peer_unresolved`). До RPC дело не дошло."""
 
     def __init__(self, status: ActionStatus, reason: str) -> None:
         super().__init__(reason)
@@ -744,7 +744,13 @@ class ActionGateway:
             return str(sent) if sent else None
         # Peer — заранее, а последняя проверка — после него: профиль, пришедший, пока peer
         # разрешался, меняет класс команды акций. От проверки до RPC ожиданий нет.
-        await self._transport.resolve(req.chat_id)
+        try:
+            await self._transport.resolve(req.chat_id)
+        except (FloodWait, TransportAuthLost):
+            raise
+        except Exception as exc:
+            log.warning("peer of chat %s not resolved: %r", req.chat_id, exc)
+            raise NotSent(ActionStatus.REFUSED, f"peer_unresolved:{type(exc).__name__}") from exc
         blocked = self._check(p)
         if blocked is not None:
             raise NotSent(*blocked)

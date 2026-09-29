@@ -22,7 +22,7 @@ from app.engine.gateway.types import (
 )
 from app.engine.memory import MemoryActionStore
 from app.engine.settings import Settings
-from app.engine.transport.base import FloodWait
+from app.engine.transport.base import FloodWait, TransportAuthLost
 from app.engine.transport.fake import Sent
 from app.engine.types import Button, IncomingMessage
 from tests.engine.gateway_rig import LIVE, Rig, expect_text, running_rig, send
@@ -145,6 +145,76 @@ async def test_stock_class_rechecked_after_peer_resolved(rig: Rig) -> None:
     assert res.status is ActionStatus.CONFIRMED
     assert rig.transport.resolved == [GAME, GAME]
     assert [s.payload for s in rig.transport.sent] == ["/buys_stark_5"]
+
+
+def _resolve_fails(rig: Rig, *errors: BaseException) -> None:
+    pending = list(errors)
+
+    async def fail(chat_id: int) -> None:
+        if pending:
+            raise pending.pop(0)
+
+    rig.transport.on_resolve = fail
+
+
+async def test_peer_resolve_error_is_not_sent(rig: Rig) -> None:
+    # Обычный сбой разрешения peer: RPC не вызывался, команда точно не ушла — это отказ,
+    # а не неясный исход, и траты после него не блокируются до сверки.
+    _resolve_fails(rig, OSError("network down"))
+    res = await rig.gw.submit(send("/job", expect=expect_text("работать")))
+    assert (res.status, res.reason) == (ActionStatus.REFUSED, "peer_unresolved:OSError")
+    assert rig.transport.sent == [] and rig.transport.resolved == [GAME]
+    assert rig.store.rows[res.action_id or 0].status is ActionStatus.REFUSED
+    assert rig.gw.spending_blocked is None
+    rig.reply_with("Ты отправился работать")
+    res = await rig.gw.submit(send("/job", expect=expect_text("работать")))
+    assert res.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["/job"]
+
+
+async def test_peer_resolve_error_on_click_is_not_sent(rig: Rig) -> None:
+    _resolve_fails(rig, ValueError("PEER_ID_INVALID"))
+    btn = (Button("⬆️", 0, 1, data="maze_up"),)
+    rig.latest[(GAME, 77)] = make_msg("карта", msg_id=77, buttons=btn)
+    click = ActionRequest(
+        kind=ActionKind.CLICK, chat_id=GAME, message_id=77, data="maze_up", expect=expect_text("x")
+    )
+    res = await rig.gw.submit(click)
+    assert (res.status, res.reason) == (ActionStatus.REFUSED, "peer_unresolved:ValueError")
+    assert rig.transport.sent == [] and rig.gw.spending_blocked is None
+
+
+async def test_peer_resolve_error_keeps_key_like_other_not_sent(rig: Rig) -> None:
+    # Как у прочих NotSent (строка уже создана под ключом): повтор тем же ключом отдаёт тот же
+    # отказ и peer заново не разрешает.
+    _resolve_fails(rig, OSError("network down"))
+    req = send("/job", idempotency_key="k-peer", source=Source.MANUAL, expect=expect_text("x"))
+    first = await rig.gw.submit(req)
+    assert (first.status, first.reason) == (ActionStatus.REFUSED, "peer_unresolved:OSError")
+    again = await rig.gw.submit(req)
+    assert again == first and rig.transport.resolved == [GAME]
+
+
+async def test_peer_resolve_flood_wait_pauses_and_retries(rig: Rig) -> None:
+    _resolve_fails(rig, FloodWait(0.05))
+    rig.reply_with("Ты отправился работать")
+    res = await rig.gw.submit(send("/job", expect=expect_text("работать")))
+    assert res.status is ActionStatus.CONFIRMED
+    assert rig.transport.resolved == [GAME, GAME] and len(rig.transport.sent) == 1
+
+
+async def test_peer_resolve_long_flood_wait_refused(rig: Rig) -> None:
+    _resolve_fails(rig, FloodWait(3600))
+    res = await rig.gw.submit(send("/job", expect=expect_text("работать")))
+    assert res.status is ActionStatus.REFUSED and res.reason.startswith("flood_wait:")
+    assert rig.transport.sent == [] and rig.gw.spending_blocked is None
+
+
+async def test_peer_resolve_auth_lost_refused(rig: Rig) -> None:
+    _resolve_fails(rig, TransportAuthLost())
+    res = await rig.gw.submit(send("/job", expect=expect_text("работать")))
+    assert (res.status, res.reason) == (ActionStatus.REFUSED, "auth_lost")
+    assert rig.transport.sent == [] and rig.gw.spending_blocked is None
 
 
 async def test_dry_run_suppresses_actions_but_sends_nav() -> None:
