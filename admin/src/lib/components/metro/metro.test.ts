@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '$lib/api/client';
 import type { MetroRunDetail, MetroRunSummary } from '$lib/api/types';
 import { deferred, flush } from '$lib/test/deferred';
@@ -10,6 +10,10 @@ import MetroView from './MetroView.svelte';
 
 const run = fixture<MetroRunDetail>('metro_run_1');
 const NOW = new Date('2026-09-27T20:00:00Z');
+
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 describe('карта метро', () => {
 	it('SVG-сетка, маршрут, события, S/E и проигрывание', async () => {
@@ -49,6 +53,25 @@ describe('карта метро', () => {
 		expect(map.querySelector('circle[data-pos="6,0"]')!.getAttribute('data-event')).toBe('metro_chest_opened');
 		await fireEvent.input(slider, { target: { value: '37' } });
 		expect(map.querySelector('circle[data-pos="6,0"]')!.getAttribute('data-event')).toBe('metro_chest');
+	});
+
+	it('проигрывание: по умолчанию ×3 (25 шагов/с), ×8 — весь забег за ~3 с, выбор запоминается', async () => {
+		localStorage.removeItem('pyrobot.metro.speed');
+		vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+		render(MetroRun, { run, now: NOW });
+		const speed = screen.getByRole('group', { name: 'Скорость' });
+		expect(within(speed).getByRole('button', { name: '×3' })).toHaveAttribute('aria-pressed', 'true');
+		await fireEvent.click(screen.getByRole('button', { name: 'В начало' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Проиграть' }));
+		vi.advanceTimersByTime(1000);
+		await flush();
+		expect(screen.getByText(/шаг 25\/197/)).toBeInTheDocument();
+		await fireEvent.click(within(speed).getByRole('button', { name: '×8' }));
+		expect(localStorage.getItem('pyrobot.metro.speed')).toBe('60');
+		vi.advanceTimersByTime(3000);
+		await flush();
+		expect(screen.getByText(/шаг 197\/197/)).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Проиграть' })).toBeInTheDocument();
 	});
 
 	it('итог: бафы, награды, события', () => {

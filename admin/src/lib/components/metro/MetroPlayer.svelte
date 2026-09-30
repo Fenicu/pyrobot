@@ -9,12 +9,29 @@
 		max: number;
 		step: number;
 		onstep: (step: number) => void;
-		/** Мс на шаг при проигрывании. */
-		speedMs?: number;
 	}
-	let { max, step, onstep, speedMs = 120 }: Props = $props();
+	let { max, step, onstep }: Props = $props();
+
+	/** Скорость проигрывания: шагов в секунду; ×1 — прежние 8 шагов/с. */
+	const SPEEDS = [
+		{ label: '×1', perSec: 8 },
+		{ label: '×3', perSec: 25 },
+		{ label: '×8', perSec: 60 }
+	] as const;
+	const KEY = 'pyrobot.metro.speed';
+	function saved(): number {
+		try {
+			const n = Number(localStorage.getItem(KEY));
+			return SPEEDS.some((s) => s.perSec === n) ? n : SPEEDS[1].perSec;
+		} catch {
+			return SPEEDS[1].perSec;
+		}
+	}
+	let perSec = $state(saved());
+
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let playing = $state(false);
+	let current = 0;
 
 	function stop() {
 		if (timer !== null) clearInterval(timer);
@@ -22,16 +39,37 @@
 		playing = false;
 	}
 
+	/** Таймер не чаще 60 раз в секунду: при большей скорости за тик — несколько шагов. */
+	function start() {
+		const tickMs = Math.max(16, 1000 / perSec);
+		const perTick = Math.max(1, Math.round((perSec * tickMs) / 1000));
+		timer = setInterval(() => {
+			current = Math.min(max, current + perTick);
+			onstep(current);
+			if (current >= max) stop();
+		}, tickMs);
+		playing = true;
+	}
+
 	function play() {
 		if (playing) return stop();
-		let current = step >= max ? 0 : step;
+		current = step >= max ? 0 : step;
 		onstep(current);
-		playing = true;
-		timer = setInterval(() => {
-			current += 1;
-			onstep(Math.min(current, max));
-			if (current >= max) stop();
-		}, speedMs);
+		start();
+	}
+
+	function setSpeed(next: number) {
+		perSec = next;
+		try {
+			localStorage.setItem(KEY, String(next));
+		} catch {
+			// выбор живёт до перезагрузки
+		}
+		if (playing) {
+			if (timer !== null) clearInterval(timer);
+			current = step;
+			start();
+		}
 	}
 
 	onDestroy(stop);
@@ -59,4 +97,15 @@
 		oninput={(e) => (stop(), onstep(Number(e.currentTarget.value)))}
 	/>
 	<span class="text-xs tabular-nums text-fg-muted">{step}/{max}</span>
+	<div class="flex gap-1" role="group" aria-label="Скорость">
+		{#each SPEEDS as s (s.perSec)}
+			<button
+				type="button"
+				class="chip min-h-8"
+				aria-pressed={perSec === s.perSec}
+				title="{s.perSec} шагов в секунду"
+				onclick={() => setSpeed(s.perSec)}>{s.label}</button
+			>
+		{/each}
+	</div>
 </div>
