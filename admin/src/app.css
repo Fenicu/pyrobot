@@ -27,10 +27,10 @@
 	--dec-fg: #cfe0ff;
 	--msg-bg: #3a2a55;
 	--msg-fg: #e3d4ff;
-	--map-bg: #0e0e11;
-	--map-wall: #2b2b33;
-	--map-floor: #55607a;
-	--map-seen: #7d8aa8;
+	--map-rock: #0b0b0e;
+	--map-tunnel: #292d38;
+	--map-walked: #34466e;
+	--map-halo: rgb(255 255 255 / 0.55);
 	color-scheme: dark;
 }
 
@@ -57,10 +57,10 @@
 	--dec-fg: #1d3b73;
 	--msg-bg: #ebe0fa;
 	--msg-fg: #4a2a78;
-	--map-bg: #f0f1f4;
-	--map-wall: #c9ccd4;
-	--map-floor: #8d97ad;
-	--map-seen: #5b6886;
+	--map-rock: #d4d8e0;
+	--map-tunnel: #f4f5f8;
+	--map-walked: #bccff5;
+	--map-halo: rgb(255 255 255 / 0.9);
 	color-scheme: light;
 }
 

@@ -1,6 +1,16 @@
 <script lang="ts">
 	import type { MetroRunDetail } from '$lib/api/types';
-	import { EVENT_TEXT, eventCounts, frameAt, mapOf, OUTCOME_TEXT, outcomeOf } from '$lib/metro/model';
+	import {
+		EVENT_TEXT,
+		eventCounts,
+		eventIcon,
+		eventText,
+		frameAt,
+		mapOf,
+		OUTCOME_TEXT,
+		outcomeOf,
+		timeline
+	} from '$lib/metro/model';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment, fmtNum, fmtSpan } from '$lib/util/format';
 	import { CURRENCY } from '$lib/util/game';
@@ -21,6 +31,8 @@
 		step = max;
 	});
 	const frame = $derived(frameAt(model, step));
+	const events = $derived(timeline(model));
+	const recent = $derived(events.filter((e) => e.step <= step).slice(-12).reverse());
 	const outcome = $derived(outcomeOf(run));
 	const result = $derived(Object.entries(run.result ?? {}));
 </script>
@@ -38,7 +50,7 @@
 
 	<div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
 		<div class="space-y-2">
-			<MetroMap {model} {step} label="Карта забега #{run.id}: {run.steps} шагов, клеток {model.cells.length}" />
+			<MetroMap {model} {step} label="Карта забега #{run.id}: {run.steps} шагов, посещено клеток {model.visitedCount}" />
 			{#if model.path.length > 0}
 				<MetroPlayer {max} {step} onstep={(s) => (step = s)} />
 				<p class="text-sm" aria-live="polite">
@@ -47,10 +59,9 @@
 					{#if frame.vitals}· 🔋 {frame.vitals.stamina} · аптечки {frame.vitals.packs}{/if}
 				</p>
 			{/if}
-			<p class="text-xs text-fg-faint">
-				<span style:color="#e3b341">●</span> лут · <span style:color="#e5484d">●</span> бой / NPC ·
-				<span style:color="#d9822b">●</span> сундук · <span style:color="#3fb950">●</span> выход · линия — маршрут · S/E —
-				вход/выход
+			<p class="text-xs text-fg-faint" aria-label="Легенда карты">
+				💵📚🍕… находка · ⚔️ бой (💀 — проигран) · 👤 NPC без боя · 📦 тайник (бледный — не открыт) · 🏹💥 ловушка ·
+				❤️ аптечка · 🚇 вход · 🚪 выход · светлее — пройдено, туман — ещё не видно · яркая линия — последние шаги
 			</p>
 		</div>
 		<div class="card space-y-2 text-sm">
@@ -68,15 +79,14 @@
 					.map(([k, n]) => `${EVENT_TEXT[k] ?? k} ×${n}`)
 					.join(', ') || '—'}
 			</p>
-			{#if frame.events.length}
+			{#if recent.length}
 				<h4 class="text-xs text-fg-muted uppercase">К шагу {step}</h4>
-				<ol class="max-h-48 space-y-0.5 overflow-y-auto text-xs">
-					{#each frame.events.slice(-12).reverse() as e, i (i)}
-						<li>
-							<span class="font-mono text-fg-faint">{e.step}</span>
-							{EVENT_TEXT[e.kind] ?? e.kind}
-							{#if typeof e.enemy === 'string'}<span class="ext-text"> · {e.enemy}</span>{/if}
-							{#if typeof e.item === 'string'}· {CURRENCY[e.item] ?? e.item} {e.amount ?? ''}{/if}
+				<ol class="max-h-48 space-y-0.5 overflow-y-auto text-xs" aria-label="События к шагу {step}">
+					{#each recent as e, i (i)}
+						<li class="flex gap-1.5">
+							<span class="w-7 shrink-0 text-right font-mono text-fg-faint">{e.step}</span>
+							<span class="w-4 shrink-0 text-center" aria-hidden="true">{eventIcon(e) ?? '•'}</span>
+							<span class="ext-text min-w-0">{eventText(e)}</span>
 						</li>
 					{/each}
 				</ol>

@@ -16,43 +16,56 @@ afterEach(() => {
 });
 
 describe('карта метро', () => {
-	it('SVG-сетка, маршрут, события, S/E и проигрывание', async () => {
+	it('тоннели, туман, путь со следом, вход/выход и проигрывание', async () => {
 		render(MetroRun, { run, now: NOW });
-		const map = screen.getByRole('img', { name: /Карта забега #1: 197 шагов/ });
-		expect(map.querySelectorAll('rect[data-cell]')).toHaveLength(285);
+		const map = screen.getByRole('img', { name: /Карта забега #1: 197 шагов, посещено клеток 95/ });
+		const cells = () => map.querySelectorAll('rect[data-cell]');
+		// Сначала — весь забег: стены — сплошной камень, каждый проход — тоннель, все пройдены.
+		expect(cells()).toHaveLength(95);
+		expect(map.querySelectorAll('rect[data-walked]')).toHaveLength(95);
 		expect(map.querySelector('rect[data-cell="14,1"]')?.getAttribute('data-sym')).toBe('E');
-		expect(map.querySelectorAll('circle[data-event]').length).toBeGreaterThan(20);
-		const texts = [...map.querySelectorAll('text')].map((t) => t.textContent);
-		expect(texts).toEqual(['S', 'E']);
-		// Сначала — весь забег.
+		expect(map.querySelector('[data-role="entrance"]')).toHaveTextContent('🚇');
+		expect(map.querySelector('[data-role="exit"]')).toHaveTextContent('🚪');
 		expect(screen.getByText(/шаг 197\/197/)).toHaveTextContent('клетка (14,1) · 🔋 100 · аптечки 6');
-		const route = () => map.querySelector('polyline[data-role="route"]')!.getAttribute('points')!.split(' ');
-		expect(route()).toHaveLength(198);
+		const line = (role: string) => map.querySelector(`polyline[data-role="${role}"]`)!.getAttribute('points')!.split(' ');
+		expect(line('route')).toHaveLength(198);
+		expect(line('trail')).toHaveLength(13);
 		await fireEvent.input(screen.getByRole('slider', { name: 'Шаг' }), { target: { value: '120' } });
 		expect(screen.getByText(/шаг 120\/197/)).toHaveTextContent('клетка (10,-2) · 🔋 98 · аптечки 7');
-		expect(route()).toHaveLength(121);
+		expect(line('route')).toHaveLength(121);
+		expect(cells()).toHaveLength(90);
+		expect(map.querySelectorAll('rect[data-walked]').length).toBeLessThan(90);
 		await fireEvent.click(screen.getByRole('button', { name: 'В начало' }));
 		expect(screen.getByText(/шаг 0\/197/)).toHaveTextContent('клетка (0,0) · 🔋 121 · аптечки 7');
+		// Туман: на старте видно только окно 5×5 вокруг входа, выход ещё не найден.
+		expect(cells()).toHaveLength(9);
+		expect(map.querySelector('[data-role="exit"]')).toBeNull();
+		expect(map.querySelector('[data-role="me"] path')).toBeNull();
 		await fireEvent.click(screen.getByRole('button', { name: 'Шаг вперёд' }));
 		expect(screen.getByText(/шаг 1\/197/)).toBeInTheDocument();
+		// Указатель — по последнему ходу: (0,0) → (0,-1), влево.
+		expect(map.querySelector('[data-role="me"]')?.getAttribute('transform')).toContain('rotate(180)');
 	});
 
-	it('значок клетки — последнее событие к текущему шагу', async () => {
+	it('значки — только случившееся: главное событие клетки, приглушённо — не открыт или без боя', async () => {
 		render(MetroRun, { run, now: NOW });
 		const map = screen.getByRole('img', { name: /Карта забега #1/ });
-		const mark = () => map.querySelector('circle[data-pos="14,1"]')!;
+		const mark = (pos: string) => map.querySelector(`[data-event][data-pos="${pos}"]`);
 		const slider = screen.getByRole('slider', { name: 'Шаг' });
-		expect(mark().getAttribute('data-event')).toBe('metro_finished');
-		await fireEvent.input(slider, { target: { value: '180' } });
-		expect(mark().getAttribute('data-event')).toBe('metro_exit');
-		expect(mark().getAttribute('opacity')).toBe('1');
-		// Событий клетки ещё не было — первое будущее, приглушённо.
-		await fireEvent.input(slider, { target: { value: '100' } });
-		expect(mark().getAttribute('data-event')).toBe('metro_exit');
-		expect(mark().getAttribute('opacity')).toBe('0.35');
-		expect(map.querySelector('circle[data-pos="6,0"]')!.getAttribute('data-event')).toBe('metro_chest_opened');
+		expect(map.querySelectorAll('[data-event]')).toHaveLength(21);
+		expect(mark('6,-1')).toHaveTextContent('⚔️');
+		expect(mark('6,-1')?.querySelector('title')).toHaveTextContent('шаг 39 · NPC (слабый) шаг 39 · бой с 👨Продаваном');
+		expect(mark('12,3')?.getAttribute('data-event')).toBe('heal');
+		expect(mark('14,1')).toBeNull();
+		await fireEvent.input(slider, { target: { value: '38' } });
+		expect(mark('6,0')?.getAttribute('data-event')).toBe('metro_chest_opened');
+		expect(mark('6,-1')).toBeNull();
 		await fireEvent.input(slider, { target: { value: '37' } });
-		expect(map.querySelector('circle[data-pos="6,0"]')!.getAttribute('data-event')).toBe('metro_chest');
+		expect(mark('6,0')).toBeNull();
+		expect(map.querySelectorAll('[data-event]')).toHaveLength(6);
+		// Список к шагу — значком и словами, новые сверху.
+		const recent = screen.getByRole('list', { name: 'События к шагу 37' });
+		expect(within(recent).getAllByRole('listitem')[0]).toHaveTextContent('35 🌭 находка: +🌭 3');
 	});
 
 	it('проигрывание: по умолчанию ×3 (25 шагов/с), ×8 — весь забег за ~3 с, выбор запоминается', async () => {
