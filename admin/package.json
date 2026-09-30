@@ -35,7 +35,7 @@
 	},
 	"dependencies": {
 		"@lucide/svelte": "^1.48.0",
-		"openapi-fetch": "^0.17.0",
-		"uplot": "^1.6.32"
+		"echarts": "^6.1.0",
+		"openapi-fetch": "^0.17.0"
 	}
 }

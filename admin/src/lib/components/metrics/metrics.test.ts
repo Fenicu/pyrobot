@@ -6,20 +6,33 @@ import { deferred, type Deferred } from '$lib/test/deferred';
 import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 
-// В jsdom нет canvas: uPlot подменяется, проверяются данные, которые ему отдаёт график.
-const created: { data: [number[], number[]]; opts: { series: { label?: string }[] } }[] = [];
-vi.mock('uplot', () => {
-	class FakePlot {
-		static tzDate = (d: Date) => d;
-		static paths = { stepped: () => () => null };
-		constructor(opts: never, data: never) {
-			created.push({ opts, data });
-		}
-		setSize() {}
-		destroy() {}
+// В jsdom нет canvas: ECharts подменяется, проверяются настройки, которые ему отдаёт график.
+type Option = {
+	series: { name: string; data: [number, number][]; markLine: { data: unknown[] } }[];
+	tooltip: { formatter: (p: { axisValue: number }[]) => string };
+};
+const created: { options: Option[] }[] = [];
+vi.mock('$lib/metrics/echarts', () => ({
+	init: () => {
+		const chart = {
+			options: [] as Option[],
+			setOption(o: Option) {
+				chart.options.push(o);
+			},
+			on() {},
+			off() {},
+			dispatchAction() {},
+			resize() {},
+			dispose() {},
+			isDisposed: () => false,
+			getZr: () => ({ on() {}, off() {} }),
+			getHeight: () => 180,
+			convertToPixel: () => 0
+		};
+		created.push(chart);
+		return chart;
 	}
-	return { default: FakePlot };
-});
+}));
 
 const { default: MetricsView } = await import('./MetricsView.svelte');
 
@@ -35,14 +48,17 @@ describe('Метрики', () => {
 		expect(await screen.findByRole('img', { name: 'График: 💵 деньги · 47, точек 127, меток 3' })).toBeInTheDocument();
 		expect(screen.getByText('Метки на графиках: 📈 слив налички в акции · 🛌 сон')).toBeInTheDocument();
 		expect(fetch.calls[0]?.url).toContain('from=2026-09-26T21%3A00%3A00.000Z');
-		const money = created.find((c) => c.opts.series[1]?.label === '💵 деньги · 47');
-		expect(money?.data[1].at(-1)).toBe(47);
-		expect(created.map((c) => c.opts.series[1]?.label?.split(' · ')[0])).toEqual([
-			'💵 деньги',
-			'💡 опыт',
-			'🔥 мотивация',
-			'🔋 выносливость'
-		]);
+		const first = () => created.map((c) => c.options[0]!.series[0]!);
+		const money = first().find((sr) => sr.name === '💵 деньги')!;
+		expect(money.data.at(-1)?.[1]).toBe(47);
+		// Три метки окна — пунктирные вертикали на каждом графике.
+		expect(money.markLine.data).toHaveLength(3);
+		expect(first().map((sr) => sr.name)).toEqual(['💵 деньги', '💡 опыт', '🔥 мотивация', '🔋 выносливость']);
+		// Подсказка — точное значение в момент курсора (время оси — МСК, сдвинутое на +3 ч).
+		const tip = created[0]!.options[0]!.tooltip.formatter([{ axisValue: Date.UTC(2026, 8, 27, 13, 6) + 3 * 3_600_000 }]);
+		expect(tip).toContain('27.09 16:06');
+		expect(tip).toContain('💵 деньги: <b>3\u00a0252</b>');
+		expect(tip).not.toContain('📈');
 		// Уровня среди полей нет: его график почти всегда прямая.
 		expect(screen.queryByRole('button', { name: 'уровень' })).toBeNull();
 		await user.click(screen.getByRole('button', { name: '⚙️ детали' }));

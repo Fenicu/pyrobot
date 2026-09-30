@@ -129,7 +129,13 @@
 		<div class="grid gap-3 lg:grid-cols-2">
 			{#each METRICS.filter((m) => fields.includes(m.key)) as m (m.key)}
 				<div class="card">
-					<Chart label="{m.label} · {latest(m.key)}" data={stepSeries(data, m.key, win)} markers={marks} />
+					<Chart
+						label="{m.label} · {latest(m.key)}"
+						name={m.label}
+						data={stepSeries(data, m.key, win)}
+						range={[win.from.getTime() / 1000, win.to.getTime() / 1000]}
+						markers={marks}
+					/>
 				</div>
 			{/each}
 		</div>
