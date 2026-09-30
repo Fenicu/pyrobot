@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -314,3 +315,56 @@ class MetroRunRow(Base):
     events: Mapped[list[Any]]
     vitals: Mapped[list[Any]]
     summary: Mapped[dict[str, Any]]
+
+
+class TgSession(Base):
+    """Сессия Telegram аккаунта (хранилище kurigram); `auth_key` — шифротекст `SecretBox`."""
+
+    __tablename__ = "tg_sessions"
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), primary_key=True)
+    # Поля как в `sessions` SQLite-хранилища kurigram: часть пуста, пока клиент не вошёл.
+    dc_id: Mapped[int] = mapped_column(Integer)
+    api_id: Mapped[int | None] = mapped_column(Integer)
+    test_mode: Mapped[bool | None] = mapped_column(Boolean)
+    auth_key: Mapped[bytes | None] = mapped_column(LargeBinary)
+    date: Mapped[int] = mapped_column(BigInteger)
+    user_id: Mapped[int | None] = mapped_column(BigInteger)
+    is_bot: Mapped[bool | None] = mapped_column(Boolean)
+    server_address: Mapped[str | None] = mapped_column(Text)
+    port: Mapped[int | None] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = _now_col()
+
+
+class TgPeer(Base):
+    """Пиры чатов из настроек аккаунта и пользователя `swinfo_user_id`: доступны вне первых 200
+    диалогов, когда kurigram ещё не прогрел свой кэш."""
+
+    __tablename__ = "tg_peers"
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    access_hash: Mapped[int | None] = mapped_column(BigInteger)
+    type: Mapped[str] = mapped_column(String(16))
+    username: Mapped[str | None] = mapped_column(Text)
+    phone_number: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = _now_col()
+
+
+class TgChatMark(Base):
+    """Отметка сверки истории: до какого `msg_id` включительно чтение (чат, отправитель) уже в
+    журнале. `from_id` = 0 — чтение всего чата. Принадлежит журналу: выход из Telegram и сброс
+    ключа её не трогают."""
+
+    __tablename__ = "tg_chat_marks"
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    from_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    msg_id: Mapped[int] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = _now_col()
+
+
+class ServerMeta(Base):
+    """Служебные записи сервера; сейчас одна — `key_check`, проверка ключа шифрования."""
+
+    __tablename__ = "server_meta"
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[bytes] = mapped_column(LargeBinary)

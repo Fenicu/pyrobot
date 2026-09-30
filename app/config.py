@@ -17,6 +17,11 @@ class AppConfig(DbConfig):
     tg_api_hash: SecretStr = SecretStr("")
     admin_login: str = "admin"
     admin_password: SecretStr | None = None
+    # Ключ шифрования сессий Telegram (32 байта, urlsafe base64): разбирает и сверяет с базой
+    # `app.db.crypto` при старте процесса; `secret_key_reset` — осознанный сброс сессий при
+    # другом ключе.
+    secret_key: SecretStr | None = None
+    secret_key_reset: bool = False
     http_host: str = "0.0.0.0"
     http_port: int = 8080
     # Адрес(а) обратного прокси (Caddy), которому uvicorn доверяет X-Forwarded-For/-Proto:
@@ -27,6 +32,13 @@ class AppConfig(DbConfig):
     log_level: str = "INFO"
     account_id: int = 1
     planner: bool = True
+    # Пул соединений базы на процесс; ёмкость хоста движков и пауза между стартами движков.
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    max_engines: int = 20
+    engine_start_gap_s: float = 3.0
+    # Запросов кода входа Telegram в час на хост.
+    tg_codes_per_hour: int = 10
     # Собранная админка (SvelteKit, `admin/build`): её отдаёт то же приложение; каталога нет —
     # `/` отвечает 404 (разработка, тесты).
     admin_dir: Path | None = Path("/app/admin")

@@ -48,6 +48,10 @@ async def test_upgrade_and_downgrade() -> None:
         "scenario_runs",
         "metro_runs",
         "ledger",
+        "tg_sessions",
+        "tg_peers",
+        "tg_chat_marks",
+        "server_meta",
     } <= await _tables()
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
     assert await _tables() <= {"alembic_version"}
@@ -257,4 +261,33 @@ async def test_0011_constraints() -> None:
             await _exec(sql)
     # Аккаунты без привязки и без владельца уникальность не связывает.
     await _exec("INSERT INTO accounts (id, name) VALUES (5, 'Один'), (6, 'Один')")
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0012_session_tables_hang_on_accounts_without_cascade() -> None:
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0011")
+    # Аккаунт 1 создаёт миграция 0001.
+    await asyncio.to_thread(command.upgrade, _cfg(), "0012")
+    assert {"tg_sessions", "tg_peers", "tg_chat_marks", "server_meta"} <= await _tables()
+    await _exec("INSERT INTO tg_sessions (account_id, dc_id, date) VALUES (1, 2, 0)")
+    await _exec("INSERT INTO tg_peers (account_id, id, type) VALUES (1, 10, 'user')")
+    await _exec(
+        "INSERT INTO tg_chat_marks (account_id, chat_id, from_id, msg_id) VALUES (1, -5, 0, 7)"
+    )
+    await _exec("INSERT INTO server_meta (key, value) VALUES ('key_check', '\\x01')")
+    for sql in (
+        "INSERT INTO tg_sessions (account_id, dc_id, date) VALUES (9, 2, 0)",
+        "INSERT INTO tg_peers (account_id, id, type) VALUES (9, 10, 'user')",
+        "INSERT INTO tg_peers (account_id, id, type) VALUES (1, 10, 'bot')",
+        "INSERT INTO tg_chat_marks (account_id, chat_id, from_id, msg_id) VALUES (9, -5, 0, 7)",
+        "INSERT INTO tg_chat_marks (account_id, chat_id, from_id, msg_id) VALUES (1, -5, 0, 8)",
+        "INSERT INTO tg_chat_marks (account_id, chat_id, from_id, msg_id) VALUES (1, -5, 3, NULL)",
+        # Аккаунт с данными сессии не удаляется: каскада нет.
+        "DELETE FROM accounts WHERE id = 1",
+    ):
+        with pytest.raises(IntegrityError):
+            await _exec(sql)
+    await asyncio.to_thread(command.downgrade, _cfg(), "0011")
+    assert not {"tg_sessions", "tg_peers", "tg_chat_marks", "server_meta"} & await _tables()
     await asyncio.to_thread(command.downgrade, _cfg(), "base")

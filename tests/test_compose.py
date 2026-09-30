@@ -8,6 +8,9 @@ from typing import Any
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
+# Ключ шифрования сессий Telegram: 32 байта в urlsafe base64 — с `-`, `_` и `=`, которые compose
+# не должен исказить.
+SECRET_KEY = "-_---_---_---_---_---_---_---_---_---_--_v8="
 
 pytestmark = pytest.mark.skipif(shutil.which("docker") is None, reason="needs docker compose")
 
@@ -66,6 +69,7 @@ def _author_deploy_env(tmp_path: Path) -> None:
             "TAG": "v9.9.9",
             "ENV_FILE": str(tmp_path / ".env"),
             "PYROBOT_ADMIN_PASSWORD": "p",
+            "PYROBOT_SECRET_KEY": SECRET_KEY,
             **dict.fromkeys(secrets, "1"),
         },
         check=True,
@@ -92,3 +96,5 @@ def test_author_deploy_keeps_apps_address(tmp_path: Path) -> None:
     assert _ports(bot) == [("10.10.40.20", "8089", 8080)]
     assert bot["image"] == "git.fenicu.com/fenicu/pyrobot:v9.9.9"
     assert bot["environment"]["PYROBOT_FORWARDED_ALLOW_IPS"] == "10.10.40.3"
+    # Ключ шифрования доходит до контейнера бота из секрета выкатки.
+    assert bot["environment"]["PYROBOT_SECRET_KEY"] == SECRET_KEY

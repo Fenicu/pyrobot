@@ -177,6 +177,9 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.PYROBOT_DB_PASSWORD }}
           PYROBOT_TG_API_ID: ${{ secrets.PYROBOT_TG_API_ID }}
           PYROBOT_TG_API_HASH: ${{ secrets.PYROBOT_TG_API_HASH }}
+          # Ключ шифрования сессий Telegram: постоянный (другой ключ не расшифрует сессии в базе),
+          # хранится отдельно от бэкапов базы; render-env.sh его не генерирует.
+          PYROBOT_SECRET_KEY: ${{ secrets.PYROBOT_SECRET_KEY }}
           # Нужен только первому старту (создание админа); дальше пароль меняется через API.
           PYROBOT_ADMIN_PASSWORD: ${{ secrets.PYROBOT_ADMIN_PASSWORD }}
           # Переменная репозитория: true — только на первый выкат, пока не выполнен вход в Telegram.
@@ -196,8 +199,8 @@ jobs:
             PYROBOT_BIND=10.10.40.20 PYROBOT_PORT=8089
           bash deploy/render-env.sh PYROBOT_IMAGE POSTGRES_PASSWORD PYROBOT_TRANSPORT \
             PYROBOT_TG_API_ID PYROBOT_TG_API_HASH PYROBOT_ADMIN_LOGIN PYROBOT_ADMIN_PASSWORD \
-            PYROBOT_COOKIE_SECURE PYROBOT_LOG_LEVEL PYROBOT_FORWARDED_ALLOW_IPS \
-            PYROBOT_BIND PYROBOT_PORT > "$ENV_FILE"
+            PYROBOT_SECRET_KEY PYROBOT_COOKIE_SECURE PYROBOT_LOG_LEVEL \
+            PYROBOT_FORWARDED_ALLOW_IPS PYROBOT_BIND PYROBOT_PORT > "$ENV_FILE"
           OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
           ssh "${OPTS[@]}" "$APPS" 'mkdir -p ~/pyrobot'
           scp "${OPTS[@]}" compose.yml deploy/remote-deploy.sh "$APPS:pyrobot/"
