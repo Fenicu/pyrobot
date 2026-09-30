@@ -1,7 +1,8 @@
 import { call, type Api } from '$lib/api/client';
 import type { MetricEvent } from './events';
 
-/** Поля метрик (`METRIC_FIELDS` движка) с подписями. */
+/** Поля метрик (`METRIC_FIELDS` движка) с подписями; уровня нет — его график почти всегда прямая,
+ * а текущий уровень есть на главной. */
 export const METRICS: { key: string; label: string }[] = [
 	{ key: 'money', label: '💵 деньги' },
 	{ key: 'exp', label: '💡 опыт' },
@@ -11,8 +12,7 @@ export const METRICS: { key: string; label: string }[] = [
 	{ key: 'raw', label: '🔩 сырьё' },
 	{ key: 'details', label: '⚙️ детали' },
 	{ key: 'books', label: '📒 книги' },
-	{ key: 'glory', label: '🏆 слава' },
-	{ key: 'level', label: 'уровень' }
+	{ key: 'glory', label: '🏆 слава' }
 ];
 
 export type Point = [string, number];

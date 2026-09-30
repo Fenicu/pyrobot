@@ -43,6 +43,8 @@ describe('Метрики', () => {
 			'🔥 мотивация',
 			'🔋 выносливость'
 		]);
+		// Уровня среди полей нет: его график почти всегда прямая.
+		expect(screen.queryByRole('button', { name: 'уровень' })).toBeNull();
 		await user.click(screen.getByRole('button', { name: '⚙️ детали' }));
 		expect(await screen.findByRole('img', { name: /⚙️ детали/ })).toBeInTheDocument();
 		await user.click(screen.getByRole('button', { name: '7 дней' }));
