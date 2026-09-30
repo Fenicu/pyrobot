@@ -30,6 +30,10 @@ class TgUserTaken(Exception):
     """Пользователь Telegram уже привязан к другому аккаунту."""
 
 
+class AccountDeleting(Exception):
+    """Аккаунт удаляется: `deleting` — конечный статус, правка отклонена."""
+
+
 @dataclass(frozen=True)
 class AccountInfo:
     id: int
@@ -51,6 +55,10 @@ def _info(row: Account) -> AccountInfo:
         tg_user_id=row.tg_user_id,
         engine_generation=row.engine_generation,
     )
+
+
+# `deleting` конечный: записи, которые его сняли бы или перезапустили движок, его не затрагивают.
+_NOT_DELETING = Account.status != "deleting"
 
 
 def _violated(exc: IntegrityError) -> str | None:
@@ -123,7 +131,7 @@ class AccountRepo:
         capacity: int,
     ) -> AccountInfo:
         """Переименование и включение (`enabled=True` очищает причину) или выключение.
-        KeyError — нет такого аккаунта."""
+        KeyError — нет такого аккаунта; AccountDeleting — он удаляется, и ничего не меняется."""
         try:
             async with self._db.sessions() as session, session.begin():
                 if enabled:
@@ -133,6 +141,8 @@ class AccountRepo:
                 )
                 if row is None:
                     raise KeyError(account_id)
+                if row.status == "deleting":
+                    raise AccountDeleting(account_id)
                 if enabled and row.status != "enabled":
                     await _check_capacity(session, capacity)
                 if name is None and enabled is None:
@@ -152,10 +162,13 @@ class AccountRepo:
             raise
 
     async def set_status(self, account_id: int, status: AccountStatus, reason: str | None) -> None:
-        await self._write(account_id, status=status, status_reason=reason)
+        """У удаляемого аккаунта (`deleting`) статус не меняется: чистка должна дойти до конца."""
+        await self._write(account_id, _NOT_DELETING, status=status, status_reason=reason)
 
     async def restart(self, account_id: int) -> None:
-        await self._write(account_id, engine_generation=Account.engine_generation + 1)
+        await self._write(
+            account_id, _NOT_DELETING, engine_generation=Account.engine_generation + 1
+        )
 
     async def mark_deleting(self, account_id: int) -> None:
         await self._write(account_id, status="deleting")

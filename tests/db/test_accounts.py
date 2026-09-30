@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import select
 
 from app.db.accounts import (
+    AccountDeleting,
     AccountInfo,
     AccountRepo,
     AccountStatus,
@@ -212,3 +213,41 @@ async def test_every_write_bumps_updated_at(
     await _admin(clean_db, "first")
     assert await repo.adopt_orphans() == 1
     assert await _updated_at(clean_db, 1) > adopted
+
+
+async def test_update_of_deleting_account_rejected(repo: AccountRepo, admin_id: int) -> None:
+    acc = await repo.create(admin_id, "Второй", capacity=20)
+    await repo.mark_deleting(acc.id)
+    deleting = await _info(repo, acc.id)
+    assert deleting.status == "deleting"
+    for change in ({"enabled": True}, {"enabled": False}, {"name": "Новое"}, {}):
+        with pytest.raises(AccountDeleting):
+            await repo.update(acc.id, capacity=20, **change)  # type: ignore[arg-type]
+    # Ни имя, ни статус не тронуты, место под enabled не занято.
+    assert await _info(repo, acc.id) == deleting
+    assert (await repo.create(admin_id, "Третий", capacity=2)).status == "enabled"
+
+
+async def test_set_status_and_restart_skip_deleting_account(
+    repo: AccountRepo, clean_db: Database, admin_id: int
+) -> None:
+    acc = await repo.create(admin_id, "Второй", capacity=20)
+    await repo.mark_deleting(acc.id)
+    deleting = await _info(repo, acc.id)
+    stamp = await _updated_at(clean_db, acc.id)
+    await repo.set_status(acc.id, "error", "crash_loop:gateway")
+    await repo.set_status(acc.id, "enabled", None)
+    await repo.restart(acc.id)
+    assert await _info(repo, acc.id) == deleting
+    assert await _updated_at(clean_db, acc.id) == stamp
+    assert [a.id for a in await repo.with_status("deleting")] == [acc.id]
+
+
+async def test_mark_deleting_is_idempotent(repo: AccountRepo, admin_id: int) -> None:
+    for status in ("enabled", "disabled", "error"):
+        acc = await repo.create(admin_id, f"Из {status}", capacity=99)
+        await repo.set_status(acc.id, status, "причина")  # type: ignore[arg-type]
+        await repo.mark_deleting(acc.id)
+        await repo.mark_deleting(acc.id)
+        assert (await _info(repo, acc.id)).status == "deleting"
+    await repo.mark_deleting(999)  # нет такого аккаунта — ничего не происходит
