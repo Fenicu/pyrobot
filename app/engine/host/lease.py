@@ -97,6 +97,9 @@ class LeaseManager:
         # Текущая ограда каждого аккаунта. Продлеваются живые, чья блокировка — на текущем
         # соединении; за сроками остальных следит run().
         self._fences: dict[int, Fence] = {}
+        # Будит слежение за сроками: срок новой ограды может наступить раньше, чем оно проснулось
+        # бы само, — t снят до захвата, а захват мог ждать строку до lock_timeout.
+        self._fence_added = asyncio.Event()
 
     def healthy(self) -> bool:
         """Соединение блокировок открыто; обрыв замечается на следующем запросе."""
@@ -151,6 +154,7 @@ class LeaseManager:
             )
             previous = self._fences.get(account_id)
             self._fences[account_id] = fence
+            self._fence_added.set()
         if previous is not None:
             # Эпоха в базе уже новая: прежняя ограда аккаунта аренду потеряла.
             previous.revoke()
@@ -237,19 +241,22 @@ class LeaseManager:
                 await watcher
 
     async def _watch_deadlines(self) -> None:
-        """Просыпается не позже ближайшего местного срока живых оград; истёкшей — `check()`,
-        чтобы `on_lost` сработал по сроку. Новая ограда живёт не меньше `ttl − margin`, поэтому
-        дольше этого сон не длится."""
+        """Просыпается к ближайшему местному сроку живых оград и при каждом новом захвате;
+        истёкшей ограде — `check()`, чтобы `on_lost` сработал по сроку. Продление сроки только
+        отодвигает, поэтому раннее пробуждение лишь пересчитывает сон."""
         while True:
+            self._fence_added.clear()
             now = self._monotonic()
-            wake = now + self._ttl - self._margin
+            wake: float | None = None
             for fence in list(self._fences.values()):
                 if fence.alive:
-                    wake = min(wake, fence.deadline)
+                    wake = fence.deadline if wake is None else min(wake, fence.deadline)
                 else:
                     with contextlib.suppress(LeaseLost):
                         fence.check()
-            await asyncio.sleep(max(wake - now, 0.0))
+            timeout = None if wake is None else max(wake - now, 0.0)
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._fence_added.wait(), timeout)
 
     async def _renew(
         self, conn: AsyncConnection, pairs: list[tuple[int, int]]

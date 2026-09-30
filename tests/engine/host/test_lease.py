@@ -415,9 +415,9 @@ async def test_renew_lock_timeout_retries(
     outcomes = _record(a, monkeypatch)
     async with _guarded(clean_db, fence):
         hosts.run(a)
-        await asyncio.sleep(0.3)
+        await _wait_for(lambda: len(outcomes) >= 2)
         # lock_not_available: продление упёрлось в lock_timeout и повторяется.
-        assert len(outcomes) >= 2 and set(outcomes) == {"55P03"}
+        assert set(outcomes) == {"55P03"}
     await _wait_for(lambda: "ok" in outcomes)
     assert fence.alive and fence.deadline > deadline
     after = await _lease(clean_db)
@@ -473,3 +473,19 @@ async def test_run_fires_on_lost_by_deadline_while_renewals_fail(
         await _wait_for(lambda: bool(lost), within_s=2.0)
     assert fence.deadline <= lost[0] < fence.deadline + 0.2
     assert not fence.alive
+
+
+async def test_run_wakes_for_fence_acquired_mid_sleep(clean_db: Database, hosts: Hosts) -> None:
+    clock = FakeMonotonic()
+    a = await hosts.open("A", clock=clock, renew_every_s=10.0)
+    hosts.run(a)
+    # Оград нет: слежение за сроками спит.
+    await asyncio.sleep(0.05)
+    fence = await a.acquire(1)
+    assert isinstance(fence, Fence)
+    lost: list[int] = []
+    fence.on_lost = lambda: lost.append(1)
+    # Срок новой ограды наступает раньше, чем слежение проснулось бы само (захват мог ждать
+    # строку до lock_timeout после того, как снял t): его будит сам захват.
+    clock.now = fence.deadline
+    await _wait_for(lambda: bool(lost), within_s=0.3)
