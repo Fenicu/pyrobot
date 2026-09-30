@@ -494,6 +494,47 @@ def test_rob_pro_counts_next_ticket_after_comeback(
 
 
 @pytest.mark.parametrize(
+    ("seen", "task"),
+    [
+        # «Все одолены» прочитано вчера в 10:12 — старше 6 часов, но возврат в 07:12 в силе.
+        (
+            Obs(
+                value=GorbushkaState(state="done", comeback_at=_msk(7, 12)),
+                at=_msk(10, 12, 26),
+            ),
+            "robPro_hard",
+        ),
+        # Бои шли вчера, билет кончился в 23:00 — новый можно купить сейчас.
+        (
+            Obs(
+                value=GorbushkaState(
+                    state="waiting",
+                    won=2,
+                    total=4,
+                    next_fight_at=_msk(13, 0, 26),
+                    ticket_until=_msk(23, 0, 26),
+                ),
+                at=_msk(12, 0, 26),
+            ),
+            "robPro_hard",
+        ),
+        # Сомнительное состояние (команда ушла, ответа не было) — боёв не считаем.
+        (
+            Obs(
+                value=GorbushkaState(state="done", comeback_at=_msk(7, 12)),
+                at=_msk(0, 1),
+                src="doubtful",
+            ),
+            "learnKnows_hard",
+        ),
+    ],
+)
+def test_rob_pro_uses_last_known_gorbushka(seen: Obs[GorbushkaState], task: str) -> None:
+    state = after_midnight(offers("robPro_hard", "learnKnows_hard"), gorbushka=seen)
+    assert picked(decide(state, DAILY, AFTER_MIDNIGHT))[1] == {"task": task}
+
+
+@pytest.mark.parametrize(
     ("at", "gorbushka", "task"),
     [
         # Билет сейчас — бои в 20:30, 21:30, 22:30 и 23:30: 4 × 12⚙️ ≥ 39.

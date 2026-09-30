@@ -218,11 +218,14 @@ class DailyTasks(Obligations):
         """Сколько боёв Горбушки ещё успеет пройти до крайнего срока (раз в час без сна): остаток
         текущего билета, пока он жив, и новый билет — сейчас, если билета нет, а иначе с возврата
         (все одолены — «приходи через …», идут бои — конец билета), если билет по карману сверх
-        резервов."""
-        g = self.gorbushka_state()
-        deadline = self.task_deadline()
-        if g is None:
+        резервов. Состояние — последнее известное, даже старше 6 часов: его меняют только бои и
+        покупка билета, которые бот видит, а прошедшие с экрана возврат и конец билета означают
+        новый билет сейчас."""
+        seen = self.s.gorbushka
+        if seen is None or seen.src == "doubtful":
             return 0
+        g = seen.value
+        deadline = self.task_deadline()
         fights = 0
         renew: datetime | None = None
         if g.state == "need_ticket":
