@@ -22,7 +22,8 @@ from tests.fixtures import game_msg
 
 pytestmark = pytest.mark.db
 ISO_UTC = re.compile(r"\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?\+00:00\Z")
-TG_KEYS = ["state", "user_id", "attempt_id", "error"]
+TG_KEYS = ["state", "user_id", "attempt_id", "error", "bound_user_id"]
+BOUND = 267519921
 
 
 class _Planner:
@@ -61,7 +62,13 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
         "killed": False,
         "kill_reason": None,
         "spending_blocked": None,
-        "tg": {"state": "unauthorized", "user_id": None, "attempt_id": None, "error": None},
+        "tg": {
+            "state": "unauthorized",
+            "user_id": None,
+            "attempt_id": None,
+            "error": None,
+            "bound_user_id": BOUND,
+        },
         "queue": 0,
         "in_flight": None,
         "pipeline_backlog": 0,
@@ -87,7 +94,13 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
     h = {"X-CSRF-Token": await login(api_client)}
     status = (await api_client.get("/api/v1/tg/status")).json()
     assert list(status) == TG_KEYS
-    assert status == {"state": "unauthorized", "user_id": None, "attempt_id": None, "error": None}
+    assert status == {
+        "state": "unauthorized",
+        "user_id": None,
+        "attempt_id": None,
+        "error": None,
+        "bound_user_id": BOUND,
+    }
     start = (
         await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
     ).json()
@@ -98,6 +111,7 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
         "user_id": None,
         "attempt_id": attempt,
         "error": None,
+        "bound_user_id": BOUND,
     }
     code = (
         await api_client.post(
@@ -116,7 +130,13 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
             "/api/v1/tg/login/password", headers=h, json={"attempt_id": attempt, "password": "pw"}
         )
     ).json()
-    assert online == {"state": "online", "user_id": 267519921, "attempt_id": None, "error": None}
+    assert online == {
+        "state": "online",
+        "user_id": 267519921,
+        "attempt_id": None,
+        "error": None,
+        "bound_user_id": BOUND,
+    }
     out = (await api_client.post("/api/v1/tg/logout", headers=h)).json()
     assert list(out) == TG_KEYS and out["state"] == "unauthorized"
 

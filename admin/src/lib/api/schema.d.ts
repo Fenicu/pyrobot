@@ -2316,6 +2316,8 @@ export interface components {
         TgStatusOut: {
             /** Attempt Id */
             attempt_id: string | null;
+            /** Bound User Id */
+            bound_user_id: number | null;
             /** Error */
             error: string | null;
             state: components["schemas"]["TgState"];

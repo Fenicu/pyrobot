@@ -26,9 +26,8 @@ export const SECTION_ORDER = [
 	'tangerine',
 	'chats',
 	'engine',
-	'telegram',
 	'retention'
 ];
 
-/** «Дополнительно»: темп шлюза, сессия Telegram и хранение журнала — ставят один раз. */
-export const ADVANCED_SECTIONS = ['engine', 'telegram', 'retention'];
+/** «Дополнительно»: темп шлюза и хранение журнала — ставят один раз. */
+export const ADVANCED_SECTIONS = ['engine', 'retention'];

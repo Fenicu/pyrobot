@@ -4,6 +4,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -26,10 +27,39 @@ def _now_col() -> Mapped[datetime]:
 
 
 class Account(Base):
+    """Реестр аккаунтов: владелец, имя, желаемое состояние движка и аренда."""
+
     __tablename__ = "accounts"
+    __table_args__ = (
+        UniqueConstraint("owner_id", "name", name="uq_accounts_owner_name"),
+        CheckConstraint(
+            "status IN ('enabled', 'disabled', 'error', 'deleting')", name="ck_accounts_status"
+        ),
+        # Пользователь Telegram привязан не больше чем к одному аккаунту.
+        Index(
+            "uq_accounts_tg_user_id",
+            "tg_user_id",
+            unique=True,
+            postgresql_where=text("tg_user_id IS NOT NULL"),
+        ),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # NULL — аккаунт без владельца: никому не виден, при старте его получает первая учётка.
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id", ondelete="RESTRICT"))
+    name: Mapped[str] = mapped_column(String(64))
+    # Движок крутится только у `enabled`; у `disabled` и `error` причина — в `status_reason`.
+    status: Mapped[str] = mapped_column(String(16), server_default="enabled")
+    status_reason: Mapped[str | None] = mapped_column(Text)
+    # Привязка к пользователю Telegram — на всю жизнь аккаунта.
     tg_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Желаемое поколение движка: перезапуск его увеличивает, хост сверяет с запущенным.
+    engine_generation: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    # Аренда: кто держит (NULL — свободна), номер (растёт с каждым захватом), срок по часам базы.
+    lease_holder: Mapped[str | None] = mapped_column(Text)
+    lease_epoch: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _now_col()
+    updated_at: Mapped[datetime] = _now_col()
 
 
 class AdminUser(Base):
@@ -64,6 +94,7 @@ class SettingsRow(Base):
 
 class SettingsHistory(Base):
     __tablename__ = "settings_history"
+    __table_args__ = (Index("ix_settings_history_account_id_id", "account_id", "id"),)
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
     version: Mapped[int] = mapped_column(BigInteger)
@@ -209,6 +240,7 @@ class UnrecognizedRow(Base):
 
 class NotificationRow(Base):
     __tablename__ = "notifications"
+    __table_args__ = (Index("ix_notifications_account_id_id", "account_id", "id"),)
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
     created_at: Mapped[datetime] = _now_col()

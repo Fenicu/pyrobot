@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from sqlalchemy import func, select
 
 from app.config import AppConfig
+from app.db.accounts import AccountInfo, AccountRepo
 from app.db.actions import DbActionStore
 from app.db.base import Database
 from app.db.journal import DbJournal
@@ -58,6 +59,12 @@ async def _login_tg(client: AsyncClient) -> dict[str, str]:
     return h
 
 
+async def _account(repo: AccountRepo) -> AccountInfo:
+    account = await repo.get(1)
+    assert account is not None
+    return account
+
+
 async def test_fake_runtime_login_to_ready(clean_db: Database) -> None:
     app = create_application(_cfg())
     async with app.router.lifespan_context(app):
@@ -84,15 +91,40 @@ async def test_fake_runtime_login_to_ready(clean_db: Database) -> None:
 
 
 async def test_first_login_binds_telegram_account(clean_db: Database) -> None:
+    repo = AccountRepo(clean_db)
+    assert (await _account(repo)).tg_user_id is None
     app = create_application(_cfg())
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             await _login_tg(client)
-            values = (await client.get("/api/v1/settings")).json()["values"]
-            assert values["telegram"]["expected_user_id"] == 267519921
-            last = (await client.get("/api/v1/settings/history")).json()["items"][0]
-            assert last["changed_by"] == "system"
-            assert last["changes"] == {"telegram.expected_user_id": [None, 267519921]}
+            assert (await client.get("/api/v1/tg/status")).json()["bound_user_id"] == 267519921
+            # Привязка — в `accounts`, а не в настройках: версии настроек она не порождает.
+            settings = (await client.get("/api/v1/settings")).json()
+            assert "telegram" not in settings["values"]
+            assert (await client.get("/api/v1/settings/history")).json()["items"] == []
+    assert (await _account(repo)).tg_user_id == 267519921
+
+
+async def test_start_takes_binding_from_account(clean_db: Database) -> None:
+    repo = AccountRepo(clean_db)
+    await repo.bind_telegram(1, 42)
+    app = create_application(_cfg())
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            r = await client.post(
+                "/api/v1/auth/login", json={"login": "admin", "password": "correct horse battery"}
+            )
+            h = {"X-CSRF-Token": r.json()["csrf_token"]}
+            assert (await client.get("/api/v1/tg/status")).json()["bound_user_id"] == 42
+            st = await client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+            code = await client.post(
+                "/api/v1/tg/login/code",
+                headers=h,
+                json={"attempt_id": st.json()["attempt_id"], "code": "12345"},
+            )
+            # Вошёл не привязанный пользователь: сервис от него отказывается.
+            assert code.json()["state"] == "error" and code.json()["error"] == "unexpected_user"
+    assert (await _account(repo)).tg_user_id == 42
 
 
 async def test_second_runtime_does_not_start_engine(clean_db: Database) -> None:

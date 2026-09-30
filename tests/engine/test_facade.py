@@ -39,6 +39,7 @@ def build(
     store: ActionStore | None = None,
     monotonic: Callable[[], float] = time.monotonic,
     snapshot: dict[str, Any] | None = None,
+    bound_user_id: int | None = 267519921,
 ) -> EngineFacade:
     """Фасад на памяти; `snapshot` — снимок состояния, его подхватит `pipeline.load()`."""
     settings = settings or StaticSettings()
@@ -57,7 +58,9 @@ def build(
         own_company=lambda: company_of(pipeline.state),
     )
     bus.subscribe(gateway.on_delivery, priority=0)
-    tg = TgAuthManager(backend or FakeTgBackend(authorized=authorized), expected_user_id=267519921)
+    tg = TgAuthManager(
+        backend or FakeTgBackend(authorized=authorized), expected_user_id=bound_user_id
+    )
     return EngineFacade(
         settings=settings,
         gateway=gateway,

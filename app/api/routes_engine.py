@@ -60,6 +60,9 @@ class TgStatusOut(BaseModel):
     attempt_id: str | None
     # Код последней ошибки входа (`invalid_code`, `session_revoked`, …).
     error: str | None
+    # Пользователь Telegram, к которому аккаунт привязан на всю жизнь (`accounts.tg_user_id`);
+    # None — привязывает первый вход. Выход из Telegram привязку не снимает.
+    bound_user_id: int | None
 
 
 class EngineStatusOut(BaseModel):
@@ -84,7 +87,11 @@ class EngineStatusOut(BaseModel):
 
 def _tg(st: TgStatus) -> TgStatusOut:
     return TgStatusOut(
-        state=st.state, user_id=st.user_id, attempt_id=st.attempt_id, error=st.error
+        state=st.state,
+        user_id=st.user_id,
+        attempt_id=st.attempt_id,
+        error=st.error,
+        bound_user_id=st.bound_user_id,
     )
 
 

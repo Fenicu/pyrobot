@@ -73,6 +73,8 @@ class TgStatus:
     user_id: int | None = None
     attempt_id: str | None = None
     error: str | None = None
+    # Пользователь Telegram, к которому привязан аккаунт (`accounts.tg_user_id`); выход не снимает.
+    bound_user_id: int | None = None
 
 
 class TgAuthBackend(Protocol):
@@ -119,7 +121,7 @@ class TgAuthManager:
 
     def status(self) -> TgStatus:
         attempt_id = self._attempt.id if self._attempt else None
-        return TgStatus(self._state, self._user_id, attempt_id, self._error)
+        return TgStatus(self._state, self._user_id, attempt_id, self._error, self._expected)
 
     def on_online(self, cb: Callable[[], Awaitable[None]]) -> None:
         self._callbacks.append(cb)

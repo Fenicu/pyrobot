@@ -44,7 +44,7 @@ async def test_decisions_and_runs_round_trip(clean_db: Database) -> None:
 
 async def test_close_running_interrupts_own_unfinished_runs(clean_db: Database) -> None:
     async with clean_db.engine.begin() as conn:
-        await conn.execute(insert(Account).values(id=2).on_conflict_do_nothing())
+        await conn.execute(insert(Account).values(id=2, name="Второй").on_conflict_do_nothing())
     mine = DbPlannerStore(clean_db, account_id=1)
     theirs = DbPlannerStore(clean_db, account_id=2)
     decided = await mine.record(AT, Act("book", {}, "book_ready"))

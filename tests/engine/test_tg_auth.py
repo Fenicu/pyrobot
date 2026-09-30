@@ -261,3 +261,20 @@ async def test_bind_failure_keeps_online_and_binding_in_memory() -> None:
     st = await mgr.start("+888", owner="s1")
     st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
     assert st.error == "unexpected_user"
+
+
+async def test_status_reports_binding_for_life() -> None:
+    backend = FakeTgBackend(user_id=42)
+    mgr = TgAuthManager(backend, expected_user_id=None)
+    assert mgr.status().bound_user_id is None
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    assert st.bound_user_id is None
+    st = await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    assert st.state is TgState.ONLINE and st.user_id == 42 and st.bound_user_id == 42
+    # Выход из Telegram привязку не снимает.
+    st = await mgr.logout()
+    assert st.state is TgState.UNAUTHORIZED and st.user_id is None and st.bound_user_id == 42
+    assert TgAuthManager(FakeTgBackend(), expected_user_id=EXPECTED).status().bound_user_id == (
+        EXPECTED
+    )

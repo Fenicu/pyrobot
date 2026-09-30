@@ -810,24 +810,6 @@
    },
    "title": "TangerineSection",
    "type": "object"
-  },
-  "TelegramSection": {
-   "properties": {
-    "expected_user_id": {
-     "anyOf": [
-      {
-       "type": "integer"
-      },
-      {
-       "type": "null"
-      }
-     ],
-     "default": null,
-     "title": "Expected User Id"
-    }
-   },
-   "title": "TelegramSection",
-   "type": "object"
   }
  },
  "properties": {
@@ -872,9 +854,6 @@
   },
   "tangerine": {
    "$ref": "#/$defs/TangerineSection"
-  },
-  "telegram": {
-   "$ref": "#/$defs/TelegramSection"
   }
  },
  "title": "Settings",

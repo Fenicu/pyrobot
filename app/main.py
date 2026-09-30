@@ -10,6 +10,7 @@ from app.api.app import create_api
 from app.api.container import Container
 from app.api.security import LoginRateLimiter
 from app.config import AppConfig
+from app.db.accounts import AccountRepo
 from app.db.actions import DbActionStore
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
@@ -103,6 +104,7 @@ class Runtime:
         self.db = Database(config.database_url)
         self.notifier = DbNotifier(self.db, config.account_id)
         self.settings = DbSettingsStore(self.db, config.account_id)
+        self.accounts = AccountRepo(self.db)
         self.stream = EventStream()
         self.notifier.listeners.append(self._publish_notification)
         self.settings.listeners.append(self._publish_settings)
@@ -193,9 +195,12 @@ class Runtime:
             )
         bus.subscribe(self.gateway.on_delivery, priority=0)
         bus.subscribe(UnrecognizedWatch(self.notifier, SystemClock()).on_delivery, priority=50)
+        account = await self.accounts.get(self.config.account_id)
+        if account is None:
+            raise RuntimeError(f"account {self.config.account_id} not found")
         self.tg = TgAuthManager(
             backend,
-            expected_user_id=self.settings.current.telegram.expected_user_id,
+            expected_user_id=account.tg_user_id,
             on_bind=self._bind_telegram,
             notifier=self.notifier,
         )
@@ -296,11 +301,7 @@ class Runtime:
         )
 
     async def _bind_telegram(self, user_id: int) -> None:
-        def change(s: Settings) -> Settings:
-            telegram = s.telegram.model_copy(update={"expected_user_id": user_id})
-            return s.model_copy(update={"telegram": telegram})
-
-        await self.settings.update(change, changed_by="system")
+        await self.accounts.bind_telegram(self.config.account_id, user_id)
         log.info("telegram account %d bound", user_id)
 
     def _publish_settings(self, settings: Settings, version: int) -> None:

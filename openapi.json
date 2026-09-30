@@ -4654,6 +4654,17 @@
             ],
             "title": "Attempt Id"
           },
+          "bound_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bound User Id"
+          },
           "error": {
             "anyOf": [
               {
@@ -4684,7 +4695,8 @@
           "state",
           "user_id",
           "attempt_id",
-          "error"
+          "error",
+          "bound_user_id"
         ],
         "title": "TgStatusOut",
         "type": "object"

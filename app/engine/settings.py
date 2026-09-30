@@ -36,11 +36,6 @@ class EngineSection(BaseModel):
     manual_while_paused: bool = True
 
 
-class TelegramSection(BaseModel):
-    # None — аккаунт не привязан: первый успешный вход привязывает бота к вошедшему аккаунту.
-    expected_user_id: int | None = None
-
-
 class ChatsSection(BaseModel):
     game_chat_id: int = 227859379
     swinfo_chat_id: int = -1001109615116
@@ -251,7 +246,6 @@ class RetentionSection(BaseModel):
 
 class Settings(BaseModel):
     engine: EngineSection = Field(default_factory=EngineSection)
-    telegram: TelegramSection = Field(default_factory=TelegramSection)
     chats: ChatsSection = Field(default_factory=ChatsSection)
     features: FeaturesSection = Field(default_factory=FeaturesSection)
     strategy: StrategySection = Field(default_factory=StrategySection)
@@ -278,8 +272,8 @@ class SettingsPatchError(ValueError):
         self.path = path
 
 
-# Читаются только при старте процесса (парсер, фильтр чатов, вход в Telegram, конвейер).
-_RESTART_REQUIRED = ("chats.", "telegram.", "engine.recovered_react_max_age_min")
+# Читаются только при старте процесса (парсер, фильтр чатов, конвейер).
+_RESTART_REQUIRED = ("chats.", "engine.recovered_react_max_age_min")
 # Чаты мандаринов и команды не входят ни в фильтр, ни в разбор: планировщик, шлюз и реакция
 # пересылки читают их на лету.
 _LIVE = frozenset({"chats.tangerine_chat_id", "chats.tangerine_reply_to", "chats.team_chat_id"})

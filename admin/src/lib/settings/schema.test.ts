@@ -25,7 +25,7 @@ const field = (path: string): Field => {
 describe('форма по схеме настроек с прода', () => {
 	it('секции — корневые свойства', () => {
 		expect(sections.map((s) => s.name)).toEqual([
-			'engine', 'telegram', 'chats', 'features', 'strategy', 'food', 'sleep', 'levelup', 'battle',
+			'engine', 'chats', 'features', 'strategy', 'food', 'sleep', 'levelup', 'battle',
 			'stocks', 'tangerine', 'metro', 'daily', 'lottery', 'retention'
 		]);
 		expect(sections.find((s) => s.name === 'features')?.description).toMatch(/Включённые механики/);

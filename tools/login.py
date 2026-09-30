@@ -6,7 +6,7 @@
 без эха, не печатаются и не логируются; cookie сессии и CSRF-токен живут только в памяти процесса
 (cookie передаётся заголовком — так вход работает и напрямую по http внутри сети, где браузер не
 отправил бы Secure-cookie). В конце user_id вошедшего аккаунта сверяется с
-telegram.expected_user_id из настроек сервиса (не задан — первый вход привязывает аккаунт), сессия
+bound_user_id из tg/status (аккаунт, не привязанный до входа, привязывает первый вход), сессия
 админа закрывается."""
 
 import asyncio
@@ -91,8 +91,9 @@ class _Session:
             self._cookie = self._csrf = None
 
 
-async def _telegram(api: _Session, ask: Ask, secret: Ask, say: Say) -> dict[str, Any]:
-    status: dict[str, Any] = await api.call("GET", "/api/v1/tg/status")
+async def _telegram(
+    api: _Session, status: dict[str, Any], ask: Ask, secret: Ask, say: Say
+) -> dict[str, Any]:
     if status["state"] == "online":
         say("telegram is already online")
         return status
@@ -125,18 +126,19 @@ async def login_flow(client: httpx.AsyncClient, ask: Ask, secret: Ask, say: Say)
     api = _Session(client)
     await api.login(ask("admin login [admin]: ").strip() or "admin", secret("admin password: "))
     try:
-        settings = await api.call("GET", "/api/v1/settings")
-        expected = settings["values"]["telegram"]["expected_user_id"]
-        status = await _telegram(api, ask, secret, say)
+        status = await api.call("GET", "/api/v1/tg/status")
+        bound_before = status["bound_user_id"]
+        status = await _telegram(api, status, ask, secret, say)
         if status["state"] != "online":
             raise LoginFailed(f"telegram: {status['state']} {status['error'] or ''}".strip())
         user_id = int(status["user_id"])
-        if expected is None:
+        bound = status["bound_user_id"]
+        if bound is None or user_id != int(bound):
+            raise LoginFailed(f"telegram user {user_id} is not {bound}")
+        if bound_before is None:
             say(f"telegram online as {user_id} (account bound on first login)")
-        elif user_id != int(expected):
-            raise LoginFailed(f"telegram user {user_id} is not {expected}")
         else:
-            say(f"telegram online as {user_id} (expected_user_id matches)")
+            say(f"telegram online as {user_id} (matches the bound user)")
     except Exception:
         # Сессия админа закрывается и при ошибке, но в отчёт идёт первопричина, а не сбой выхода.
         with contextlib.suppress(LoginFailed):

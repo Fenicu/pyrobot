@@ -20,8 +20,6 @@ def test_defaults_are_safe() -> None:
     s = Settings()
     assert s.engine.mode == "dry_run"
     assert s.engine.killed is False
-    # Аккаунт не привязан: привязку делает первый вход в Telegram.
-    assert s.telegram.expected_user_id is None
     assert s.chats.bulls_invite_chat_id is None
 
 
@@ -169,11 +167,24 @@ def test_restart_required_paths() -> None:
     assert restart_required(["engine.recovered_react_max_age_min"]) == [
         "engine.recovered_react_max_age_min"
     ]
-    assert restart_required(["telegram.expected_user_id"]) == ["telegram.expected_user_id"]
     # Чат мандаринов планировщик и шлюз читают на лету.
     assert restart_required(["chats.tangerine_chat_id", "chats.tangerine_reply_to"]) == []
     # Чат команды шлюз и реакция пересылки сверяют при каждой отправке.
     assert restart_required(["chats.team_chat_id"]) == []
+
+
+def test_telegram_binding_left_settings() -> None:
+    # Привязка к пользователю Telegram — `accounts.tg_user_id`; секции в настройках больше нет.
+    assert "telegram" not in Settings.model_fields
+    assert "telegram" not in Settings().model_dump()
+    # Старые записи с секцией читаются: лишние ключи отбрасываются.
+    old = Settings.model_validate(
+        {"telegram": {"expected_user_id": 42}, "engine": {"mode": "live"}}
+    )
+    assert old.engine.mode == "live" and "telegram" not in old.model_dump()
+    with pytest.raises(SettingsPatchError) as err:
+        apply_patch(Settings(), {"telegram": {"expected_user_id": 1}})
+    assert err.value.code == "unknown_field"
 
 
 def test_team_chat_off_by_default() -> None:

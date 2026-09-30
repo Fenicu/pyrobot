@@ -34,7 +34,7 @@ describe('Настройки', () => {
 		const nav = screen.getByRole('navigation', { name: 'Секции настроек' });
 		const items = [...nav.querySelectorAll('li')].map((li) => li.textContent?.trim());
 		expect(items.slice(0, 4)).toEqual(['Функции', 'Стратегия и дела', 'Задания дня', 'Сон']);
-		expect(items.slice(-4)).toEqual(['Дополнительно', 'Движок', 'Telegram', 'Хранение']);
+		expect(items.slice(-3)).toEqual(['Дополнительно', 'Движок', 'Хранение']);
 	});
 
 	it('секция: поля по типам, kill и пауза — только на главной, отличие от умолчания', async () => {

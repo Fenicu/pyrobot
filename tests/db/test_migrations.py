@@ -7,6 +7,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.models import Base
@@ -58,6 +59,12 @@ FK_INDEXES = {
     "ix_scenario_runs_decision_id",
     "ix_metro_runs_scenario_run_id",
 }
+# Постраничное чтение по `id` внутри аккаунта (уведомления, история настроек) и привязка Telegram.
+ACCOUNT_INDEXES = {
+    "ix_notifications_account_id_id",
+    "ix_settings_history_account_id_id",
+    "uq_accounts_tg_user_id",
+}
 
 
 async def test_models_match_migrations() -> None:
@@ -76,7 +83,7 @@ async def test_models_match_migrations() -> None:
     await engine.dispose()
     assert diff == []
     # Удаление по внешнему ключу (ретеншн сообщений, решений, запусков) без индекса — seq scan.
-    assert FK_INDEXES <= indexes
+    assert FK_INDEXES | ACCOUNT_INDEXES <= indexes
 
 
 def _at(minute: int) -> datetime:
@@ -85,10 +92,12 @@ def _at(minute: int) -> datetime:
 
 async def _exec(sql: str, **params: object) -> list[tuple[object, ...]]:
     engine = create_async_engine(MIGTEST_DB_URL)
-    async with engine.begin() as conn:
-        result = await conn.execute(text(sql), params)
-        rows = [tuple(r) for r in result.all()] if result.returns_rows else []
-    await engine.dispose()
+    try:
+        async with engine.begin() as conn:
+            result = await conn.execute(text(sql), params)
+            rows = [tuple(r) for r in result.all()] if result.returns_rows else []
+    finally:
+        await engine.dispose()
     return rows
 
 
@@ -167,4 +176,85 @@ async def test_0009_backfills_run_of_old_steps() -> None:
         110: None,
         111: None,
     }
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def _at_0010(*, admin: bool) -> None:
+    """База на 0010: аккаунт 1 с настройками, в которых привязка Telegram и режим движка."""
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0010")
+    if admin:
+        await _exec("INSERT INTO admin_users (id, login, password_hash) VALUES (7, 'a', 'x')")
+        await _exec("INSERT INTO admin_users (id, login, password_hash) VALUES (9, 'b', 'x')")
+    data = '{"telegram": {"expected_user_id": 267519921}, "engine": {"mode": "live"}}'
+    await _exec(
+        "INSERT INTO settings (account_id, version, data) VALUES (1, 3, CAST(:d AS jsonb))",
+        d=data,
+    )
+
+
+async def _account(account_id: int) -> dict[str, object]:
+    engine = create_async_engine(MIGTEST_DB_URL)
+    async with engine.connect() as conn:
+        row = await conn.execute(text("SELECT * FROM accounts WHERE id = :id"), {"id": account_id})
+        found = row.mappings().one()
+    await engine.dispose()
+    return dict(found)
+
+
+async def _settings_data(account_id: int) -> dict[str, object]:
+    [(data,)] = await _exec("SELECT data FROM settings WHERE account_id = :id", id=account_id)
+    assert isinstance(data, dict)
+    return data
+
+
+async def test_0011_moves_binding_and_adopts_owner() -> None:
+    await _at_0010(admin=True)
+    await _exec("INSERT INTO accounts (id) VALUES (2)")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0011")
+    account = await _account(1)
+    assert account["owner_id"] == 7 and account["name"] == "Основной"
+    assert account["status"] == "enabled" and account["tg_user_id"] == 267519921
+    assert account["status_reason"] is None and account["engine_generation"] == 0
+    assert account["lease_holder"] is None and account["lease_epoch"] == 0
+    assert account["lease_expires_at"] is None and account["updated_at"] is not None
+    settings_data = await _settings_data(1)
+    assert "telegram" not in settings_data and settings_data["engine"] == {"mode": "live"}
+    # Аккаунт без настроек: имя по id, привязки нет; владелец — первая учётка.
+    second = await _account(2)
+    assert second["name"] == "Аккаунт 2" and second["owner_id"] == 7
+    assert second["tg_user_id"] is None
+    # Счётчик id сдвинут: 0001 вставила аккаунт с явным id, `POST /accounts` упал бы на дубле.
+    assert await _exec("SELECT nextval('accounts_id_seq')") == [(3,)]
+    await asyncio.to_thread(command.downgrade, _cfg(), "0010")
+    assert await _settings_data(1) == {
+        "telegram": {"expected_user_id": 267519921},
+        "engine": {"mode": "live"},
+    }
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0011_without_admin_leaves_owner_null() -> None:
+    await _at_0010(admin=False)
+    await asyncio.to_thread(command.upgrade, _cfg(), "0011")
+    account = await _account(1)
+    assert account["owner_id"] is None and account["name"] == "Основной"
+    assert account["tg_user_id"] == 267519921
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0011_constraints() -> None:
+    await _at_0010(admin=True)
+    await _exec("INSERT INTO accounts (id) VALUES (2)")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0011")
+    for sql in (
+        "UPDATE accounts SET status = 'bogus' WHERE id = 1",
+        "INSERT INTO accounts (id, owner_id, name) VALUES (5, 7, 'Основной')",
+        "UPDATE accounts SET tg_user_id = 267519921 WHERE id = 2",
+        "DELETE FROM admin_users WHERE id = 7",
+    ):
+        with pytest.raises(IntegrityError):
+            await _exec(sql)
+    # Аккаунты без привязки и без владельца уникальность не связывает.
+    await _exec("INSERT INTO accounts (id, name) VALUES (5, 'Один'), (6, 'Один')")
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
