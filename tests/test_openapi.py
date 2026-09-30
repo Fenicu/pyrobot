@@ -6,6 +6,7 @@ from app.api.openapi import build_schema
 from app.engine.planner.types import WakeKind
 
 ROOT = Path(__file__).resolve().parent.parent
+A = "/api/v1/accounts/{account_id}"
 
 
 def test_committed_openapi_is_current() -> None:
@@ -16,13 +17,13 @@ def test_committed_openapi_is_current() -> None:
 def test_schema_covers_admin_contract() -> None:
     paths = build_schema()["paths"]
     for path in (
-        "/api/v1/settings",
-        "/api/v1/journal",
-        "/api/v1/commands/send",
-        "/api/v1/scenarios/{name}/run",
-        "/api/v1/metrics",
-        "/api/v1/daily",
-        "/api/v1/events",
+        f"{A}/settings",
+        f"{A}/journal",
+        f"{A}/commands/send",
+        f"{A}/scenarios/{{name}}/run",
+        f"{A}/metrics",
+        f"{A}/daily",
+        f"{A}/events",
         "/readyz",
     ):
         assert path in paths
@@ -37,15 +38,15 @@ def _ok_schema(schema: dict[str, Any], path: str, method: str) -> Any:
 def test_engine_tg_and_state_are_typed() -> None:
     schema = build_schema()
     typed = {
-        ("/api/v1/engine/status", "get"): "EngineStatusOut",
-        ("/api/v1/tg/status", "get"): "TgStatusOut",
-        ("/api/v1/tg/login/start", "post"): "TgStatusOut",
-        ("/api/v1/tg/login/code", "post"): "TgStatusOut",
-        ("/api/v1/tg/login/password", "post"): "TgStatusOut",
-        ("/api/v1/tg/logout", "post"): "TgStatusOut",
-        ("/api/v1/state", "get"): "StateOut",
-        ("/api/v1/planner/outlook", "get"): "OutlookOut",
-        ("/api/v1/daily", "get"): "DailyOut",
+        (f"{A}/engine/status", "get"): "EngineStatusOut",
+        (f"{A}/tg/status", "get"): "TgStatusOut",
+        (f"{A}/tg/login/start", "post"): "TgStatusOut",
+        (f"{A}/tg/login/code", "post"): "TgStatusOut",
+        (f"{A}/tg/login/password", "post"): "TgStatusOut",
+        (f"{A}/tg/logout", "post"): "TgStatusOut",
+        (f"{A}/state", "get"): "StateOut",
+        (f"{A}/planner/outlook", "get"): "OutlookOut",
+        (f"{A}/daily", "get"): "DailyOut",
     }
     for (path, method), model in typed.items():
         assert _ok_schema(schema, path, method) == {"$ref": f"#/components/schemas/{model}"}
@@ -83,21 +84,27 @@ def _error_ref(schema: dict[str, Any], path: str, method: str, code: str) -> Any
 def test_error_responses_in_detail_envelope() -> None:
     schema = build_schema()
     schemas = schema["components"]["schemas"]
-    for path in ("/api/v1/commands/send", "/api/v1/commands/click"):
+    for path in (f"{A}/commands/send", f"{A}/commands/click"):
         assert _error_ref(schema, path, "post", "409") == "ConfirmRequiredOut"
         assert _error_ref(schema, path, "post", "403") == "ErrorOut"
         assert _error_ref(schema, path, "post", "503") == "ErrorOut"
     assert schemas["ConfirmRequiredOut"]["properties"]["detail"] == {
         "$ref": "#/components/schemas/ConfirmRequired"
     }
-    assert _error_ref(schema, "/api/v1/settings", "patch", "409") == "VersionConflictOut"
+    # 409 правки настроек: конфликт версии или `account_deleting`.
+    conflict_409 = schema["paths"][f"{A}/settings"]["patch"]["responses"]["409"]
+    assert conflict_409["content"]["application/json"]["schema"]["anyOf"] == [
+        {"$ref": "#/components/schemas/VersionConflictOut"},
+        {"$ref": "#/components/schemas/ErrorOut"},
+    ]
     conflict = schemas["VersionConflict"]
     assert conflict["required"] == ["code", "version"]
     assert conflict["properties"]["code"]["const"] == "version_conflict"
     assert schemas["ErrorOut"]["required"] == ["detail"]
-    assert _error_ref(schema, "/api/v1/state", "get", "401") == "ErrorOut"
-    assert _error_ref(schema, "/api/v1/state", "get", "503") == "ErrorOut"
-    assert _error_ref(schema, "/api/v1/settings", "patch", "403") == "ErrorOut"
+    assert _error_ref(schema, f"{A}/state", "get", "401") == "ErrorOut"
+    assert _error_ref(schema, f"{A}/state", "get", "404") == "ErrorOut"
+    assert _error_ref(schema, f"{A}/engine/kill", "post", "503") == "ErrorOut"
+    assert _error_ref(schema, f"{A}/settings", "patch", "403") == "ErrorOut"
 
 
 def test_session_routes_document_401() -> None:
@@ -110,6 +117,18 @@ def test_session_routes_document_401() -> None:
             assert "401" in op["responses"], (method, path)
 
 
+def test_account_routes_document_404() -> None:
+    # Чужой и несуществующий аккаунт — 404 на каждом пути аккаунта; каталог сценариев общий.
+    paths = build_schema()["paths"]
+    account = {p: ops for p, ops in paths.items() if p.startswith(A)}
+    assert "/api/v1/scenarios" in paths and account
+    for path, ops in account.items():
+        for method, op in ops.items():
+            assert "account not found" in op["responses"]["404"]["description"], (method, path)
+            path_params = {p["name"] for p in op["parameters"] if p["in"] == "path"}
+            assert "account_id" in path_params, (method, path)
+
+
 def test_plan_timer_kinds_are_closed_enum() -> None:
     kind = _schemas()["PlanTimerOut"]["properties"]["kind"]
     assert kind["enum"] == list(get_args(WakeKind))
@@ -118,5 +137,6 @@ def test_plan_timer_kinds_are_closed_enum() -> None:
 def test_daily_level_uses_from_to() -> None:
     level = _schemas()["LevelOut"]
     assert level["required"] == ["from", "to"]
-    days = build_schema()["paths"]["/api/v1/daily"]["get"]["parameters"][0]["schema"]
+    params = build_schema()["paths"][f"{A}/daily"]["get"]["parameters"]
+    days = next(p["schema"] for p in params if p["name"] == "days")
     assert (days["minimum"], days["maximum"], days["default"]) == (1, 30, 30)

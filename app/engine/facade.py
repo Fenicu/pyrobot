@@ -18,9 +18,8 @@ from app.engine.planner.decide import Outlook
 from app.engine.planner.loop import PlanView
 from app.engine.settings import (
     Settings,
-    SettingsPatchError,
+    SettingsPatch,
     SettingsProvider,
-    apply_patch,
     settings_diff,
 )
 from app.engine.state.model import company_of
@@ -254,17 +253,10 @@ class EngineFacade:
     ) -> SettingsUpdate:
         """Частичное изменение настроек с оптимистичной блокировкой по `version`.
         Переход в `live` — только с `confirm_live`: из dry_run начинаются реальные траты."""
-        before: list[Settings] = []
-
-        def change(s: Settings) -> Settings:
-            new = apply_patch(s, changes)
-            if new.engine.mode == "live" and s.engine.mode != "live" and not confirm_live:
-                raise SettingsPatchError("live_requires_confirm", "engine.mode")
-            before.append(s)
-            return new
-
-        new, saved = await self.settings.update(change, changed_by=by, expected_version=version)
-        old = before[-1]
+        patch = SettingsPatch(changes, confirm_live=confirm_live)
+        new, saved = await self.settings.update(patch, changed_by=by, expected_version=version)
+        old = patch.before
+        assert old is not None
         await self.gateway.wake()
         if self._planner is not None:
             self._planner.wake()

@@ -13,13 +13,13 @@ from app.engine.gametime import MSK
 from app.engine.planner.decide import Outlook
 from app.engine.planner.loop import PlannerLoop
 from app.engine.planner.types import Act
-from tests.api.conftest import login
+from tests.api.conftest import login, run_engine
 from tests.engine.planner.test_decide import awake, m
 from tests.engine.planner.test_loop_outlook import CountingStore, rig
 from tests.engine.test_facade import build
 
 pytestmark = pytest.mark.db
-URL = "/api/v1/planner/outlook"
+URL = "/api/v1/accounts/1/planner/outlook"
 
 
 class Tick:
@@ -53,7 +53,7 @@ class Planned:
 @pytest.fixture
 async def planned(container: Container) -> AsyncIterator[Planned]:
     p = Planned()
-    container.facade = p.facade
+    run_engine(container, p.facade)
     task = asyncio.create_task(p.loop.run())
     await asyncio.sleep(0)
     try:
@@ -72,13 +72,13 @@ async def test_outlook_without_engine_or_planner(
 ) -> None:
     await login(api_client)
     resp = await api_client.get(URL)
-    assert (resp.status_code, resp.json()) == (503, {"detail": "engine not started"})
-    container.facade = build()
+    assert (resp.status_code, resp.json()) == (503, {"detail": "engine not running"})
+    run_engine(container, build())
     resp = await api_client.get(URL)
     assert (resp.status_code, resp.json()) == (503, {"detail": "planner not started"})
     # Цикл создан, но его задача не идёт (до старта или в перезапуске после падения).
     loop, _, _ = rig(awake())
-    container.facade = build(planner=loop)
+    run_engine(container, build(planner=loop))
     resp = await api_client.get(URL)
     assert (resp.status_code, resp.json()) == (503, {"detail": "planner not started"})
 

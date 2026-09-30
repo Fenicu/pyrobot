@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { ActionOut } from '$lib/api/types';
 	import type { LiveEvent } from '$lib/live/sse';
@@ -11,7 +12,7 @@
 	import RunSteps from './RunSteps.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		id: number;
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 	}
@@ -22,7 +23,7 @@
 
 	async function load(current: number) {
 		try {
-			const a = await call(api.GET('/api/v1/actions/{action_id}', { params: { path: { action_id: current } } }));
+			const a = await call(api.GET('/actions/{action_id}', { params: { path: { action_id: current } } }));
 			if (current !== id) return;
 			action = a;
 			error = '';

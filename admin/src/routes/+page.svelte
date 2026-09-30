@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, character, engine, live } from '$lib/app.svelte';
+	import { accountApi, character, engine, live } from '$lib/app.svelte';
 	import DailyCard from '$lib/components/daily/DailyCard.svelte';
 	import CharacterCard from '$lib/components/home/CharacterCard.svelte';
 	import ControlsCard from '$lib/components/home/ControlsCard.svelte';
@@ -13,9 +13,9 @@
 	// Относительное время («через 38 мин») обновляется раз в 30 с.
 	let now = $state(new Date());
 	// «План бота» живёт, пока открыта главная: уход — отмена запроса и таймеров.
-	const plan = new PlanStore(api);
+	const plan = new PlanStore(accountApi);
 	// «Итоги дня» — только сегодня.
-	const daily = new DailyStore(api, 1);
+	const daily = new DailyStore(accountApi, 1);
 
 	// Готовность цикла (tg_offline, spending_blocked, lock_lost, pipeline_unhealthy) не шлёт своего
 	// кадра потока — её доходит только опрос статуса движка (раз в 15 с). Пауза и kill уже приходят
@@ -74,5 +74,5 @@
 		{now}
 		loadedAt={daily.loadedAt}
 	/>
-	<ControlsCard {api} status={engine.status} onchange={() => void engine.load()} />
+	<ControlsCard api={accountApi} status={engine.status} onchange={() => void engine.load()} />
 </div>

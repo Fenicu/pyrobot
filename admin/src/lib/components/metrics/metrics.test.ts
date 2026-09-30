@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import { deferred, type Deferred } from '$lib/test/deferred';
 import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
@@ -41,7 +41,7 @@ describe('Метрики', () => {
 		const user = userEvent.setup();
 		created.length = 0;
 		const fetch = mockFetch(() => json(fixture('metrics_today')));
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		render(MetricsView, { api, now: new Date('2026-09-27T20:27:51Z') });
 		// Метки — удачные запуски, которые двигают метрики: два слива налички в акции и сон (фикстура
 		// метрик того же дня, события — по журналу 27.09).
@@ -78,7 +78,7 @@ describe('Метрики: гонки и прогресс', () => {
 			answers.push(d);
 			return json(await d.promise);
 		});
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		render(MetricsView, { api, now: new Date('2026-09-27T20:27:51Z') });
 		await vi.waitFor(() => expect(answers).toHaveLength(1));
 		await user.click(screen.getByRole('button', { name: '7 дней' }));
@@ -100,7 +100,7 @@ describe('Метрики: гонки и прогресс', () => {
 			answers.push(d);
 			return json(await d.promise);
 		});
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		render(MetricsView, { api, now: new Date('2026-09-27T20:27:51Z') });
 		await vi.waitFor(() => expect(answers).toHaveLength(1));
 		answers[0]!.resolve({ series: { money: [['2026-09-27T10:00:00Z', 1], ['2026-09-27T11:00:00Z', 2]] }, initial: {}, next_cursor: 'c1' });
@@ -119,7 +119,7 @@ describe('Метрики: «сегодня» по общему тикеру', ()
 		vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
 		vi.setSystemTime(new Date('2026-09-27T20:59:00Z'));
 		const fetch = mockFetch(() => json({ series: {}, initial: {}, next_cursor: null }));
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		render(MetricsView, { api });
 		await vi.waitFor(() => expect(fetch.calls).toHaveLength(1));
 		expect(fetch.calls[0]?.url).toContain('from=2026-09-26T21%3A00%3A00.000Z');
@@ -137,7 +137,7 @@ describe('Метрики: «сегодня» по общему тикеру', ()
 		vi.useFakeTimers({ toFake: ['Date'] });
 		vi.setSystemTime(new Date('2026-09-27T10:00:00Z'));
 		const fetch = mockFetch(() => json({ series: {}, initial: {}, next_cursor: null }));
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		render(MetricsView, { api });
 		await vi.waitFor(() => expect(fetch.calls).toHaveLength(1));
 		vi.setSystemTime(new Date('2026-09-27T15:00:00Z'));

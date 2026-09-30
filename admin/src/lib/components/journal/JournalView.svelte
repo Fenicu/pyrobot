@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
 	import { errorText } from '$lib/api/errors';
 	import type { JournalItem } from '$lib/api/types';
 	import type { Confirmer } from '$lib/commands';
@@ -17,7 +17,7 @@
 	import RunRow from './RunRow.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		feed: JournalFeed;
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 		confirmer?: Confirmer;

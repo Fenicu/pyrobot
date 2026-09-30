@@ -1,17 +1,16 @@
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.api.container import Container
 from app.api.cursor import decode_cursor, encode_cursor
-from app.api.deps import SessionContext, container, current_session
 from app.api.errors import AUTH, not_found
+from app.api.scope import AccountScope, account_router, account_scope
 from app.db.models import ActionRow, DecisionRow, MessageRow, ScenarioRunRow
 from app.db.reads import FeedFilter, FeedKey, feed_types
 
-router = APIRouter(prefix="/api/v1", tags=["journal"])
+router = account_router("journal")
 
 
 class MessageItem(BaseModel):
@@ -190,8 +189,7 @@ def _run(row: ScenarioRunRow) -> ScenarioRunOut:
 
 @router.get("/journal", response_model=JournalPage, responses=AUTH)
 async def journal(
-    c: Annotated[Container, Depends(container)],
-    _: Annotated[SessionContext, Depends(current_session)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
     types: Annotated[str | None, Query(description="message,action,decision")] = None,
     since: datetime | None = None,
     until: datetime | None = None,
@@ -207,9 +205,11 @@ async def journal(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     after = _feed_key(cursor) if cursor else None
     flt = FeedFilter(kinds, since, until, chat_id, status_, source)
-    items = await c.reads.feed(flt, limit + 1, after)
+    items = await scope.reads.feed(flt, limit + 1, after)
     page = items[:limit]
-    runs = await c.reads.decision_runs([i.row.id for i in page if isinstance(i.row, DecisionRow)])
+    runs = await scope.reads.decision_runs(
+        [i.row.id for i in page if isinstance(i.row, DecisionRow)]
+    )
     return JournalPage(
         items=[_item(i.row, runs) for i in page],
         next_cursor=_feed_cursor(page[-1].key) if len(items) > limit else None,
@@ -223,10 +223,9 @@ async def journal(
 )
 async def decision(
     decision_id: int,
-    c: Annotated[Container, Depends(container)],
-    _: Annotated[SessionContext, Depends(current_session)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
 ) -> DecisionOut:
-    found = await c.reads.decision(decision_id)
+    found = await scope.reads.decision(decision_id)
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "decision not found")
     row, runs = found
@@ -248,10 +247,9 @@ async def decision(
 )
 async def action(
     action_id: int,
-    c: Annotated[Container, Depends(container)],
-    _: Annotated[SessionContext, Depends(current_session)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
 ) -> ActionOut:
-    row = await c.reads.action(action_id)
+    row = await scope.reads.action(action_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "action not found")
     return ActionOut.model_validate(row, from_attributes=True)
@@ -259,14 +257,13 @@ async def action(
 
 @router.get("/scenario-runs", response_model=ScenarioRunsPage, responses=AUTH)
 async def scenario_runs(
-    c: Annotated[Container, Depends(container)],
-    _: Annotated[SessionContext, Depends(current_session)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
     manual: bool | None = None,
     scenario: Annotated[str | None, Query(max_length=32)] = None,
     before: Annotated[int | None, Query(ge=1)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> ScenarioRunsPage:
-    rows = await c.reads.scenario_runs(
+    rows = await scope.reads.scenario_runs(
         manual=manual, scenario=scenario, limit=limit + 1, before=before
     )
     page = rows[:limit]
@@ -283,14 +280,13 @@ async def scenario_runs(
 )
 async def scenario_run(
     run_id: int,
-    c: Annotated[Container, Depends(container)],
-    _: Annotated[SessionContext, Depends(current_session)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
 ) -> ScenarioRunDetail:
-    found = await c.reads.scenario_run(run_id)
+    found = await scope.reads.scenario_run(run_id)
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "scenario run not found")
     row, metro_run_id = found
-    actions = await c.reads.run_actions(run_id)
+    actions = await scope.reads.run_actions(run_id)
     return ScenarioRunDetail(
         **_run(row).model_dump(),
         metro_run_id=metro_run_id,

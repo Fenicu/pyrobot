@@ -13,10 +13,10 @@ sw.fenicu.com {
 	respond @probes 404
 	# Сжатие — всему, кроме потока SSE: кодировщик копит события в буфере, и они (в том числе
 	# досылка после переподключения) доходят до браузера с задержкой.
-	@compressible not path /api/v1/events
+	@compressible not path /api/v1/accounts/*/events
 	encode @compressible zstd gzip
 	reverse_proxy http://10.10.40.20:8089 {
-		# SSE (/api/v1/events): каждое событие уходит клиенту сразу, без буферизации.
+		# SSE (/api/v1/accounts/<id>/events): каждое событие уходит клиенту сразу, без буферизации.
 		flush_interval -1
 	}
 }

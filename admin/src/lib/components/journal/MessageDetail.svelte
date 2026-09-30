@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { components } from '$lib/api/schema';
 	import type { InlineButton, Markup, MessageItem } from '$lib/api/types';
@@ -13,7 +14,7 @@
 	import KV from './KV.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		item: MessageItem;
 		/** Сообщение изменилось (stale_revision/stale_button): перечитать ленту. */
 		onstale?: () => void;
@@ -44,7 +45,7 @@
 		};
 		try {
 			const out = await withConfirm<ClickIn>(
-				(b) => call(api.POST('/api/v1/commands/click', { body: b })),
+				(b) => call(api.POST('/commands/click', { body: b })),
 				body,
 				`кнопка «${text}»`,
 				confirmer

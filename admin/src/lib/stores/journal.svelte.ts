@@ -1,4 +1,5 @@
-import { call, type Api } from '$lib/api/client';
+import type { AccountApi } from '$lib/api/account';
+import { call } from '$lib/api/client';
 import { ApiFailure, type ApiError } from '$lib/api/errors';
 import type { ActionItem, ActionOut, DecisionItem, JournalItem, MessageItem } from '$lib/api/types';
 import { isActionCreated, type LiveEvent } from '$lib/live/sse';
@@ -155,7 +156,7 @@ export class JournalFeed {
 	live = $state(true);
 	/** Пришло, пока live выключен. */
 	missed = $state(0);
-	#api: Api;
+	#api: AccountApi;
 	#seq = 0;
 	/** Изменения ленты, сделанные во время загрузки первой страницы: повторяются поверх неё. */
 	#during: (() => void)[] | null = null;
@@ -168,7 +169,7 @@ export class JournalFeed {
 	/** Ключи живых строк в порядке прихода (не из страниц). */
 	#live = new Set<string>();
 
-	constructor(api: Api) {
+	constructor(api: AccountApi) {
 		this.#api = api;
 	}
 
@@ -299,7 +300,7 @@ export class JournalFeed {
 		const filter = this.filter;
 		try {
 			const action = await call(
-				this.#api.GET('/api/v1/actions/{action_id}', { params: { path: { action_id: id } } })
+				this.#api.GET('/actions/{action_id}', { params: { path: { action_id: id } } })
 			);
 			const item = actionItem(action);
 			if (this.filter !== filter || !matches(item, filter)) return;
@@ -322,7 +323,7 @@ export class JournalFeed {
 		const during = this.#during;
 		try {
 			const page = await call(
-				this.#api.GET('/api/v1/journal', {
+				this.#api.GET('/journal', {
 					params: { query: feedQuery(this.filter, first ? null : this.cursor) }
 				})
 			);

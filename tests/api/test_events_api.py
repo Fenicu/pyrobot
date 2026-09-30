@@ -12,7 +12,7 @@ from app.api.routes_events import _events
 from app.db.base import Database
 from app.db.models import AuthSession
 from app.engine.stream import EventStream
-from tests.api.conftest import login
+from tests.api.conftest import login, run_engine
 from tests.api.sse import SseEvent, read_sse
 from tests.engine.helpers import until
 from tests.engine.test_facade import build
@@ -25,7 +25,7 @@ async def app_with_stream(container: Container) -> tuple[FastAPI, EventStream]:
     stream = EventStream(epoch="e1", history=3)
     facade = build()
     facade.stream = stream
-    container.facade = facade
+    run_engine(container, facade)
     container.sse_heartbeat_s = 0.05
     return create_api(container), stream
 
@@ -38,8 +38,39 @@ async def test_events_need_session(
     app_with_stream: tuple[FastAPI, EventStream], api_client: AsyncClient
 ) -> None:
     app, _ = app_with_stream
-    status, _ = await read_sse(app, "/api/v1/events", headers={}, count=1)
+    status, _ = await read_sse(app, "/api/v1/accounts/1/events", headers={}, count=1)
     assert status == 401
+
+
+async def test_stopped_engine_ends_its_streams(
+    app_with_stream: tuple[FastAPI, EventStream], api_client: AsyncClient
+) -> None:
+    app, stream = app_with_stream
+    await login(api_client)
+
+    async def stop() -> None:
+        await until(lambda: stream.subscribers == 1, 2.0)
+        stream.publish("notification", {"code": "last"})
+        # Так останавливается движок: `AccountRuntime.stop()`/`abort()`.
+        stream.close()
+
+    task = asyncio.create_task(stop())
+    status, events = await read_sse(
+        app, "/api/v1/accounts/1/events", headers=_cookie(api_client), count=100
+    )
+    await task
+    # Накопленное дочитано, затем поток закончился: клиент переподключится.
+    assert status == 200
+    assert [(e.event, e.data) for e in events] == [
+        ("reset", {"reason": "new"}),
+        ("notification", {"code": "last"}),
+    ]
+    # Подключение к потоку остановленного движка сразу заканчивается, не повисая в тишине.
+    status, events = await read_sse(
+        app, "/api/v1/accounts/1/events", headers=_cookie(api_client), count=100
+    )
+    assert status == 200 and [e.event for e in events] == ["reset"]
+    assert stream.subscribers == 0
 
 
 async def test_new_connection_gets_reset_then_live_events(
@@ -54,7 +85,9 @@ async def test_new_connection_gets_reset_then_live_events(
         stream.publish("action", {"id": 1, "status": "sent"})
 
     task = asyncio.create_task(later())
-    status, events = await read_sse(app, "/api/v1/events", headers=_cookie(api_client), count=2)
+    status, events = await read_sse(
+        app, "/api/v1/accounts/1/events", headers=_cookie(api_client), count=2
+    )
     await task
     assert status == 200
     assert [(e.id, e.event, e.data) for e in events] == [
@@ -72,11 +105,11 @@ async def test_resume_and_reset_by_last_event_id(
     for code in "abcd":
         stream.publish("notification", {"code": code})
     headers = {**_cookie(api_client), "last-event-id": "e1:2"}
-    _, events = await read_sse(app, "/api/v1/events", headers=headers, count=2)
+    _, events = await read_sse(app, "/api/v1/accounts/1/events", headers=headers, count=2)
     assert [(e.id, e.data["code"]) for e in events] == [("e1:3", "c"), ("e1:4", "d")]
     for last, reason in (("e1:0", "evicted"), ("e0:4", "epoch"), ("junk", "unknown")):
         headers = {**_cookie(api_client), "last-event-id": last}
-        _, events = await read_sse(app, "/api/v1/events", headers=headers, count=1)
+        _, events = await read_sse(app, "/api/v1/accounts/1/events", headers=headers, count=1)
         assert (events[0].id, events[0].event, events[0].data) == (
             "e1:4",
             "reset",
@@ -105,7 +138,12 @@ async def test_revoked_session_closes_stream(
 
     task = asyncio.create_task(logout())
     status, events = await read_sse(
-        app, "/api/v1/events", headers=headers, count=100, keep_comments=True, on_event=seen
+        app,
+        "/api/v1/accounts/1/events",
+        headers=headers,
+        count=100,
+        keep_comments=True,
+        on_event=seen,
     )
     await task
     assert status == 200
@@ -117,7 +155,7 @@ async def test_lagging_client_is_cut_off(container: Container, api_client: Async
     stream = EventStream(epoch="e1", queue_size=2)
     facade = build()
     facade.stream = stream
-    container.facade = facade
+    run_engine(container, facade)
     await login(api_client)
 
     async def burst() -> None:
@@ -127,7 +165,7 @@ async def test_lagging_client_is_cut_off(container: Container, api_client: Async
 
     task = asyncio.create_task(burst())
     status, events = await read_sse(
-        create_api(container), "/api/v1/events", headers=_cookie(api_client), count=100
+        create_api(container), "/api/v1/accounts/1/events", headers=_cookie(api_client), count=100
     )
     await task
     # Публикация не ждёт: переполненный подписчик снят, поток отдал накопленное и закрылся.
@@ -163,7 +201,9 @@ async def test_busy_stream_of_revoked_session_is_closed(
         await api_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": csrf})
 
     tasks = [asyncio.create_task(flood()), asyncio.create_task(logout())]
-    status, events = await read_sse(app, "/api/v1/events", headers=headers, count=100_000)
+    status, events = await read_sse(
+        app, "/api/v1/accounts/1/events", headers=headers, count=100_000
+    )
     stop.set()
     await asyncio.gather(*tasks)
     assert status == 200 and len(events) > 3
@@ -216,7 +256,7 @@ async def test_stream_check_does_not_extend_session(
 
     task = asyncio.create_task(age_session())
     status, events = await read_sse(
-        app, "/api/v1/events", headers=_cookie(api_client), count=8, keep_comments=True
+        app, "/api/v1/accounts/1/events", headers=_cookie(api_client), count=8, keep_comments=True
     )
     await task
     assert status == 200 and sum(e.comment for e in events) == 7

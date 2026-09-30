@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { UnrecognizedOut } from '$lib/api/types';
 	import { toasts } from '$lib/stores/toasts.svelte';
@@ -10,7 +11,7 @@
 	const MAX_ACK = 500;
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		now?: Date;
 	}
 	let { api, now: fixedNow }: Props = $props();
@@ -26,7 +27,7 @@
 	async function load(before: number | null) {
 		try {
 			const page = await call(
-				api.GET('/api/v1/unrecognized', {
+				api.GET('/unrecognized', {
 					params: { query: { acked, limit: 50, ...(before ? { before } : {}) } }
 				})
 			);
@@ -56,7 +57,7 @@
 		if (ids.length === 0) return;
 		busy = true;
 		try {
-			const out = await call(api.POST('/api/v1/unrecognized/ack', { body: { ids } }));
+			const out = await call(api.POST('/unrecognized/ack', { body: { ids } }));
 			toasts.show(`Разобрано: ${out.acked}`, 'ok');
 			selected = new Set();
 			await load(null);

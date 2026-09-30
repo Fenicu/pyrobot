@@ -32,6 +32,7 @@ from tests.engine.helpers import GAME, make_msg, now, until
 from tests.fixtures import game_msg
 
 pytestmark = pytest.mark.db
+A1 = "/api/v1/accounts/1"
 
 
 def _cfg() -> AppConfig:
@@ -46,14 +47,18 @@ def _cfg() -> AppConfig:
     )
 
 
-async def _login_tg(client: AsyncClient) -> dict[str, str]:
+async def _login(client: AsyncClient) -> dict[str, str]:
     r = await client.post(
         "/api/v1/auth/login", json={"login": "admin", "password": "correct horse battery"}
     )
-    h = {"X-CSRF-Token": r.json()["csrf_token"]}
-    st = await client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    return {"X-CSRF-Token": r.json()["csrf_token"]}
+
+
+async def _login_tg(client: AsyncClient) -> dict[str, str]:
+    h = await _login(client)
+    st = await client.post("/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"})
     code = await client.post(
-        "/api/v1/tg/login/code",
+        "/api/v1/accounts/1/tg/login/code",
         headers=h,
         json={"attempt_id": st.json()["attempt_id"], "code": "12345"},
     )
@@ -83,15 +88,17 @@ async def test_fake_runtime_login_to_ready(clean_db: Database) -> None:
                 "/api/v1/auth/login", json={"login": "admin", "password": "correct horse battery"}
             )
             h = {"X-CSRF-Token": r.json()["csrf_token"]}
-            st = await client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+            st = await client.post(
+                "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+            )
             code = await client.post(
-                "/api/v1/tg/login/code",
+                "/api/v1/accounts/1/tg/login/code",
                 headers=h,
                 json={"attempt_id": st.json()["attempt_id"], "code": "12345"},
             )
             assert code.json()["state"] == "online"
             assert (await client.get("/readyz")).status_code == 200
-            status = (await client.get("/api/v1/engine/status")).json()
+            status = (await client.get("/api/v1/accounts/1/engine/status")).json()
             assert status["mode"] == "dry_run" and status["lock_ok"] is True
             # Реакция на ограбление и пересылка в чат команды — свои задачи под супервизором
             # движка аккаунта, продление аренды и ретеншн — под супервизором процесса.
@@ -107,11 +114,13 @@ async def test_first_login_binds_telegram_account(clean_db: Database) -> None:
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             await _login_tg(client)
-            assert (await client.get("/api/v1/tg/status")).json()["bound_user_id"] == 267519921
+            assert (await client.get("/api/v1/accounts/1/tg/status")).json()[
+                "bound_user_id"
+            ] == 267519921
             # Привязка — в `accounts`, а не в настройках: версии настроек она не порождает.
-            settings = (await client.get("/api/v1/settings")).json()
+            settings = (await client.get("/api/v1/accounts/1/settings")).json()
             assert "telegram" not in settings["values"]
-            assert (await client.get("/api/v1/settings/history")).json()["items"] == []
+            assert (await client.get("/api/v1/accounts/1/settings/history")).json()["items"] == []
     assert (await _account(repo)).tg_user_id == 267519921
 
 
@@ -125,10 +134,12 @@ async def test_start_takes_binding_from_account(clean_db: Database) -> None:
                 "/api/v1/auth/login", json={"login": "admin", "password": "correct horse battery"}
             )
             h = {"X-CSRF-Token": r.json()["csrf_token"]}
-            assert (await client.get("/api/v1/tg/status")).json()["bound_user_id"] == 42
-            st = await client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+            assert (await client.get("/api/v1/accounts/1/tg/status")).json()["bound_user_id"] == 42
+            st = await client.post(
+                "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+            )
             code = await client.post(
-                "/api/v1/tg/login/code",
+                "/api/v1/accounts/1/tg/login/code",
                 headers=h,
                 json={"attempt_id": st.json()["attempt_id"], "code": "12345"},
             )
@@ -160,16 +171,23 @@ async def test_second_instance_starts_engine_after_lease_released(clean_db: Data
         runtime = app.state.runtime
         runtime.leases = LeaseManager(runtime.db, "this-host", busy_retry_s=0.02)
         async with app.router.lifespan_context(app):
-            assert runtime.account is None and runtime.container.facade is None
+            assert runtime.account is None and runtime.get(1) is None
+            assert runtime.host_reason(1) == "locked_elsewhere"
+            assert await runtime.wait_registered(1, 0.05) is None
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
                 assert (await c.get("/readyz")).status_code == 503
+                await _login(c)
+                status = (await c.get(f"{A1}/engine/status")).json()
+                assert (status["running"], status["host_reason"]) == (False, "locked_elsewhere")
             await asyncio.sleep(0.1)
             # Повторы захвата не повторяют уведомление.
             assert await _notified(runtime, "second_instance") == 1
+            registered = asyncio.create_task(runtime.wait_registered(1, 5.0))
             await other.release(fence)
-            await until(lambda: runtime.account is not None, 5.0)
-            assert runtime.container.facade is _engine(runtime).facade
-            assert _engine(runtime).fence.epoch == fence.epoch + 1
+            engine = await registered
+            assert engine is not None and engine is runtime.get(1) is runtime.account
+            assert runtime.host_reason(1) is None and runtime.get(2) is None
+            assert engine.fence.epoch == fence.epoch + 1
     finally:
         await other.close()
 
@@ -194,16 +212,42 @@ async def test_lease_lost_aborts_engine_and_takes_lease_again(clean_db: Database
             first = _engine(runtime)
             tasks = list(first.supervisor._tasks.values())
             first.fence.revoke()
+            # Останавливаемый движок API уже не видит.
+            assert runtime.get(1) is None
             await until(lambda: runtime.account not in (None, first), 5.0)
             # Аварийная остановка: задачи прежнего движка отменены; новый — на новой эпохе.
             assert all(t.done() for t in tasks) and not first.supervisor._tasks
             assert _engine(runtime).fence.epoch == first.fence.epoch + 1
-            assert runtime.container.facade is _engine(runtime).facade
+            assert runtime.get(1) is _engine(runtime)
             assert await _notified(runtime, "lock_lost") == 1
             await asyncio.sleep(0.1)
             assert await _notified(runtime, "lock_lost") == 1
             # Вход фейкового транспорта живёт в движке: новый движок — без входа.
             assert (await client.get("/readyz")).status_code == 503
+
+
+async def test_engine_abort_ends_its_event_streams(clean_db: Database) -> None:
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            await _login(client)
+            cookie = {"cookie": f"pyrobot_session={client.cookies['pyrobot_session']}"}
+            first = _engine(runtime)
+
+            async def lose() -> None:
+                await until(lambda: first.stream.subscribers == 1, 5.0)
+                first.fence.revoke()
+
+            task = asyncio.create_task(lose())
+            # Поток прежнего движка кончается с его аварийной остановкой, а не молчит.
+            status, events = await read_sse(
+                app, f"{A1}/events", headers=cookie, count=100, timeout=5.0
+            )
+            await task
+            assert status == 200 and [e.event for e in events] == ["reset"]
+            await until(lambda: runtime.account not in (None, first), 5.0)
+            assert _engine(runtime).stream is not first.stream
 
 
 async def test_crash_loop_stops_engine_until_restart(clean_db: Database) -> None:
@@ -217,7 +261,7 @@ async def test_crash_loop_stops_engine_until_restart(clean_db: Database) -> None
         assert not engine.supervisor._tasks
         assert await _notified(runtime, "account_crash_loop") == 1
         await asyncio.sleep(0.1)
-        assert runtime.account is None and runtime.container.facade is None
+        assert runtime.account is None and runtime.get(1) is None
         # Аренда освобождена штатно: другой хост захватит аккаунт без ожидания срока.
         async with clean_db.sessions() as s:
             holder = await s.scalar(select(Account.lease_holder).where(Account.id == 1))
@@ -235,9 +279,9 @@ async def test_unkill_after_lock_lost_is_conflict(clean_db: Database) -> None:
             fence = _engine(runtime).fence
             fence.on_lost = None
             fence.revoke()
-            r = await client.post("/api/v1/engine/unkill", headers=h)
+            r = await client.post("/api/v1/accounts/1/engine/unkill", headers=h)
             assert r.status_code == 409 and r.json() == {"detail": "lock_lost"}
-            status = (await client.get("/api/v1/engine/status")).json()
+            status = (await client.get("/api/v1/accounts/1/engine/status")).json()
             assert status["lock_ok"] is False
             assert (await client.get("/readyz")).status_code == 503
 
@@ -357,8 +401,8 @@ async def test_planner_refreshes_state_in_dry_run(
             # Второй запрос уходит после паузы шлюза между запросами (1.6 с).
             await until(lambda: "/inv" in [s.payload for s in engine.transport.sent], 5.0)
             assert [s.payload for s in engine.transport.sent][:2] == ["😎Я", "/inv"]
-            await client.post("/api/v1/engine/pause", headers=h)
-            status = (await client.get("/api/v1/engine/status")).json()
+            await client.post("/api/v1/accounts/1/engine/pause", headers=h)
+            status = (await client.get("/api/v1/accounts/1/engine/status")).json()
             assert status["paused"] is True
     async with clean_db.sessions() as s:
         decided = await s.scalar(select(func.count()).select_from(DecisionRow))
@@ -429,11 +473,15 @@ async def test_runtime_streams_engine_events(clean_db: Database) -> None:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             h = await _login_tg(client)
             cookie = {"cookie": f"pyrobot_session={client.cookies['pyrobot_session']}"}
-            status, events = await read_sse(app, "/api/v1/events", headers=cookie, count=1)
+            status, events = await read_sse(
+                app, "/api/v1/accounts/1/events", headers=cookie, count=1
+            )
             assert status == 200 and events[0].event == "reset"
-            await client.post("/api/v1/engine/pause", headers=h)
+            await client.post("/api/v1/accounts/1/engine/pause", headers=h)
             await client.post(
-                "/api/v1/commands/send", headers=h, json={"text": "😎Я", "idempotency_key": "s1"}
+                "/api/v1/accounts/1/commands/send",
+                headers=h,
+                json={"text": "😎Я", "idempotency_key": "s1"},
             )
             await engine.pipeline.submit(make_msg("что-то новое", msg_id=77))
             await until(lambda: "message" in {e.type for e in engine.stream.history()})

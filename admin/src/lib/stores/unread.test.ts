@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import { UnreadCounter } from './unread.svelte';
 
 const counter = (body: unknown) =>
 	new UnreadCounter(
-		createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, mockFetch(() => json(body)))
+		createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, mockFetch(() => json(body)))
 	);
 const note = (id: number, level: 'info' | 'warn' | 'error') =>
 	({ type: 'notification', id: `e:${id}`, data: { id, level, code: 'x', text: 'x' } }) as const;

@@ -1,14 +1,15 @@
-"""Первый вход без админки: вход админа, затем вход в Telegram через API сервиса.
+"""Первый вход без админки: вход админа, затем вход в Telegram аккаунта через API сервиса.
 
-    uv run python tools/login.py https://<адрес админки>
+    uv run python tools/login.py https://<адрес админки> [--account <id>]
 
 Спрашивает логин и пароль админа, телефон, код из Telegram и пароль 2FA. Коды и пароли вводятся
 без эха, не печатаются и не логируются; cookie сессии и CSRF-токен живут только в памяти процесса
 (cookie передаётся заголовком — так вход работает и напрямую по http внутри сети, где браузер не
 отправил бы Secure-cookie). В конце user_id вошедшего аккаунта сверяется с
 bound_user_id из tg/status (аккаунт, не привязанный до входа, привязывает первый вход), сессия
-админа закрывается."""
+админа закрывается. Аккаунт — `--account` (по умолчанию 1)."""
 
+import argparse
 import asyncio
 import contextlib
 import getpass
@@ -92,21 +93,19 @@ class _Session:
 
 
 async def _telegram(
-    api: _Session, status: dict[str, Any], ask: Ask, secret: Ask, say: Say
+    api: _Session, tg: str, status: dict[str, Any], ask: Ask, secret: Ask, say: Say
 ) -> dict[str, Any]:
     if status["state"] == "online":
         say("telegram is already online")
         return status
     phone = ask("phone (+7…): ").strip()
-    status = await api.call("POST", "/api/v1/tg/login/start", {"phone": phone})
+    status = await api.call("POST", f"{tg}/login/start", {"phone": phone})
     attempt = status["attempt_id"]
     for _ in range(ATTEMPTS):
         if status["state"] != "awaiting_code":
             break
         code = secret("code from Telegram: ").strip()
-        status = await api.call(
-            "POST", "/api/v1/tg/login/code", {"attempt_id": attempt, "code": code}
-        )
+        status = await api.call("POST", f"{tg}/login/code", {"attempt_id": attempt, "code": code})
         if status["state"] == "awaiting_code":
             say(f"code rejected: {status['error']}")
     for _ in range(ATTEMPTS):
@@ -114,21 +113,25 @@ async def _telegram(
             break
         password = secret("2FA password: ")
         status = await api.call(
-            "POST", "/api/v1/tg/login/password", {"attempt_id": attempt, "password": password}
+            "POST", f"{tg}/login/password", {"attempt_id": attempt, "password": password}
         )
         if status["state"] == "awaiting_password" and status["error"]:
             say(f"password rejected: {status['error']}")
     return status
 
 
-async def login_flow(client: httpx.AsyncClient, ask: Ask, secret: Ask, say: Say) -> int:
-    """Весь вход; возвращает user_id аккаунта Telegram, LoginFailed — вход не удался."""
+async def login_flow(
+    client: httpx.AsyncClient, ask: Ask, secret: Ask, say: Say, *, account_id: int = 1
+) -> int:
+    """Весь вход в Telegram аккаунта `account_id`; возвращает user_id пользователя Telegram,
+    LoginFailed — вход не удался."""
     api = _Session(client)
+    tg = f"/api/v1/accounts/{account_id}/tg"
     await api.login(ask("admin login [admin]: ").strip() or "admin", secret("admin password: "))
     try:
-        status = await api.call("GET", "/api/v1/tg/status")
+        status = await api.call("GET", f"{tg}/status")
         bound_before = status["bound_user_id"]
-        status = await _telegram(api, status, ask, secret, say)
+        status = await _telegram(api, tg, status, ask, secret, say)
         if status["state"] != "online":
             raise LoginFailed(f"telegram: {status['state']} {status['error'] or ''}".strip())
         user_id = int(status["user_id"])
@@ -149,13 +152,14 @@ async def login_flow(client: httpx.AsyncClient, ask: Ask, secret: Ask, say: Say)
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        print("usage: tools/login.py <service url>", file=sys.stderr)
-        sys.exit(2)
+    parser = argparse.ArgumentParser(description="Вход аккаунта в Telegram через API сервиса.")
+    parser.add_argument("url", help="адрес сервиса (админки)")
+    parser.add_argument("--account", type=int, default=1, help="id аккаунта (по умолчанию 1)")
+    args = parser.parse_args()
 
     async def run() -> None:
-        async with httpx.AsyncClient(base_url=sys.argv[1], timeout=60) as client:
-            await login_flow(client, input, getpass.getpass, print)
+        async with httpx.AsyncClient(base_url=args.url, timeout=60) as client:
+            await login_flow(client, input, getpass.getpass, print, account_id=args.account)
 
     try:
         asyncio.run(run())

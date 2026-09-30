@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { MetroRunDetail, MetroRunSummary } from '$lib/api/types';
 	import { OUTCOME_TEXT, outcomeOf, summarize } from '$lib/metro/model';
@@ -9,7 +10,7 @@
 	import MetroRun from './MetroRun.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		/** Забег из адреса (`?run=`), иначе — последний. */
 		initial?: number | null;
 		onselect?: (id: number) => void;
@@ -28,7 +29,7 @@
 	async function loadRuns(before: number | null) {
 		try {
 			const page = await call(
-				api.GET('/api/v1/metro/runs', { params: { query: { limit: 20, ...(before ? { before } : {}) } } })
+				api.GET('/metro/runs', { params: { query: { limit: 20, ...(before ? { before } : {}) } } })
 			);
 			runs = before ? [...runs, ...page.items] : page.items;
 			next = page.next_before;
@@ -48,7 +49,7 @@
 		detail = null;
 		detailError = '';
 		// Ответ прежнего выбора — ни забег, ни ошибка — у нового не показывается.
-		call(api.GET('/api/v1/metro/runs/{run_id}', { params: { path: { run_id: id } } }))
+		call(api.GET('/metro/runs/{run_id}', { params: { path: { run_id: id } } }))
 			.then((d) => {
 				if (selected === id) detail = d;
 			})

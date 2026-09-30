@@ -316,6 +316,8 @@ class AccountRuntime:
                         )
             with contextlib.suppress(Exception):
                 await self.supervisor.stop()
+            # Потоки SSE этого движка заканчиваются: клиенты переподключатся к новому.
+            self.stream.close()
 
     async def abort(self) -> None:
         """Аварийная остановка (аренда потеряна): без доработки конвейера и финальных записей
@@ -328,6 +330,7 @@ class AccountRuntime:
                     await self._kurigram.stop()
             with contextlib.suppress(Exception):
                 await self.supervisor.stop()
+            self.stream.close()
 
     async def _crash_loop(self, task: str) -> None:
         await self._on_crash_loop(self.account_id, task)

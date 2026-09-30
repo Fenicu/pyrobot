@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Play from '@lucide/svelte/icons/play';
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { ScenarioInfo } from '$lib/api/types';
 	import { newKey } from '$lib/commands';
@@ -10,7 +11,7 @@
 	import ParamForm from './ParamForm.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		scenario: ScenarioInfo;
 		/** Запуск принят: id запуска для списка ручных запусков. */
 		onqueued?: (runId: number) => void;
@@ -27,7 +28,7 @@
 		error = '';
 		try {
 			const out = await call(
-				api.POST('/api/v1/scenarios/{name}/run', {
+				api.POST('/scenarios/{name}/run', {
 					params: { path: { name: scenario.name } },
 					body: { params, idempotency_key: key }
 				})

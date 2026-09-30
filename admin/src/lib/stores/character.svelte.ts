@@ -1,4 +1,5 @@
-import { call, type Api } from '$lib/api/client';
+import type { AccountApi } from '$lib/api/account';
+import { call } from '$lib/api/client';
 import { ApiFailure, type ApiError } from '$lib/api/errors';
 import type { PublicState } from '$lib/api/types';
 import type { LiveEvent, SseState } from '$lib/live/sse';
@@ -17,14 +18,14 @@ export class CharacterStore {
 	now = $state<string | null>(null);
 	loaded = $state(false);
 	error = $state<ApiError | null>(null);
-	#api: Api;
+	#api: AccountApi;
 	#timer: ReturnType<typeof setInterval> | null = null;
 	#reloadMs: number;
 	#loading = false;
 	#again = false;
 	#queue: SseState[] = [];
 
-	constructor(api: Api, reloadMs = STATE_RELOAD_MS) {
+	constructor(api: AccountApi, reloadMs = STATE_RELOAD_MS) {
 		this.#api = api;
 		this.#reloadMs = reloadMs;
 	}
@@ -38,7 +39,7 @@ export class CharacterStore {
 		this.#loading = true;
 		let ok = false;
 		try {
-			const out = await call(this.#api.GET('/api/v1/state'));
+			const out = await call(this.#api.GET('/state'));
 			if (!this.loaded || out.version >= this.version) {
 				this.version = out.version;
 				this.state = out.state;

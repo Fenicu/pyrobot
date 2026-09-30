@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { DecisionOut } from '$lib/api/types';
 	import type { LiveEvent } from '$lib/live/sse';
@@ -18,7 +19,7 @@
 		verdict?: string;
 	}
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		id: number;
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 	}
@@ -31,7 +32,7 @@
 		const current = id;
 		decision = null;
 		error = '';
-		call(api.GET('/api/v1/decisions/{decision_id}', { params: { path: { decision_id: current } } }))
+		call(api.GET('/decisions/{decision_id}', { params: { path: { decision_id: current } } }))
 			.then((d) => {
 				if (current === id) decision = d;
 			})

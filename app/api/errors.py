@@ -29,16 +29,22 @@ def error(*codes: str) -> dict[str, Any]:
     return {"model": ErrorOut, "description": " | ".join(codes)}
 
 
-def not_found(what: str) -> Responses:
-    return {404: error(f"{what} not found")}
-
-
 NOT_AUTHENTICATED = "not authenticated"
 CSRF_MISMATCH = "csrf token mismatch"
-ENGINE_NOT_STARTED = "engine not started"
+# Чужой и несуществующий аккаунт неразличимы.
+ACCOUNT_NOT_FOUND = "account not found"
+ENGINE_NOT_RUNNING = "engine not running"
+# Аренда аккаунта занята, а его движок ещё не зарегистрирован в хосте: повторить позже.
+ENGINE_STARTING = "engine_starting"
+ACCOUNT_DELETING = "account_deleting"
 # Сессия (cookie): без неё или с истёкшей — 401.
 AUTH: Responses = {401: error(NOT_AUTHENTICATED)}
 # Изменяющий запрос: сессия и заголовок X-CSRF-Token.
 CSRF: Responses = {**AUTH, 403: error(CSRF_MISMATCH)}
-# Эндпоинты движка: без запущенного движка — 503.
-ENGINE: Responses = {503: error(ENGINE_NOT_STARTED)}
+# Эндпоинты движка: без запущенного движка аккаунта — 503.
+ENGINE: Responses = {503: error(ENGINE_NOT_RUNNING)}
+
+
+def not_found(what: str) -> Responses:
+    """404 пути аккаунта со своим объектом: аккаунта нет или нет объекта."""
+    return {404: error(ACCOUNT_NOT_FOUND, f"{what} not found")}

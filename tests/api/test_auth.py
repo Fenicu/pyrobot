@@ -11,7 +11,7 @@ from app.api.container import Container
 from app.api.deps import COOKIE
 from app.db.base import Database
 from app.db.models import AuthSession
-from tests.api.conftest import PASSWORD, login, make_container
+from tests.api.conftest import PASSWORD, engines, login, make_container
 
 pytestmark = pytest.mark.db
 
@@ -157,7 +157,7 @@ async def test_anonymous_gets_401_before_engine_check(
     container: Container, api_client: AsyncClient
 ) -> None:
     # Сессия проверяется раньше фасада: аноним не получает 503 и не узнаёт, поднят ли движок.
-    assert container.facade is None
+    assert engines(container).get(1) is None
     checked: list[str] = []
     for template, methods in create_api(container).openapi()["paths"].items():
         if not template.startswith("/api/v1/") or template == "/api/v1/auth/login":
@@ -167,4 +167,8 @@ async def test_anonymous_gets_401_before_engine_check(
             resp = await api_client.request(method.upper(), path)
             assert resp.status_code == 401, (method, path, resp.status_code)
             checked.append(path)
-    assert {"/api/v1/engine/status", "/api/v1/state", "/api/v1/tg/logout"} <= set(checked)
+    assert {
+        "/api/v1/accounts/1/engine/status",
+        "/api/v1/accounts/1/state",
+        "/api/v1/accounts/1/tg/logout",
+    } <= set(checked)

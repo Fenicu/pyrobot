@@ -1,4 +1,5 @@
-import { call, type Api } from '$lib/api/client';
+import type { AccountApi } from '$lib/api/account';
+import { call } from '$lib/api/client';
 import { ApiFailure, type ApiError } from '$lib/api/errors';
 import type { Outlook } from '$lib/api/types';
 import type { LiveEvent } from '$lib/live/sse';
@@ -43,7 +44,7 @@ export function significant(changed: Record<string, unknown>): boolean {
 export class PlanStore {
 	outlook = $state<Outlook | null>(null);
 	error = $state<ApiError | null>(null);
-	#api: Api;
+	#api: AccountApi;
 	#reloadMs: number;
 	#gapMs: number;
 	#clock: () => number;
@@ -55,7 +56,7 @@ export class PlanStore {
 	#lastLoad = Number.NEGATIVE_INFINITY;
 	#generation = 0;
 
-	constructor(api: Api, reloadMs = PLAN_RELOAD_MS, gapMs = PLAN_STATE_GAP_MS, clock: () => number = Date.now) {
+	constructor(api: AccountApi, reloadMs = PLAN_RELOAD_MS, gapMs = PLAN_STATE_GAP_MS, clock: () => number = Date.now) {
 		this.#api = api;
 		this.#reloadMs = reloadMs;
 		this.#gapMs = gapMs;
@@ -74,7 +75,7 @@ export class PlanStore {
 		// Ответ прежнего поколения (до reset или ухода с главной) не применяется.
 		const current = () => !controller.signal.aborted && generation === this.#generation;
 		try {
-			const out = await call(this.#api.GET('/api/v1/planner/outlook', { signal: controller.signal }));
+			const out = await call(this.#api.GET('/planner/outlook', { signal: controller.signal }));
 			if (current()) {
 				this.outlook = out;
 				this.error = null;

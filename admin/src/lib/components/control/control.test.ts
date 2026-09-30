@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { createAccountApi } from '$lib/api/account';
 import { createApi } from '$lib/api/client';
 import type { LiveEvent } from '$lib/live/sse';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
@@ -18,16 +19,18 @@ function setup(handler: (c: Call) => Response | undefined = () => undefined) {
 		const custom = handler(c);
 		if (custom) return custom;
 		if (c.url === '/api/v1/scenarios') return json(fixture('scenarios'));
-		if (c.url.startsWith('/api/v1/scenario-runs?')) return json({ items: [RUN], next_before: null });
+		if (c.url.startsWith('/api/v1/accounts/1/scenario-runs?')) return json({ items: [RUN], next_before: null });
 		return json({ detail: 'Not Found' }, 404);
 	});
-	const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+	const hooks = { csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} };
+	const api = createAccountApi(hooks, 1, fetch);
+	const globalApi = createApi(hooks, fetch);
 	const confirmer = vi.fn(async () => true);
 	const subscribe = (fn: (e: LiveEvent) => void) => {
 		listeners.add(fn);
 		return () => listeners.delete(fn);
 	};
-	render(ControlView, { api, subscribe, confirmer, now: new Date('2026-09-27T20:00:00Z') });
+	render(ControlView, { api, globalApi, subscribe, confirmer, now: new Date('2026-09-27T20:00:00Z') });
 	const emit = (e: LiveEvent) => listeners.forEach((fn) => fn(e));
 	return { fetch, confirmer, emit };
 }
@@ -50,7 +53,7 @@ describe('Управление', () => {
 	it('форма по ParamSpec: проверка и запуск с одним ключом на отправку', async () => {
 		const user = userEvent.setup();
 		const { fetch } = setup((c) =>
-			c.url === '/api/v1/scenarios/sleep/run' ? json({ scenario_run_id: 91, status: 'queued' }, 202) : undefined
+			c.url === '/api/v1/accounts/1/scenarios/sleep/run' ? json({ scenario_run_id: 91, status: 'queued' }, 202) : undefined
 		);
 		await user.click(await screen.findByRole('button', { name: /^sleep/ }));
 		const runner = screen.getByRole('region', { name: 'sleep' });
@@ -71,7 +74,7 @@ describe('Управление', () => {
 	it('сценарий без обязательных параметров — пустые params', async () => {
 		const user = userEvent.setup();
 		const { fetch } = setup((c) =>
-			c.url === '/api/v1/scenarios/lottery_buy/run' ? json({ scenario_run_id: 92, status: 'queued' }, 202) : undefined
+			c.url === '/api/v1/accounts/1/scenarios/lottery_buy/run' ? json({ scenario_run_id: 92, status: 'queued' }, 202) : undefined
 		);
 		await user.click(await screen.findByRole('button', { name: /^lottery_buy/ }));
 		await user.click(screen.getByRole('button', { name: 'Запустить' }));
@@ -86,7 +89,7 @@ describe('Управление', () => {
 			state_version: 5, command_class: 'risky'
 		};
 		const { fetch, confirmer } = setup((c) => {
-			if (c.url !== '/api/v1/commands/send') return undefined;
+			if (c.url !== '/api/v1/accounts/1/commands/send') return undefined;
 			return JSON.parse(c.body).confirm_token
 				? json({ action_id: 7, status: 'confirmed', reason: 'reply', answer: null })
 				: json({ detail: confirm }, 409);
@@ -94,7 +97,7 @@ describe('Управление', () => {
 		await user.type(screen.getByRole('textbox', { name: 'Команда' }), '/sells_piper_80');
 		await user.click(screen.getByRole('button', { name: 'Отправить' }));
 		expect(await screen.findByText('Выполнено: reply')).toBeInTheDocument();
-		const sends = fetch.calls.filter((c) => c.url === '/api/v1/commands/send').map((c) => JSON.parse(c.body));
+		const sends = fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/commands/send').map((c) => JSON.parse(c.body));
 		expect(sends).toHaveLength(2);
 		expect(sends[1]).toEqual({ ...sends[0], confirm_token: 'tok' });
 		expect(confirmer).toHaveBeenCalledWith(confirm, '/sells_piper_80');
@@ -104,7 +107,7 @@ describe('Управление', () => {
 		const user = userEvent.setup();
 		let pending = true;
 		const { fetch } = setup((c) => {
-			if (c.url !== '/api/v1/commands/send') return undefined;
+			if (c.url !== '/api/v1/accounts/1/commands/send') return undefined;
 			const text = JSON.parse(c.body).text;
 			if (text === '/givemoney') return json({ detail: 'forbidden' }, 403);
 			return pending
@@ -120,7 +123,7 @@ describe('Управление', () => {
 		await user.click(screen.getByRole('button', { name: 'Отправить' }));
 		await user.click(await screen.findByRole('button', { name: 'Проверить итог' }));
 		pending = false;
-		const keys = fetch.calls.filter((c) => c.url === '/api/v1/commands/send').map((c) => JSON.parse(c.body).idempotency_key);
+		const keys = fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/commands/send').map((c) => JSON.parse(c.body).idempotency_key);
 		expect(keys[1]).toBe(keys[2]);
 	});
 

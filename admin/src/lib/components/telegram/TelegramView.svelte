@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure, errorText } from '$lib/api/errors';
 	import type { TgStatus } from '$lib/api/types';
 	import { dialogs } from '$lib/stores/confirm.svelte';
@@ -7,7 +8,7 @@
 	import Pill from '../Pill.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 	}
 	let { api }: Props = $props();
 	let status = $state<TgStatus | null>(null);
@@ -37,7 +38,7 @@
 
 	async function refresh() {
 		try {
-			status = await call(api.GET('/api/v1/tg/status'));
+			status = await call(api.GET('/tg/status'));
 		} catch (e) {
 			message = e instanceof ApiFailure ? e.message : String(e);
 		}
@@ -79,18 +80,18 @@
 
 	const start = (e: SubmitEvent) => {
 		e.preventDefault();
-		void step(() => call(api.POST('/api/v1/tg/login/start', { body: { phone: phone.trim() } })));
+		void step(() => call(api.POST('/tg/login/start', { body: { phone: phone.trim() } })));
 	};
 	const sendCode = (e: SubmitEvent) => {
 		e.preventDefault();
 		const value = code.trim();
-		void step(() => call(api.POST('/api/v1/tg/login/code', { body: { attempt_id: attempt ?? '', code: value } })));
+		void step(() => call(api.POST('/tg/login/code', { body: { attempt_id: attempt ?? '', code: value } })));
 	};
 	const sendPassword = (e: SubmitEvent) => {
 		e.preventDefault();
 		const value = password;
 		void step(() =>
-			call(api.POST('/api/v1/tg/login/password', { body: { attempt_id: attempt ?? '', password: value } }))
+			call(api.POST('/tg/login/password', { body: { attempt_id: attempt ?? '', password: value } }))
 		);
 	};
 
@@ -101,7 +102,7 @@
 			confirmText: 'Выйти',
 			danger: true
 		});
-		if (ok) await step(() => call(api.POST('/api/v1/tg/logout')));
+		if (ok) await step(() => call(api.POST('/tg/logout')));
 	}
 
 	const phase = $derived(status?.state ?? null);

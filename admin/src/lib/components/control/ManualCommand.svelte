@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { components } from '$lib/api/schema';
 	import type { CommandOut } from '$lib/api/types';
@@ -8,7 +9,7 @@
 	type SendIn = components['schemas']['SendIn'];
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		confirmer?: Confirmer;
 	}
 	let { api, confirmer }: Props = $props();
@@ -33,7 +34,7 @@
 		pending = false;
 		try {
 			const out: CommandOut | null = await withConfirm<SendIn>(
-				(body) => call(api.POST('/api/v1/commands/send', { body })),
+				(body) => call(api.POST('/commands/send', { body })),
 				{ text: command, idempotency_key: key },
 				command,
 				confirmer

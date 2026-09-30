@@ -14,7 +14,6 @@ from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
 from app.db.notifications import DbNotifier
-from app.db.reads import DbReads
 from app.db.retention import DbRetention
 from app.db.settings_store import DbSettingsStore
 from app.engine.clock import SystemClock
@@ -36,7 +35,8 @@ ENGINE_RETRY_S = 30.0
 class Runtime:
     """Процесс: база, вход в админку, `Container` и HTTP, аренды и задачи процесса (продление
     аренды, монитор задержки цикла, очистка сессий админки, ретеншн). Движок аккаунта
-    `config.account_id` — `AccountRuntime` — стартует после захвата его аренды."""
+    `config.account_id` — `AccountRuntime` — стартует после захвата его аренды; процесс — реестр
+    движков для API (`EngineRegistry`) с этим одним аккаунтом."""
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -52,7 +52,9 @@ class Runtime:
             config=config,
             auth=self.auth,
             limiter=LoginRateLimiter(),
-            reads=DbReads(self.db, config.account_id),
+            db=self.db,
+            accounts=self.accounts,
+            engines=self,
         )
         self.supervisor = Supervisor(self.notifier)
         self.session_purge_s = SESSION_PURGE_S
@@ -61,6 +63,10 @@ class Runtime:
         self.retention_s = RETENTION_S
         self.engine_retry_s = ENGINE_RETRY_S
         self.account: AccountRuntime | None = None
+        # Взведено, пока движок аккаунта зарегистрирован (`account` задан).
+        self._registered = asyncio.Event()
+        # Почему движка нет: аккаунт занят (`Busy.reason`).
+        self._host_reason: str | None = None
         # Будит цикл движка: аренда потеряна (fence.on_lost) или серия сбоев задачи.
         self._down = asyncio.Event()
         # Серия сбоев задачи: движок не поднимается до перезапуска процесса.
@@ -81,6 +87,9 @@ class Runtime:
         await self.auth.ensure_admin(
             self.config.admin_login, password.get_secret_value() if password else None
         )
+        # Аккаунт новой установки (без учётки на момент миграций) достаётся первой учётке:
+        # пути аккаунта открыты только владельцу.
+        await self.accounts.adopt_orphans()
         await self.leases.open()
         self.supervisor.start("lease", self.leases.run)
         self.supervisor.start("lag", self.lag.run)
@@ -119,12 +128,14 @@ class Runtime:
             return
         if isinstance(got, Busy):
             self._retry_in = got.retry_in_s
+            self._host_reason = got.reason
             await self._report(
                 "second_instance",
                 f"account {account_id} is held by another pyrobot instance ({got.reason})",
             )
             return
         self._problem = None
+        self._host_reason = None
 
     async def _try_engine(self) -> Busy | None:
         """Захват аренды аккаунта и старт его движка; `Busy` — аккаунт занят."""
@@ -148,15 +159,13 @@ class Runtime:
             await self.leases.release(got)
             raise
         self._down = down
-        self.account = runtime
-        self.container.facade = runtime.facade
+        self._register(runtime)
         return None
 
     async def _abort_engine(self, runtime: AccountRuntime) -> None:
-        self.container.facade = None
         await runtime.abort()
         await self.leases.release(runtime.fence)
-        self.account = None
+        self._register(None)
         self._retry_in = 0.0
         if self._halted is not None:
             await self.notifier.notify(
@@ -169,6 +178,32 @@ class Runtime:
         await self.notifier.notify(
             "error", "lock_lost", f"account {runtime.account_id} lease lost; engine stopped"
         )
+
+    def _register(self, runtime: AccountRuntime | None) -> None:
+        self.account = runtime
+        if runtime is None:
+            self._registered.clear()
+        else:
+            self._registered.set()
+
+    def get(self, account_id: int) -> AccountRuntime | None:
+        # Движок, который цикл уже останавливает (аренда потеряна, серия сбоев), API не видит.
+        if account_id != self.config.account_id or self._down.is_set():
+            return None
+        return self.account
+
+    async def wait_registered(self, account_id: int, timeout_s: float) -> AccountRuntime | None:
+        if account_id != self.config.account_id:
+            return None
+        with contextlib.suppress(TimeoutError):
+            async with asyncio.timeout(timeout_s):
+                await self._registered.wait()
+        return self.get(account_id)
+
+    def host_reason(self, account_id: int) -> str | None:
+        if account_id != self.config.account_id or self.account is not None:
+            return None
+        return self._host_reason
 
     async def _crash_loop(self, account_id: int, task: str) -> None:
         # Статус error аккаунта — с хостом движков; пока движок стоит до перезапуска процесса.
@@ -220,8 +255,8 @@ class Runtime:
         # Цикл движка — первым: захват и старт не должны начаться посреди остановки.
         with contextlib.suppress(Exception):
             await self.supervisor.cancel("engine")
-        runtime, self.account = self.account, None
-        self.container.facade = None
+        runtime = self.account
+        self._register(None)
         if runtime is not None:
             # Аренда действует — штатная остановка с доработкой конвейера, пока идёт продление;
             # потеряна — аварийная, и освобождение в базу не пишет.

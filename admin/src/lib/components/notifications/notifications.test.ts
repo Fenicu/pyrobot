@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import type { LiveEvent } from '$lib/live/sse';
 import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
@@ -10,7 +10,7 @@ import UnrecognizedList from './UnrecognizedList.svelte';
 
 const NOW = new Date('2026-09-27T20:00:00Z');
 const apiWith = (fetch: typeof globalThis.fetch) =>
-	createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+	createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 
 describe('Уведомления', () => {
 	it('список с прода, «Прочитать всё» до последнего id, живое сверху', async () => {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import type { AccountApi } from '$lib/api/account';
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { ScenarioInfo } from '$lib/api/types';
@@ -11,12 +12,14 @@
 	import ScenarioRunner from './ScenarioRunner.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
+		/** Глобальный клиент: каталог сценариев общий для аккаунтов. */
+		globalApi: Api;
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 		confirmer?: Confirmer;
 		now?: Date;
 	}
-	let { api, subscribe, confirmer, now }: Props = $props();
+	let { api, globalApi, subscribe, confirmer, now }: Props = $props();
 	let scenarios = $state<ScenarioInfo[]>([]);
 	let selected = $state<string | null>(null);
 	let error = $state('');
@@ -31,7 +34,7 @@
 	}
 
 	$effect(() => {
-		call(api.GET('/api/v1/scenarios'))
+		call(globalApi.GET('/api/v1/scenarios'))
 			.then((list) => (scenarios = list))
 			.catch((e: unknown) => (error = e instanceof ApiFailure ? e.message : String(e)));
 	});

@@ -16,7 +16,7 @@ from app.engine.settings import EngineSection, Settings, StaticSettings
 from app.engine.state.model import CharacterState, Obs, dump_state
 from app.engine.transport.fake import FakeTransport, Sent
 from app.engine.types import Button
-from tests.api.conftest import login
+from tests.api.conftest import login, run_engine
 from tests.engine.helpers import GAME, make_msg, until
 from tests.engine.test_facade import build
 
@@ -49,7 +49,7 @@ async def _start(
         snapshot = dump_state(CharacterState(company=seen))
     f = build(settings=StaticSettings(settings), store=DbActionStore(db, 1), snapshot=snapshot)
     await f.pipeline.load()
-    container.facade = f
+    run_engine(container, f)
     tasks.append(asyncio.create_task(f.gateway.run()))
     transport = f.gateway._transport
     assert isinstance(transport, FakeTransport)
@@ -67,7 +67,9 @@ async def _send(
     client: AsyncClient, h: dict[str, str], text: str, key: str, **kw: object
 ) -> tuple[int, dict[str, object]]:
     r = await client.post(
-        "/api/v1/commands/send", headers=h, json={"text": text, "idempotency_key": key, **kw}
+        "/api/v1/accounts/1/commands/send",
+        headers=h,
+        json={"text": text, "idempotency_key": key, **kw},
     )
     return r.status_code, r.json()
 
@@ -82,14 +84,16 @@ async def test_commands_need_engine_and_csrf(
 ) -> None:
     csrf = await login(api_client)
     body = {"text": "😎Я", "idempotency_key": "k"}
-    assert (await api_client.post("/api/v1/commands/send", json=body)).status_code == 403
+    assert (
+        await api_client.post("/api/v1/accounts/1/commands/send", json=body)
+    ).status_code == 403
     h = {"X-CSRF-Token": csrf}
     assert (
-        await api_client.post("/api/v1/commands/send", headers=h, json=body)
+        await api_client.post("/api/v1/accounts/1/commands/send", headers=h, json=body)
     ).status_code == 503
     bad_key = {"text": "😎Я", "idempotency_key": "a b"}
-    container.facade = build()
-    r = await api_client.post("/api/v1/commands/send", headers=h, json=bad_key)
+    run_engine(container, build())
+    r = await api_client.post("/api/v1/accounts/1/commands/send", headers=h, json=bad_key)
     assert r.status_code == 422
 
 
@@ -147,7 +151,7 @@ async def test_forbidden_and_donate_always_403(
         "callback_data": "maze_buf_coins_strong",
         "idempotency_key": "k5",
     }
-    r = await api_client.post("/api/v1/commands/click", headers=h, json=click)
+    r = await api_client.post("/api/v1/accounts/1/commands/click", headers=h, json=click)
     assert r.status_code == 403 and r.json() == {"detail": "donate"}
     assert transport.sent == []
     rows = await _rows(clean_db)
@@ -253,7 +257,7 @@ async def test_click_checks_revision(
             "callback_data": data,
             "idempotency_key": key,
         }
-        r = await api_client.post("/api/v1/commands/click", headers=h, json=body)
+        r = await api_client.post("/api/v1/accounts/1/commands/click", headers=h, json=body)
         assert r.status_code == 200, r.text
         result: dict[str, object] = r.json()
         return result

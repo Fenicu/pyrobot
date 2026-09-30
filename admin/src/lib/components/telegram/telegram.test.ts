@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import TelegramView from './TelegramView.svelte';
@@ -11,7 +11,7 @@ const st = (state: string, extra: object = {}) => ({ state, user_id: null, attem
 function setup(handler: (c: Call) => Response) {
 	const fetch = mockFetch(handler);
 	render(TelegramView, {
-		api: createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch)
+		api: createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch)
 	});
 	return fetch;
 }
@@ -27,9 +27,9 @@ describe('Вход в Telegram', () => {
 		const user = userEvent.setup();
 		let codeTries = 0;
 		const fetch = setup((c) => {
-			if (c.url === '/api/v1/tg/status') return json(st('unauthorized'));
-			if (c.url === '/api/v1/tg/login/start') return json(st('awaiting_code', { attempt_id: 'a1' }));
-			if (c.url === '/api/v1/tg/login/code')
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(st('unauthorized'));
+			if (c.url === '/api/v1/accounts/1/tg/login/start') return json(st('awaiting_code', { attempt_id: 'a1' }));
+			if (c.url === '/api/v1/accounts/1/tg/login/code')
 				return ++codeTries === 1
 					? json(st('awaiting_code', { attempt_id: 'a1', error: 'invalid_code' }))
 					: json(st('awaiting_password', { attempt_id: 'a1' }));
@@ -63,12 +63,12 @@ describe('Вход в Telegram', () => {
 		const user = userEvent.setup();
 		let status = st('unauthorized');
 		setup((c) => {
-			if (c.url === '/api/v1/tg/status') return json(status);
-			if (c.url === '/api/v1/tg/login/start') {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(status);
+			if (c.url === '/api/v1/accounts/1/tg/login/start') {
 				status = st('awaiting_code', { attempt_id: 'a1' });
 				return json(status);
 			}
-			if (c.url === '/api/v1/tg/login/code') {
+			if (c.url === '/api/v1/accounts/1/tg/login/code') {
 				status = st('unauthorized');
 				return json({ detail: 'unknown attempt' }, 409);
 			}

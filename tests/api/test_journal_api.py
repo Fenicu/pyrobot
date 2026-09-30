@@ -68,16 +68,16 @@ async def _seed(db: Database) -> dict[str, int]:
 
 
 async def _page(client: AsyncClient, **params: object) -> dict[str, object]:
-    r = await client.get("/api/v1/journal", params=params)
+    r = await client.get("/api/v1/accounts/1/journal", params=params)
     assert r.status_code == 200, r.text
     body: dict[str, object] = r.json()
     return body
 
 
 async def test_journal_needs_session(container: Container, api_client: AsyncClient) -> None:
-    assert (await api_client.get("/api/v1/journal")).status_code == 401
-    assert (await api_client.get("/api/v1/actions/1")).status_code == 401
-    assert (await api_client.get("/api/v1/scenario-runs")).status_code == 401
+    assert (await api_client.get("/api/v1/accounts/1/journal")).status_code == 401
+    assert (await api_client.get("/api/v1/accounts/1/actions/1")).status_code == 401
+    assert (await api_client.get("/api/v1/accounts/1/scenario-runs")).status_code == 401
 
 
 async def test_feed_merges_types_newest_first(
@@ -162,7 +162,7 @@ async def test_feed_cursor_pages_without_gaps(
     full = await _page(api_client, limit=200)
     assert seen == [(i["type"], i["id"]) for i in full["items"]]  # type: ignore[attr-defined]
     assert len(seen) == 7
-    bad = await api_client.get("/api/v1/journal", params={"cursor": "garbage"})
+    bad = await api_client.get("/api/v1/accounts/1/journal", params={"cursor": "garbage"})
     assert bad.status_code == 422
 
 
@@ -190,8 +190,12 @@ async def test_feed_filters(
     ]
     assert pairs(await _page(api_client, status="rejected")) == [("action", ids["a2"])]
     assert pairs(await _page(api_client, source="planner")) == [("action", ids["a1"])]
-    assert (await api_client.get("/api/v1/journal", params={"types": "nope"})).status_code == 422
-    assert (await api_client.get("/api/v1/journal", params={"limit": 201})).status_code == 422
+    assert (
+        await api_client.get("/api/v1/accounts/1/journal", params={"types": "nope"})
+    ).status_code == 422
+    assert (
+        await api_client.get("/api/v1/accounts/1/journal", params={"limit": 201})
+    ).status_code == 422
 
 
 async def test_details(container: Container, api_client: AsyncClient, clean_db: Database) -> None:
@@ -199,15 +203,15 @@ async def test_details(container: Container, api_client: AsyncClient, clean_db: 
     metro = DbMetroRunStore(clean_db, 1)
     metro_id = await metro.save(ids["run"], "done", {"started_at": _at(11).isoformat()})
     await login(api_client)
-    dec = (await api_client.get(f"/api/v1/decisions/{ids['d1']}")).json()
+    dec = (await api_client.get(f"/api/v1/accounts/1/decisions/{ids['d1']}")).json()
     assert dec["candidates"] == [
         {"scenario": "deed:job", "params": {}, "score": 1.5, "verdict": "ok"}
     ]
     assert dec["params"] == {"activity": "job"}
     assert [r["id"] for r in dec["runs"]] == [ids["run"]]
-    act = (await api_client.get(f"/api/v1/actions/{ids['a1']}")).json()
+    act = (await api_client.get(f"/api/v1/accounts/1/actions/{ids['a1']}")).json()
     assert act["payload"]["text"] == "/job" and act["command_class"] == "action"
-    run = (await api_client.get(f"/api/v1/scenario-runs/{ids['run']}")).json()
+    run = (await api_client.get(f"/api/v1/accounts/1/scenario-runs/{ids['run']}")).json()
     assert (run["scenario"], run["status"], run["decision_id"]) == (
         "deed:job",
         "running",
@@ -236,7 +240,7 @@ async def test_scenario_runs_list_and_actions(
     await login(api_client)
 
     async def ids(**params: object) -> tuple[list[int], object]:
-        r = await api_client.get("/api/v1/scenario-runs", params=params)
+        r = await api_client.get("/api/v1/accounts/1/scenario-runs", params=params)
         assert r.status_code == 200, r.text
         body = r.json()
         return [i["id"] for i in body["items"]], body["next_before"]
@@ -251,18 +255,20 @@ async def test_scenario_runs_list_and_actions(
     first, cursor = await ids(manual="true", limit=2)
     assert (first, cursor) == ([manual_ids[2], manual_ids[1]], manual_ids[1])
     assert await ids(manual="true", limit=2, before=cursor) == ([manual_ids[0]], None)
-    item = (await api_client.get("/api/v1/scenario-runs", params={"limit": 1})).json()["items"][0]
+    item = (await api_client.get("/api/v1/accounts/1/scenario-runs", params={"limit": 1})).json()[
+        "items"
+    ][0]
     assert (item["scenario"], item["status"], item["requested_by"]) == ("sleep", "queued", "admin")
 
-    run = (await api_client.get(f"/api/v1/scenario-runs/{planned}")).json()
+    run = (await api_client.get(f"/api/v1/accounts/1/scenario-runs/{planned}")).json()
     assert [(a["id"], a["payload"]["text"], a["scenario_run_id"]) for a in run["actions"]] == [
         (step1, "/job", planned),
         (step2, "/job2", planned),
     ]
-    empty = (await api_client.get(f"/api/v1/scenario-runs/{manual_ids[0]}")).json()
+    empty = (await api_client.get(f"/api/v1/accounts/1/scenario-runs/{manual_ids[0]}")).json()
     assert empty["actions"] == []
-    manual = (await api_client.get("/api/v1/actions/" + str(step2 + 1))).json()
+    manual = (await api_client.get("/api/v1/accounts/1/actions/" + str(step2 + 1))).json()
     assert (manual["scenario_run_id"], manual["idempotency_key"]) == (None, "manual:x")
     assert (
-        await api_client.get("/api/v1/scenario-runs", params={"limit": 101})
+        await api_client.get("/api/v1/accounts/1/scenario-runs", params={"limit": 101})
     ).status_code == 422

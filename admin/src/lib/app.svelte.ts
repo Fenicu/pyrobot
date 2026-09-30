@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation';
-import { createApi, EVENTS_URL } from '$lib/api/client';
+import { createAccountApi, eventsUrl } from '$lib/api/account';
+import { createApi } from '$lib/api/client';
 import { LiveConnection } from '$lib/live/connection.svelte';
 import { loginHref } from '$lib/nav';
 import { CharacterStore } from '$lib/stores/character.svelte';
@@ -7,18 +8,23 @@ import { EngineStore } from '$lib/stores/engine.svelte';
 import { Session } from '$lib/stores/session.svelte';
 import { UnreadCounter } from '$lib/stores/unread.svelte';
 
-/** Синглтоны вкладки: сессия, клиент API, поток событий и общие счётчики. */
+/** Аккаунт админки, пока нет переключателя аккаунтов. */
+const ACCOUNT_ID = 1;
+
+/** Синглтоны вкладки: сессия, клиенты API (глобальный и аккаунта), поток событий аккаунта и
+ * общие счётчики. */
 export const session = new Session(undefined, () => void goto(loginHref(new URL(location.href))));
 export const api = createApi(session.hooks);
+export const accountApi = createAccountApi(session.hooks, ACCOUNT_ID);
 export const live = new LiveConnection({
-	url: EVENTS_URL,
+	url: eventsUrl(ACCOUNT_ID),
 	create: (url) => new EventSource(url),
 	checkSession: () => session.load(),
 	onUnauthorized: () => session.expire()
 });
-export const unread = new UnreadCounter(api);
-export const engine = new EngineStore(api);
-export const character = new CharacterStore(api);
+export const unread = new UnreadCounter(accountApi);
+export const engine = new EngineStore(accountApi);
+export const character = new CharacterStore(accountApi);
 
 let unsubscribe: (() => void) | null = null;
 

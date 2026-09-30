@@ -65,6 +65,8 @@ class TgState(StrEnum):
     AWAITING_PASSWORD = "awaiting_password"
     ONLINE = "online"
     ERROR = "error"
+    # Движок аккаунта не запущен: состояние входа неизвестно (только в API).
+    STOPPED = "stopped"
 
 
 @dataclass(frozen=True, slots=True)

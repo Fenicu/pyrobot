@@ -13,7 +13,7 @@ from app.engine.lag import LoopLagMonitor
 from app.engine.planner.loop import PlannerLoop
 from app.engine.tg_auth import TgAuthManager
 from app.engine.transport.fake import FakeTgBackend
-from tests.api.conftest import login
+from tests.api.conftest import login, run_engine
 from tests.engine.fakegame import World, running_world
 from tests.engine.planner.test_loop import QUIET
 from tests.engine.test_facade import build
@@ -40,7 +40,7 @@ async def world(container: Container, clean_db: Database) -> AsyncIterator[World
             step_timeout_s=0.3,
             auto=False,
         )
-        container.facade = EngineFacade(
+        facade = EngineFacade(
             settings=w.settings,
             gateway=w.gateway,
             pipeline=w.pipeline,
@@ -48,6 +48,7 @@ async def world(container: Container, clean_db: Database) -> AsyncIterator[World
             lag=LoopLagMonitor(),
             planner=planner,
         )
+        run_engine(container, facade)
         task = asyncio.create_task(planner.run())
         try:
             yield w
@@ -60,7 +61,9 @@ async def _run(
     client: AsyncClient, h: dict[str, str], name: str, key: str, **params: object
 ) -> tuple[int, dict[str, object]]:
     r = await client.post(
-        f"/api/v1/scenarios/{name}/run", headers=h, json={"params": params, "idempotency_key": key}
+        f"/api/v1/accounts/1/scenarios/{name}/run",
+        headers=h,
+        json={"params": params, "idempotency_key": key},
     )
     return r.status_code, r.json()
 
@@ -73,14 +76,14 @@ async def test_manual_scenario_run(world: World, api_client: AsyncClient) -> Non
     run_id = body["scenario_run_id"]
 
     async def status() -> str:
-        run = (await api_client.get(f"/api/v1/scenario-runs/{run_id}")).json()
+        run = (await api_client.get(f"/api/v1/accounts/1/scenario-runs/{run_id}")).json()
         return str(run["status"])
 
     for _ in range(200):
         if await status() == "done":
             break
         await asyncio.sleep(0.01)
-    run = (await api_client.get(f"/api/v1/scenario-runs/{run_id}")).json()
+    run = (await api_client.get(f"/api/v1/accounts/1/scenario-runs/{run_id}")).json()
     assert (run["status"], run["requested_by"], run["decision_id"]) == ("done", "admin", None)
     assert run["params"] == {"item": "book"}
     assert world.game.payloads() == ["/read_exp"]
@@ -100,7 +103,7 @@ async def test_manual_scenario_run(world: World, api_client: AsyncClient) -> Non
     code, _ = await _run(api_client, h, "nope", "s2")
     assert code == 404
     r = await api_client.post(
-        "/api/v1/scenarios/book/run", json={"params": {}, "idempotency_key": "s3"}
+        "/api/v1/accounts/1/scenarios/book/run", json={"params": {}, "idempotency_key": "s3"}
     )
     assert r.status_code == 403
     too_many = {f"p{i}": i for i in range(17)}
@@ -124,7 +127,7 @@ async def test_uncertified_run_is_simulated(world: World, api_client: AsyncClien
     assert code == 202
     run_id = body["scenario_run_id"]
     for _ in range(200):
-        run = (await api_client.get(f"/api/v1/scenario-runs/{run_id}")).json()
+        run = (await api_client.get(f"/api/v1/accounts/1/scenario-runs/{run_id}")).json()
         if run["status"] not in ("queued", "running"):
             break
         await asyncio.sleep(0.01)
@@ -152,7 +155,7 @@ async def test_scenario_catalog(container: Container, api_client: AsyncClient) -
 
 
 async def test_run_without_planner(container: Container, api_client: AsyncClient) -> None:
-    container.facade = build()
+    run_engine(container, build())
     h = {"X-CSRF-Token": await login(api_client)}
     code, _ = await _run(api_client, h, "book", "s1")
     assert code == 503

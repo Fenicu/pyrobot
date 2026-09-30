@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import type { MetroRunDetail, MetroRunSummary } from '$lib/api/types';
 import { deferred, flush } from '$lib/test/deferred';
 import { json, mockFetch } from '$lib/test/fetch';
@@ -108,15 +108,15 @@ describe('карта метро', () => {
 
 	it('список забегов и сводка', async () => {
 		const fetch = mockFetch((c) =>
-			c.url.startsWith('/api/v1/metro/runs?') ? json(fixture('metro_runs')) : json(run)
+			c.url.startsWith('/api/v1/accounts/1/metro/runs?') ? json(fixture('metro_runs')) : json(run)
 		);
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		render(MetroView, { api, now: NOW });
 		const list = await screen.findByRole('list', { name: 'Забеги метро' });
 		expect(await within(list).findByRole('button', { name: /13:11 · 197 ш · 9 мин/ })).toHaveAttribute('aria-pressed', 'true');
 		expect(await screen.findByRole('img', { name: /Карта забега #1/ })).toBeInTheDocument();
 		expect(screen.getByLabelText('Сводка забегов')).toHaveTextContent('p90 длительности: 9 мин');
-		expect(fetch.calls.map((c) => c.url)).toContain('/api/v1/metro/runs/1');
+		expect(fetch.calls.map((c) => c.url)).toContain('/api/v1/accounts/1/metro/runs/1');
 	});
 
 	it('сводка: шагов на клетку и исходы долями', async () => {
@@ -128,9 +128,9 @@ describe('карта метро', () => {
 			{ ...base, id: 0, steps: 10, visited: 20 }
 		];
 		const fetch = mockFetch((c) =>
-			c.url.startsWith('/api/v1/metro/runs?') ? json({ items, next_before: null }) : json(run)
+			c.url.startsWith('/api/v1/accounts/1/metro/runs?') ? json({ items, next_before: null }) : json(run)
 		);
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		render(MetroView, { api, now: NOW });
 		const stats = await screen.findByLabelText('Сводка забегов');
 		expect(stats).toHaveTextContent('шагов на клетку: 1.9');
@@ -141,10 +141,10 @@ describe('карта метро', () => {
 		const base = fixture<{ items: MetroRunSummary[] }>('metro_runs').items[0]!;
 		const late = deferred<Response>();
 		const fetch = mockFetch((c) => {
-			if (c.url.startsWith('/api/v1/metro/runs?')) return json({ items: [{ ...base, id: 2 }, base], next_before: null });
-			return c.url === '/api/v1/metro/runs/2' ? late.promise : json(run);
+			if (c.url.startsWith('/api/v1/accounts/1/metro/runs?')) return json({ items: [{ ...base, id: 2 }, base], next_before: null });
+			return c.url === '/api/v1/accounts/1/metro/runs/2' ? late.promise : json(run);
 		});
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		render(MetroView, { api, now: NOW });
 		const list = await screen.findByRole('list', { name: 'Забеги метро' });
 		const buttons = await within(list).findAllByRole('button');

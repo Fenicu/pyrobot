@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
 	import { ApiFailure } from '$lib/api/errors';
 	import { legend, markers } from '$lib/metrics/events';
 	import { loadMetrics, METRICS, stepSeries, type MetricsData, type Window } from '$lib/metrics/series';
@@ -10,7 +10,7 @@
 	type Period = 'today' | '7d' | '30d' | 'custom';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		/** Фиксированный «сейчас» (тесты); без него — текущий момент и общий тикер. */
 		now?: Date;
 	}

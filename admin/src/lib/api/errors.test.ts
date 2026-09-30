@@ -13,7 +13,14 @@ describe('normalizeError', () => {
 			status: 403,
 			code: 'donate'
 		});
-		expect(normalizeError(503, { detail: 'engine not started' }).kind).toBe('engine_down');
+		expect(normalizeError(503, { detail: 'engine not running' }).kind).toBe('engine_down');
+		expect(normalizeError(503, { detail: 'engine_starting' }).kind).toBe('engine_down');
+		expect(errorText(normalizeError(503, { detail: 'engine not running' }))).toBe('Движок недоступен');
+		expect(normalizeError(404, { detail: 'account not found' })).toEqual({
+			kind: 'not_found',
+			status: 404,
+			code: 'account not found'
+		});
 		expect(normalizeError(503, { detail: 'store_failed' }).kind).toBe('store_failed');
 		expect(normalizeError(404, { detail: 'decision not found' })).toMatchObject({
 			kind: 'not_found',

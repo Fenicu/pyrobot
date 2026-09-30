@@ -8,7 +8,7 @@ from app.api.container import Container
 from app.db.base import Database
 from app.db.models import AuthSession
 from app.engine.transport.fake import FakeTgBackend
-from tests.api.conftest import PASSWORD
+from tests.api.conftest import PASSWORD, run_engine
 from tests.engine.test_facade import build
 from tools.login import LoginFailed, login_flow
 
@@ -40,8 +40,9 @@ class Console:
 async def _client(
     container: Container, backend: FakeTgBackend, bound: int | None = None
 ) -> AsyncClient:
-    container.facade = build(authorized=backend.authorized, backend=backend, bound_user_id=bound)
-    await container.facade.tg.boot()
+    f = build(authorized=backend.authorized, backend=backend, bound_user_id=bound)
+    run_engine(container, f)
+    await f.tg.boot()
     return AsyncClient(transport=ASGITransport(app=create_api(container)), base_url="http://t")
 
 
@@ -122,11 +123,11 @@ async def _fail(routes: dict[str, httpx.Response]) -> str:
 async def test_html_error_from_proxy_is_reported_by_code() -> None:
     routes = {
         "/api/v1/auth/login": _logged_in(),
-        "/api/v1/tg/status": _html(502),
+        "/api/v1/accounts/1/tg/status": _html(502),
         "/api/v1/auth/logout": _html(502),
     }
     # Первопричина не подменяется ошибкой закрытия сессии.
-    assert await _fail(routes) == "GET /api/v1/tg/status: HTTP 502"
+    assert await _fail(routes) == "GET /api/v1/accounts/1/tg/status: HTTP 502"
     assert await _fail({"/api/v1/auth/login": _html(200)}) == (
         "admin login: HTTP 200, not a JSON response"
     )
@@ -135,11 +136,15 @@ async def test_html_error_from_proxy_is_reported_by_code() -> None:
 async def test_error_detail_shown_only_as_code() -> None:
     # Ошибка валидации FastAPI повторяет присланные значения — их не печатаем.
     echoed = httpx.Response(422, json={"detail": [{"msg": "bad", "input": "12345"}]})
-    message = await _fail({"/api/v1/auth/login": _logged_in(), "/api/v1/tg/status": echoed})
-    assert message == "GET /api/v1/tg/status: HTTP 422"
-    coded = httpx.Response(503, json={"detail": "engine not started"})
-    message = await _fail({"/api/v1/auth/login": _logged_in(), "/api/v1/tg/status": coded})
-    assert message == "GET /api/v1/tg/status: HTTP 503 engine not started"
+    message = await _fail(
+        {"/api/v1/auth/login": _logged_in(), "/api/v1/accounts/1/tg/status": echoed}
+    )
+    assert message == "GET /api/v1/accounts/1/tg/status: HTTP 422"
+    coded = httpx.Response(503, json={"detail": "engine not running"})
+    message = await _fail(
+        {"/api/v1/auth/login": _logged_in(), "/api/v1/accounts/1/tg/status": coded}
+    )
+    assert message == "GET /api/v1/accounts/1/tg/status: HTTP 503 engine not running"
 
 
 async def test_user_other_than_bound_fails() -> None:
@@ -147,6 +152,16 @@ async def test_user_other_than_bound_fails() -> None:
     online = httpx.Response(
         200, json={"state": "online", "user_id": 5, "bound_user_id": 42, "error": None}
     )
-    assert await _fail({"/api/v1/auth/login": _logged_in(), "/api/v1/tg/status": online}) == (
-        "telegram user 5 is not 42"
-    )
+    assert await _fail(
+        {"/api/v1/auth/login": _logged_in(), "/api/v1/accounts/1/tg/status": online}
+    ) == ("telegram user 5 is not 42")
+
+
+async def test_login_of_other_account(container: Container, clean_db: Database) -> None:
+    # `--account`: пути входа — аккаунта из аргумента; чужой или несуществующий — 404.
+    console = Console(["admin"], [PASSWORD])
+    async with await _client(container, FakeTgBackend(authorized=True), EXPECTED) as client:
+        with pytest.raises(LoginFailed) as failed:
+            await login_flow(client, console.ask, console.secret, console.say, account_id=2)
+    assert str(failed.value) == "GET /api/v1/accounts/2/tg/status: HTTP 404 account not found"
+    assert await _open_sessions(clean_db) == 0

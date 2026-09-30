@@ -1,19 +1,18 @@
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel
 
-from app.api.deps import SessionContext, current_session
-from app.api.errors import AUTH, ENGINE_NOT_STARTED, error
-from app.api.routes_engine import facade
+from app.api.errors import AUTH, ENGINE_NOT_RUNNING, error
+from app.api.scope import account_router, running
 from app.engine.facade import EngineFacade, PlannerUnavailable
 from app.engine.planner.decide import Basis, Phase
 from app.engine.planner.loop import PlanView
 from app.engine.planner.types import Act, Candidate, WakeKind, Wakeup
 from app.engine.state.model import BusyState
 
-router = APIRouter(prefix="/api/v1", tags=["planner"])
+router = account_router("planner")
 PLANNER_NOT_STARTED = "planner not started"
 
 
@@ -226,12 +225,9 @@ def outlook_out(view: PlanView) -> OutlookOut:
 @router.get(
     "/planner/outlook",
     response_model=OutlookOut,
-    responses={**AUTH, 503: error(ENGINE_NOT_STARTED, PLANNER_NOT_STARTED)},
+    responses={**AUTH, 503: error(ENGINE_NOT_RUNNING, PLANNER_NOT_STARTED)},
 )
-async def planner_outlook(
-    _: Annotated[SessionContext, Depends(current_session)],
-    f: Annotated[EngineFacade, Depends(facade)],
-) -> OutlookOut:
+async def planner_outlook(f: Annotated[EngineFacade, Depends(running)]) -> OutlookOut:
     """«План бота»: что планировщик решил бы сейчас, почему не другое, что ещё готово и когда
     он проснётся дальше. Без решений, действий и записи в журнал; кеш — 5 с."""
     try:

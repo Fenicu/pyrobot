@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import type { JournalPage } from '$lib/api/types';
 import { decodeEvent, type LiveEvent } from '$lib/live/sse';
 import { deferred, flush, type Deferred } from '$lib/test/deferred';
@@ -11,7 +11,7 @@ const page = fixture<JournalPage>('journal_page');
 
 function feed(pages: JournalPage[] = [page]) {
 	const fetch = mockFetch(() => json(pages.shift() ?? { items: [], next_cursor: null }));
-	const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+	const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 	return { f: new JournalFeed(api), fetch };
 }
 
@@ -118,13 +118,13 @@ const actionOut = (id: number, status: string, created_at = '2026-09-27T20:30:00
 function routed(actions: Record<number, object> = {}) {
 	const pages: Deferred<JournalPage>[] = [];
 	const fetch = mockFetch(async (c: Call) => {
-		const m = /^\/api\/v1\/actions\/(\d+)$/.exec(c.url);
+		const m = /^\/api\/v1\/accounts\/1\/actions\/(\d+)$/.exec(c.url);
 		if (m) return actions[Number(m[1])] ? json(actions[Number(m[1])]) : json({ detail: 'action not found' }, 404);
 		const d = deferred<JournalPage>();
 		pages.push(d);
 		return json(await d.promise);
 	});
-	const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+	const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 	return { f: new JournalFeed(api), pages, fetch };
 }
 
@@ -195,7 +195,7 @@ describe('гонки и фильтры ленты', () => {
 		// Повторный кадр не шлёт второй запрос.
 		f.onEvent(ev('action', { id: 480, status: 'refused', reason: 'busy' }));
 		await vi.waitFor(() => expect(f.items.map(keyOf)).toEqual(['action:480']));
-		expect(fetch.calls.filter((c) => c.url === '/api/v1/actions/480')).toHaveLength(1);
+		expect(fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/actions/480')).toHaveLength(1);
 		expect(f.items[0]).toMatchObject({ status: 'refused', reason: 'busy', at: '2026-09-27T20:30:00Z', text: '/job' });
 	});
 
@@ -208,14 +208,14 @@ describe('гонки и фильтры ленты', () => {
 		await loading;
 		f.onEvent(ev('action', { id: 481, status: 'refused', reason: 'busy' }));
 		f.onEvent(ev('action', { id: 482, status: 'refused', reason: 'busy' }));
-		await vi.waitFor(() => expect(fetch.calls.filter((c) => c.url.startsWith('/api/v1/actions/'))).toHaveLength(2));
+		await vi.waitFor(() => expect(fetch.calls.filter((c) => c.url.startsWith('/api/v1/accounts/1/actions/'))).toHaveLength(2));
 		for (let i = 0; i < 5; i++) await flush();
 		expect(f.items).toEqual([]);
 		// Кадр создания показал чужой источник — обновления без дозапроса.
 		f.onEvent(created(483, 'intent', 'manual'));
 		f.onEvent(ev('action', { id: 483, status: 'refused', reason: 'busy' }));
 		await flush();
-		expect(fetch.calls.filter((c) => c.url === '/api/v1/actions/483')).toHaveLength(0);
+		expect(fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/actions/483')).toHaveLength(0);
 	});
 
 	it('живые записи — по датам фильтра', async () => {

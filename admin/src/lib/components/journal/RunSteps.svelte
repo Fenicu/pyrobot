@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { ActionOut, ScenarioRunDetail } from '$lib/api/types';
 	import { isActionCreated, type LiveEvent, type SseActionCreated } from '$lib/live/sse';
@@ -10,7 +11,7 @@
 	import Pill from '../Pill.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		runId: number;
 		/** Подписка на поток: кадр `scenario_run` этого запуска перечитывает его, кадры `action` его
 		 * шагов добавляют и обновляют шаги сразу, а пока запуск идёт — ещё и перечитывают его. */
@@ -27,7 +28,7 @@
 	async function load(id: number) {
 		const mine = ++request;
 		try {
-			const out = await call(api.GET('/api/v1/scenario-runs/{run_id}', { params: { path: { run_id: id } } }));
+			const out = await call(api.GET('/scenario-runs/{run_id}', { params: { path: { run_id: id } } }));
 			if (mine !== request) return;
 			run = out;
 			error = '';

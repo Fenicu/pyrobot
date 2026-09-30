@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import type { Outlook } from '$lib/api/types';
 import type { LiveEvent } from '$lib/live/sse';
 import { deferred, type Deferred } from '$lib/test/deferred';
@@ -20,7 +20,7 @@ function server() {
 		pending.push(d);
 		return d.promise;
 	};
-	const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetchImpl as typeof fetch);
+	const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetchImpl as typeof fetch);
 	const answer = async (value: Outlook = plan) => {
 		pending.shift()?.resolve(json(value));
 		await vi.advanceTimersByTimeAsync(0);

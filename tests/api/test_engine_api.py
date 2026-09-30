@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from httpx import AsyncClient
 
@@ -5,7 +7,8 @@ from app.api.container import Container
 from app.engine.tg_auth import InvalidPhone, SendCodeRejected
 from app.engine.transport.base import FloodWait
 from app.engine.transport.fake import FakeTgBackend
-from tests.api.conftest import login
+from app.logctx import current_account
+from tests.api.conftest import login, run_engine
 from tests.engine.test_facade import build
 
 pytestmark = pytest.mark.db
@@ -13,30 +16,39 @@ pytestmark = pytest.mark.db
 
 @pytest.fixture
 async def with_facade(container: Container) -> Container:
-    container.facade = build(authorized=False)
-    await container.facade.tg.boot()
+    f = build(authorized=False)
+    run_engine(container, f)
+    await f.tg.boot()
     return container
 
 
 async def test_engine_status_kill_unkill(with_facade: Container, api_client: AsyncClient) -> None:
     csrf = await login(api_client)
-    st = await api_client.get("/api/v1/engine/status")
+    st = await api_client.get("/api/v1/accounts/1/engine/status")
     assert st.status_code == 200 and st.json()["mode"] == "dry_run"
     assert st.json()["tg"]["state"] == "unauthorized"
     h = {"X-CSRF-Token": csrf}
-    assert (await api_client.post("/api/v1/engine/kill", json={"reason": "r"})).status_code == 403
     assert (
-        await api_client.post("/api/v1/engine/kill", headers=h, json={"reason": "r"})
+        await api_client.post("/api/v1/accounts/1/engine/kill", json={"reason": "r"})
+    ).status_code == 403
+    assert (
+        await api_client.post("/api/v1/accounts/1/engine/kill", headers=h, json={"reason": "r"})
     ).status_code == 204
-    assert (await api_client.get("/api/v1/engine/status")).json()["killed"] is True
-    assert (await api_client.post("/api/v1/engine/unkill", headers=h)).status_code == 204
-    assert (await api_client.post("/api/v1/engine/reconciled", headers=h)).status_code == 204
-    assert (await api_client.post("/api/v1/engine/pause")).status_code == 403
-    assert (await api_client.post("/api/v1/engine/pause", headers=h)).status_code == 204
-    assert (await api_client.get("/api/v1/engine/status")).json()["paused"] is True
-    assert (await api_client.post("/api/v1/engine/resume", headers=h)).status_code == 204
-    assert (await api_client.get("/api/v1/engine/status")).json()["paused"] is False
-    empty = await api_client.post("/api/v1/engine/kill", headers=h, json={"reason": ""})
+    assert (await api_client.get("/api/v1/accounts/1/engine/status")).json()["killed"] is True
+    assert (
+        await api_client.post("/api/v1/accounts/1/engine/unkill", headers=h)
+    ).status_code == 204
+    assert (
+        await api_client.post("/api/v1/accounts/1/engine/reconciled", headers=h)
+    ).status_code == 204
+    assert (await api_client.post("/api/v1/accounts/1/engine/pause")).status_code == 403
+    assert (await api_client.post("/api/v1/accounts/1/engine/pause", headers=h)).status_code == 204
+    assert (await api_client.get("/api/v1/accounts/1/engine/status")).json()["paused"] is True
+    assert (
+        await api_client.post("/api/v1/accounts/1/engine/resume", headers=h)
+    ).status_code == 204
+    assert (await api_client.get("/api/v1/accounts/1/engine/status")).json()["paused"] is False
+    empty = await api_client.post("/api/v1/accounts/1/engine/kill", headers=h, json={"reason": ""})
     assert empty.status_code == 422
 
 
@@ -44,15 +56,19 @@ async def test_tg_login_flow_and_readyz(with_facade: Container, api_client: Asyn
     assert (await api_client.get("/readyz")).status_code == 503
     csrf = await login(api_client)
     h = {"X-CSRF-Token": csrf}
-    assert (await api_client.get("/api/v1/tg/status")).json()["state"] == "unauthorized"
-    start = await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    assert (await api_client.get("/api/v1/accounts/1/tg/status")).json()["state"] == "unauthorized"
+    start = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
     attempt = start.json()["attempt_id"]
     wrong = await api_client.post(
-        "/api/v1/tg/login/code", headers=h, json={"attempt_id": "nope", "code": "12345"}
+        "/api/v1/accounts/1/tg/login/code", headers=h, json={"attempt_id": "nope", "code": "12345"}
     )
     assert wrong.status_code == 409
     ok = await api_client.post(
-        "/api/v1/tg/login/code", headers=h, json={"attempt_id": attempt, "code": "12345"}
+        "/api/v1/accounts/1/tg/login/code",
+        headers=h,
+        json={"attempt_id": attempt, "code": "12345"},
     )
     assert ok.json()["state"] == "online"
     assert (await api_client.get("/readyz")).status_code == 200
@@ -69,18 +85,22 @@ class _BadPhone(FakeTgBackend):
 
 
 async def test_tg_backend_failure_is_502(container: Container, api_client: AsyncClient) -> None:
-    container.facade = build(authorized=False, backend=_SendCodeDown())
+    run_engine(container, build(authorized=False, backend=_SendCodeDown()))
     h = {"X-CSRF-Token": await login(api_client)}
-    r = await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    r = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
     assert r.status_code == 502 and r.json() == {"detail": "send_code_failed"}
-    st = (await api_client.get("/api/v1/tg/status")).json()
+    st = (await api_client.get("/api/v1/accounts/1/tg/status")).json()
     assert st["state"] == "error" and st["error"] == "send_code_failed"
 
 
 async def test_tg_classified_error_is_400(container: Container, api_client: AsyncClient) -> None:
-    container.facade = build(authorized=False, backend=_BadPhone())
+    run_engine(container, build(authorized=False, backend=_BadPhone()))
     h = {"X-CSRF-Token": await login(api_client)}
-    r = await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    r = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
     assert r.status_code == 400 and r.json() == {"detail": "invalid_phone"}
 
 
@@ -97,37 +117,75 @@ class _RejectedOnSendCode(FakeTgBackend):
 async def test_tg_send_code_flood_wait_is_429(
     container: Container, api_client: AsyncClient
 ) -> None:
-    container.facade = build(authorized=False, backend=_FloodWaitOnSendCode())
+    run_engine(container, build(authorized=False, backend=_FloodWaitOnSendCode()))
     h = {"X-CSRF-Token": await login(api_client)}
-    r = await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    r = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
     assert r.status_code == 429 and r.json() == {"detail": "flood_wait"}
     assert r.headers["retry-after"] == "31"
-    st = (await api_client.get("/api/v1/tg/status")).json()
+    st = (await api_client.get("/api/v1/accounts/1/tg/status")).json()
     assert st["state"] == "error" and st["error"] == "flood_wait"
 
 
 async def test_tg_send_code_rejected_is_400_with_rpc_code(
     container: Container, api_client: AsyncClient
 ) -> None:
-    container.facade = build(authorized=False, backend=_RejectedOnSendCode())
+    run_engine(container, build(authorized=False, backend=_RejectedOnSendCode()))
     h = {"X-CSRF-Token": await login(api_client)}
-    r = await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    r = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
     assert r.status_code == 400 and r.json() == {"detail": "phone_number_banned"}
 
 
 async def test_tg_status_reports_binding(container: Container, api_client: AsyncClient) -> None:
-    container.facade = build(authorized=False, bound_user_id=None)
-    await container.facade.tg.boot()
+    f = build(authorized=False, bound_user_id=None)
+    run_engine(container, f)
+    await f.tg.boot()
     h = {"X-CSRF-Token": await login(api_client)}
-    assert (await api_client.get("/api/v1/tg/status")).json()["bound_user_id"] is None
-    start = await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+    assert (await api_client.get("/api/v1/accounts/1/tg/status")).json()["bound_user_id"] is None
+    start = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
     code = await api_client.post(
-        "/api/v1/tg/login/code",
+        "/api/v1/accounts/1/tg/login/code",
         headers=h,
         json={"attempt_id": start.json()["attempt_id"], "code": "12345"},
     )
     # Первый вход привязывает аккаунт, и привязка видна в статусах.
     assert code.json()["bound_user_id"] == 267519921
-    st = (await api_client.get("/api/v1/tg/status")).json()
+    st = (await api_client.get("/api/v1/accounts/1/tg/status")).json()
     assert st["bound_user_id"] == 267519921
-    assert (await api_client.get("/api/v1/engine/status")).json()["tg"] == st
+    assert (await api_client.get("/api/v1/accounts/1/engine/status")).json()["tg"] == st
+
+
+class _AccountSeen(FakeTgBackend):
+    """Запоминает аккаунт контекста, в котором идёт вход и создаются задачи клиента."""
+
+    def __init__(self) -> None:
+        super().__init__(authorized=False)
+        self.seen: list[int | None] = []
+
+    async def send_code(self, phone: str) -> str:
+        self.seen.append(current_account.get())
+        task = asyncio.create_task(asyncio.sleep(0))
+        self.seen.append(task.get_context()[current_account])
+        await task
+        return await super().send_code(phone)
+
+
+async def test_engine_calls_run_in_account_log_context(
+    container: Container, api_client: AsyncClient
+) -> None:
+    backend = _AccountSeen()
+    f = build(authorized=False, backend=backend)
+    run_engine(container, f)
+    await f.tg.boot()
+    h = {"X-CSRF-Token": await login(api_client)}
+    r = await api_client.post("/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+8"})
+    assert r.status_code == 200
+    # Вход и задачи, созданные внутри (клиент kurigram), — в контексте аккаунта 1; контекст
+    # запроса наружу не протекает.
+    assert backend.seen == [1, 1]
+    assert current_account.get() is None

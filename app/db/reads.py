@@ -18,6 +18,8 @@ from app.db.models import (
     NotificationRow,
     ScenarioRunRow,
     SettingsHistory,
+    SettingsRow,
+    StateSnapshot,
     UnrecognizedRow,
 )
 from app.engine.daily import LedgerEntry
@@ -396,6 +398,22 @@ class DbReads:
                 .returning(NotificationRow.id)
             )
             return len(done.all())
+
+    async def settings(self) -> tuple[Settings, int]:
+        """Настройки аккаунта в базе и их версия; не сохранялись — по умолчанию, версия 0."""
+        async with self._db.sessions() as session:
+            row = await session.scalar(
+                select(SettingsRow).where(SettingsRow.account_id == self._account_id)
+            )
+        return (Settings.model_validate(row.data), row.version) if row else (Settings(), 0)
+
+    async def state(self) -> tuple[int, dict[str, Any]]:
+        """Последний сохранённый снимок состояния и его версия; до первого — пустой, версия 0."""
+        async with self._db.sessions() as session:
+            row = await session.scalar(
+                select(StateSnapshot).where(StateSnapshot.account_id == self._account_id)
+            )
+        return (row.version, dict(row.state)) if row else (0, {})
 
     async def settings_history(
         self, limit: int, before: int | None

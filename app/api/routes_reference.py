@@ -1,17 +1,17 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.api.container import Container
 from app.api.cursor import decode_cursor, encode_cursor
-from app.api.deps import SessionContext, container, current_session, require_csrf
+from app.api.deps import SessionContext, require_csrf
 from app.api.errors import AUTH, CSRF, not_found
+from app.api.scope import AccountScope, account_router, account_scope
 from app.db.models import MetroRunRow
 from app.engine.state.reducer import METRIC_FIELDS
 
-router = APIRouter(prefix="/api/v1", tags=["reference"])
+router = account_router("reference")
 DEFAULT_WINDOW = timedelta(hours=24)
 # Сценарии, после которых заметно меняются деньги, 🔋 и опыт: метки на графиках метрик.
 EVENT_SCENARIOS = ("stocks_dump", "lottery_buy", "sleep", "gorbushka", "metro")
@@ -125,8 +125,7 @@ def _fields(raw: str | None) -> list[str]:
 
 @router.get("/metrics", response_model=MetricsOut, responses=AUTH)
 async def metrics(
-    _: Annotated[SessionContext, Depends(current_session)],
-    c: Annotated[Container, Depends(container)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
     since: Annotated[datetime | None, Query(alias="from")] = None,
     until: Annotated[datetime | None, Query(alias="to")] = None,
     fields: Annotated[str | None, Query(description="comma-separated metric keys")] = None,
@@ -143,13 +142,13 @@ async def metrics(
             after = (datetime.fromisoformat(ts), int(ident))
         except (TypeError, ValueError) as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid cursor") from exc
-    points = await c.reads.metrics(keys, start, end, limit + 1, after)
+    points = await scope.reads.metrics(keys, start, end, limit + 1, after)
     page = points[:limit]
     series: dict[str, list[Point]] = {}
     for p in page:
         series.setdefault(p.key, []).append((p.ts, p.value))
-    initial = {} if cursor else await c.reads.metrics_before(keys, start)
-    runs = [] if cursor else await c.reads.runs_done(EVENT_SCENARIOS, start, end)
+    initial = {} if cursor else await scope.reads.metrics_before(keys, start)
+    runs = [] if cursor else await scope.reads.runs_done(EVENT_SCENARIOS, start, end)
     last = page[-1] if page else None
     return MetricsOut(
         series=series,
@@ -171,12 +170,11 @@ def _metro_run[T: MetroRunSummary](model: type[T], row: MetroRunRow) -> T:
 
 @router.get("/metro/runs", response_model=MetroRunsPage, responses=AUTH)
 async def metro_runs(
-    _: Annotated[SessionContext, Depends(current_session)],
-    c: Annotated[Container, Depends(container)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
     before: Annotated[int | None, Query(ge=1)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> MetroRunsPage:
-    rows = await c.reads.metro_runs(limit + 1, before)
+    rows = await scope.reads.metro_runs(limit + 1, before)
     page = rows[:limit]
     return MetroRunsPage(
         items=[_metro_run(MetroRunSummary, r) for r in page],
@@ -191,10 +189,9 @@ async def metro_runs(
 )
 async def metro_run(
     run_id: int,
-    _: Annotated[SessionContext, Depends(current_session)],
-    c: Annotated[Container, Depends(container)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
 ) -> MetroRunDetail:
-    row = await c.reads.metro_run(run_id)
+    row = await scope.reads.metro_run(run_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "metro run not found")
     return _metro_run(MetroRunDetail, row)
@@ -202,14 +199,13 @@ async def metro_run(
 
 @router.get("/unrecognized", response_model=UnrecognizedPage, responses=AUTH)
 async def unrecognized(
-    _: Annotated[SessionContext, Depends(current_session)],
-    c: Annotated[Container, Depends(container)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
     acked: Literal["false", "true", "all"] = "false",
     before: Annotated[int | None, Query(ge=1)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> UnrecognizedPage:
     flag = None if acked == "all" else acked == "true"
-    items = await c.reads.unrecognized(flag, limit + 1, before)
+    items = await scope.reads.unrecognized(flag, limit + 1, before)
     page = items[:limit]
     return UnrecognizedPage(
         items=[
@@ -233,21 +229,20 @@ async def unrecognized(
 async def ack_unrecognized(
     body: AckIn,
     _: Annotated[SessionContext, Depends(require_csrf)],
-    c: Annotated[Container, Depends(container)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
 ) -> AckOut:
-    return AckOut(acked=await c.reads.ack_unrecognized(body.ids))
+    return AckOut(acked=await scope.reads.ack_unrecognized(body.ids))
 
 
 @router.get("/notifications", response_model=NotificationsPage, responses=AUTH)
 async def notifications(
-    _: Annotated[SessionContext, Depends(current_session)],
-    c: Annotated[Container, Depends(container)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
     unread: bool = False,
     level: Literal["info", "warn", "error"] | None = None,
     before: Annotated[int | None, Query(ge=1)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> NotificationsPage:
-    rows, total, alerts = await c.reads.notifications(
+    rows, total, alerts = await scope.reads.notifications(
         unread=unread, level=level, limit=limit + 1, before=before
     )
     page = rows[:limit]
@@ -263,6 +258,6 @@ async def notifications(
 async def read_notifications(
     body: ReadIn,
     _: Annotated[SessionContext, Depends(require_csrf)],
-    c: Annotated[Container, Depends(container)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
 ) -> ReadOut:
-    return ReadOut(read=await c.reads.read_notifications(body.up_to_id))
+    return ReadOut(read=await scope.reads.read_notifications(body.up_to_id))

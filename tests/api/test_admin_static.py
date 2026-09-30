@@ -13,9 +13,10 @@ from app.api.app import create_api
 from app.api.container import Container
 from app.api.security import LoginRateLimiter
 from app.config import AppConfig
+from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
-from app.db.reads import DbReads
+from tests.api.conftest import FakeEngines
 
 # Форма стартовой страницы adapter-static (fallback SPA): встроенный стартовый скрипт.
 BOOT = """
@@ -64,7 +65,12 @@ def _app(admin_dir: Path | None) -> AsyncClient:
     db = Database(AppConfig.model_fields["database_url"].default)
     cfg = AppConfig(_env_file=None, transport="fake", admin_dir=admin_dir)  # type: ignore[call-arg]
     container = Container(
-        config=cfg, auth=AuthRepo(db), limiter=LoginRateLimiter(), reads=DbReads(db, 1)
+        config=cfg,
+        auth=AuthRepo(db),
+        limiter=LoginRateLimiter(),
+        db=db,
+        accounts=AccountRepo(db),
+        engines=FakeEngines(),
     )
     return AsyncClient(transport=ASGITransport(app=create_api(container)), base_url="http://t")
 
@@ -130,7 +136,7 @@ async def test_api_and_probes_not_intercepted(client: AsyncClient) -> None:
         assert (r.status_code, r.json()) == (404, {"detail": "Not Found"}), path
     # Известный путь API с чужим методом — прежний 405, а не index.html.
     assert (await client.get("/api/v1/auth/login")).status_code == 405
-    assert (await client.get("/api/v1/state")).status_code == 401
+    assert (await client.get("/api/v1/accounts/1/state")).status_code == 401
     assert (await client.get("/healthz")).json() == {"status": "ok"}
     ready = await client.get("/readyz")
     assert (ready.status_code, ready.json()) == (503, {"status": "not_ready"})

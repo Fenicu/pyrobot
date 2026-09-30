@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, live } from '$lib/app.svelte';
+	import { accountApi, api, live } from '$lib/app.svelte';
 	import ControlView from '$lib/components/control/ControlView.svelte';
 
 	const subscribe = live.subscribe.bind(live);
@@ -8,4 +8,4 @@
 <svelte:head><title>Управление · pyrobot</title></svelte:head>
 
 <h1 class="mb-3 text-lg font-semibold">Управление</h1>
-<ControlView {api} {subscribe} />
+<ControlView api={accountApi} globalApi={api} {subscribe} />

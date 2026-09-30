@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { NotificationOut } from '$lib/api/types';
 	import type { LiveEvent } from '$lib/live/sse';
@@ -11,7 +12,7 @@
 	type Level = 'info' | 'warn' | 'error';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 		/** Прочитано на сервере — перечитать счётчик в меню. */
 		onread?: () => void;
@@ -30,7 +31,7 @@
 	async function load(before: number | null) {
 		try {
 			const page = await call(
-				api.GET('/api/v1/notifications', {
+				api.GET('/notifications', {
 					params: {
 						query: {
 							unread: onlyUnread,
@@ -73,7 +74,7 @@
 		if (top === 0) return;
 		busy = true;
 		try {
-			const out = await call(api.POST('/api/v1/notifications/read', { body: { up_to_id: top } }));
+			const out = await call(api.POST('/notifications/read', { body: { up_to_id: top } }));
 			toasts.show(`Прочитано: ${out.read}`, 'ok');
 			onread?.();
 			await load(null);

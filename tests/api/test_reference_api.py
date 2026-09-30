@@ -31,7 +31,7 @@ async def _metrics(db: Database, points: list[tuple[int, str, float]]) -> None:
 
 async def test_reference_needs_session(container: Container, api_client: AsyncClient) -> None:
     for path in ("/metrics", "/metro/runs", "/unrecognized", "/notifications"):
-        assert (await api_client.get(f"/api/v1{path}")).status_code == 401
+        assert (await api_client.get(f"/api/v1/accounts/1{path}")).status_code == 401
 
 
 async def test_metrics_window_fields_and_paging(
@@ -51,7 +51,7 @@ async def test_metrics_window_fields_and_paging(
     )
     await login(api_client)
     window = {"from": _at(0).isoformat(), "to": _at(10).isoformat()}
-    body = (await api_client.get("/api/v1/metrics", params=window)).json()
+    body = (await api_client.get("/api/v1/accounts/1/metrics", params=window)).json()
     assert body["series"]["money"] == [
         [_at(0).isoformat().replace("+00:00", "Z"), 110.0],
         [_at(2).isoformat().replace("+00:00", "Z"), 120.0],
@@ -61,20 +61,25 @@ async def test_metrics_window_fields_and_paging(
     # Значение на начало окна — последняя точка до него (метрики пишутся только при изменении).
     assert body["initial"]["money"][1] == 100.0 and body["initial"]["stamina"][1] == 50.0
     assert body["next_cursor"] is None
-    only = (await api_client.get("/api/v1/metrics", params={**window, "fields": "stamina"})).json()
+    only = (
+        await api_client.get("/api/v1/accounts/1/metrics", params={**window, "fields": "stamina"})
+    ).json()
     assert set(only["series"]) == {"stamina"} and set(only["initial"]) == {"stamina"}
-    first = (await api_client.get("/api/v1/metrics", params={**window, "limit": 2})).json()
+    first = (
+        await api_client.get("/api/v1/accounts/1/metrics", params={**window, "limit": 2})
+    ).json()
     assert sum(len(v) for v in first["series"].values()) == 2 and first["next_cursor"]
     rest = (
         await api_client.get(
-            "/api/v1/metrics", params={**window, "limit": 2, "cursor": first["next_cursor"]}
+            "/api/v1/accounts/1/metrics",
+            params={**window, "limit": 2, "cursor": first["next_cursor"]},
         )
     ).json()
     assert sum(len(v) for v in rest["series"].values()) == 2 and rest["initial"] == {}
     assert rest["events"] == []
-    bad = await api_client.get("/api/v1/metrics", params={"fields": "money,password"})
+    bad = await api_client.get("/api/v1/accounts/1/metrics", params={"fields": "money,password"})
     assert bad.status_code == 422
-    too_many = await api_client.get("/api/v1/metrics", params={"limit": 5001})
+    too_many = await api_client.get("/api/v1/accounts/1/metrics", params={"limit": 5001})
     assert too_many.status_code == 422
 
 
@@ -95,7 +100,7 @@ async def test_metrics_events_are_done_runs_that_move_metrics(
     await run("metro", 20)
     await login(api_client)
     window = {"from": _at(0).isoformat(), "to": _at(10).isoformat()}
-    body = (await api_client.get("/api/v1/metrics", params=window)).json()
+    body = (await api_client.get("/api/v1/accounts/1/metrics", params=window)).json()
     # Только удачные, только те, что двигают метрики, и только кончившиеся в окне.
     assert body["events"] == [
         {"at": _at(2).isoformat().replace("+00:00", "Z"), "scenario": "stocks_dump"},
@@ -123,22 +128,24 @@ async def test_metro_runs_list_and_detail(
         None, "stopped", {**record, "started_at": _at(60).isoformat(), "grid": visited}
     )
     await login(api_client)
-    runs = (await api_client.get("/api/v1/metro/runs")).json()
+    runs = (await api_client.get("/api/v1/accounts/1/metro/runs")).json()
     assert [r["id"] for r in runs["items"]] == [second, first]
     assert "grid" not in runs["items"][0] and runs["items"][1]["summary"] == {"exit": [3, 4]}
     # Посещённые клетки — для «шагов на клетку» в сводке списка; без grid.visited — 0.
     assert [r["visited"] for r in runs["items"]] == [3, 0]
-    page = (await api_client.get("/api/v1/metro/runs", params={"limit": 1})).json()
+    page = (await api_client.get("/api/v1/accounts/1/metro/runs", params={"limit": 1})).json()
     assert [r["id"] for r in page["items"]] == [second] and page["next_before"] == second
     tail = (
-        await api_client.get("/api/v1/metro/runs", params={"limit": 1, "before": second})
+        await api_client.get(
+            "/api/v1/accounts/1/metro/runs", params={"limit": 1, "before": second}
+        )
     ).json()
     assert [r["id"] for r in tail["items"]] == [first] and tail["next_before"] is None
-    full = (await api_client.get(f"/api/v1/metro/runs/{first}")).json()
+    full = (await api_client.get(f"/api/v1/accounts/1/metro/runs/{first}")).json()
     assert full["grid"] == {"cells": [[0, 0, "."]]} and full["steps"] == 120
     assert full["visited"] == 0
-    assert (await api_client.get(f"/api/v1/metro/runs/{second}")).json()["visited"] == 3
-    assert (await api_client.get("/api/v1/metro/runs/999999")).status_code == 404
+    assert (await api_client.get(f"/api/v1/accounts/1/metro/runs/{second}")).json()["visited"] == 3
+    assert (await api_client.get("/api/v1/accounts/1/metro/runs/999999")).status_code == 404
 
 
 async def test_unrecognized_list_and_ack(
@@ -153,19 +160,23 @@ async def test_unrecognized_list_and_ack(
             0,
         )
     h = {"X-CSRF-Token": await login(api_client)}
-    items = (await api_client.get("/api/v1/unrecognized")).json()["items"]
+    items = (await api_client.get("/api/v1/accounts/1/unrecognized")).json()["items"]
     assert [i["first_line"] for i in items] == ["странное 2", "странное 1"]
     assert items[0]["text"] == "странное 2\nвторая строка" and items[0]["acked"] is False
     ack = {"ids": [items[0]["id"]]}
-    assert (await api_client.post("/api/v1/unrecognized/ack", json=ack)).status_code == 403
-    r = await api_client.post("/api/v1/unrecognized/ack", headers=h, json=ack)
+    assert (
+        await api_client.post("/api/v1/accounts/1/unrecognized/ack", json=ack)
+    ).status_code == 403
+    r = await api_client.post("/api/v1/accounts/1/unrecognized/ack", headers=h, json=ack)
     assert r.json() == {"acked": 1}
-    open_items = (await api_client.get("/api/v1/unrecognized")).json()["items"]
+    open_items = (await api_client.get("/api/v1/accounts/1/unrecognized")).json()["items"]
     assert [i["first_line"] for i in open_items] == ["странное 1"]
-    everything = (await api_client.get("/api/v1/unrecognized", params={"acked": "all"})).json()
+    everything = (
+        await api_client.get("/api/v1/accounts/1/unrecognized", params={"acked": "all"})
+    ).json()
     assert len(everything["items"]) == 2
     too_many = {"ids": list(range(501))}
-    r = await api_client.post("/api/v1/unrecognized/ack", headers=h, json=too_many)
+    r = await api_client.post("/api/v1/accounts/1/unrecognized/ack", headers=h, json=too_many)
     assert r.status_code == 422
 
 
@@ -177,20 +188,26 @@ async def test_notifications_list_and_read(
     await notifier.notify("error", "task_failed:planner", "planner crashed")
     await notifier.notify("warn", "reconcile_stuck", "stuck")
     h = {"X-CSRF-Token": await login(api_client)}
-    body = (await api_client.get("/api/v1/notifications")).json()
+    body = (await api_client.get("/api/v1/accounts/1/notifications")).json()
     assert [n["code"] for n in body["items"]] == [
         "reconcile_stuck",
         "task_failed:planner",
         "engine_paused",
     ]
     assert (body["unread"], body["unread_alerts"]) == (3, 2)
-    errors = (await api_client.get("/api/v1/notifications", params={"level": "error"})).json()
+    errors = (
+        await api_client.get("/api/v1/accounts/1/notifications", params={"level": "error"})
+    ).json()
     assert [n["code"] for n in errors["items"]] == ["task_failed:planner"]
     middle = body["items"][1]["id"]
-    r = await api_client.post("/api/v1/notifications/read", headers=h, json={"up_to_id": middle})
+    r = await api_client.post(
+        "/api/v1/accounts/1/notifications/read", headers=h, json={"up_to_id": middle}
+    )
     assert r.json() == {"read": 2}
-    unread = (await api_client.get("/api/v1/notifications", params={"unread": True})).json()
+    unread = (
+        await api_client.get("/api/v1/accounts/1/notifications", params={"unread": True})
+    ).json()
     assert [n["code"] for n in unread["items"]] == ["reconcile_stuck"]
     assert (unread["unread"], unread["unread_alerts"]) == (1, 1)
-    page = (await api_client.get("/api/v1/notifications", params={"limit": 1})).json()
+    page = (await api_client.get("/api/v1/accounts/1/notifications", params={"limit": 1})).json()
     assert page["next_before"] == page["items"][0]["id"]

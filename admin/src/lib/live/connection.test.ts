@@ -34,7 +34,7 @@ function rig(check: SessionCheck = 'ok') {
 	const onUnauthorized = vi.fn();
 	const checkSession = vi.fn(async () => check);
 	const live = new LiveConnection({
-		url: '/api/v1/events',
+		url: '/api/v1/accounts/1/events',
 		create: () => {
 			const s = new FakeSource();
 			sources.push(s);

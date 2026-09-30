@@ -25,7 +25,8 @@ export interface ValidationIssue {
 }
 
 export const CSRF_MISMATCH = 'csrf token mismatch';
-const ENGINE_DOWN = new Set(['engine not started', 'planner not started', 'event stream not started']);
+// Движок аккаунта не запущен, ещё регистрируется или без цикла планировщика.
+const ENGINE_DOWN = new Set(['engine not running', 'engine_starting', 'planner not started']);
 
 function isRecord(v: unknown): v is Record<string, unknown> {
 	return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -83,7 +84,9 @@ const CODE_TEXT: Record<string, string> = {
 	'invalid credentials': 'Неверный логин или пароль',
 	lock_lost: 'Экземпляр потерял блокировку — нужен перезапуск сервиса',
 	'idempotency_key reused': 'Этот ключ уже использован с другими параметрами',
-	'unknown scenario': 'Нет такого сценария'
+	'unknown scenario': 'Нет такого сценария',
+	'account not found': 'Аккаунт не найден',
+	account_deleting: 'Аккаунт удаляется'
 };
 
 /** Текст ошибки для человека; код сервера — как есть, если перевода нет. */

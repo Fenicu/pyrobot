@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import type { SettingsOut } from '$lib/api/types';
 import { SettingsEditor } from '$lib/settings/editor.svelte';
 import { settingPaths } from '$lib/settings/paths.svelte';
@@ -15,12 +15,12 @@ const settings = fixture<SettingsOut>('settings');
 
 async function view(patch?: (c: Call) => Response, current: () => SettingsOut = () => settings) {
 	const fetch = mockFetch((c) => {
-		if (c.url.startsWith('/api/v1/settings/history')) return json(fixture('settings_history'));
+		if (c.url.startsWith('/api/v1/accounts/1/settings/history')) return json(fixture('settings_history'));
 		if (c.method === 'PATCH' && patch) return patch(c);
 		if (c.method === 'PATCH') return json({ version: 14, values: JSON.parse(c.body).changes ? settings.values : {}, changed: {}, restart_required: [] });
 		return json(current());
 	});
-	const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+	const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 	const editor = new SettingsEditor(api);
 	await editor.load();
 	render(SettingsView, { api, editor, now: new Date('2026-09-27T20:00:00Z') });
@@ -251,7 +251,7 @@ describe('Настройки', () => {
 	it('чужая версия из SSE перечитывает и историю', async () => {
 		let version = 13;
 		const { fetch, editor } = await view(undefined, () => ({ ...settings, version }));
-		const history = () => fetch.calls.filter((c) => c.url.startsWith('/api/v1/settings/history')).length;
+		const history = () => fetch.calls.filter((c) => c.url.startsWith('/api/v1/accounts/1/settings/history')).length;
 		await vi.waitFor(() => expect(history()).toBe(1));
 		version = 14;
 		editor.onEvent({ type: 'settings', id: 'e:1', data: { version: 14, mode: 'live', paused: false, killed: false } });

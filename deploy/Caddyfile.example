@@ -11,7 +11,7 @@ bot.example.com {
 	respond @probes 404
 	# Сжатие — всему, кроме потока событий админки: кодировщик копит события в буфере, и они
 	# доходят до браузера с задержкой — админка «залипает».
-	@compressible not path /api/v1/events
+	@compressible not path /api/v1/accounts/*/events
 	encode @compressible zstd gzip
 	reverse_proxy 127.0.0.1:8080 {
 		# Поток событий: каждое событие уходит клиенту сразу, без буферизации.

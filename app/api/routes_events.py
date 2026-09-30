@@ -4,17 +4,16 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.container import Container
-from app.api.deps import COOKIE, SessionContext, container, current_session
-from app.api.errors import AUTH, ENGINE_NOT_STARTED, error
-from app.api.routes_engine import facade
-from app.engine.facade import EngineFacade
+from app.api.deps import COOKIE, container
+from app.api.errors import AUTH, ENGINE_NOT_RUNNING, error
+from app.api.scope import AccountScope, account_router, account_scope
 from app.engine.stream import EventStream, Subscription
 
-router = APIRouter(prefix="/api/v1", tags=["events"])
+router = account_router("events")
 
 
 def _frame(event_id: str, kind: str, data: dict[str, Any]) -> str:
@@ -63,6 +62,10 @@ async def _events(
                     return
                 yield ": ping\n\n"
                 continue
+            except asyncio.QueueShutDown:
+                # Движок остановлен (`EventStream.close`): клиент переподключится к новому
+                # движку аккаунта или получит 503.
+                return
             yield _frame(stream.event_id(event.seq), event.type, event.data)
     finally:
         stream.unsubscribe(sub)
@@ -74,19 +77,20 @@ async def _events(
     responses={
         200: {"content": {"text/event-stream": {}}, "description": "SSE stream"},
         **AUTH,
-        503: error(ENGINE_NOT_STARTED, "event stream not started"),
+        503: error(ENGINE_NOT_RUNNING),
     },
 )
 async def events(
     request: Request,
-    _: Annotated[SessionContext, Depends(current_session)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
     c: Annotated[Container, Depends(container)],
-    f: Annotated[EngineFacade, Depends(facade)],
     last_event_id: Annotated[str | None, Header(max_length=64)] = None,
 ) -> StreamingResponse:
-    stream = f.stream
-    if stream is None:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "event stream not started")
+    """Поток событий движка аккаунта, зарегистрированного при подключении; движок
+    остановится — поток закончится."""
+    if scope.engine is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, ENGINE_NOT_RUNNING)
+    stream = scope.engine.stream
     token = request.cookies.get(COOKIE)
 
     async def alive() -> bool:

@@ -3,7 +3,7 @@
 	import Pause from '@lucide/svelte/icons/pause';
 	import Play from '@lucide/svelte/icons/play';
 	import Power from '@lucide/svelte/icons/power';
-	import type { Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { EngineStatus } from '$lib/api/types';
 	import { kill, setMode, setPaused, unkill } from '$lib/controls';
@@ -11,7 +11,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		status: EngineStatus | null;
 		/** После действия: перечитать статус. */
 		onchange: () => void;

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { ScenarioRunOut } from '$lib/api/types';
 	import type { LiveEvent } from '$lib/live/sse';
@@ -9,7 +10,7 @@
 	import Pill from '../Pill.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 		/** Меняется снаружи после нового запуска — список перечитывается. */
 		refresh?: number;
@@ -23,7 +24,7 @@
 	async function load() {
 		try {
 			const page = await call(
-				api.GET('/api/v1/scenario-runs', { params: { query: { manual: true, limit: 10 } } })
+				api.GET('/scenario-runs', { params: { query: { manual: true, limit: 10 } } })
 			);
 			runs = page.items;
 			error = '';

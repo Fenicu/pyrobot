@@ -1,4 +1,5 @@
-import { call, type Api } from '$lib/api/client';
+import type { AccountApi } from '$lib/api/account';
+import { call } from '$lib/api/client';
 import { ApiFailure, type ApiError } from '$lib/api/errors';
 import type { EngineStatus } from '$lib/api/types';
 import type { LiveEvent } from '$lib/live/sse';
@@ -11,18 +12,18 @@ export class EngineStore {
 	status = $state<EngineStatus | null>(null);
 	/** Последняя ошибка опроса (503 — движок не запущен). */
 	error = $state<ApiError | null>(null);
-	#api: Api;
+	#api: AccountApi;
 	#timer: ReturnType<typeof setInterval> | null = null;
 	#pollMs: number;
 
-	constructor(api: Api, pollMs = ENGINE_POLL_MS) {
+	constructor(api: AccountApi, pollMs = ENGINE_POLL_MS) {
 		this.#api = api;
 		this.#pollMs = pollMs;
 	}
 
 	async load(): Promise<void> {
 		try {
-			this.status = await call(this.#api.GET('/api/v1/engine/status'));
+			this.status = await call(this.#api.GET('/engine/status'));
 			this.error = null;
 		} catch (e) {
 			if (e instanceof ApiFailure) this.error = e.error;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import { loadMetrics, stepSeries, type MetricsData } from './series';
@@ -41,7 +41,7 @@ describe('ряды метрик', () => {
 			{ series: { money: [['2026-09-27T11:00:00Z', 2]], exp: [['2026-09-27T11:00:00Z', 7]] }, initial: {}, next_cursor: null }
 		];
 		const fetch = mockFetch(() => json(pages.shift()));
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		const out = await loadMetrics(api, win, ['money', 'exp']);
 		expect(out.series.money).toEqual([['2026-09-27T10:00:00Z', 1], ['2026-09-27T11:00:00Z', 2]]);
 		expect(out.initial).toEqual({ money: ['2026-09-26T00:00:00Z', 9] });
@@ -64,7 +64,7 @@ describe('подгрузка до конца окна', () => {
 			const m = /cursor=c(\d+)/.exec(c.url);
 			return json(pageOf(m ? Number(m[1]) : 0, 24));
 		});
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		const progress: [number, number][] = [];
 		const out = await loadMetrics(api, win, ['money'], { onProgress: (pages, points) => progress.push([pages, points]) });
 		expect(fetch.calls).toHaveLength(25);
@@ -76,7 +76,7 @@ describe('подгрузка до конца окна', () => {
 
 	it('курсор не сдвигается — ошибка, а не бесконечный цикл', async () => {
 		const fetch = mockFetch(() => json({ series: {}, initial: {}, next_cursor: 'same' }));
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		await expect(loadMetrics(api, win, ['money'])).rejects.toThrow('курсор метрик не сдвигается');
 		expect(fetch.calls).toHaveLength(2);
 	});
@@ -87,7 +87,7 @@ describe('подгрузка до конца окна', () => {
 			ctl.abort();
 			return json({ series: {}, initial: {}, next_cursor: 'c1' });
 		});
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		await expect(loadMetrics(api, win, ['money'], { signal: ctl.signal })).rejects.toThrow();
 		expect(fetch.calls).toHaveLength(1);
 	});

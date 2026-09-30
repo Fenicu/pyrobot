@@ -16,7 +16,7 @@ from app.engine.pipeline import Pipeline
 from app.engine.settings import ChatsSection
 from app.engine.state.reducer import StateReducer
 from app.engine.transport.fake import FakeTgBackend
-from tests.api.conftest import login
+from tests.api.conftest import engines, login, run_engine
 from tests.engine.test_facade import build
 from tests.fixtures import game_msg
 
@@ -32,11 +32,16 @@ class _Planner:
 
 
 async def test_engine_status_shape(container: Container, api_client: AsyncClient) -> None:
-    container.facade = build(authorized=False, planner=_Planner())
-    await container.facade.tg.boot()
+    f = build(authorized=False, planner=_Planner())
+    run_engine(container, f)
+    await f.tg.boot()
     await login(api_client)
-    body = (await api_client.get("/api/v1/engine/status")).json()
+    body = (await api_client.get("/api/v1/accounts/1/engine/status")).json()
     assert list(body) == [
+        "running",
+        "status",
+        "status_reason",
+        "host_reason",
         "mode",
         "paused",
         "scenario",
@@ -54,6 +59,10 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
         "loop_lag_ms",
     ]
     assert body == {
+        "running": True,
+        "status": "enabled",
+        "status_reason": None,
+        "host_reason": None,
         "mode": "dry_run",
         "paused": False,
         "scenario": "sleep",
@@ -81,18 +90,20 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
 
 
 async def test_engine_status_without_wake(container: Container, api_client: AsyncClient) -> None:
-    container.facade = build(authorized=False)
-    await container.facade.tg.boot()
+    f = build(authorized=False)
+    run_engine(container, f)
+    await f.tg.boot()
     await login(api_client)
-    body = (await api_client.get("/api/v1/engine/status")).json()
+    body = (await api_client.get("/api/v1/accounts/1/engine/status")).json()
     assert (body["scenario"], body["next_wake"]) == (None, None)
 
 
 async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
-    container.facade = build(authorized=False, backend=FakeTgBackend(password="pw"))
-    await container.facade.tg.boot()
+    f = build(authorized=False, backend=FakeTgBackend(password="pw"))
+    run_engine(container, f)
+    await f.tg.boot()
     h = {"X-CSRF-Token": await login(api_client)}
-    status = (await api_client.get("/api/v1/tg/status")).json()
+    status = (await api_client.get("/api/v1/accounts/1/tg/status")).json()
     assert list(status) == TG_KEYS
     assert status == {
         "state": "unauthorized",
@@ -102,7 +113,9 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
         "bound_user_id": BOUND,
     }
     start = (
-        await api_client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
+        await api_client.post(
+            "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+        )
     ).json()
     attempt = start["attempt_id"]
     assert list(start) == TG_KEYS and isinstance(attempt, str)
@@ -115,19 +128,25 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
     }
     code = (
         await api_client.post(
-            "/api/v1/tg/login/code", headers=h, json={"attempt_id": attempt, "code": "12345"}
+            "/api/v1/accounts/1/tg/login/code",
+            headers=h,
+            json={"attempt_id": attempt, "code": "12345"},
         )
     ).json()
     assert list(code) == TG_KEYS and code["state"] == "awaiting_password"
     wrong = (
         await api_client.post(
-            "/api/v1/tg/login/password", headers=h, json={"attempt_id": attempt, "password": "x"}
+            "/api/v1/accounts/1/tg/login/password",
+            headers=h,
+            json={"attempt_id": attempt, "password": "x"},
         )
     ).json()
     assert list(wrong) == TG_KEYS and wrong["error"] == "invalid_password"
     online = (
         await api_client.post(
-            "/api/v1/tg/login/password", headers=h, json={"attempt_id": attempt, "password": "pw"}
+            "/api/v1/accounts/1/tg/login/password",
+            headers=h,
+            json={"attempt_id": attempt, "password": "pw"},
         )
     ).json()
     assert online == {
@@ -137,7 +156,7 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
         "error": None,
         "bound_user_id": BOUND,
     }
-    out = (await api_client.post("/api/v1/tg/logout", headers=h)).json()
+    out = (await api_client.post("/api/v1/accounts/1/tg/logout", headers=h)).json()
     assert list(out) == TG_KEYS and out["state"] == "unauthorized"
 
 
@@ -149,14 +168,14 @@ def _with_state(container: Container) -> Pipeline:
         reducer=StateReducer(),
         bus=Bus(),
     )
-    container.facade = facade
+    run_engine(container, facade)
     return facade.pipeline
 
 
 async def test_empty_state_shape(container: Container, api_client: AsyncClient) -> None:
     _with_state(container)
     await login(api_client)
-    body = (await api_client.get("/api/v1/state")).json()
+    body = (await api_client.get("/api/v1/accounts/1/state")).json()
     assert list(body) == ["version", "now", "state", "stale"]
     assert (body["version"], body["state"], body["stale"]) == (0, {}, [])
     assert ISO_UTC.match(body["now"])
@@ -168,7 +187,7 @@ async def test_state_shape(container: Container, api_client: AsyncClient) -> Non
     await pipeline.process(replace(game_msg("profile", 3624478), date=datetime.now(UTC)))
     await pipeline.process(replace(game_msg("sleep", 3541942), date=datetime.now(UTC)))
     await login(api_client)
-    body = (await api_client.get("/api/v1/state")).json()
+    body = (await api_client.get("/api/v1/accounts/1/state")).json()
     assert list(body) == ["version", "now", "state", "stale"]
     assert body["version"] == 2 and ISO_UTC.match(body["now"])
     # Состояние — снимок конвейера как есть: все поля (ненаблюдённые — null), тот же порядок,
@@ -187,12 +206,12 @@ async def test_state_sends_only_public_keys(container: Container, api_client: As
     # публичной схемы, значения — как в снимке.
     pipeline = _with_state(container)
     await pipeline.process(replace(game_msg("profile", 3624478), date=datetime.now(UTC)))
-    assert container.facade is not None
-    version, snapshot = container.facade.state()
+    f = engines(container).get(1).facade
+    version, snapshot = f.state()
     legacy = {**snapshot, "legacy_field": {"value": 1, "at": "2026-09-27T12:00:00Z"}}
-    container.facade.state = lambda: (version, legacy)  # type: ignore[method-assign]
+    f.state = lambda: (version, legacy)
     await login(api_client)
-    body = (await api_client.get("/api/v1/state")).json()
+    body = (await api_client.get("/api/v1/accounts/1/state")).json()
     assert "legacy_field" not in body["state"] and "applied" not in body["state"]
     assert body["state"] == {k: v for k, v in snapshot.items() if k != "applied"}
     StateOut.model_validate(body)

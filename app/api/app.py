@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.api.admin_static import install_admin
 from app.api.container import Container
+from app.api.errors import ENGINE_NOT_RUNNING
 from app.api.routes_auth import router as auth_router
+from app.api.routes_commands import catalog_router
 from app.api.routes_commands import router as commands_router
 from app.api.routes_daily import router as daily_router
 from app.api.routes_engine import router as engine_router
@@ -13,6 +15,13 @@ from app.api.routes_planner import router as planner_router
 from app.api.routes_reference import router as reference_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_state import router as state_router
+from app.engine.fence import LeaseLost
+
+
+async def _lease_lost(_: Request, __: Exception) -> JSONResponse:
+    # Аренда аккаунта потеряна посреди вызова движка: хост остановит его и захватит снова —
+    # для клиента это движок, который сейчас не запущен.
+    return JSONResponse({"detail": ENGINE_NOT_RUNNING}, status_code=503)
 
 
 def create_api(container: Container) -> FastAPI:
@@ -20,7 +29,9 @@ def create_api(container: Container) -> FastAPI:
         title="pyrobot", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None
     )
     app.state.container = container
+    app.add_exception_handler(LeaseLost, _lease_lost)
     app.include_router(auth_router)
+    app.include_router(catalog_router)
     app.include_router(engine_router)
     app.include_router(planner_router)
     app.include_router(state_router)
@@ -37,7 +48,8 @@ def create_api(container: Container) -> FastAPI:
 
     @app.get("/readyz")
     async def readyz() -> JSONResponse:
-        f = container.facade
+        engine = container.engines.get(container.config.account_id)
+        f = engine.facade if engine is not None else None
         if f is not None and f.ready():
             return JSONResponse({"status": "ready"})
         return JSONResponse({"status": "not_ready"}, status_code=503)

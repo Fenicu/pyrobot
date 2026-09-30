@@ -307,6 +307,24 @@ def _merge(
             data[key] = value
 
 
+class SettingsPatch:
+    """Частичное изменение настроек (`apply_patch`) как `SettingsChange`. Переход в `live` —
+    только с `confirm_live`: из dry_run начинаются реальные траты. `before` — настройки, к
+    которым изменение применено последним."""
+
+    def __init__(self, changes: Mapping[str, Any], *, confirm_live: bool = False) -> None:
+        self.changes = changes
+        self.confirm_live = confirm_live
+        self.before: Settings | None = None
+
+    def __call__(self, settings: Settings) -> Settings:
+        new = apply_patch(settings, self.changes)
+        if new.engine.mode == "live" and settings.engine.mode != "live" and not self.confirm_live:
+            raise SettingsPatchError("live_requires_confirm", "engine.mode")
+        self.before = settings
+        return new
+
+
 def settings_diff(old: Mapping[str, Any], new: Mapping[str, Any]) -> dict[str, list[Any]]:
     """Изменённые листья JSON-дампа настроек: путь через точку → [было, стало]."""
     out: dict[str, list[Any]] = {}

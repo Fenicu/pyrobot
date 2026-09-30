@@ -1,6 +1,6 @@
 import type { Markup, PublicState } from '$lib/api/types';
 
-/** Кадры потока `/api/v1/events` (`app/engine/stream.py`). */
+/** Кадры потока `/api/v1/accounts/{id}/events` (`app/engine/stream.py`). */
 export interface SseMessage {
 	journal_id: number;
 	chat_id: number;

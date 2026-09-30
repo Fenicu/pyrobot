@@ -53,6 +53,7 @@ class EventStream:
         self._history: deque[StreamEvent] = deque(maxlen=history)
         self._queue_size = queue_size
         self._subs: set[Subscription] = set()
+        self._closed = False
 
     @property
     def subscribers(self) -> int:
@@ -79,8 +80,19 @@ class EventStream:
         # Синхронно: между снимком истории и подпиской не проходит ни одна публикация.
         replay, reset = self._replay(last_event_id)
         sub = Subscription(asyncio.Queue(self._queue_size), replay, reset, self._seq)
-        self._subs.add(sub)
+        if self._closed:
+            sub.queue.shutdown()
+        else:
+            self._subs.add(sub)
         return sub
+
+    def close(self) -> None:
+        """Движок остановлен: очереди подписчиков закрываются (накопленное дочитывается, затем
+        `get()` — `QueueShutDown`), новые подписки приходят уже закрытыми."""
+        self._closed = True
+        for sub in self._subs:
+            sub.queue.shutdown()
+        self._subs.clear()
 
     def unsubscribe(self, sub: Subscription) -> None:
         self._subs.discard(sub)

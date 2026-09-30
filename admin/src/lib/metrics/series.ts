@@ -1,4 +1,5 @@
-import { call, type Api } from '$lib/api/client';
+import type { AccountApi } from '$lib/api/account';
+import { call } from '$lib/api/client';
 import type { MetricEvent } from './events';
 
 /** Поля метрик (`METRIC_FIELDS` движка) с подписями; уровня нет — его график почти всегда прямая,
@@ -58,7 +59,7 @@ export interface LoadOptions {
 
 /** Все страницы окна до `next_cursor = null`: `initial` — с первой, ряды склеиваются. */
 export async function loadMetrics(
-	api: Api,
+	api: AccountApi,
 	win: Window,
 	fields: string[],
 	{ signal, onProgress }: LoadOptions = {}
@@ -69,7 +70,7 @@ export async function loadMetrics(
 	for (let page = 0; ; page++) {
 		signal?.throwIfAborted();
 		const res: RawPage = await call(
-			api.GET('/api/v1/metrics', {
+			api.GET('/metrics', {
 				params: {
 					query: {
 						from: win.from.toISOString(),

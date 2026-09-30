@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import type { SettingsOut } from '$lib/api/types';
 import { deferred, flush } from '$lib/test/deferred';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
@@ -10,7 +10,7 @@ const settings = fixture<SettingsOut>('settings');
 
 async function editor(patch: (c: Call) => Response) {
 	const fetch = mockFetch((c) => (c.method === 'PATCH' ? patch(c) : json(settings)));
-	const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+	const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 	const e = new SettingsEditor(api);
 	await e.load();
 	return { e, fetch };
@@ -41,7 +41,7 @@ describe('редактор настроек', () => {
 	it('переход в live — только после подтверждения', async () => {
 		const values = { ...settings.values, engine: { ...(settings.values.engine as object), mode: 'dry_run' } };
 		const fetch = mockFetch((c) => (c.method === 'PATCH' ? ok(c) : json({ ...settings, values })));
-		const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		const e = new SettingsEditor(api);
 		await e.load();
 		e.set(['engine', 'mode'], 'live');
@@ -120,7 +120,7 @@ describe('правки во время сохранения', () => {
 	async function slow() {
 		const reply = deferred<Response>();
 		const fetch = mockFetch((c) => (c.method === 'PATCH' ? reply.promise : json(settings)));
-		const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		const e = new SettingsEditor(api);
 		await e.load();
 		return { e, reply, fetch };

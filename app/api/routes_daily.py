@@ -1,16 +1,17 @@
 from datetime import date, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.container import Container
-from app.api.deps import SessionContext, container, current_session
+from app.api.deps import container
 from app.api.errors import AUTH
+from app.api.scope import AccountScope, account_router, account_scope
 from app.engine.daily import BALANCE_KEYS, LEVEL_KEY, DaySummary, KindSum, summarize
 from app.engine.gametime import day_start, tasks_day
 
-router = APIRouter(prefix="/api/v1", tags=["daily"])
+router = account_router("daily")
 MAX_DAYS = 30
 
 
@@ -80,7 +81,7 @@ def day_out(d: DaySummary) -> DayOut:
 
 @router.get("/daily", response_model=DailyOut, responses=AUTH)
 async def daily(
-    _: Annotated[SessionContext, Depends(current_session)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
     c: Annotated[Container, Depends(container)],
     days: Annotated[int, Query(ge=1, le=MAX_DAYS)] = MAX_DAYS,
 ) -> DailyOut:
@@ -90,9 +91,9 @@ async def daily(
     first = today - timedelta(days=days - 1)
     # Начало первого дня — значения предыдущих суток.
     before = first - timedelta(days=1)
-    last = await c.reads.day_values([*BALANCE_KEYS, LEVEL_KEY], before, now)
-    level = (await c.reads.metrics_before([LEVEL_KEY], day_start(before))).get(LEVEL_KEY)
-    ledger, since = await c.reads.ledger_entries(first)
+    last = await scope.reads.day_values([*BALANCE_KEYS, LEVEL_KEY], before, now)
+    level = (await scope.reads.metrics_before([LEVEL_KEY], day_start(before))).get(LEVEL_KEY)
+    ledger, since = await scope.reads.ledger_entries(first)
     summary = summarize(
         today=today,
         days=days,

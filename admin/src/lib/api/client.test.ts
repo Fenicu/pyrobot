@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { json, mockFetch } from '$lib/test/fetch';
+import { createAccountApi } from './account';
 import { call, createApi, type SessionHooks } from './client';
 import { ApiFailure } from './errors';
 
@@ -14,9 +15,9 @@ function hooks(token: string | null = 'tok-1', fresh: string | null = 'tok-2') {
 describe('клиент API', () => {
 	it('CSRF только на изменяющих запросах', async () => {
 		const fetch = mockFetch(() => json({ ok: true }));
-		const api = createApi(hooks(), fetch);
-		await api.GET('/api/v1/engine/status');
-		await api.POST('/api/v1/engine/pause');
+		const api = createAccountApi(hooks(), 1, fetch);
+		await api.GET('/engine/status');
+		await api.POST('/engine/pause');
 		const [get, post] = fetch.calls;
 		expect(get?.headers.get('X-CSRF-Token')).toBeNull();
 		expect(post?.headers.get('X-CSRF-Token')).toBe('tok-1');
@@ -24,11 +25,9 @@ describe('клиент API', () => {
 
 	it('401 — сессия закончилась, кроме входа и /auth/me', async () => {
 		const h = hooks();
-		const api = createApi(
-			h,
-			mockFetch(() => json({ detail: 'not authenticated' }, 401))
-		);
-		await expect(call(api.GET('/api/v1/state'))).rejects.toMatchObject({
+		const fetch = mockFetch(() => json({ detail: 'not authenticated' }, 401));
+		const api = createApi(h, fetch);
+		await expect(call(createAccountApi(h, 1, fetch).GET('/state'))).rejects.toMatchObject({
 			error: { kind: 'unauthorized' }
 		});
 		expect(h.unauthorized).toHaveBeenCalledTimes(1);
@@ -44,10 +43,8 @@ describe('клиент API', () => {
 				? json({ action_id: 5, status: 'confirmed', reason: 'reply', answer: null })
 				: json({ detail: 'csrf token mismatch' }, 403)
 		);
-		const api = createApi(h, fetch);
-		const out = await call(
-			api.POST('/api/v1/commands/send', { body: { text: '/inv', idempotency_key: 'k1' } })
-		);
+		const api = createAccountApi(h, 1, fetch);
+		const out = await call(api.POST('/commands/send', { body: { text: '/inv', idempotency_key: 'k1' } }));
 		expect(out.status).toBe('confirmed');
 		expect(h.refreshCsrf).toHaveBeenCalledTimes(1);
 		expect(fetch.calls.map((c) => c.headers.get('X-CSRF-Token'))).toEqual(['tok-1', 'tok-2']);
@@ -57,8 +54,8 @@ describe('клиент API', () => {
 	it('403 CSRF дважды — не зацикливается', async () => {
 		const h = hooks();
 		const fetch = mockFetch(() => json({ detail: 'csrf token mismatch' }, 403));
-		const api = createApi(h, fetch);
-		await expect(call(api.POST('/api/v1/engine/pause'))).rejects.toMatchObject({
+		const api = createAccountApi(h, 1, fetch);
+		await expect(call(api.POST('/engine/pause'))).rejects.toMatchObject({
 			error: { kind: 'csrf' }
 		});
 		expect(fetch.calls).toHaveLength(2);
@@ -67,9 +64,9 @@ describe('клиент API', () => {
 	it('403 запрета не повторяется', async () => {
 		const h = hooks();
 		const fetch = mockFetch(() => json({ detail: 'forbidden' }, 403));
-		const api = createApi(h, fetch);
+		const api = createAccountApi(h, 1, fetch);
 		const failure = await call(
-			api.POST('/api/v1/commands/send', { body: { text: '/givemoney', idempotency_key: 'k' } })
+			api.POST('/commands/send', { body: { text: '/givemoney', idempotency_key: 'k' } })
 		).catch((e: unknown) => e);
 		expect(failure).toBeInstanceOf(ApiFailure);
 		expect((failure as ApiFailure).error).toEqual({ kind: 'forbidden', status: 403, code: 'forbidden' });
@@ -87,18 +84,18 @@ describe('клиент API', () => {
 			state_version: 1,
 			command_class: 'risky'
 		};
-		const api = createApi(hooks(), mockFetch(() => json({ detail }, 409)));
+		const api = createAccountApi(hooks(), 1, mockFetch(() => json({ detail }, 409)));
 		await expect(
-			call(api.POST('/api/v1/commands/send', { body: { text: '/sell', idempotency_key: 'k' } }))
+			call(api.POST('/commands/send', { body: { text: '/sell', idempotency_key: 'k' } }))
 		).rejects.toMatchObject({ error: { kind: 'confirm', confirm: detail } });
-		const offline = createApi(hooks(), (() => Promise.reject(new TypeError('fail'))) as typeof fetch);
-		await expect(call(offline.GET('/api/v1/state'))).rejects.toMatchObject({
+		const offline = createAccountApi(hooks(), 1, (() => Promise.reject(new TypeError('fail'))) as typeof fetch);
+		await expect(call(offline.GET('/state'))).rejects.toMatchObject({
 			error: { kind: 'network' }
 		});
 	});
 
 	it('204 — успех без тела', async () => {
-		const api = createApi(hooks(), mockFetch(() => new Response(null, { status: 204 })));
-		await expect(call(api.POST('/api/v1/engine/resume'))).resolves.toBeUndefined();
+		const api = createAccountApi(hooks(), 1, mockFetch(() => new Response(null, { status: 204 })));
+		await expect(call(api.POST('/engine/resume'))).resolves.toBeUndefined();
 	});
 });

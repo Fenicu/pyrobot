@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import type { StateOut } from '$lib/api/types';
 import { deferred, flush, type Deferred } from '$lib/test/deferred';
 import { json, mockFetch } from '$lib/test/fetch';
@@ -21,7 +21,7 @@ function store() {
 		pending.push(d);
 		return json(await d.promise);
 	});
-	const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+	const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 	return { s: new CharacterStore(api), pending, fetch };
 }
 
@@ -101,9 +101,9 @@ describe('состояние по версиям', () => {
 	});
 
 	it('сбой синхронизации не зацикливает запросы', async () => {
-		const answers = [json(snap(638, 1)), json({ detail: 'engine not started' }, 503)];
-		const fetch = mockFetch(() => answers.shift() ?? json({ detail: 'engine not started' }, 503));
-		const api = createApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+		const answers = [json(snap(638, 1)), json({ detail: 'engine not running' }, 503)];
+		const fetch = mockFetch(() => answers.shift() ?? json({ detail: 'engine not running' }, 503));
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 		const s = new CharacterStore(api);
 		await s.load();
 		s.apply({ version: 641, changed: { money: obs(5) } });

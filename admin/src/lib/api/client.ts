@@ -3,9 +3,8 @@ import { ApiFailure, CSRF_MISMATCH, normalizeError } from './errors';
 import type { paths } from './schema';
 
 /** Единственное место базового адреса API: тот же origin, что у админки (пути схемы уже
- * начинаются с `/api/v1`). Переключатель аккаунтов появится вместе с API многоаккаунтности. */
+ * начинаются с `/api/v1`; пути аккаунта — в `./account`). */
 export const API_ORIGIN: string = typeof location === 'undefined' ? '' : location.origin;
-export const EVENTS_URL = `${API_ORIGIN}/api/v1/events`;
 
 export interface SessionHooks {
 	/** CSRF-токен текущей сессии (только в памяти вкладки). */
@@ -29,11 +28,11 @@ async function isCsrfMismatch(response: Response): Promise<boolean> {
 	}
 }
 
-/** Клиент API: CSRF на изменяющих запросах, 401 → выход, 403 CSRF → перечитать токен и повторить
- * один раз. */
-export function createApi(hooks: SessionHooks, fetchImpl: typeof fetch = (r) => fetch(r)) {
+/** Сессия в запросах клиента: CSRF на изменяющих запросах, 401 → выход, 403 CSRF → перечитать
+ * токен и повторить один раз. Общая для глобального клиента и клиентов аккаунтов. */
+export function sessionMiddleware(hooks: SessionHooks, fetchImpl: typeof fetch): Middleware {
 	const copies = new Map<string, Request>();
-	const middleware: Middleware = {
+	return {
 		onRequest({ request, id }) {
 			if (SAFE.has(request.method)) return request;
 			const token = hooks.csrf();
@@ -63,12 +62,18 @@ export function createApi(hooks: SessionHooks, fetchImpl: typeof fetch = (r) => 
 			copies.delete(id);
 		}
 	};
+}
+
+export const defaultFetch: typeof fetch = (r) => fetch(r);
+
+/** Глобальный клиент API: вход, пароль, каталог сценариев. */
+export function createApi(hooks: SessionHooks, fetchImpl: typeof fetch = defaultFetch) {
 	const client = createClient<paths>({
 		baseUrl: API_ORIGIN,
 		fetch: fetchImpl,
 		credentials: 'same-origin'
 	});
-	client.use(middleware);
+	client.use(sessionMiddleware(hooks, fetchImpl));
 	return client;
 }
 

@@ -77,7 +77,8 @@ export const TG_STATE: Record<string, string> = {
 	awaiting_code: 'ждёт код',
 	awaiting_password: 'ждёт пароль 2FA',
 	online: 'online',
-	error: 'ошибка'
+	error: 'ошибка',
+	stopped: 'движок не запущен'
 };
 
 export function tgStateLabel(state: string): string {

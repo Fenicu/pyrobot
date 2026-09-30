@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
 	import type { JournalItem } from '$lib/api/types';
 	import type { Confirmer } from '$lib/commands';
 	import type { LiveEvent } from '$lib/live/sse';
@@ -8,7 +8,7 @@
 	import MessageDetail from './MessageDetail.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		item: JournalItem;
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 		onstale?: () => void;

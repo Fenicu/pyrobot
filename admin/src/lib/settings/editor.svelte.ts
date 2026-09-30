@@ -1,4 +1,5 @@
-import { call, type Api } from '$lib/api/client';
+import type { AccountApi } from '$lib/api/account';
+import { call } from '$lib/api/client';
 import { ApiFailure, errorText, type ApiError, type ValidationIssue } from '$lib/api/errors';
 import type { SettingsOut } from '$lib/api/types';
 import type { LiveEvent } from '$lib/live/sse';
@@ -47,10 +48,10 @@ export class SettingsEditor {
 	formErrors = $state<string[]>([]);
 	/** Сохранено, но читается только при старте процесса. */
 	restartRequired = $state<string[]>([]);
-	#api: Api;
+	#api: AccountApi;
 	#seenDuringSave: number | null = null;
 
-	constructor(api: Api) {
+	constructor(api: AccountApi) {
 		this.#api = api;
 	}
 
@@ -72,7 +73,7 @@ export class SettingsEditor {
 
 	async load(): Promise<void> {
 		try {
-			const out = await call(this.#api.GET('/api/v1/settings'));
+			const out = await call(this.#api.GET('/settings'));
 			this.server = out;
 			this.draft = clone(out.values);
 			this.conflict = null;
@@ -136,7 +137,7 @@ export class SettingsEditor {
 		const sent = clone(this.draft);
 		try {
 			const out = await call(
-				this.#api.PATCH('/api/v1/settings', {
+				this.#api.PATCH('/settings', {
 					body: {
 						version: server.version,
 						changes: buildChanges(sent, this.changes),

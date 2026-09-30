@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Search from '@lucide/svelte/icons/search';
-	import type { Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
 	import { errorText } from '$lib/api/errors';
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
 	import { ADVANCED_SECTIONS, settingHelp, settingLabel } from '$lib/settings/labels';
@@ -14,7 +14,7 @@
 	import SettingsHistory from './SettingsHistory.svelte';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		editor: SettingsEditor;
 		now?: Date;
 	}

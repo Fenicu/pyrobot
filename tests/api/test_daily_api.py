@@ -37,20 +37,20 @@ async def _metrics(db: Database, points: list[tuple[datetime, str, float]]) -> N
 
 
 async def test_daily_needs_session(container: Container, api_client: AsyncClient) -> None:
-    assert (await api_client.get("/api/v1/daily")).status_code == 401
+    assert (await api_client.get("/api/v1/accounts/1/daily")).status_code == 401
 
 
 async def test_daily_days_bounds(container: Container, api_client: AsyncClient) -> None:
     await login(api_client)
     for days in (0, 31):
-        resp = await api_client.get("/api/v1/daily", params={"days": days})
+        resp = await api_client.get("/api/v1/accounts/1/daily", params={"days": days})
         assert resp.status_code == 422
 
 
 async def test_daily_empty_history(container: Container, api_client: AsyncClient) -> None:
     container.clock = Frozen(msk(28, 14, 40))
     await login(api_client)
-    body = (await api_client.get("/api/v1/daily")).json()
+    body = (await api_client.get("/api/v1/accounts/1/daily")).json()
     assert body["ledger_since"] is None
     assert len(body["days"]) == 30
     first = body["days"][0]
@@ -90,7 +90,7 @@ async def test_daily_from_metrics_and_ledger(
         msg = make_msg("x", msg_id=msg_id, date=at, received_at=at)
         await journal.append(msg, [], None, 0, effects=items)
     await login(api_client)
-    body = (await api_client.get("/api/v1/daily", params={"days": 2})).json()
+    body = (await api_client.get("/api/v1/accounts/1/daily", params={"days": 2})).json()
     assert body["ledger_since"] == "2026-09-27"
     today, yesterday = body["days"]
     assert today == {

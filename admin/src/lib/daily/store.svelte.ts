@@ -1,4 +1,5 @@
-import { call, type Api } from '$lib/api/client';
+import type { AccountApi } from '$lib/api/account';
+import { call } from '$lib/api/client';
 import { ApiFailure, type ApiError } from '$lib/api/errors';
 import type { DailyOut } from '$lib/api/types';
 import type { LiveEvent } from '$lib/live/sse';
@@ -27,7 +28,7 @@ export class DailyStore {
 	loading = $state(false);
 	/** Когда пришли показанные итоги: при ошибке обновления — время последней удачной загрузки. */
 	loadedAt = $state<Date | null>(null);
-	#api: Api;
+	#api: AccountApi;
 	#days: number;
 	#reloadMs: number;
 	#gapMs: number;
@@ -42,7 +43,7 @@ export class DailyStore {
 	#generation = 0;
 
 	constructor(
-		api: Api,
+		api: AccountApi,
 		days: number,
 		reloadMs = DAILY_RELOAD_MS,
 		gapMs = DAILY_STATE_GAP_MS,
@@ -68,7 +69,7 @@ export class DailyStore {
 		const current = () => !controller.signal.aborted && generation === this.#generation;
 		try {
 			const out = await call(
-				this.#api.GET('/api/v1/daily', { params: { query: { days: this.#days } }, signal: controller.signal })
+				this.#api.GET('/daily', { params: { query: { days: this.#days } }, signal: controller.signal })
 			);
 			if (current()) {
 				this.data = out;

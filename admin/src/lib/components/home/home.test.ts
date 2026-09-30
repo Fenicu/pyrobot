@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createApi } from '$lib/api/client';
+import { createAccountApi } from '$lib/api/account';
 import { dialogs } from '$lib/stores/confirm.svelte';
 import type { EngineStatus, StateOut } from '$lib/api/types';
 import { json, mockFetch } from '$lib/test/fetch';
@@ -93,7 +93,7 @@ function controls(mode: 'live' | 'dry_run') {
 			return json({ version: 14, values: {}, changed: {}, restart_required: [] });
 		return new Response(null, { status: 204 });
 	});
-	const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, fetch);
+	const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 	render(ConfirmDialog);
 	render(ControlsCard, { api, status: { ...status, mode }, onchange: () => {} });
 	return fetch;
@@ -138,7 +138,7 @@ describe('управление', () => {
 		await user.click(screen.getByRole('button', { name: 'Kill' }));
 		await user.type(await screen.findByLabelText('Причина'), 'проверка{Enter}');
 		await vi_wait(() => fetch.calls.length > 0);
-		expect(fetch.calls[0]).toMatchObject({ method: 'POST', url: '/api/v1/engine/kill' });
+		expect(fetch.calls[0]).toMatchObject({ method: 'POST', url: '/api/v1/accounts/1/engine/kill' });
 		expect(JSON.parse(fetch.calls[0]?.body ?? '')).toEqual({ reason: 'проверка' });
 	});
 });

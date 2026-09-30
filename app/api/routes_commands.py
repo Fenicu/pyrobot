@@ -9,8 +9,16 @@ from pydantic.json_schema import SkipJsonSchema
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
-from app.api.errors import AUTH, CSRF, CSRF_MISMATCH, ENGINE_NOT_STARTED, Responses, error
-from app.api.routes_engine import facade
+from app.api.errors import (
+    ACCOUNT_NOT_FOUND,
+    AUTH,
+    CSRF,
+    CSRF_MISMATCH,
+    ENGINE_NOT_RUNNING,
+    Responses,
+    error,
+)
+from app.api.scope import AccountScope, account_router, account_scope, running
 from app.db.models import ActionRow
 from app.engine.commands import CommandClass, classify_callback, classify_text
 from app.engine.facade import EngineFacade, PlannerUnavailable
@@ -28,7 +36,9 @@ from app.engine.planner.loop import FixedParams, InvalidParams
 from app.engine.scenarios.registry import SCENARIOS
 
 log = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1", tags=["commands"])
+router = account_router("commands")
+# Каталог сценариев общий для всех аккаунтов.
+catalog_router = APIRouter(prefix="/api/v1", tags=["commands"])
 KEY_PATTERN = r"^[A-Za-z0-9_.:-]{1,64}$"
 _NEVER = (CommandClass.FORBIDDEN, CommandClass.DONATE)
 MAX_SCENARIO_PARAMS = 16
@@ -110,12 +120,13 @@ _RESPONSES: Responses = {
     409: {"model": ConfirmRequiredOut, "description": "risky command needs confirm_token"},
     422: {"description": "invalid body or idempotency_key reused with other parameters"},
     # store_failed — ключ идемпотентности не записан, повтор с тем же ключом безопасен.
-    503: error(ENGINE_NOT_STARTED, STORE_FAILED),
+    503: error(ENGINE_NOT_RUNNING, STORE_FAILED),
 }
 
 
 async def _execute(
     c: Container,
+    scope: AccountScope,
     f: EngineFacade,
     ctx: SessionContext,
     response: Response,
@@ -133,14 +144,15 @@ async def _execute(
         raise HTTPException(status.HTTP_403_FORBIDDEN, cls.value)
     req = build(key, None)
     if not f.manual_pending(key):
-        known = await c.reads.action_by_key(manual_key(key))
+        known = await scope.reads.action_by_key(manual_key(key))
         if known is not None:
             _check_same(known, req)
             return CommandOut(
                 action_id=known.id, status=known.status, reason=known.reason, answer=known.answer
             )
         if cls is CommandClass.RISKY:
-            req = build(key, _require_confirm(c, f, ctx, key, token, params, cls))
+            confirm = _require_confirm(c, scope.account.id, f, ctx, key, token, params, cls)
+            req = build(key, confirm)
     try:
         result = await f.manual(req, wait_s=c.command_wait_s)
     except KeyReused as exc:
@@ -157,7 +169,7 @@ async def _execute(
         return CommandOut(action_id=None, status="pending", reason="")
     # Первое действие с этим ключом могло завершиться между проверками выше и отправкой: тогда
     # шлюз вернул его сохранённый итог, и он должен быть итогом тех же параметров.
-    stored = await c.reads.action_by_key(manual_key(key))
+    stored = await scope.reads.action_by_key(manual_key(key))
     if stored is not None:
         _check_same(stored, req)
     return CommandOut(
@@ -175,6 +187,7 @@ def _check_same(stored: ActionRow, req: ActionRequest) -> None:
 
 def _require_confirm(
     c: Container,
+    account_id: int,
     f: EngineFacade,
     ctx: SessionContext,
     key: str,
@@ -187,11 +200,11 @@ def _require_confirm(
     problem = (
         "missing"
         if token is None
-        else c.confirm.check(token, ctx.session_id, key, params, version)
+        else c.confirm.check(token, ctx.session_id, account_id, key, params, version)
     )
     if problem is None and token is not None:
         return version, datetime.fromtimestamp(c.confirm.expires_at(token) or 0, UTC)
-    fresh = c.confirm.issue(ctx.session_id, key, params, version)
+    fresh = c.confirm.issue(ctx.session_id, account_id, key, params, version)
     expires = c.confirm.expires_at(fresh) or 0
     body = ConfirmRequired(
         reason=problem,  # type: ignore[arg-type]
@@ -209,12 +222,14 @@ async def command_send(
     response: Response,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> CommandOut:
     chat_id = f.settings.current.chats.game_chat_id
     cls = classify_text(body.text, f.own_company())
     return await _execute(
         c,
+        scope,
         f,
         ctx,
         response,
@@ -234,11 +249,13 @@ async def command_click(
     response: Response,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> CommandOut:
     cls = classify_callback(body.callback_data, f.own_company())
     return await _execute(
         c,
+        scope,
         f,
         ctx,
         response,
@@ -258,7 +275,7 @@ async def command_click(
     )
 
 
-@router.get(
+@catalog_router.get(
     "/scenarios",
     response_model=list[ScenarioInfo],
     response_model_exclude_none=True,
@@ -284,12 +301,12 @@ async def scenarios(_: Annotated[SessionContext, Depends(current_session)]) -> l
     responses={
         200: {"model": ScenarioRunAccepted, "description": "Key already used: existing run"},
         **CSRF,
-        404: error("unknown scenario", "scenario run not found"),
+        404: error(ACCOUNT_NOT_FOUND, "unknown scenario", "scenario run not found"),
         422: {
             "description": "invalid body, params contradicting fixed scenario params, "
             "missing or invalid required params, or idempotency_key reused with other parameters"
         },
-        503: error(ENGINE_NOT_STARTED, "planner not started"),
+        503: error(ENGINE_NOT_RUNNING, "planner not started"),
     },
 )
 async def scenario_run(
@@ -297,8 +314,8 @@ async def scenario_run(
     body: ScenarioRunIn,
     response: Response,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
-    c: Annotated[Container, Depends(container)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> ScenarioRunAccepted:
     if name not in SCENARIOS:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown scenario")
@@ -320,7 +337,7 @@ async def scenario_run(
         ) from exc
     if created:
         return ScenarioRunAccepted(scenario_run_id=run_id, status="queued")
-    found = await c.reads.scenario_run(run_id)
+    found = await scope.reads.scenario_run(run_id)
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "scenario run not found")
     row = found[0]

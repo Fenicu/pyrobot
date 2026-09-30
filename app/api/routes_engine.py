@@ -3,22 +3,23 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel, Field, PlainSerializer
 
 from app.api.container import Container
-from app.api.deps import SessionContext, container, current_session, require_csrf
+from app.api.deps import SessionContext, container, require_csrf
 from app.api.errors import AUTH, CSRF, ENGINE, Responses, error
+from app.api.scope import AccountScope, account_router, account_scope, running
+from app.db.accounts import AccountStatus
 from app.engine.facade import EngineFacade, LockLostError
 from app.engine.tg_auth import AttemptMismatch, TgAuthError, TgBackendError, TgState, TgStatus
 from app.engine.transport.base import FloodWait
 
-router = APIRouter(prefix="/api/v1", tags=["engine"])
+router = account_router("engine")
 # Даты — через isoformat(), как в прежнем ответе (jsonable_encoder) и `now` в /state: `+00:00`.
 IsoDatetime = Annotated[datetime, PlainSerializer(datetime.isoformat, when_used="json")]
 
 
-_READ: Responses = {**AUTH, **ENGINE}
 _WRITE: Responses = {**CSRF, **ENGINE}
 # Вход в Telegram: ошибки попытки и Telegram; неверный код или пароль — 200 с `error`.
 _TG_LOGIN: Responses = {
@@ -28,12 +29,6 @@ _TG_LOGIN: Responses = {
     429: error("flood_wait"),
     502: error("send_code_failed", "sign_in_failed", "check_password_failed"),
 }
-
-
-def facade(c: Annotated[Container, Depends(container)]) -> EngineFacade:
-    if c.facade is None:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "engine not started")
-    return c.facade
 
 
 class KillIn(BaseModel):
@@ -66,6 +61,15 @@ class TgStatusOut(BaseModel):
 
 
 class EngineStatusOut(BaseModel):
+    # Движок аккаунта запущен в этом процессе. Без него режим, пауза и kill — из настроек в
+    # базе, `tg.state` — `stopped`, счётчики — 0, проверки здоровья — false.
+    running: bool
+    # Желаемое состояние аккаунта (`accounts.status`) и причина `disabled`/`error`.
+    status: AccountStatus
+    status_reason: str | None
+    # Почему движок не запущен на этом хосте: `locked_elsewhere` (аккаунт у другого хоста),
+    # `lease_active` (ждёт срока прежней аренды); null — запущен или хост не пытался.
+    host_reason: str | None
     mode: Literal["dry_run", "live"]
     paused: bool
     # Сценарий, который сейчас исполняет планировщик.
@@ -95,22 +99,68 @@ def _tg(st: TgStatus) -> TgStatusOut:
     )
 
 
-@router.get("/engine/status", response_model=EngineStatusOut, responses=_READ)
+def _stopped_tg(scope: AccountScope) -> TgStatusOut:
+    # Привязка — из `accounts`: движка, который держит её копию, нет.
+    return TgStatusOut(
+        state=TgState.STOPPED,
+        user_id=None,
+        attempt_id=None,
+        error=None,
+        bound_user_id=scope.account.tg_user_id,
+    )
+
+
+@router.get("/engine/status", response_model=EngineStatusOut, responses=AUTH)
 async def engine_status(
-    _: Annotated[SessionContext, Depends(current_session)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
 ) -> EngineStatusOut:
-    st = f.status()
-    data = asdict(st)
-    data["tg"] = _tg(st.tg)
-    return EngineStatusOut.model_validate(data)
+    account = scope.account
+    host_reason = c.engines.host_reason(account.id)
+    f = scope.facade
+    if f is not None:
+        st = f.status()
+        data = asdict(st)
+        data["tg"] = _tg(st.tg)
+        return EngineStatusOut.model_validate(
+            {
+                **data,
+                "running": True,
+                "status": account.status,
+                "status_reason": account.status_reason,
+                "host_reason": host_reason,
+            }
+        )
+    settings, _ = await scope.reads.settings()
+    engine = settings.engine
+    return EngineStatusOut(
+        running=False,
+        status=account.status,
+        status_reason=account.status_reason,
+        host_reason=host_reason,
+        mode=engine.mode,
+        paused=engine.paused,
+        scenario=None,
+        next_wake=None,
+        killed=engine.killed,
+        kill_reason=engine.kill_reason if engine.killed else None,
+        spending_blocked=None,
+        tg=_stopped_tg(scope),
+        queue=0,
+        in_flight=None,
+        pipeline_backlog=0,
+        pipeline_healthy=False,
+        workers_ok=False,
+        lock_ok=False,
+        loop_lag_ms=0.0,
+    )
 
 
 @router.post("/engine/kill", status_code=status.HTTP_204_NO_CONTENT, responses=_WRITE)
 async def engine_kill(
     body: KillIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> None:
     await f.kill(body.reason, by=ctx.login)
 
@@ -122,7 +172,7 @@ async def engine_kill(
 )
 async def engine_unkill(
     ctx: Annotated[SessionContext, Depends(require_csrf)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> None:
     try:
         await f.unkill(by=ctx.login)
@@ -133,7 +183,7 @@ async def engine_unkill(
 @router.post("/engine/pause", status_code=status.HTTP_204_NO_CONTENT, responses=_WRITE)
 async def engine_pause(
     ctx: Annotated[SessionContext, Depends(require_csrf)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> None:
     await f.pause(by=ctx.login)
 
@@ -141,7 +191,7 @@ async def engine_pause(
 @router.post("/engine/resume", status_code=status.HTTP_204_NO_CONTENT, responses=_WRITE)
 async def engine_resume(
     ctx: Annotated[SessionContext, Depends(require_csrf)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> None:
     await f.resume(by=ctx.login)
 
@@ -149,17 +199,15 @@ async def engine_resume(
 @router.post("/engine/reconciled", status_code=status.HTTP_204_NO_CONTENT, responses=_WRITE)
 async def engine_reconciled(
     ctx: Annotated[SessionContext, Depends(require_csrf)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> None:
     await f.reconciled(by=ctx.login)
 
 
-@router.get("/tg/status", response_model=TgStatusOut, responses=_READ)
-async def tg_status(
-    _: Annotated[SessionContext, Depends(current_session)],
-    f: Annotated[EngineFacade, Depends(facade)],
-) -> TgStatusOut:
-    return _tg(f.tg.status())
+@router.get("/tg/status", response_model=TgStatusOut, responses=AUTH)
+async def tg_status(scope: Annotated[AccountScope, Depends(account_scope)]) -> TgStatusOut:
+    f = scope.facade
+    return _tg(f.tg.status()) if f is not None else _stopped_tg(scope)
 
 
 async def _guard(coro: Awaitable[TgStatus]) -> TgStatusOut:
@@ -184,7 +232,7 @@ async def _guard(coro: Awaitable[TgStatus]) -> TgStatusOut:
 async def tg_start(
     body: PhoneIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> TgStatusOut:
     return await _guard(f.tg.start(body.phone, owner=str(ctx.session_id)))
 
@@ -193,7 +241,7 @@ async def tg_start(
 async def tg_code(
     body: CodeIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> TgStatusOut:
     return await _guard(f.tg.submit_code(body.attempt_id, str(ctx.session_id), body.code))
 
@@ -202,7 +250,7 @@ async def tg_code(
 async def tg_password(
     body: TgPasswordIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> TgStatusOut:
     return await _guard(f.tg.submit_password(body.attempt_id, str(ctx.session_id), body.password))
 
@@ -210,6 +258,6 @@ async def tg_password(
 @router.post("/tg/logout", response_model=TgStatusOut, responses=_WRITE)
 async def tg_logout(
     _: Annotated[SessionContext, Depends(require_csrf)],
-    f: Annotated[EngineFacade, Depends(facade)],
+    f: Annotated[EngineFacade, Depends(running)],
 ) -> TgStatusOut:
     return _tg(await f.tg.logout())

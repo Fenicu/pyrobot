@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { call, type Api } from '$lib/api/client';
+	import type { AccountApi } from '$lib/api/account';
+	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { SettingsVersion } from '$lib/api/types';
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
@@ -11,7 +12,7 @@
 	import { fmtMoment } from '$lib/util/format';
 
 	interface Props {
-		api: Api;
+		api: AccountApi;
 		/** Подписи настроек и «вернуть»: прежнее значение — в черновик, сохранение — как обычно. */
 		editor: SettingsEditor;
 		/** Меняется после сохранения или чужого изменения — перечитать. */
@@ -42,7 +43,7 @@
 	async function load(before: number | null) {
 		try {
 			const page = await call(
-				api.GET('/api/v1/settings/history', { params: { query: { limit: 20, ...(before ? { before } : {}) } } })
+				api.GET('/settings/history', { params: { query: { limit: 20, ...(before ? { before } : {}) } } })
 			);
 			items = before ? [...items, ...page.items] : page.items;
 			next = page.next_before;
