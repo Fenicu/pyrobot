@@ -14,16 +14,18 @@ from app.db.accounts import AccountInfo, AccountRepo
 from app.db.actions import DbActionStore
 from app.db.base import Database
 from app.db.journal import DbJournal
-from app.db.models import DecisionRow, MessageRow, ScenarioRunRow
+from app.db.models import Account, DecisionRow, MessageRow, ScenarioRunRow
 from app.db.planner import DbPlannerStore
 from app.engine.commands import CommandClass
+from app.engine.fence import Fence
 from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
+from app.engine.host import account as account_engine
+from app.engine.host.lease import LeaseManager
 from app.engine.planner.types import Act
 from app.engine.settings import Settings
-from app.engine.supervisor import Supervisor
 from app.engine.transport.fake import Sent
-from app.main import create_application
+from app.main import Runtime, create_application
 from tests.api.sse import read_sse
 from tests.conftest import TEST_DB_URL
 from tests.engine.helpers import GAME, make_msg, now, until
@@ -65,6 +67,12 @@ async def _account(repo: AccountRepo) -> AccountInfo:
     return account
 
 
+def _engine(runtime: Runtime) -> Any:
+    """Движок аккаунта процесса (запущен)."""
+    assert runtime.account is not None
+    return runtime.account
+
+
 async def test_fake_runtime_login_to_ready(clean_db: Database) -> None:
     app = create_application(_cfg())
     async with app.router.lifespan_context(app):
@@ -85,9 +93,11 @@ async def test_fake_runtime_login_to_ready(clean_db: Database) -> None:
             assert (await client.get("/readyz")).status_code == 200
             status = (await client.get("/api/v1/engine/status")).json()
             assert status["mode"] == "dry_run" and status["lock_ok"] is True
-            # Реакция на ограбление и пересылка в чат команды — свои задачи под супервизором.
-            assert "reactions" in app.state.runtime.supervisor._tasks
-            assert "team-forward" in app.state.runtime.supervisor._tasks
+            # Реакция на ограбление и пересылка в чат команды — свои задачи под супервизором
+            # движка аккаунта, продление аренды и ретеншн — под супервизором процесса.
+            engine = _engine(app.state.runtime)
+            assert {"reactions", "team-forward"} <= set(engine.supervisor._tasks)
+            assert {"lease", "retention", "engine"} <= set(app.state.runtime.supervisor._tasks)
 
 
 async def test_first_login_binds_telegram_account(clean_db: Database) -> None:
@@ -134,10 +144,38 @@ async def test_second_runtime_does_not_start_engine(clean_db: Database) -> None:
         async with AsyncClient(transport=ASGITransport(app=second), base_url="http://t") as client:
             assert (await client.get("/healthz")).status_code == 200
             assert (await client.get("/readyz")).status_code == 503
+        assert first.state.runtime.account is not None
+        assert second.state.runtime.account is None
+        assert await _notified(second.state.runtime, "second_instance") == 1
+
+
+async def test_second_instance_starts_engine_after_lease_released(clean_db: Database) -> None:
+    # Аккаунт держит другой хост: процесс работает без движка и повторяет захват.
+    other = LeaseManager(clean_db, "other-host")
+    await other.open()
+    try:
+        fence = await other.acquire(1)
+        assert isinstance(fence, Fence)
+        app = create_application(_cfg())
+        runtime = app.state.runtime
+        runtime.leases = LeaseManager(runtime.db, "this-host", busy_retry_s=0.02)
+        async with app.router.lifespan_context(app):
+            assert runtime.account is None and runtime.container.facade is None
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+                assert (await c.get("/readyz")).status_code == 503
+            await asyncio.sleep(0.1)
+            # Повторы захвата не повторяют уведомление.
+            assert await _notified(runtime, "second_instance") == 1
+            await other.release(fence)
+            await until(lambda: runtime.account is not None, 5.0)
+            assert runtime.container.facade is _engine(runtime).facade
+            assert _engine(runtime).fence.epoch == fence.epoch + 1
+    finally:
+        await other.close()
 
 
 async def _notified(runtime: Any, code: str, timeout: float = 5.0) -> int:  # noqa: ASYNC109
-    # Уведомление пишется в БД после kill: ждём первую запись, а не фиксированную паузу.
+    # Уведомление пишется в БД после остановки движка: ждём первую запись, а не паузу.
     deadline = asyncio.get_running_loop().time() + timeout
     while True:
         count = sum(row.code == code for row in await runtime.notifier.recent())
@@ -146,51 +184,62 @@ async def _notified(runtime: Any, code: str, timeout: float = 5.0) -> int:  # no
         await asyncio.sleep(0.01)
 
 
-async def test_lock_lost_notifies_once_and_parks_watch(clean_db: Database) -> None:
+async def test_lease_lost_aborts_engine_and_takes_lease_again(clean_db: Database) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
-    # ускоряем lock-watch и супервизор, чтобы повторное срабатывание (если баг есть)
-    # проявилось за доли секунды, а не за реальные LOCK_CHECK_S=10с/backoff=60с
-    runtime.lock_check_s = 0.01
-    runtime.supervisor = Supervisor(runtime.notifier, base_s=0.01, max_s=0.02)
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
-            r = await client.post(
-                "/api/v1/auth/login", json={"login": "admin", "password": "correct horse battery"}
-            )
-            h = {"X-CSRF-Token": r.json()["csrf_token"]}
-            st = await client.post("/api/v1/tg/login/start", headers=h, json={"phone": "+888"})
-            code = await client.post(
-                "/api/v1/tg/login/code",
-                headers=h,
-                json={"attempt_id": st.json()["attempt_id"], "code": "12345"},
-            )
-            assert code.json()["state"] == "online"
+            await _login_tg(client)
             assert (await client.get("/readyz")).status_code == 200
-            assert runtime.lock._conn is not None
-            await runtime.lock._conn.invalidate()
-            await until(lambda: runtime.gateway.kill_reason == "lock_lost")
+            first = _engine(runtime)
+            tasks = list(first.supervisor._tasks.values())
+            first.fence.revoke()
+            await until(lambda: runtime.account not in (None, first), 5.0)
+            # Аварийная остановка: задачи прежнего движка отменены; новый — на новой эпохе.
+            assert all(t.done() for t in tasks) and not first.supervisor._tasks
+            assert _engine(runtime).fence.epoch == first.fence.epoch + 1
+            assert runtime.container.facade is _engine(runtime).facade
+            assert await _notified(runtime, "lock_lost") == 1
+            await asyncio.sleep(0.1)
+            assert await _notified(runtime, "lock_lost") == 1
+            # Вход фейкового транспорта живёт в движке: новый движок — без входа.
             assert (await client.get("/readyz")).status_code == 503
-            assert await _notified(runtime, "lock_lost") == 1
-            await asyncio.sleep(0.2)
-            assert await _notified(runtime, "lock_lost") == 1
+
+
+async def test_crash_loop_stops_engine_until_restart(clean_db: Database) -> None:
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    async with app.router.lifespan_context(app):
+        engine = _engine(runtime)
+        # Так супервизор движка сообщает о серии сбоев задачи.
+        await engine.supervisor._on_crash_loop("gateway")
+        await until(lambda: runtime.account is None, 5.0)
+        assert not engine.supervisor._tasks
+        assert await _notified(runtime, "account_crash_loop") == 1
+        await asyncio.sleep(0.1)
+        assert runtime.account is None and runtime.container.facade is None
+        # Аренда освобождена штатно: другой хост захватит аккаунт без ожидания срока.
+        async with clean_db.sessions() as s:
+            holder = await s.scalar(select(Account.lease_holder).where(Account.id == 1))
+        assert holder is None
+        assert "lock_lost" not in {r.code for r in await runtime.notifier.recent()}
 
 
 async def test_unkill_after_lock_lost_is_conflict(clean_db: Database) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
-    runtime.lock_check_s = 0.01
-    runtime.supervisor = Supervisor(runtime.notifier, base_s=0.01, max_s=0.02)
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             h = await _login_tg(client)
-            await runtime.lock._conn.invalidate()
-            await until(lambda: runtime.gateway.kill_reason == "lock_lost")
+            # Ограда отозвана, аварийная остановка ещё не прошла: фасад на месте.
+            fence = _engine(runtime).fence
+            fence.on_lost = None
+            fence.revoke()
             r = await client.post("/api/v1/engine/unkill", headers=h)
             assert r.status_code == 409 and r.json() == {"detail": "lock_lost"}
-            assert runtime.gateway.kill_reason == "lock_lost"
             status = (await client.get("/api/v1/engine/status")).json()
-            assert status["killed"] is True
+            assert status["lock_ok"] is False
+            assert (await client.get("/readyz")).status_code == 503
 
 
 async def test_gateway_rejects_when_tg_offline(clean_db: Database) -> None:
@@ -198,14 +247,15 @@ async def test_gateway_rejects_when_tg_offline(clean_db: Database) -> None:
     runtime = app.state.runtime
     nav = ActionRequest(kind=ActionKind.SEND, chat_id=GAME, text="😎Я")
     async with app.router.lifespan_context(app):
-        res = await runtime.gateway.submit(nav)
+        engine = _engine(runtime)
+        res = await engine.gateway.submit(nav)
         assert res.status is ActionStatus.REJECTED and res.reason == "tg_offline"
-        assert runtime.transport.sent == []
+        assert engine.transport.sent == []
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             await _login_tg(client)
-        ok = await runtime.gateway.submit(nav)
+        ok = await engine.gateway.submit(nav)
         assert ok.status is ActionStatus.CONFIRMED
-        assert [s.payload for s in runtime.transport.sent] == ["😎Я"]
+        assert [s.payload for s in engine.transport.sent] == ["😎Я"]
 
 
 async def test_stop_drains_pipeline_into_journal(clean_db: Database) -> None:
@@ -213,12 +263,14 @@ async def test_stop_drains_pipeline_into_journal(clean_db: Database) -> None:
     runtime = app.state.runtime
     async with app.router.lifespan_context(app):
         for i in range(50):
-            await runtime.pipeline.submit(make_msg(f"m{i}", msg_id=i + 1))
+            await _engine(runtime).pipeline.submit(make_msg(f"m{i}", msg_id=i + 1))
     async with clean_db.sessions() as s:
         assert await s.scalar(select(func.count()).select_from(MessageRow)) == 50
 
 
-async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database) -> None:
+async def test_reconciler_lifts_block_from_restart_obligation(
+    clean_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Незавершённое действие с прошлого запуска (класс не nav) — обязательство сверки,
     # которое движок должен снять сам, без ручного POST /engine/reconciled.
     stuck = ActionRequest(
@@ -226,9 +278,9 @@ async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database
     )
     await DbActionStore(clean_db, 1).create(stuck, CommandClass.ACTION, ActionStatus.SENT)
 
+    monkeypatch.setattr(account_engine, "RECONCILE_POLL_S", 0.05)
     app = create_application(_cfg())
     runtime = app.state.runtime
-    runtime.reconcile_poll_s = 0.05
     ids = itertools.count(5_000_000)
 
     async def respond(rec: Sent) -> None:
@@ -242,17 +294,15 @@ async def test_reconciler_lifts_block_from_restart_obligation(clean_db: Database
             created_at=moment,
             received_at=moment,
         )
-        assert runtime.pipeline is not None
-        await runtime.pipeline.submit(msg)
+        await _engine(runtime).pipeline.submit(msg)
 
     async with app.router.lifespan_context(app):
-        assert runtime.gateway is not None
-        assert runtime.gateway.spending_blocked == RECONCILE_REASON
-        assert runtime.transport is not None
-        runtime.transport.responder = respond
+        engine = _engine(runtime)
+        assert engine.gateway.spending_blocked == RECONCILE_REASON
+        engine.transport.responder = respond
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             await _login_tg(client)
-            await until(lambda: runtime.gateway.spending_blocked is None)
+            await until(lambda: engine.gateway.spending_blocked is None)
             assert await DbActionStore(clean_db, 1).unreconciled() == []
             assert (await client.get("/readyz")).status_code == 200
 
@@ -275,10 +325,12 @@ def _without_windows(s: Settings) -> Settings:
     return s.model_copy(update={"features": s.features.model_copy(update=off)})
 
 
-async def test_planner_refreshes_state_in_dry_run(clean_db: Database) -> None:
+async def test_planner_refreshes_state_in_dry_run(
+    clean_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(account_engine, "PLANNER_POLL_S", 0.05)
     app = create_application(_cfg().model_copy(update={"planner": True}))
     runtime = app.state.runtime
-    runtime.planner_poll_s = 0.05
     ids = itertools.count(6_000_000)
 
     async def respond(rec: Sent) -> None:
@@ -292,20 +344,19 @@ async def test_planner_refreshes_state_in_dry_run(clean_db: Database) -> None:
             created_at=moment,
             received_at=moment,
         )
-        assert runtime.pipeline is not None
-        await runtime.pipeline.submit(msg)
+        await _engine(runtime).pipeline.submit(msg)
 
     async with app.router.lifespan_context(app):
+        engine = _engine(runtime)
         # Рефреш проверяется на механиках фазы 3: окна обязательств, сна и полуночи заданий
         # зависят от часов.
-        await runtime.settings.update(_without_windows, changed_by="test")
-        assert runtime.transport is not None
-        runtime.transport.responder = respond
+        await engine.settings.update(_without_windows, changed_by="test")
+        engine.transport.responder = respond
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             h = await _login_tg(client)
             # Второй запрос уходит после паузы шлюза между запросами (1.6 с).
-            await until(lambda: "/inv" in [s.payload for s in runtime.transport.sent], 5.0)
-            assert [s.payload for s in runtime.transport.sent][:2] == ["😎Я", "/inv"]
+            await until(lambda: "/inv" in [s.payload for s in engine.transport.sent], 5.0)
+            assert [s.payload for s in engine.transport.sent][:2] == ["😎Я", "/inv"]
             await client.post("/api/v1/engine/pause", headers=h)
             status = (await client.get("/api/v1/engine/status")).json()
             assert status["paused"] is True
@@ -343,8 +394,8 @@ async def test_forward_left_by_previous_process_notified_not_retried(clean_db: D
         assert not any(
             r.code == "actions_outcome_unknown" for r in await runtime.notifier.recent()
         )
-        assert runtime.gateway.spending_blocked is None
-        assert runtime.transport.sent == []
+        assert _engine(runtime).gateway.spending_blocked is None
+        assert _engine(runtime).transport.sent == []
     stored = await store.get_by_key(f"forward:{GAME}:3625831")
     assert stored is not None and stored.id == forwarded
     assert (stored.status, stored.reason) == (ActionStatus.OUTCOME_UNKNOWN, "restart")
@@ -374,6 +425,7 @@ async def test_runtime_streams_engine_events(clean_db: Database) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
     async with app.router.lifespan_context(app):
+        engine = _engine(runtime)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             h = await _login_tg(client)
             cookie = {"cookie": f"pyrobot_session={client.cookies['pyrobot_session']}"}
@@ -383,12 +435,12 @@ async def test_runtime_streams_engine_events(clean_db: Database) -> None:
             await client.post(
                 "/api/v1/commands/send", headers=h, json={"text": "😎Я", "idempotency_key": "s1"}
             )
-            await runtime.pipeline.submit(make_msg("что-то новое", msg_id=77))
-            await until(lambda: "message" in {e.type for e in runtime.stream.history()})
-    kinds = [e.type for e in runtime.stream.history()]
+            await engine.pipeline.submit(make_msg("что-то новое", msg_id=77))
+            await until(lambda: "message" in {e.type for e in engine.stream.history()})
+    kinds = [e.type for e in engine.stream.history()]
     assert {"settings", "notification", "action", "message"} <= set(kinds)
     # Первая версия настроек — привязка аккаунта при входе, пауза — последняя.
-    paused = [e for e in runtime.stream.history() if e.type == "settings"][-1]
+    paused = [e for e in engine.stream.history() if e.type == "settings"][-1]
     assert paused.data["paused"] is True
 
 

@@ -1,11 +1,11 @@
 import asyncio
 
 from app.engine.bus import Bus
+from app.engine.host.account import live_reread
 from app.engine.memory import MemoryJournal
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
 from app.engine.transport.fake import FakeTransport
-from app.main import live_reread
 from tests.engine.helpers import GAME, make_msg
 
 

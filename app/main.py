@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta
+from uuid import uuid4
 
 from fastapi import FastAPI
 
@@ -11,105 +11,43 @@ from app.api.container import Container
 from app.api.security import LoginRateLimiter
 from app.config import AppConfig
 from app.db.accounts import AccountRepo
-from app.db.actions import DbActionStore
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
-from app.db.journal import DbJournal
-from app.db.lock import SingleInstanceLock
-from app.db.metro import DbMetroRunStore
-from app.db.models import NotificationRow
 from app.db.notifications import DbNotifier
-from app.db.planner import DbPlannerStore
 from app.db.reads import DbReads
 from app.db.retention import DbRetention
 from app.db.settings_store import DbSettingsStore
-from app.engine.bus import Bus
 from app.engine.clock import SystemClock
-from app.engine.facade import EngineFacade
-from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
+from app.engine.host.account import AccountRuntime, RuntimeDeps
+from app.engine.host.lease import Busy, LeaseManager
 from app.engine.lag import LoopLagMonitor
-from app.engine.parsing import default_parser
-from app.engine.parsing.sleep import RobberyAlert
-from app.engine.pipeline import Pipeline
-from app.engine.planner.loop import PlannerLoop
-from app.engine.reactions import RobberyDefense
-from app.engine.reconcile import Reconciler
-from app.engine.scenarios.context import History, Reread
-from app.engine.settings import Settings
-from app.engine.state.model import company_of, load_state
-from app.engine.state.reducer import StateReducer
-from app.engine.stream import (
-    EventStream,
-    PublishingActionStore,
-    PublishingPlannerStore,
-    StreamFeed,
-)
 from app.engine.supervisor import Supervisor
-from app.engine.team_forward import TeamForward
-from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
-from app.engine.transport.base import Transport
-from app.engine.transport.fake import FakeTgBackend, FakeTransport
-from app.engine.transport.kurigram import ChatFilter, KurigramTransport
-from app.engine.types import IncomingMessage
-from app.engine.unrecognized import UnrecognizedWatch
 
 log = logging.getLogger("pyrobot")
-REREAD_DRAIN_S = 10.0
 
-
-def journal_history(journal: DbJournal) -> History:
-    """Все записанные правки сообщения — по ним восстанавливается карта забега метро."""
-
-    async def history(chat_id: int, msg_id: int) -> list[IncomingMessage]:
-        return await journal.revisions(chat_id, msg_id)
-
-    return history
-
-
-def live_reread(transport: Transport, pipeline: Pipeline) -> Reread:
-    """Текущая версия сообщения из Telegram через конвейер: журнал и состояние её учтут, а она
-    станет текущей ревизией — после рестарта кэш ревизий пуст, а шлюз кликает только по кнопкам
-    последней ревизии."""
-
-    async def reread(chat_id: int, msg_id: int) -> IncomingMessage | None:
-        try:
-            msg = await transport.fetch(chat_id, msg_id)
-        except Exception:
-            log.exception("message %s/%s not reread", chat_id, msg_id)
-            return None
-        if msg is None:
-            return None
-        await pipeline.submit(msg)
-        await pipeline.drain(REREAD_DRAIN_S)
-        pipeline.prime(msg)
-        return msg
-
-    return reread
-
-
-LOCK_CHECK_S = 10.0
-TG_PROBE_S = 60.0
-PIPELINE_DRAIN_S = 10.0
 SESSION_PURGE_S = 3600.0
-RECONCILE_POLL_S = 5.0
-PLANNER_POLL_S = 5.0
 # Ретеншн: первый проход не в момент старта (там догон пропусков), дальше — раз в 6 часов.
 RETENTION_FIRST_S = 300.0
 RETENTION_S = 6 * 3600.0
+# Повтор захвата и старта движка после ошибки (база, старт движка).
+ENGINE_RETRY_S = 30.0
 
 
 class Runtime:
+    """Процесс: база, вход в админку, `Container` и HTTP, аренды и задачи процесса (продление
+    аренды, монитор задержки цикла, очистка сессий админки, ретеншн). Движок аккаунта
+    `config.account_id` — `AccountRuntime` — стартует после захвата его аренды."""
+
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.db = Database(config.database_url)
-        self.notifier = DbNotifier(self.db, config.account_id)
-        self.settings = DbSettingsStore(self.db, config.account_id)
         self.accounts = AccountRepo(self.db)
-        self.stream = EventStream()
-        self.notifier.listeners.append(self._publish_notification)
-        self.settings.listeners.append(self._publish_settings)
-        self.lock = SingleInstanceLock(self.db)
         self.auth = AuthRepo(self.db)
+        # Без ограды: уведомления процесса об аккаунте (занят другим экземпляром, аренда
+        # потеряна, серия сбоев) пишутся и без его аренды.
+        self.notifier = DbNotifier(self.db, config.account_id)
+        self.lag = LoopLagMonitor()
+        self.leases = LeaseManager(self.db, uuid4().hex)
         self.container = Container(
             config=config,
             auth=self.auth,
@@ -117,23 +55,19 @@ class Runtime:
             reads=DbReads(self.db, config.account_id),
         )
         self.supervisor = Supervisor(self.notifier)
-        self.lock_check_s = LOCK_CHECK_S
-        self.tg_probe_s = TG_PROBE_S
         self.session_purge_s = SESSION_PURGE_S
-        self.reconcile_poll_s = RECONCILE_POLL_S
-        self.planner_poll_s = PLANNER_POLL_S
         self.retention = DbRetention(self.db, config.account_id)
         self.retention_first_s = RETENTION_FIRST_S
         self.retention_s = RETENTION_S
-        self.pipeline: Pipeline | None = None
-        self.gateway: ActionGateway | None = None
-        self.tg: TgAuthManager | None = None
-        self.facade: EngineFacade | None = None
-        self.planner: PlannerLoop | None = None
-        self.reactions: RobberyDefense | None = None
-        self.team_forward: TeamForward | None = None
-        self.transport: Transport | None = None
-        self._kurigram: KurigramTransport | None = None
+        self.engine_retry_s = ENGINE_RETRY_S
+        self.account: AccountRuntime | None = None
+        # Будит цикл движка: аренда потеряна (fence.on_lost) или серия сбоев задачи.
+        self._down = asyncio.Event()
+        # Серия сбоев задачи: движок не поднимается до перезапуска процесса.
+        self._halted: str | None = None
+        self._retry_in = 0.0
+        # Последнее уведомление о том, что движка нет: повтор того же не шлётся.
+        self._problem: str | None = None
 
     async def start(self) -> None:
         try:
@@ -143,232 +77,109 @@ class Runtime:
             raise
 
     async def _start(self) -> None:
-        await self.settings.load()
         password = self.config.admin_password
         await self.auth.ensure_admin(
             self.config.admin_login, password.get_secret_value() if password else None
         )
-        if not await self.lock.acquire():
-            await self.notifier.notify(
-                "error", "second_instance", "another pyrobot instance holds the lock"
-            )
-            return
-        actions = PublishingActionStore(
-            DbActionStore(self.db, self.config.account_id), self.stream
-        )
-        # Прерванные пересылки уведомляются в той же транзакции, что и закрытие строк.
-        await actions.mark_unfinished_unknown()
-        bus = Bus()
-        react_age = self.settings.current.engine.recovered_react_max_age_min
-        reducer = StateReducer()
-        journal = DbJournal(self.db, self.config.account_id)
-        self.pipeline = Pipeline(
-            journal=journal,
-            parser=default_parser(self.settings.current.chats),
-            reducer=reducer,
-            metrics=reducer.metrics,
-            bus=bus,
-            react_max_age=timedelta(minutes=react_age),
-        )
-        await self.pipeline.load()
-        transport, backend = self._make_transport(self.pipeline)
-        self.transport = transport
-        pipeline = self.pipeline
-        self.gateway = ActionGateway(
-            transport=transport,
-            store=actions,
-            settings=self.settings,
-            latest=pipeline.latest,
-            boundary=lambda: pipeline.last_journal_id,
-            clock=SystemClock(),
-            can_send=self._can_send,
-            state_version=lambda: pipeline.version,
-            own_company=lambda: company_of(pipeline.state),
-        )
-        pending = await actions.unreconciled()
-        if pending:
-            self.gateway.block_spending(RECONCILE_REASON)
-            await self.notifier.notify(
-                "warn",
-                "actions_outcome_unknown",
-                f"{len(pending)} actions need state reconciliation",
-            )
-        bus.subscribe(self.gateway.on_delivery, priority=0)
-        bus.subscribe(UnrecognizedWatch(self.notifier, SystemClock()).on_delivery, priority=50)
-        account = await self.accounts.get(self.config.account_id)
-        if account is None:
-            raise RuntimeError(f"account {self.config.account_id} not found")
-        self.tg = TgAuthManager(
-            backend,
-            expected_user_id=account.tg_user_id,
-            on_bind=self._bind_telegram,
-            notifier=self.notifier,
-        )
-        if self._kurigram is not None:
-            self._kurigram.on_auth_lost = self.tg.mark_lost
-        settings = self.settings
-        gateway = self.gateway
-        reconciler = Reconciler(
-            gateway=gateway,
-            store=actions,
-            state=lambda: pipeline.state,
-            notifier=self.notifier,
-            settings=settings,
-            clock=SystemClock(),
-            ready=lambda: (
-                self._can_send() is None
-                and gateway.kill_reason is None
-                and not settings.current.engine.killed
-            ),
-            game_chat_id=settings.current.chats.game_chat_id,
-            poll_s=self.reconcile_poll_s,
-        )
-        gateway.on_uncertain = reconciler.note
-        planner_store = PublishingPlannerStore(
-            DbPlannerStore(self.db, self.config.account_id), self.stream
-        )
-        interrupted = await planner_store.close_running(SystemClock().now())
-        if interrupted:
-            log.info("marked %d unfinished scenario runs as interrupted", interrupted)
-        self.planner = PlannerLoop(
-            gateway=gateway,
-            state=lambda: load_state(pipeline.state),
-            settings=settings,
-            clock=SystemClock(),
-            store=planner_store,
-            notifier=self.notifier,
-            ready=self._planner_ready,
-            poll_s=self.planner_poll_s,
-            metro_store=DbMetroRunStore(self.db, self.config.account_id),
-            history=journal_history(journal),
-            reread=live_reread(transport, pipeline),
-            auto=self.config.planner,
-        )
-        game_chat = settings.current.chats.game_chat_id
-
-        async def journaled_alerts(since: datetime) -> list[IncomingMessage]:
-            return await journal.messages_with_event(game_chat, RobberyAlert.kind, since)
-
-        self.reactions = RobberyDefense(
-            gateway=gateway,
-            settings=settings,
-            reread=live_reread(transport, pipeline),
-            notifier=self.notifier,
-            alerts=journaled_alerts,
-            ready=lambda: self._can_send() is None,
-        )
-        bus.subscribe(self.reactions.on_delivery, priority=20)
-        self.team_forward = TeamForward(
-            gateway=gateway, settings=settings, notifier=self.notifier, clock=SystemClock()
-        )
-        bus.subscribe(self.team_forward.on_delivery, priority=30)
-        bus.subscribe(self.planner.on_delivery, priority=90)
-        bus.subscribe(StreamFeed(self.stream, lambda: pipeline.state).on_delivery, priority=95)
-        lag = LoopLagMonitor()
-        lock = self.lock
-        self.facade = EngineFacade(
-            settings=self.settings,
-            gateway=self.gateway,
-            pipeline=pipeline,
-            tg_auth=self.tg,
-            lag=lag,
-            lock_ok=lambda: lock.held,
-            workers_ok=self.supervisor.healthy,
-            notifier=self.notifier,
-            reconciler=reconciler,
-            planner=self.planner,
-            stream=self.stream,
-        )
-        self.container.facade = self.facade
-        self.supervisor.start("pipeline", pipeline.run)
-        self.supervisor.start("gateway", self.gateway.run)
-        self.supervisor.start("reconcile", reconciler.run)
-        self.supervisor.start("reactions", self.reactions.run)
-        self.supervisor.start("team-forward", self.team_forward.run)
-        # Без PYROBOT_PLANNER цикл всё равно нужен: он исполняет ручные запуски сценариев.
-        self.supervisor.start("planner", self.planner.run)
-        self.supervisor.start("lag", lag.run)
-        self.supervisor.start("lock-watch", self._watch_lock)
+        await self.leases.open()
+        self.supervisor.start("lease", self.leases.run)
+        self.supervisor.start("lag", self.lag.run)
         self.supervisor.start("session-purge", self._purge_sessions)
         self.supervisor.start("retention", self._retention)
-        if self._kurigram is not None:
-            self.supervisor.start("tg-probe", self._probe_tg)
-        await self.tg.boot()
+        # Первая попытка — до готовности HTTP: как и раньше, процесс начинает с движком.
+        await self._attempt()
+        self.supervisor.start("engine", self._keep_engine)
 
-    def _publish_notification(self, row: NotificationRow) -> None:
-        self.stream.publish(
-            "notification", {"id": row.id, "level": row.level, "code": row.code, "text": row.text}
-        )
+    async def _keep_engine(self) -> None:
+        """Без движка — захват аренды с повтором (`lease_active` — по её сроку,
+        `locked_elsewhere` — через `busy_retry_s` менеджера, ошибка — через `engine_retry_s`);
+        потеря аренды — аварийная остановка и новый захват; серия сбоев задачи — аварийная
+        остановка, и движок не поднимается до перезапуска процесса."""
+        while True:
+            runtime = self.account
+            if runtime is not None:
+                await self._down.wait()
+                await self._abort_engine(runtime)
+            elif self._halted is not None:
+                await asyncio.Event().wait()
+            else:
+                await asyncio.sleep(self._retry_in)
+                await self._attempt()
 
-    async def _bind_telegram(self, user_id: int) -> None:
-        await self.accounts.bind_telegram(self.config.account_id, user_id)
-        log.info("telegram account %d bound", user_id)
+    async def _attempt(self) -> None:
+        account_id = self.config.account_id
+        try:
+            got = await self._try_engine()
+        except Exception:
+            log.exception("engine of account %d not started", account_id)
+            self._retry_in = self.engine_retry_s
+            await self._report(
+                "engine_start_failed", f"engine of account {account_id} not started"
+            )
+            return
+        if isinstance(got, Busy):
+            self._retry_in = got.retry_in_s
+            await self._report(
+                "second_instance",
+                f"account {account_id} is held by another pyrobot instance ({got.reason})",
+            )
+            return
+        self._problem = None
 
-    def _publish_settings(self, settings: Settings, version: int) -> None:
-        engine = settings.engine
-        self.stream.publish(
-            "settings",
-            {
-                "version": version,
-                "mode": engine.mode,
-                "paused": engine.paused,
-                "killed": engine.killed,
-            },
-        )
-
-    def _can_send(self) -> str | None:
-        if not self.lock.held:
-            return "lock_lost"
-        if self.tg is None or self.tg.status().state is not TgState.ONLINE:
-            return "tg_offline"
+    async def _try_engine(self) -> Busy | None:
+        """Захват аренды аккаунта и старт его движка; `Busy` — аккаунт занят."""
+        account_id = self.config.account_id
+        got = await self.leases.acquire(account_id)
+        if isinstance(got, Busy):
+            return got
+        down = asyncio.Event()
+        # Вызывается синхронно из ограды: только будит цикл движка.
+        got.on_lost = down.set
+        try:
+            account = await self.accounts.get(account_id)
+            if account is None:
+                raise RuntimeError(f"account {account_id} not found")
+            deps = RuntimeDeps(
+                db=self.db, config=self.config, accounts=self.accounts, lag=self.lag
+            )
+            runtime = AccountRuntime(account, deps, got, on_crash_loop=self._crash_loop)
+            await runtime.start()
+        except BaseException:
+            await self.leases.release(got)
+            raise
+        self._down = down
+        self.account = runtime
+        self.container.facade = runtime.facade
         return None
 
-    def _planner_ready(self) -> str | None:
-        engine = self.settings.current.engine
-        if engine.paused:
-            return "paused"
-        gateway = self.gateway
-        if engine.killed or (gateway is not None and gateway.kill_reason is not None):
-            return "killed"
-        if gateway is not None and gateway.spending_blocked is not None:
-            return "spending_blocked"
-        if self.pipeline is not None and not self.pipeline.healthy:
-            return "pipeline_unhealthy"
-        return self._can_send()
-
-    def _make_transport(self, pipeline: Pipeline) -> tuple[Transport, TgAuthBackend]:
-        if self.config.transport == "fake":
-            return FakeTransport(), FakeTgBackend(authorized=False)
-        kurigram = KurigramTransport(
-            api_id=self.config.tg_api_id,
-            api_hash=self.config.tg_api_hash.get_secret_value(),
-            workdir=self.config.data_dir,
-            chat_filter=ChatFilter.from_settings(self.settings.current.chats),
-            sink=pipeline.submit,
+    async def _abort_engine(self, runtime: AccountRuntime) -> None:
+        self.container.facade = None
+        await runtime.abort()
+        await self.leases.release(runtime.fence)
+        self.account = None
+        self._retry_in = 0.0
+        if self._halted is not None:
+            await self.notifier.notify(
+                "error",
+                "account_crash_loop",
+                f"account {runtime.account_id} engine stopped: {self._halted}",
+            )
+            return
+        log.warning("account %d lease lost, engine aborted", runtime.account_id)
+        await self.notifier.notify(
+            "error", "lock_lost", f"account {runtime.account_id} lease lost; engine stopped"
         )
-        self._kurigram = kurigram
-        return kurigram, kurigram
 
-    async def _watch_lock(self) -> None:
-        # После потери лока не выходим (Supervisor трактует выход как штатное
-        # завершение и перезапускает задачу) — паркуемся, чтобы kill/notify
-        # сработали ровно один раз, без ретриггера по backoff.
-        while self.lock.held:
-            await asyncio.sleep(self.lock_check_s)
-            if not await self.lock.check():
-                if self.gateway is not None:
-                    await self.gateway.kill("lock_lost")
-                await self.notifier.notify(
-                    "error", "lock_lost", "single-instance lock lost; sending stopped"
-                )
-        await asyncio.Event().wait()
+    async def _crash_loop(self, account_id: int, task: str) -> None:
+        # Статус error аккаунта — с хостом движков; пока движок стоит до перезапуска процесса.
+        # Остановку делает цикл движка: здесь — задача самого движка.
+        self._halted = f"crash_loop:{task}"
+        self._down.set()
 
-    async def _probe_tg(self) -> None:
-        while True:
-            await asyncio.sleep(self.tg_probe_s)
-            kurigram, tg = self._kurigram, self.tg
-            if kurigram is not None and tg is not None and tg.status().state is TgState.ONLINE:
-                await kurigram.probe()
+    async def _report(self, code: str, text: str) -> None:
+        if self._problem != code:
+            await self.notifier.notify("error", code, text)
+        self._problem = code
 
     async def _purge_sessions(self) -> None:
         while True:
@@ -383,13 +194,16 @@ class Runtime:
 
     async def _retention(self) -> None:
         # Сбой не роняет задачу (иначе супервизор слал бы task_failed на каждом рестарте):
-        # одно уведомление на серию неудач, следующая попытка — по расписанию.
+        # одно уведомление на серию неудач, следующая попытка — по расписанию. Политика —
+        # из настроек аккаунта в базе: движка в процессе может и не быть.
         failing = False
         await asyncio.sleep(self.retention_first_s)
         while True:
             try:
+                settings = DbSettingsStore(self.db, self.config.account_id)
+                await settings.load()
                 purged = await self.retention.purge(
-                    SystemClock().now(), self.settings.current.retention
+                    SystemClock().now(), settings.current.retention
                 )
             except Exception:
                 log.exception("retention failed")
@@ -403,27 +217,23 @@ class Runtime:
             await asyncio.sleep(self.retention_s)
 
     async def stop(self) -> None:
-        # Планировщик — первым: новый шаг сценария не должен уйти в закрывающийся шлюз.
+        # Цикл движка — первым: захват и старт не должны начаться посреди остановки.
         with contextlib.suppress(Exception):
-            await self.supervisor.cancel("planner")
-        if self.gateway is not None:
+            await self.supervisor.cancel("engine")
+        runtime, self.account = self.account, None
+        self.container.facade = None
+        if runtime is not None:
+            # Аренда действует — штатная остановка с доработкой конвейера, пока идёт продление;
+            # потеряна — аварийная, и освобождение в базу не пишет.
             with contextlib.suppress(Exception):
-                await self.gateway.shutdown()
-        if self._kurigram is not None:
-            with contextlib.suppress(Exception):
-                await self._kurigram.stop()
-        # Конвейер останавливается после транспорта: всё, что успело прийти, попадает в журнал.
-        if self.pipeline is not None:
-            with contextlib.suppress(Exception):
-                if not await self.pipeline.drain(PIPELINE_DRAIN_S):
-                    log.warning(
-                        "pipeline not drained on stop, %d messages left",
-                        self.pipeline.unfinished,
-                    )
+                await (runtime.stop() if runtime.fence.alive else runtime.abort())
+            await self.leases.release(runtime.fence)
+        # Продление — после освобождения: отмена запроса по соединению блокировок обрывает
+        # соединение вместе со всеми блокировками.
         with contextlib.suppress(Exception):
             await self.supervisor.stop()
         with contextlib.suppress(Exception):
-            await self.lock.release()
+            await self.leases.close()
         with contextlib.suppress(Exception):
             await self.db.dispose()
 

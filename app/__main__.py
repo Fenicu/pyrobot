@@ -7,6 +7,7 @@ from typing import Any
 import uvicorn
 
 from app.config import AppConfig
+from app.logctx import AccountLogFilter
 from app.main import create_application
 
 log = logging.getLogger(__name__)
@@ -14,6 +15,8 @@ ROUTE_TABLE = Path("/proc/net/route")
 # В списке доверенных прокси — шлюз сети контейнера: с его адреса приходят запросы на порт,
 # опубликованный на хосте (прокси на этом же сервере), а не с 127.0.0.1.
 GATEWAY = "gateway"
+# `account` ставит AccountLogFilter на обработчике: аккаунт задачи или `-`.
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s account=%(account)s %(message)s"
 
 
 # Флаги маршрута (linux/route.h): маршрут поднят и идёт через шлюз.
@@ -80,9 +83,9 @@ def uvicorn_options(cfg: AppConfig) -> dict[str, Any]:
 
 def main() -> None:
     cfg = AppConfig()
-    logging.basicConfig(
-        level=cfg.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s %(message)s"
-    )
+    logging.basicConfig(level=cfg.log_level.upper(), format=LOG_FORMAT)
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(AccountLogFilter())
     logging.getLogger("pyrogram").setLevel(pyrogram_log_level(cfg.log_level))
     options = uvicorn_options(cfg)
     log.info("trusted proxies: %s", options["forwarded_allow_ips"])

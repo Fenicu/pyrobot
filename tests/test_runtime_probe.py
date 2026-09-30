@@ -1,12 +1,47 @@
 import asyncio
+import time
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.config import AppConfig
+from app.db.accounts import AccountInfo, AccountRepo
+from app.db.base import Database
+from app.engine.fence import Fence
+from app.engine.host.account import AccountRuntime, RuntimeDeps
+from app.engine.lag import LoopLagMonitor
 from app.engine.tg_auth import TgAuthManager, TgState
 from app.engine.transport.fake import FakeTgBackend
 from app.main import Runtime
 from tests.engine.helpers import until
+
+
+@pytest.fixture
+async def runtime() -> AsyncIterator[AccountRuntime]:
+    """Движок аккаунта без старта: база не открывается, пока к ней не обратятся."""
+    config = AppConfig(_env_file=None, transport="fake")
+    db = Database(config.database_url)
+    deps = RuntimeDeps(db=db, config=config, accounts=AccountRepo(db), lag=LoopLagMonitor())
+    account = AccountInfo(
+        id=1,
+        owner_id=None,
+        name="Основной",
+        status="enabled",
+        status_reason=None,
+        tg_user_id=None,
+        engine_generation=0,
+    )
+
+    async def crash_loop(account_id: int, task: str) -> None:
+        pass
+
+    fence = Fence(1, 1, time.monotonic() + 60.0)
+    try:
+        yield AccountRuntime(account, deps, fence, on_crash_loop=crash_loop)
+    finally:
+        await db.dispose()
 
 
 class _Probe:
@@ -17,8 +52,7 @@ class _Probe:
         self.calls += 1
 
 
-async def test_tg_probe_runs_only_while_online() -> None:
-    runtime = Runtime(AppConfig(_env_file=None, transport="fake"))
+async def test_tg_probe_runs_only_while_online(runtime: AccountRuntime) -> None:
     probe = _Probe()
     runtime._kurigram = probe  # type: ignore[assignment]
     runtime.tg = TgAuthManager(FakeTgBackend(authorized=True), expected_user_id=267519921)
@@ -37,7 +71,6 @@ async def test_tg_probe_runs_only_while_online() -> None:
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
-        await runtime.db.dispose()
 
 
 class _Auth:
@@ -66,8 +99,7 @@ async def test_session_purge_runs_periodically_and_survives_errors() -> None:
         await runtime.db.dispose()
 
 
-async def test_stop_cancels_planner_before_closing_gateway() -> None:
-    runtime = Runtime(AppConfig(_env_file=None, transport="fake"))
+async def test_stop_cancels_planner_before_closing_gateway(runtime: AccountRuntime) -> None:
     events: list[str] = []
 
     async def planner() -> None:
@@ -88,10 +120,6 @@ async def test_stop_cancels_planner_before_closing_gateway() -> None:
     assert events == ["planner", "gateway"]
 
 
-async def test_planner_not_ready_while_pipeline_unhealthy() -> None:
-    runtime = Runtime(AppConfig(_env_file=None, transport="fake"))
+async def test_planner_not_ready_while_pipeline_unhealthy(runtime: AccountRuntime) -> None:
     runtime.pipeline = SimpleNamespace(healthy=False)  # type: ignore[assignment]
-    try:
-        assert runtime._planner_ready() == "pipeline_unhealthy"
-    finally:
-        await runtime.db.dispose()
+    assert runtime._planner_ready() == "pipeline_unhealthy"
