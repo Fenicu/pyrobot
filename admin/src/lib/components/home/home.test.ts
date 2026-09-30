@@ -20,16 +20,22 @@ describe('Главная на снимке с прода', () => {
 	it('персонаж', () => {
 		render(CharacterCard, { state: prod.state, stale: prod.stale, now: NOW });
 		const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
-		expect(card).toHaveTextContent('17.52M / 18.16M');
+		// Порог следующего уровня — не шкала: до 72-го осталось 18 155 142 − 17 520 102.
+		expect(within(card).getByText('💡 опыт').parentElement).toHaveTextContent('17.52M');
+		expect(within(card).getByText('до ур. 72').parentElement).toHaveTextContent('635 040 💡');
+		expect(screen.queryByRole('progressbar')).toBeNull();
 		expect(card).toHaveTextContent('$47');
 		expect(card).toHaveTextContent('0 / 85');
 		expect(card).toHaveTextContent('сон в отеле до 28.09 05:05');
 		// Деньги устарели по политике свежести (stale с прода).
 		expect(within(card).getByText('💵 деньги').parentElement).toHaveTextContent('(устарело)');
-		expect(screen.getByRole('progressbar', { name: 'Опыт до уровня' })).toHaveAttribute(
-			'aria-valuenow',
-			'17520102'
-		);
+	});
+
+	it('опыт набран, уровень не повышен — ждёт повышения', () => {
+		const exp = { ...prod.state.exp!, value: 18_200_000 };
+		render(CharacterCard, { state: { ...prod.state, exp }, stale: [], now: NOW });
+		const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
+		expect(within(card).getByText('до ур. 72').parentElement).toHaveTextContent('набран — ждёт повышения');
 	});
 
 	it('сегодня', () => {

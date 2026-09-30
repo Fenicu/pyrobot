@@ -3,7 +3,6 @@
 	import { fmtCompact, fmtNum, fmtRelative } from '$lib/util/format';
 	import { busyText } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
-	import Meter from '../Meter.svelte';
 	import Row from './Row.svelte';
 
 	interface Props {
@@ -16,6 +15,9 @@
 	const level = $derived(val(state, 'level'));
 	const exp = $derived(val(state, 'exp'));
 	const expNext = $derived(val(state, 'exp_next'));
+	// Профиль даёт весь опыт и порог следующего уровня, а не начало текущего: доля «опыт / порог»
+	// почти всегда около 100% и ничего не говорит — показывается, сколько осталось.
+	const expLeft = $derived(exp !== null && expNext !== null ? expNext - exp : null);
 	const motivation = $derived(val(state, 'motivation'));
 	const motivationMax = $derived(val(state, 'motivation_max'));
 	const nextAt = $derived(val(state, 'motivation_next_at'));
@@ -28,11 +30,11 @@
 	{#if Object.keys(state).length === 0}
 		<p class="text-sm text-fg-muted">Снимка ещё нет: бот не видел ни одного экрана.</p>
 	{:else}
-		<Row label="💡 опыт" stale={isStale('exp')}>
-			{fmtCompact(exp)} / {fmtCompact(expNext)}
-		</Row>
-		{#if exp !== null && expNext !== null}
-			<Meter value={exp} max={expNext} label="Опыт до уровня" />
+		<Row label="💡 опыт" stale={isStale('exp')}>{fmtCompact(exp)}</Row>
+		{#if expLeft !== null && level !== null}
+			<Row label="до ур. {level + 1}" stale={isStale('exp')}>
+				{expLeft > 0 ? `${fmtNum(expLeft)} 💡` : 'набран — ждёт повышения'}
+			</Row>
 		{/if}
 		<Row label="💵 деньги" stale={isStale('money')}>${fmtNum(val(state, 'money'))}</Row>
 		<Row label="🔥 мотивация" stale={isStale('motivation')}>
