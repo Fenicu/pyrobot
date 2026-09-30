@@ -448,6 +448,51 @@ def test_rob_pro_after_midnight_counts_fights_after_sleep() -> None:
     assert picked(decide(state, DAILY, AFTER_MIDNIGHT))[1] == {"task": "robPro_hard"}
 
 
+def _msk(hour: int, minute: int = 0, day: int = 27) -> datetime:
+    return datetime(2026, 9, day, hour, minute, tzinfo=MSK)
+
+
+@pytest.mark.parametrize(
+    ("gorbushka", "over", "task"),
+    [
+        # Вчера одолел всех, «приходи через …» — в 07:12: новый билет, 4 боя до полуночи.
+        (GorbushkaState(state="done", comeback_at=_msk(7, 12)), {}, "robPro_hard"),
+        # Возврат только завтра — сегодня боёв нет.
+        (GorbushkaState(state="done", comeback_at=_msk(0, 30, 28)), {}, "learnKnows_hard"),
+        # Новый билет ($120) не по карману.
+        (GorbushkaState(state="done", comeback_at=_msk(7, 12)), {"money": 100}, "learnKnows_hard"),
+        # 1 из 4, билет до 22:00: три боя по нему (36⚙️ мало) и ещё два нового до полуночи.
+        (
+            GorbushkaState(
+                state="waiting", won=1, total=4, next_fight_at=_msk(0, 30), ticket_until=_msk(22)
+            ),
+            {},
+            "robPro_hard",
+        ),
+        # Тот же билет живёт за полночь — нового сегодня не будет: 3 × 12⚙️ < 39.
+        (
+            GorbushkaState(
+                state="waiting",
+                won=1,
+                total=4,
+                next_fight_at=_msk(0, 30),
+                ticket_until=_msk(0, 20, 28),
+            ),
+            {},
+            "learnKnows_hard",
+        ),
+    ],
+)
+def test_rob_pro_counts_next_ticket_after_comeback(
+    gorbushka: GorbushkaState, over: dict[str, Any], task: str
+) -> None:
+    # Задание выбирается в 00:05, а Горбушка живёт своим циклом: билет на 24 часа, 4 боя раз
+    # в час, потом «приходи через …» до конца билета. Бои нового билета — тоже сегодняшние.
+    variants = offers("robPro_hard", "learnKnows_hard")
+    state = after_midnight(variants, gorbushka=gorbushka, **over)
+    assert picked(decide(state, DAILY, AFTER_MIDNIGHT))[1] == {"task": task}
+
+
 @pytest.mark.parametrize(
     ("at", "gorbushka", "task"),
     [

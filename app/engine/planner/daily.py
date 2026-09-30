@@ -215,21 +215,29 @@ class DailyTasks(Obligations):
         return left
 
     def fights_today(self) -> int:
-        """Сколько боёв Горбушки ещё успеет пройти до крайнего срока (раз в час без сна, пока жив
-        билет); билета нет — сколько даст новый, если он по карману сверх резервов."""
+        """Сколько боёв Горбушки ещё успеет пройти до крайнего срока (раз в час без сна): остаток
+        текущего билета, пока он жив, и новый билет — сейчас, если билета нет, а иначе с возврата
+        (все одолены — «приходи через …», идут бои — конец билета), если билет по карману сверх
+        резервов."""
         g = self.gorbushka_state()
         deadline = self.task_deadline()
         if g is None:
             return 0
+        fights = 0
+        renew: datetime | None = None
         if g.state == "need_ticket":
-            if not self.ticket_affordable():
-                return 0
-            return min(g.total or GORBUSHKA_DAILY, self.fight_slots(self.now, deadline))
-        if g.state not in ("meeting", "waiting") or g.won is None or g.total is None:
-            return 0
-        first = max(self.now, g.next_fight_at or self.now)
-        end = min(deadline, g.ticket_until) if g.ticket_until else deadline
-        return max(0, min(g.total - g.won, self.fight_slots(first, end)))
+            renew = self.now
+        elif g.state == "done":
+            renew = g.comeback_at
+        elif g.state in ("meeting", "waiting") and g.won is not None and g.total is not None:
+            first = max(self.now, g.next_fight_at or self.now)
+            end = min(deadline, g.ticket_until) if g.ticket_until else deadline
+            fights = max(0, min(g.total - g.won, self.fight_slots(first, end)))
+            renew = g.ticket_until
+        if renew is not None and self.ticket_affordable():
+            slots = self.fight_slots(max(self.now, renew), deadline)
+            fights += min(g.total or GORBUSHKA_DAILY, slots)
+        return fights
 
     def fight_slots(self, first: datetime, end: datetime) -> int:
         """Бои в `first` и дальше раз в час вне сна, пока не наступил `end`: бой в сам срок —
