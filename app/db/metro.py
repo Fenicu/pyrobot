@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.db.base import Database
 from app.db.models import MetroRunRow
+from app.engine.fence import Fence
 from app.engine.metro.store import METRO_HISTORY
 
 # Поля записи забега, которые не легли в отдельные столбцы.
@@ -27,9 +28,10 @@ def _moment(value: Any) -> datetime | None:
 
 
 class DbMetroRunStore:
-    def __init__(self, db: Database, account_id: int) -> None:
+    def __init__(self, db: Database, account_id: int, *, fence: Fence | None = None) -> None:
         self._db = db
         self._account_id = account_id
+        self._fence = fence
 
     async def save(
         self, scenario_run_id: int | None, status: str, record: Mapping[str, Any]
@@ -56,6 +58,8 @@ class DbMetroRunStore:
             summary={k: record[k] for k in _SUMMARY if k in record},
         )
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             session.add(row)
             await session.flush()
             return row.id

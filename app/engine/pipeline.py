@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 from app.engine.bus import Bus, Delivery
 from app.engine.events import Event
+from app.engine.fence import LeaseLost
 from app.engine.parsing import MessageParser
 from app.engine.state.ledger import Effect
 from app.engine.types import IncomingMessage
@@ -186,6 +187,9 @@ class Pipeline:
                 journal_id = await self._journal.append(
                     msg, events, new_state, version, metrics=metrics, effects=effects
                 )
+            except LeaseLost:
+                # Аренда потеряна: повтор не поможет, движок останавливается.
+                raise
             except Exception:
                 self._healthy = False
                 failed = True

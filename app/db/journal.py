@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.db.base import Database
 from app.db.models import LedgerRow, MessageRow, MetricRow, StateSnapshot, UnrecognizedRow
 from app.engine.events import Event, Unrecognized
+from app.engine.fence import Fence
 from app.engine.gametime import tasks_day
 from app.engine.state.ledger import Effect, numbered
 from app.engine.types import Button, IncomingMessage
@@ -38,9 +39,10 @@ def _restored(row: MessageRow) -> IncomingMessage:
 
 
 class DbJournal:
-    def __init__(self, db: Database, account_id: int) -> None:
+    def __init__(self, db: Database, account_id: int, *, fence: Fence | None = None) -> None:
         self._db = db
         self._account_id = account_id
+        self._fence = fence
 
     async def load_state(self) -> tuple[dict[str, Any], int]:
         async with self._db.sessions() as session:
@@ -95,6 +97,8 @@ class DbJournal:
         effects: Sequence[Effect] = (),
     ) -> int | None:
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             stmt = (
                 pg_insert(MessageRow)
                 .values(

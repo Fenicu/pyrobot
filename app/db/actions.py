@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db.base import Database
 from app.db.models import ActionRow, NotificationRow
 from app.engine.commands import CommandClass
+from app.engine.fence import Fence
 from app.engine.gateway.store import (
     CANCELLED,
     LOST_FORWARD_CODE,
@@ -37,9 +38,10 @@ def _stored(row: ActionRow) -> StoredAction:
 
 
 class DbActionStore:
-    def __init__(self, db: Database, account_id: int) -> None:
+    def __init__(self, db: Database, account_id: int, *, fence: Fence | None = None) -> None:
         self._db = db
         self._account_id = account_id
+        self._fence = fence
 
     async def create(
         self, req: ActionRequest, cls: CommandClass, status: ActionStatus, reason: str = ""
@@ -59,6 +61,8 @@ class DbActionStore:
         )
         try:
             async with self._db.sessions() as session, session.begin():
+                if self._fence is not None:
+                    await self._fence.guard(session)
                 session.add(row)
                 await session.flush()
                 return int(row.id)
@@ -97,6 +101,8 @@ class DbActionStore:
         if status in _FINAL:
             values["finished_at"] = now
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             stmt = update(ActionRow).where(ActionRow.id == action_id).values(values)
             await session.execute(stmt)
 
@@ -111,6 +117,8 @@ class DbActionStore:
 
     async def mark_unfinished_unknown(self) -> list[Closed]:
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             rows = await session.execute(
                 update(ActionRow)
                 .where(
@@ -169,6 +177,8 @@ class DbActionStore:
         if not action_ids:
             return
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             await session.execute(
                 update(ActionRow)
                 .where(ActionRow.account_id == self._account_id, ActionRow.id.in_(action_ids))

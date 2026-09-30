@@ -4,8 +4,11 @@ from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
+import pytest
+
 from app.engine.bus import Bus, Delivery
 from app.engine.events import AntiFlood, Event
+from app.engine.fence import LeaseLost
 from app.engine.memory import MemoryJournal
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
@@ -179,6 +182,29 @@ async def test_journal_failure_retried_in_order() -> None:
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_append_lease_lost_not_retried() -> None:
+    class Fenced(MemoryJournal):
+        def __init__(self) -> None:
+            super().__init__()
+            self.attempts = 0
+
+        async def append(self, *args: Any, **kwargs: Any) -> int | None:
+            self.attempts += 1
+            raise LeaseLost("account 1 lease (epoch 7) lost")
+
+    journal = Fenced()
+    journal.snapshot = ({"events": 3}, 7)
+    pipe, seen, _ = _pipeline(CountingReducer(), journal=journal)
+    await pipe.load()
+    msg = make_msg("Ты шлёшь запросы к боту слишком часто.", msg_id=1)
+    with pytest.raises(LeaseLost):
+        await asyncio.wait_for(pipe.process(msg), 1)
+    assert journal.attempts == 1
+    assert (pipe.state, pipe.version) == ({"events": 3}, 7)
+    assert pipe.latest(GAME, 1) is None and pipe.last_journal_id == 0 and seen == []
+    assert pipe.healthy
 
 
 async def test_slow_or_failing_subscriber_isolated() -> None:

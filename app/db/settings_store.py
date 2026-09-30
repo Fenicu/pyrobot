@@ -7,15 +7,17 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.base import Database
 from app.db.models import SettingsHistory, SettingsRow
+from app.engine.fence import Fence
 from app.engine.settings import Settings, SettingsChange, SettingsConflict
 
 log = logging.getLogger(__name__)
 
 
 class DbSettingsStore:
-    def __init__(self, db: Database, account_id: int) -> None:
+    def __init__(self, db: Database, account_id: int, *, fence: Fence | None = None) -> None:
         self._db = db
         self._account_id = account_id
+        self._fence = fence
         self._settings = Settings()
         self._version = 0
         self._lock = asyncio.Lock()
@@ -51,6 +53,8 @@ class DbSettingsStore:
             version = self._version + 1
             data = new.model_dump(mode="json")
             async with self._db.sessions() as session, session.begin():
+                if self._fence is not None:
+                    await self._fence.guard(session)
                 stmt = (
                     pg_insert(SettingsRow)
                     .values(account_id=self._account_id, version=version, data=data)

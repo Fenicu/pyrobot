@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.base import Database
 from app.db.models import DecisionRow, ScenarioRunRow
+from app.engine.fence import Fence
 from app.engine.gametime import day_start
 from app.engine.planner.store import (
     CLOSED_ON_RESTART,
@@ -19,9 +20,10 @@ from app.engine.planner.types import Decision
 
 
 class DbPlannerStore:
-    def __init__(self, db: Database, account_id: int) -> None:
+    def __init__(self, db: Database, account_id: int, *, fence: Fence | None = None) -> None:
         self._db = db
         self._account_id = account_id
+        self._fence = fence
 
     async def record(self, at: datetime, decision: Decision) -> int:
         rec = DecisionRecord.of(decision)
@@ -36,6 +38,8 @@ class DbPlannerStore:
             candidates=rec.candidates,
         )
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             session.add(row)
             await session.flush()
             return row.id
@@ -52,12 +56,16 @@ class DbPlannerStore:
             status="running",
         )
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             session.add(row)
             await session.flush()
             return row.id
 
     async def run_finished(self, run_id: int, status: str, reason: str, at: datetime) -> None:
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             await session.execute(
                 update(ScenarioRunRow)
                 .where(ScenarioRunRow.id == run_id)
@@ -91,6 +99,8 @@ class DbPlannerStore:
             .returning(ScenarioRunRow.id)
         )
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             run_id = await session.scalar(stmt)
             if run_id is not None:
                 return int(run_id), True
@@ -106,6 +116,8 @@ class DbPlannerStore:
 
     async def run_begin(self, run_id: int, at: datetime) -> None:
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             await session.execute(
                 update(ScenarioRunRow)
                 .where(ScenarioRunRow.id == run_id)
@@ -117,6 +129,8 @@ class DbPlannerStore:
             *((ScenarioRunRow.status == old, new) for old, new in CLOSED_ON_RESTART.items())
         )
         async with self._db.sessions() as session, session.begin():
+            if self._fence is not None:
+                await self._fence.guard(session)
             closed = await session.scalars(
                 update(ScenarioRunRow)
                 .where(
