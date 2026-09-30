@@ -11,6 +11,7 @@ from app.engine.planner.types import Act, Decision, Wait
 from app.engine.scenarios.registry import CERTIFIED
 from app.engine.settings import Settings
 from app.engine.state.model import (
+    ActivityStat,
     BusyState,
     CharacterState,
     ChosenTaskState,
@@ -219,6 +220,29 @@ def test_rob_pro_feasible_by_gorbushka_fights_left(
     )
     state = tasks(offers("robPro_hard", "jobMoney_hard"), gorbushka=gorbushka, motivation=40)
     assert picked(decide(state, settings, NOW))[1] == {"task": task}
+
+
+@pytest.mark.parametrize(
+    ("stats", "task"),
+    [
+        # Боёв ещё не было — 12⚙️ за победу: 2 × 12 < 39.
+        ({}, "jobMoney_hard"),
+        # С ⚫️VIP-сетом среднее по боям — 20⚙️: двух побед хватит.
+        ({"gorbushka": ActivityStat(count=30, details=20)}, "robPro_hard"),
+        # Без сета — около 15⚙️: 2 × 15 < 39.
+        ({"gorbushka": ActivityStat(count=30, details=15)}, "jobMoney_hard"),
+    ],
+)
+def test_rob_pro_details_per_fight_from_own_fights(
+    stats: dict[str, ActivityStat], task: str
+) -> None:
+    # 2 из 4, билет живёт за полночь: сегодня ещё две победы.
+    gorbushka = GorbushkaState(
+        state="waiting", won=2, total=4, next_fight_at=m(10), ticket_until=m(20 * 60)
+    )
+    state = tasks(offers("robPro_hard", "jobMoney_hard"), gorbushka=gorbushka)
+    state = state.model_copy(update={"activity_stats": stats})
+    assert picked(decide(state, DAILY, NOW))[1] == {"task": task}
 
 
 def test_feasibility_estimates_time_and_motivation_until_midnight() -> None:

@@ -31,7 +31,6 @@ TASK_METRIC = {
     "materials": "raw",
 }
 DCONV_DETAILS = 10
-ROB_DETAILS = 12
 # Продаванов в день, если экран билета ещё не видели (на экране — «…продаванов: 4»).
 GORBUSHKA_DAILY = 4
 # Командное задание закрывают и другие игроки, а сообщения о его выполнении нет: прогресс
@@ -149,7 +148,9 @@ class DailyTasks(Obligations):
 
     def personal_feasible(self, kind: str, goal: int) -> bool:
         if kind == "robPro":
-            return self.feature_on("gorbushka") and self.fights_today() * ROB_DETAILS >= goal
+            # ⚙️ за победу — среднее по боям персонажа (с ⚫️VIP-сетом больше), до них — 12.
+            stat = self.s.activity_stats.get("gorbushka") or DEED_PRIORS["gorbushka"]
+            return self.feature_on("gorbushka") and self.fights_today() * stat.details >= goal
         return any(
             self.deed_allowed(deed) and self.fits_today(kind, goal, deed)
             for deed in PERSONAL_DEEDS.get(kind, ())

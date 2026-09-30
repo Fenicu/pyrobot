@@ -168,6 +168,9 @@ DEED_PRIORS = {
     "dconv": ActivityStat(exp=253, raw=5),
     "walk": ActivityStat(exp=173, money=2.6, raw=0.7),
     "confa": ActivityStat(exp=112, knowledge=31),
+    # Не дело, но победа над продаваном копится так же. ⚙️ — нижняя оценка без ⚫️VIP-сета
+    # (не у всех он есть), дальше — среднее по боям персонажа: с сетом оно выше.
+    "gorbushka": ActivityStat(exp=240, money=37, knowledge=7, details=12),
 }
 DEFAULT_PRICES = {
     "harvest": PriceState(motivation=1, money=30, minutes=5),

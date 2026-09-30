@@ -685,6 +685,8 @@ def _gorbushka(p: _Patch, e: GorbushkaScreen) -> None:
 def _gorbushka_fight(p: _Patch, e: GorbushkaFight) -> None:
     p.rewards(e.rewards)
     p.effect("gorbushka_fight", amounts(e.rewards))
+    if e.won:
+        p.stat("gorbushka", e.rewards)
     current: Obs[GorbushkaState] | None = p.get("gorbushka")
     cost = current.value.fight_cost if current is not None else None
     p.delta("motivation", -(cost if cost is not None else 1))
