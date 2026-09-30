@@ -227,29 +227,68 @@ async def test_new_account_opens_empty(clean_db: Database) -> None:
     assert await _session_row(clean_db) is None
 
 
-async def test_auth_key_user_and_dc_are_written_at_once(clean_db: Database) -> None:
+async def test_every_field_is_written_at_once(clean_db: Database) -> None:
+    pg = _pg(clean_db)
+    await pg.open()
+    assert await _session_row(clean_db) is None
+    steps: list[tuple[str, Any]] = [
+        ("api_id", 12345),
+        ("test_mode", False),
+        ("dc_id", 4),
+        ("server_address", "149.154.167.91"),
+        ("port", 80),
+        ("auth_key", b"k" * 256),
+        ("user_id", 7),
+        ("is_bot", False),
+        ("date", 1700000000),
+    ]
+    for name, value in steps:
+        await getattr(pg, name)(value)
+        row = await _session_row(clean_db)
+        assert row is not None
+        stored = getattr(row, name)
+        if name == "auth_key":
+            stored = BOX.open(stored, "auth_key", 1)
+        assert stored == value, name
+
+
+async def test_unchanged_field_is_not_rewritten(clean_db: Database) -> None:
+    pg = _pg(clean_db)
+    await pg.open()
+    await pg.port(80)
+    row = await _session_row(clean_db)
+    assert row is not None
+    await pg.port(80)
+    await pg.dc_id(2)
+    again = await _session_row(clean_db)
+    assert again is not None and again.updated_at == row.updated_at
+    await pg.port(443)
+    changed = await _session_row(clean_db)
+    assert changed is not None and changed.port == 443 and changed.updated_at > row.updated_at
+
+
+async def test_session_set_without_save_loads_complete(clean_db: Database) -> None:
+    # Порядок вызовов kurigram при первом входе (load_session, затем sign_in): save() нет.
     pg = _pg(clean_db)
     await pg.open()
     await pg.api_id(12345)
-    await pg.port(80)
-    # Остальные поля пока только в памяти.
-    assert await _session_row(clean_db) is None
-    await pg.auth_key(b"k" * 256)
-    row = await _session_row(clean_db)
-    assert row is not None and row.auth_key is not None
-    assert BOX.open(row.auth_key, "auth_key", 1) == b"k" * 256
-    assert row.user_id is None and row.dc_id == 2 and row.date == 0
-    await pg.user_id(7)
-    await pg.dc_id(5)
-    row = await _session_row(clean_db)
-    assert row is not None and row.user_id == 7 and row.dc_id == 5
-    # Повторная запись того же значения базу не трогает.
+    await pg.dc_id(2)
+    await pg.server_address("149.154.167.51")
     await pg.port(443)
-    row = await _session_row(clean_db)
-    assert row is not None and row.port == 80
-    await pg.save()
-    row = await _session_row(clean_db)
-    assert row is not None and row.port == 443 and row.api_id == 12345 and row.date > 0
+    await pg.date(0)
+    await pg.test_mode(False)
+    await pg.auth_key(b"k" * 256)
+    await pg.user_id(None)
+    await pg.is_bot(None)
+    # Сбой тут: вход ещё не выполнен, сессия читается как пустая — kurigram создаст ключ заново.
+    await pg.user_id(267519921)
+    await pg.is_bot(False)
+    again = _pg(clean_db)
+    await again.open()
+    assert await again.auth_key() == b"k" * 256 and await again.user_id() == 267519921
+    assert await again.is_bot() is False and await again.test_mode() is False
+    assert await again.api_id() == 12345 and await again.dc_id() == 2
+    assert await again.server_address() == "149.154.167.51" and await again.port() == 443
 
 
 async def test_only_configured_peers_persist(clean_db: Database) -> None:

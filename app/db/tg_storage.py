@@ -66,7 +66,9 @@ def _merge(old: UpdateState, new: UpdateState) -> UpdateState:
 
 class PgSessionStorage(Storage):
     """Хранилище kurigram одного аккаунта. Строка `tg_sessions` пишется в `save()` и при смене
-    `auth_key`, `user_id`, `dc_id`; `auth_key` лежит зашифрованным, привязанным к аккаунту. Пиры
+    любого поля сессии (они меняются только при входе и переезде на другой DC): сбой между
+    `user_id` и `is_bot` не оставит сессию, которая читается как пустая. `auth_key` лежит
+    зашифрованным, привязанным к аккаунту. Пиры
     с `id` из `peer_ids()` дополнительно пишутся в `tg_peers` — kurigram находит их и до прогрева
     кэша диалогов. Состояние обновлений и usernames в базу не попадают."""
 
@@ -252,19 +254,19 @@ class PgSessionStorage(Storage):
                 return self._input_peer(peer_id, peer)
         raise KeyError(f"Phone number not found: {phone_number}")
 
-    async def _field(self, name: str, value: Any, *, persist: bool = False) -> Any:
-        """Чтение поля сессии; с `value` — запись, а для `persist` ещё и в базу, если оно
-        изменилось. `object` — «значения нет» (как у `SQLiteStorage`): `None` тоже значение."""
+    async def _field(self, name: str, value: Any) -> Any:
+        """Чтение поля сессии; с `value` — запись, а если значение изменилось, то и в базу.
+        `object` — «значения нет» (как у `SQLiteStorage`): `None` тоже значение."""
         if value is object:
             return self._fields[name]
         changed = self._fields[name] != value
         self._fields[name] = value
-        if persist and changed:
+        if changed:
             await self._write_session()
         return None
 
     async def dc_id(self, value: int | type[object] | None = object) -> Any:
-        return await self._field("dc_id", value, persist=True)
+        return await self._field("dc_id", value)
 
     async def api_id(self, value: int | type[object] | None = object) -> Any:
         return await self._field("api_id", value)
@@ -279,13 +281,13 @@ class PgSessionStorage(Storage):
         return await self._field("test_mode", value)
 
     async def auth_key(self, value: bytes | type[object] | None = object) -> Any:
-        return await self._field("auth_key", value, persist=True)
+        return await self._field("auth_key", value)
 
     async def date(self, value: int | type[object] | None = object) -> Any:
         return await self._field("date", value)
 
     async def user_id(self, value: int | type[object] | None = object) -> Any:
-        return await self._field("user_id", value, persist=True)
+        return await self._field("user_id", value)
 
     async def is_bot(self, value: bool | type[object] | None = object) -> Any:
         return await self._field("is_bot", value)
@@ -326,8 +328,8 @@ async def import_session_file(path: Path, storage: PgSessionStorage, peer_ids: s
     await storage.is_bot(None if is_bot is None else bool(is_bot))
     await storage.server_address(server_address)
     await storage.port(port)
-    # Поля, которые пишутся в базу сразу, — последними: недописанная при сбое сессия не
-    # выглядит годной.
+    # Каждое поле пишется в базу сразу; `user_id` — последним: пока его нет, сессия при сбое
+    # читается как пустая, а не как недописанная.
     await storage.dc_id(dc_id)
     await storage.auth_key(auth_key)
     await storage.user_id(user_id)
