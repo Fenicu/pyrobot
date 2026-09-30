@@ -166,6 +166,7 @@ async def test_0011_moves_binding_and_adopts_owner() -> None:
     # nextval('accounts_id_seq') после upgrade > max(id)
     # downgrade 0010: settings_data["telegram"] == {"expected_user_id": 267519921}
 
+
 async def test_0011_without_admin_leaves_owner_null() -> None: ...
 ```
 
@@ -325,13 +326,18 @@ async def test_ensure_key_reset_with_right_key_does_nothing(clean_db) -> None: .
 @pytest.fixture(params=["sqlite", "pg"])
 async def storage(request, clean_db) -> AsyncIterator[Storage]: ...
 
+
 async def test_session_fields_roundtrip(storage) -> None:
-    await storage.dc_id(2); await storage.auth_key(b"k" * 256); await storage.user_id(267519921)
+    await storage.dc_id(2)
+    await storage.auth_key(b"k" * 256)
+    await storage.user_id(267519921)
     assert await storage.dc_id() == 2 and await storage.auth_key() == b"k" * 256
+
 
 async def test_peers_in_memory(storage) -> None:
     await storage.update_peers([(-1001109615116, 42, "supergroup", None)])
     assert (await storage.get_peer_by_id(-1001109615116)).access_hash == 42
+
 
 async def test_update_state_in_memory(storage) -> None: ...
 ```
