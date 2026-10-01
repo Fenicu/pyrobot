@@ -7,7 +7,7 @@
 	import { leaveGuard } from '$lib/settings/leave';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 
-	const { api, live } = current.get();
+	const { api, live, engine } = current.get();
 	const editor = new SettingsEditor(api);
 
 	onMount(() => {
@@ -36,4 +36,4 @@
 <svelte:head><title>Настройки · pyrobot</title></svelte:head>
 
 <h1 class="mb-3 text-lg font-semibold">Настройки</h1>
-<SettingsView {api} {editor} />
+<SettingsView {api} {editor} running={engine.status?.running !== false} />

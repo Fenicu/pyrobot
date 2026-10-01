@@ -16,9 +16,11 @@
 	interface Props {
 		api: AccountApi;
 		editor: SettingsEditor;
+		/** Движок аккаунта запущен; нет — настройки пишутся прямо в базу и применятся при его старте. */
+		running?: boolean;
 		now?: Date;
 	}
-	let { api, editor, now }: Props = $props();
+	let { api, editor, running = true, now }: Props = $props();
 	let active = $state<string | null>(null);
 	let query = $state('');
 	// История перечитывается с каждой новой версией: своё сохранение, перечитывание после чужого
@@ -98,6 +100,13 @@
 		<div class="card mb-3 flex flex-wrap items-center gap-2 text-sm text-warn-fg" role="status">
 			{#if editor.restartAccepted}
 				<span class="flex-1">Аккаунт перезапускается</span>
+			{:else if !running}
+				<!-- Перезапускать нечего: движок прочитает настройки при старте. -->
+				<span class="flex-1">
+					Изменения вступят в силу при включении аккаунта: <span class="font-mono"
+						>{editor.restartRequired.join(', ')}</span
+					>
+				</span>
 			{:else}
 				<span class="flex-1">
 					Изменения вступят в силу после перезапуска аккаунта: <span class="font-mono"

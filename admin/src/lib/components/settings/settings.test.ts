@@ -13,7 +13,12 @@ import SettingsView from './SettingsView.svelte';
 
 const settings = fixture<SettingsOut>('settings');
 
-async function view(patch?: (c: Call) => Response, current: () => SettingsOut = () => settings, post?: (c: Call) => Response | Promise<Response>) {
+async function view(
+	patch?: (c: Call) => Response,
+	current: () => SettingsOut = () => settings,
+	post?: (c: Call) => Response | Promise<Response>,
+	running = true
+) {
 	const fetch = mockFetch((c) => {
 		if (c.url.startsWith('/api/v1/accounts/1/settings/history')) return json(fixture('settings_history'));
 		if (c.method === 'POST' && post) return post(c);
@@ -24,7 +29,7 @@ async function view(patch?: (c: Call) => Response, current: () => SettingsOut = 
 	const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 	const editor = new SettingsEditor(api);
 	await editor.load();
-	render(SettingsView, { api, editor, now: new Date('2026-09-27T20:00:00Z') });
+	render(SettingsView, { api, editor, running, now: new Date('2026-09-27T20:00:00Z') });
 	return { fetch, editor };
 }
 
@@ -277,12 +282,13 @@ describe('Перезапуск аккаунта после сохранения'
 	const restartUrl = '/api/v1/accounts/1/engine/restart';
 
 	// Сохранение, после которого сервер просит перезапуск: плашка с кнопкой.
-	async function saved(post: (c: Call) => Response | Promise<Response>) {
+	async function saved(post: (c: Call) => Response | Promise<Response>, running = true) {
 		const user = userEvent.setup();
 		const { fetch } = await view(
 			() => json({ version: 14, values: settings.values, changed: {}, restart_required: ['chats.game_chat_id'] }),
 			() => settings,
-			post
+			post,
+			running
 		);
 		await user.click(screen.getByRole('button', { name: 'Функции' }));
 		await user.click(screen.getByRole('switch', { name: 'Казино' }));
@@ -295,6 +301,14 @@ describe('Перезапуск аккаунта после сохранения'
 		const { banner, fetch } = await saved(() => new Response(null, { status: 202 }));
 		expect(banner).toHaveTextContent('Изменения вступят в силу после перезапуска аккаунта: chats.game_chat_id');
 		expect(within(banner).getByRole('button', { name: 'Перезапустить аккаунт' })).toBeEnabled();
+		expect(fetch.calls.some((c) => c.url === restartUrl)).toBe(false);
+	});
+
+	it('движок не запущен (прямая запись): без кнопки — применится при включении', async () => {
+		const { banner, fetch } = await saved(() => new Response(null, { status: 202 }), false);
+		expect(banner).toHaveTextContent('Изменения вступят в силу при включении аккаунта: chats.game_chat_id');
+		expect(banner).not.toHaveTextContent('после перезапуска');
+		expect(within(banner).queryByRole('button')).toBeNull();
 		expect(fetch.calls.some((c) => c.url === restartUrl)).toBe(false);
 	});
 
