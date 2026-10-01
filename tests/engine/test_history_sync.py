@@ -15,12 +15,13 @@ from app.db.chat_marks import ChatMarks
 from app.db.journal import DbJournal
 from app.db.models import MessageRow
 from app.engine.bus import Bus
+from app.engine.fence import LeaseLost
 from app.engine.host.account import pipeline_deliver
 from app.engine.notify import Level
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
 from app.engine.settings import ChatsSection
-from app.engine.transport.base import FloodWait
+from app.engine.transport.base import FloodWait, TransportAuthLost
 from app.engine.transport.history import HistorySync, Reader, readers_for
 from app.engine.transport.kurigram import ChatFilter, KurigramTransport, to_incoming
 from app.engine.types import IncomingMessage
@@ -46,12 +47,14 @@ def _incoming(m: Any) -> IncomingMessage:
 
 class FakeSource:
     """Telegram с историей чатов: сообщения kurigram, чтение от новых к старым, как у сервера.
-    `gate` держит `read` уже прочитанным, `errors` — сбои следующих `read`."""
+    `gate` держит `read` уже прочитанным, `errors` — сбои следующих `read`, `broken` — чтения,
+    любое обращение к которым сбоит."""
 
     def __init__(self) -> None:
         self.chats: dict[int, dict[int, NS]] = defaultdict(dict)
         self.calls: list[tuple[Any, ...]] = []
         self.errors: list[BaseException] = []
+        self.broken: dict[Reader, BaseException] = {}
         self.gate: asyncio.Event | None = None
 
     def post(
@@ -97,11 +100,15 @@ class FakeSource:
 
     async def latest(self, reader: Reader) -> int | None:
         self.calls.append(("latest", reader))
+        if reader in self.broken:
+            raise self.broken[reader]
         found = self._of(reader)
         return found[0].id if found else None
 
     async def read(self, reader: Reader, above: int, limit: int) -> list[NS]:
         self.calls.append(("read", reader, above, limit))
+        if reader in self.broken:
+            raise self.broken[reader]
         found = [m for m in self._of(reader) if m.id > above][:limit]
         if self.gate is not None:
             await self.gate.wait()
@@ -361,6 +368,44 @@ async def test_failed_pass_keeps_mark_and_retries_with_backoff() -> None:
         await until(lambda: rig.marks.marks[(GAME, 0)] == 11)
         await _wait(rig, 300.0)
     assert _ids(rig.journal.delivered) == [11]
+
+
+async def test_failing_reader_does_not_stop_others() -> None:
+    # Чтение swinfo сломано насовсем (пира пользователя нет в хранилище), а чтения идут по порядку
+    # id чата: смузи, swinfo, игра — чат игры всё равно сверяется.
+    rig = Rig(
+        readers=readers_for(CHATS),
+        marks={(SMOOTHIE, 0): 3, (SWINFO, SW_USER): 5, (GAME, 0): 10},
+    )
+    rig.source.post(SMOOTHIE, 4)
+    rig.source.post(GAME, 11)
+    rig.source.broken[(SWINFO, SW_USER)] = ValueError("PEER_ID_INVALID")
+    with pytest.raises(ValueError, match="PEER_ID_INVALID"):
+        await rig.sync.pass_once()
+    assert rig.marks.marks == {(SMOOTHIE, 0): 4, (SWINFO, SW_USER): 5, (GAME, 0): 11}
+    assert _ids(rig.journal.delivered) == [4, 11]
+    # Проход всё же неудачен: повтор по backoff, удачные чтения его отметки сохраняют.
+    rig.source.post(GAME, 12)
+    async with rig.running():
+        rig.sync.request("online")
+        await _wait(rig, 30.0)
+    assert rig.marks.marks[(GAME, 0)] == 12 and rig.marks.marks[(SWINFO, SW_USER)] == 5
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [FloodWait(30.0), LeaseLost("lease"), TransportAuthLost("revoked")],
+    ids=["flood", "lease", "auth"],
+)
+async def test_account_failure_stops_pass(failure: Exception) -> None:
+    # Сбой всего аккаунта: следующие чтения упёрлись бы в него же — проход обрывается сразу.
+    rig = Rig(readers=readers_for(CHATS), marks={(SMOOTHIE, 0): 3, (GAME, 0): 10})
+    rig.source.post(GAME, 11)
+    rig.source.broken[(SMOOTHIE, 0)] = failure
+    with pytest.raises(type(failure)):
+        await rig.sync.pass_once()
+    assert [call[1] for call in rig.source.calls] == [(SMOOTHIE, 0)]
+    assert rig.marks.marks == {(SMOOTHIE, 0): 3, (GAME, 0): 10}
 
 
 async def test_no_pass_before_online_or_for_non_main_session() -> None:

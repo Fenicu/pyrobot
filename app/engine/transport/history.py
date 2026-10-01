@@ -12,8 +12,10 @@ from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
+from app.engine.fence import LeaseLost
 from app.engine.notify import NotifierPort
 from app.engine.settings import ChatsSection
+from app.engine.transport.base import FloodWait, TransportAuthLost
 from app.engine.transport.kurigram import to_incoming
 from app.engine.types import IncomingMessage, MessageKind
 
@@ -148,9 +150,21 @@ class HistorySync:
             await asyncio.gather(*waiters, return_exceptions=True)
 
     async def pass_once(self) -> None:
-        """Проход по всем чтениям; сбой — исключение, отметка сбойного чтения не меняется."""
+        """Проход по всем чтениям. Сбой одного чтения (чат недоступен, пир не найден) остальные
+        не останавливает: его отметка не меняется, а первый сбой пробрасывается после всех
+        чтений — проход повторится по `backoff`. Сбой всего аккаунта (FloodWait, потеря аренды или
+        входа) обрывает проход сразу: следующие чтения упёрлись бы в него же."""
+        failure: Exception | None = None
         for reader in sorted(self._readers):
-            await self._sync(reader)
+            try:
+                await self._sync(reader)
+            except (FloodWait, LeaseLost, TransportAuthLost):
+                raise
+            except Exception as exc:
+                log.warning("history reader %s failed", reader, exc_info=True)
+                failure = failure or exc
+        if failure is not None:
+            raise failure
 
     async def _sync(self, reader: Reader) -> None:
         chat_id = reader[0]

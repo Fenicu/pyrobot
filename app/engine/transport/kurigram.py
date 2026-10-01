@@ -682,6 +682,8 @@ class KurigramTransport:
             page = await self._history(reader, limit=size, offset_id=offset_id, min_id=above)
             fresh = [m for m in page if m.id > above]
             found.extend(fresh)
+            # Неполная страница (или дошли до отметки) — конец диапазона, без запроса за пустой
+            # страницей: короткий обрыв стоит одного запроса (раздел 4.3 спеки).
             if len(fresh) < size:
                 break
             offset_id = min(m.id for m in fresh)
