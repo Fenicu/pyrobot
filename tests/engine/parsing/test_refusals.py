@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from app.engine.parsing.refusals import Busy, Refused, recognize_refusals
@@ -43,3 +45,12 @@ def test_refusals(msg_id: int, expected: Refused) -> None:
 
 def test_antiflood_not_a_refusal() -> None:
     assert recognize_refusals(game_msg("refusals", 3518804)) == []
+
+
+def test_harvest_without_profession() -> None:
+    text = (
+        "❌Ты не можешь отправиться за ресурсами. "
+        "Добывать ресурсы могут только Барахольщик или Старьёвщик"
+    )
+    msg = replace(game_msg("refusals", 3518565), text=text, inline=())
+    assert recognize_refusals(msg) == [Refused(reason="not_harvester")]

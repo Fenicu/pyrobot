@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from app.engine.scenarios.library import deed, free_item, refresh, run_scenario
@@ -5,6 +7,7 @@ from app.engine.state.model import CharacterState
 from tests.engine.fakegame import World
 from tests.engine.scenarios.certify import certifies
 from tests.engine.scenarios.conftest import context
+from tests.fixtures import game_msg
 
 STARTS = {
     "harvest": ("/harvest", 3517276),
@@ -65,6 +68,17 @@ async def test_deed_refused(world: World, fixture: int, reason: str) -> None:
     world.game.on_text("/harvest", ("refusals", fixture))
     result = await run_scenario(deed, context(world), CharacterState(), {"activity": "harvest"})
     assert (result.status, result.reason) == ("refused", reason)
+
+
+@certifies("deed:harvest")
+async def test_deed_harvest_without_profession_is_refusal(world: World) -> None:
+    text = (
+        "❌Ты не можешь отправиться за ресурсами. "
+        "Добывать ресурсы могут только Барахольщик или Старьёвщик"
+    )
+    world.game.on_text("/harvest", replace(game_msg("refusals", 3518565), text=text, inline=()))
+    result = await run_scenario(deed, context(world), CharacterState(), {"activity": "harvest"})
+    assert (result.status, result.reason) == ("refused", "not_harvester")
 
 
 @certifies("deed:harvest")
