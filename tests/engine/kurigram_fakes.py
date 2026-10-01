@@ -68,15 +68,20 @@ class FakeSession:
     def __init__(self, events: list[str]) -> None:
         self.events = events
         self.stopped = False
+        # Остановка ждёт его, если задан: задачи `handle_updates` ещё идут.
+        self.hold: asyncio.Event | None = None
 
     async def stop(self) -> None:
         # Как `Session.stop` kurigram: ждёт приёма, закрытия соединения и задач `handle_updates`
-        # — в это время работают и обработчики диспетчера; остановленная сессия — ничего.
+        # — в это время работают и обработчики диспетчера; останавливающаяся или остановленная
+        # сессия — ничего.
         if self.stopped:
             return
         self.stopped = True
         for _ in range(3):
             await asyncio.sleep(0)
+        if self.hold is not None:
+            await self.hold.wait()
         self.events.append("session.stop")
 
 

@@ -200,12 +200,9 @@ async def _force_close(client: Any) -> None:
         await client.storage.close()
 
 
-async def _stop_session(client: Any) -> None:
-    """Сессия клиента перестаёт принимать обновления. Отмена ожидающего не обрывает остановку на
-    полпути: повторный `stop()` останавливающейся сессии ничего не делает и не закрыл бы её."""
-    if client.session is not None:
-        with suppress(Exception):
-            await asyncio.shield(client.session.stop())
+async def _stop_session(session: Any) -> None:
+    with suppress(Exception):
+        await session.stop()
 
 
 def _too_long(updates: Any) -> bool:
@@ -306,7 +303,10 @@ class KurigramTransport:
         self._backlog = backlog
         # Аварийная остановка началась: обновления в конвейер больше не передаются.
         self._aborted = False
-        # Перегрузка: приём остановлен до возврата клиента; None — приём идёт.
+        # Перегрузка — три задачи: остановка сессии, остановка приёма (она же разбор принятого)
+        # и вся перегрузка до возврата клиента; None — приём идёт.
+        self._session_stop: asyncio.Task[None] | None = None
+        self._shedding: asyncio.Task[None] | None = None
         self._overload: asyncio.Task[None] | None = None
         self.overload_check_s = OVERLOAD_CHECK_S
         self.overload_retry_s = OVERLOAD_RETRY_S
@@ -367,21 +367,35 @@ class KurigramTransport:
         if pending > OVERLOAD_HIGH:
             log.warning("telegram updates overload: %d pending, intake stopped", pending)
             self._online = False
-            self._overload = asyncio.create_task(self._ride_out_overload(client))
+            stopping = None
+            if client.session is not None:
+                stopping = asyncio.create_task(_stop_session(client.session))
+            self._session_stop = stopping
+            self._shedding = asyncio.create_task(self._shed(client, stopping))
+            self._overload = asyncio.create_task(self._ride_out_overload(client, self._shedding))
 
-    async def _ride_out_overload(self, client: Any) -> None:
-        """Перегрузка (раздел 4.2 спеки): сессия перестаёт принимать, статус — перегрузка,
+    @staticmethod
+    async def _shed(client: Any, stopping: asyncio.Task[None] | None) -> None:
+        """Остановка приёма при перегрузке (раздел 4.2 спеки): сессия перестаёт принимать,
         `terminate()` — диспетчер разбирает принятое в конвейер, `disconnect()` закрывает
-        хранилище, не удаляя его; выхода из Telegram нет. Когда накопленное разобрано ниже
-        `OVERLOAD_LOW`, возвращается новый клиент; не подключился — повтор через
-        `overload_retry_s`, статус остаётся перегрузкой. Своей догонки у kurigram нет, поэтому
-        пропущенное за перегрузку вернёт сверка истории, а не поток, который снова перегрузит."""
+        хранилище, не удаляя его; выхода из Telegram нет. Штатная остановка и выход её не
+        отменяют, а ждут (`_end_overload`): отмена посреди `terminate()` оборвала бы обработчики
+        диспетчера на полпути."""
+        if stopping is not None:
+            await asyncio.shield(stopping)
+        # terminate() и disconnect(), без утечки сессии при сбое одного из них.
+        await _force_close(client)
+
+    async def _ride_out_overload(self, client: Any, shedding: asyncio.Task[None]) -> None:
+        """Перегрузка: статус и остановка приёма, затем, когда накопленное разобрано ниже
+        `OVERLOAD_LOW`, — новый клиент; не подключился — повтор через `overload_retry_s`, статус
+        остаётся перегрузкой. Своей догонки у kurigram нет, поэтому пропущенное за перегрузку
+        вернёт сверка истории, а не поток, который снова перегрузит."""
         try:
-            # Статус — сразу, вместе с остановкой сессии: она может идти секунды (ждёт задачи
-            # `handle_updates`), а шлюз не должен слать в неё; уведомление её не задерживает.
-            await asyncio.gather(_stop_session(client), self._report(self.on_overload))
-            # terminate() и disconnect(), без утечки сессии при сбое одного из них.
-            await _force_close(client)
+            # Статус — сразу, вместе с остановкой приёма: остановка сессии может идти секунды
+            # (ждёт задачи `handle_updates`), а шлюз не должен слать в неё; уведомление её не
+            # задерживает.
+            await asyncio.gather(asyncio.shield(shedding), self._report(self.on_overload))
             # Накопленное считается по остановленному клиенту: его очередь разобрал terminate(),
             # а очередь клиента, не вышедшего в онлайн, разбирать некому.
             stopped, failures = client, 0
@@ -443,11 +457,23 @@ class KurigramTransport:
             except Exception:
                 log.exception("overload callback failed")
 
-    async def _end_overload(self) -> None:
-        task = self._overload
-        if task is not None:
+    async def _end_overload(self, *, hard: bool = False) -> None:
+        """Снимает перегрузку: ожидание разбора и возврат клиента отменяются, а остановка приёма
+        доводится до конца — `terminate()` разбирает принятое. Аварийная остановка (`hard`)
+        обрывает и её, кроме остановки сессии: повторный `stop()` останавливающейся сессии ничего
+        не делает, и хранилище закрылось бы раньше её задач `handle_updates`."""
+        overload, shedding, stopping = self._overload, self._shedding, self._session_stop
+        cancelled = [task for task in (overload, shedding if hard else None) if task is not None]
+        for task in cancelled:
             task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        if cancelled:
+            await asyncio.gather(*cancelled, return_exceptions=True)
+        # wait, а не gather: отмена ждущего (остановки движка) их не обрывает.
+        rest = {task for task in (shedding, stopping) if task is not None and not task.done()}
+        if rest:
+            await asyncio.wait(rest)
+        # Задача, отменённая до первого шага, свой finally не выполняет.
+        self._overload = self._shedding = self._session_stop = None
 
     async def _on_connect(self, client: Any, session: Any) -> None:
         # Переподключение главной сессии онлайн-клиента: пропущенное за обрыв вернёт сверка.
@@ -646,7 +672,7 @@ class KurigramTransport:
         `handle_updates`), обработчики ещё разбирают очередь."""
         self._aborted = True
         self._online = False
-        await self._end_overload()
+        await self._end_overload(hard=True)
         client = self._client
         if client.session is not None:
             with suppress(Exception):

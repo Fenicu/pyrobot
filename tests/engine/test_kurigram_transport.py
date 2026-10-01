@@ -611,11 +611,14 @@ async def test_abort_stops_session_cancels_handlers_without_terminate() -> None:
 
 class OverloadRig:
     """Транспорт, у клиентов которого обработчик диспетчера передаёт обновления в конвейер, —
-    список, который тест разбирает сам (`backlog` — его длина); вход — `TgAuthManager`."""
+    список, который тест разбирает сам (`backlog` — его длина); `gate` держит передачу; вход —
+    `TgAuthManager`."""
 
     def __init__(self, fence: Fence | None = None) -> None:
         self.pipeline: list[int] = []
         self.history: list[str] = []
+        self.gate = asyncio.Event()
+        self.gate.set()
         self.t = FakeKurigram(
             fence=fence, sink=self._submit, backlog=lambda: len(self.pipeline), dispatch=True
         )
@@ -626,10 +629,11 @@ class OverloadRig:
         _wire(self.t, self.tg)
 
     async def _submit(self, msg: IncomingMessage) -> None:
+        await self.gate.wait()
         self.pipeline.append(msg.msg_id)
 
-    async def overload(self) -> FakeClient:
-        """Онлайн, затем поток обновлений выше порога; ждёт, пока приём перекрыт."""
+    async def overload(self, *, until_event: str | None = "storage.close") -> FakeClient:
+        """Онлайн, затем поток обновлений выше порога; ждёт события остановки приёма."""
         assert (await self.tg.boot()).state is TgState.ONLINE
         client = self.t.client
         self.t.events.clear()
@@ -637,7 +641,8 @@ class OverloadRig:
         assert self.t.online
         _burst(self.t, OVERLOAD_HIGH + 1, 1)
         assert not self.t.online
-        await until(lambda: "storage.close" in self.t.events, timeout=5.0)
+        if until_event is not None:
+            await until(lambda: until_event in self.t.events, timeout=5.0)
         return client
 
 
@@ -768,6 +773,79 @@ async def test_log_out_during_overload_closes_telegram_session() -> None:
     assert len(rig.t.clients) == 3 and not rig.t.client.is_connected
     assert rig.notes.items == [("warn", "account_overload")]
     await rig.t.stop()
+
+
+LOGOUT = ("LogOut", {"retries": 1, "sleep_threshold": 0, "retry_delay": 0})
+SHED = ["session.stop", "terminate", "storage.save", "disconnect", "storage.close"]
+
+
+async def test_stop_during_drain_lets_terminate_finish() -> None:
+    # Штатная остановка посреди terminate(): принятое разбирается до конца, а не обрывается.
+    rig = OverloadRig()
+    rig.gate.clear()
+    old = await rig.overload(until_event="terminate")
+    stopping = asyncio.create_task(rig.t.stop())
+    await asyncio.sleep(0.01)
+    assert not stopping.done()
+    rig.gate.set()
+    await asyncio.wait_for(stopping, 5.0)
+    assert rig.pipeline == list(range(1, OVERLOAD_HIGH + 2)) and rig.t.events == SHED
+    assert rig.t.clients == [old] and not old.is_connected and not old.is_initialized
+    assert all(task.done() for task in old.dispatcher.handler_worker_tasks)
+
+
+async def test_log_out_during_drain_lets_terminate_finish() -> None:
+    rig = OverloadRig()
+    rig.gate.clear()
+    old = await rig.overload(until_event="terminate")
+    logging_out = asyncio.create_task(rig.tg.logout())
+    await asyncio.sleep(0.01)
+    assert not logging_out.done()
+    rig.gate.set()
+    st = await asyncio.wait_for(logging_out, 5.0)
+    assert st.state is TgState.UNAUTHORIZED and st.error is None and rig.t.storage.deleted
+    assert rig.pipeline == list(range(1, OVERLOAD_HIGH + 2))
+    assert not old.is_connected and rig.t.clients[1].invoked == [LOGOUT]
+    assert [name for c in rig.t.clients for name, _ in c.invoked if name == "SendCode"] == []
+    await rig.t.stop()
+
+
+async def test_overload_cleared_when_cancelled_before_it_starts() -> None:
+    # Выход сразу за перегрузкой — её задача снята, ни разу не начавшись; после нового входа
+    # перегрузка снова считается.
+    rig = OverloadRig()
+    await rig.overload(until_event=None)
+    assert (await rig.tg.logout()).state is TgState.UNAUTHORIZED
+    assert rig.pipeline == list(range(1, OVERLOAD_HIGH + 2))
+    assert [c for c in rig.t.clients if LOGOUT in c.invoked] == [rig.t.clients[1]]
+    st = await rig.tg.start("+888", owner="s1")
+    st = await rig.tg.submit_code(st.attempt_id or "", "s1", "12345")
+    assert st.state is TgState.ONLINE and rig.t.online
+    rig.pipeline.clear()
+    _burst(rig.t, 1, OVERLOAD_HIGH + 1)
+    assert not rig.t.online
+    await until(lambda: rig.tg.status().state is TgState.OVERLOAD)
+    await rig.t.stop()
+
+
+async def test_abort_during_overload_waits_for_session_stop() -> None:
+    # Аварийная остановка посреди остановки сессии: повторный stop() останавливающейся сессии
+    # ничего не делает — хранилище закрывается только после того, как сессия остановилась.
+    rig = OverloadRig()
+    assert (await rig.tg.boot()).state is TgState.ONLINE
+    session = rig.t.client.session
+    assert session is not None
+    hold = session.hold = asyncio.Event()
+    rig.t.events.clear()
+    _burst(rig.t, 1, OVERLOAD_HIGH + 1)
+    await until(lambda: session.stopped)
+    aborting = asyncio.create_task(rig.t.abort())
+    await asyncio.sleep(0.01)
+    assert not aborting.done() and rig.t.events == []
+    hold.set()
+    await asyncio.wait_for(aborting, 5.0)
+    # Без terminate(): принятое в конвейер больше не передаётся.
+    assert rig.t.events == ["session.stop", "handler.cancelled", "storage.close"]
 
 
 async def test_history_pass_does_not_reenter_overload() -> None:
