@@ -2949,7 +2949,7 @@ found`. Запрос идёт в контексте аккаунта (в стр�
 - `POST /api/v1/accounts/{id}/engine/restart` (CSRF) — 202: поколение движка
   (`accounts.engine_generation`) растёт, хост штатно останавливает движок и поднимает новый (так
   применяется `restart_required`); не запущен — 503 `engine not running` (аккаунт в `error`
-  включают: `PATCH enabled: true`);
+  включают: `PATCH enabled: true`); аккаунт удаляется — 409 `account_deleting`;
 - `GET /api/v1/host/status` (сессия) — здоровье процесса, а не аккаунта: `holder` (id процесса),
   `lock_connection_ok` (соединение блокировок живо), `engines` (аккаунты с запущенным движком),
   `busy` (аккаунты, которые хост не смог захватить: `locked_elsewhere`, `lease_active`),
