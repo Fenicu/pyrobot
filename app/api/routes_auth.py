@@ -13,14 +13,20 @@ from app.api.deps import (
     set_session_cookie,
 )
 from app.api.errors import AUTH, CSRF, CSRF_MISMATCH, Responses, error
-from app.api.security import dummy_hash, hash_password, verify_password
+from app.api.security import (
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    dummy_hash,
+    hash_password,
+    verify_password,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 class LoginIn(BaseModel):
     login: str = Field(max_length=64)
-    password: str = Field(max_length=1024)
+    password: str = Field(max_length=PASSWORD_MAX_LENGTH)
 
 
 class MeOut(BaseModel):
@@ -30,7 +36,7 @@ class MeOut(BaseModel):
 
 class PasswordChangeIn(BaseModel):
     current: str = Field(max_length=1024)
-    new: str = Field(min_length=12, max_length=1024)
+    new: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
 
 
 def _raise_if_blocked(c: Container, key: str) -> None:

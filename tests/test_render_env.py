@@ -13,6 +13,8 @@ TRICKY = {
     "POSTGRES_PASSWORD": "db$HOME${PATH}'q'",
     "PYROBOT_ADMIN_PASSWORD": 'it\'s $USER ${X:-y} "dq" #hash a\\b $$',
     "PYROBOT_TG_API_HASH": "abc'def",
+    # Ключ шифрования сессий: urlsafe base64 с `-`, `_` и `=`.
+    "PYROBOT_SECRET_KEY": "-_---_---_---_---_---_---_---_---_---_--_v8=",
 }
 
 
@@ -54,6 +56,7 @@ def test_compose_reads_secrets_literally(tmp_path: Path) -> None:
     }
     assert env["PYROBOT_ADMIN_PASSWORD"] == TRICKY["PYROBOT_ADMIN_PASSWORD"]
     assert env["PYROBOT_TG_API_HASH"] == TRICKY["PYROBOT_TG_API_HASH"]
+    assert env["PYROBOT_SECRET_KEY"] == TRICKY["PYROBOT_SECRET_KEY"]
     assert env["PYROBOT_DATABASE_URL"] == (
         f"postgresql+asyncpg://pyrobot:{TRICKY['POSTGRES_PASSWORD']}@postgres:5432/pyrobot"
     )

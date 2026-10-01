@@ -7,6 +7,11 @@ from collections.abc import Callable
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
+# Длина пароля админа: нижняя граница — для нового пароля (API и CLI), верхняя — чтобы им можно
+# было войти (поле входа ограничено тем же).
+PASSWORD_MIN_LENGTH = 12
+PASSWORD_MAX_LENGTH = 1024
+
 _hasher = PasswordHasher()
 _dummy_hash: str | None = None
 _dummy_hash_lock = asyncio.Lock()
