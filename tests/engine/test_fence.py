@@ -110,13 +110,15 @@ async def test_call_own_timeout_passes_through() -> None:
 
 async def test_call_follows_extended_deadline() -> None:
     clock = FakeMonotonic()
-    fence = Fence(1, 7, clock.now + 0.05, monotonic=clock)
+    fence = Fence(1, 7, clock.now + 0.2, monotonic=clock)
 
     async def fn() -> str:
-        await asyncio.sleep(0.02)
-        # Продление во время вызова: вызов обрезается уже по новому сроку.
+        # Продление во время вызова — сразу после первого переключения цикла, так что до старого
+        # срока остаются почти все 200 мс и паузы цикла не успевают его достать; затем вызов
+        # идёт дольше старого срока и обрезается уже по новому.
+        await asyncio.sleep(0)
         fence.extend(7, clock.now + 10)
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.3)
         return "ok"
 
     assert await fence.call(fn) == "ok"
