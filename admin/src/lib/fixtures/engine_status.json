@@ -1,4 +1,8 @@
 {
+ "running": true,
+ "status": "enabled",
+ "status_reason": null,
+ "host_reason": null,
  "mode": "live",
  "paused": false,
  "scenario": null,
@@ -10,7 +14,8 @@
   "state": "online",
   "user_id": 267519921,
   "attempt_id": null,
-  "error": null
+  "error": null,
+  "bound_user_id": 267519921
  },
  "queue": 0,
  "in_flight": null,
