@@ -2,15 +2,17 @@
 	import type { AccountApi } from '$lib/api/account';
 	import { call } from '$lib/api/client';
 	import { ApiFailure, errorText } from '$lib/api/errors';
-	import type { TgStatus } from '$lib/api/types';
+	import type { EngineStatus, TgStatus } from '$lib/api/types';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 	import { tgStateLabel } from '$lib/util/game';
 	import Pill from '../Pill.svelte';
 
 	interface Props {
 		api: AccountApi;
+		/** Статус движка аккаунта (`EngineStore`): по нему перечитывается статус входа. */
+		engine: { readonly status: EngineStatus | null };
 	}
-	let { api }: Props = $props();
+	let { api, engine }: Props = $props();
 	let status = $state<TgStatus | null>(null);
 	// Попытка входа живёт только в памяти этой страницы до её конца.
 	let attempt = $state<string | null>(null);
@@ -57,7 +59,13 @@
 		}
 	}
 
+	// Хост регистрирует движок только после подключения к Telegram: у только что созданного или
+	// включённого аккаунта первый ответ — `stopped`. Статус входа перечитывается, когда меняется
+	// «движок запущен» (пока аккаунт запускается, статус движка опрашивается раз в 2 с), а не
+	// своим опросом.
+	const running = $derived(engine.status?.running);
 	$effect(() => {
+		void running;
 		void refresh();
 	});
 

@@ -1,7 +1,9 @@
-import { cleanup, render, screen } from '@testing-library/svelte';
+import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { createAccountApi } from '$lib/api/account';
+import type { EngineStatus } from '$lib/api/types';
+import { EngineStore } from '$lib/stores/engine.svelte';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import TelegramView from './TelegramView.svelte';
@@ -18,12 +20,37 @@ const st = (state: string, extra: object = {}) => ({
 function setup(handler: (c: Call) => Response) {
 	const fetch = mockFetch(handler);
 	render(TelegramView, {
-		api: createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch)
+		api: createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch),
+		engine: { status: null }
 	});
 	return fetch;
 }
 
 describe('Вход в Telegram', () => {
+	it('движок регистрируется после ответа stopped — форма входа появляется без перемонтирования', async () => {
+		let running = false;
+		const fetch = mockFetch((c) =>
+			c.url === '/api/v1/accounts/1/engine/status'
+				? json({ ...fixture<EngineStatus>('engine_status'), running })
+				: json(st(running ? 'unauthorized' : 'stopped'))
+		);
+		const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
+		const engine = new EngineStore(api);
+		await engine.load();
+		render(TelegramView, { api, engine });
+		expect(await screen.findByText('движок не запущен')).toBeInTheDocument();
+		expect(screen.queryByLabelText('Телефон аккаунта')).not.toBeInTheDocument();
+		// Опрос статуса движка без перемены не перечитывает статус входа.
+		await engine.load();
+		const tgReads = () => fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/tg/status').length;
+		await waitFor(() => expect(tgReads()).toBe(1));
+		// Хост поднял движок: статус движка (пока аккаунт запускается — раз в 2 с) говорит «запущен».
+		running = true;
+		await engine.load();
+		expect(await screen.findByLabelText('Телефон аккаунта')).toBeInTheDocument();
+		expect(tgReads()).toBe(2);
+	});
+
 	it('online с прода — выход', async () => {
 		setup(() => json(fixture('tg_status')));
 		// Пользователь входа и привязка аккаунта.
