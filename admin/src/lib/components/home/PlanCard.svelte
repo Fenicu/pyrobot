@@ -42,6 +42,8 @@
 		const timer = setTimeout(() => (woke = new Date(wake)), left);
 		return () => clearTimeout(timer);
 	});
+	// Движок не запущен (или ещё регистрируется) — это не сбой: приглушённо, как на плашке.
+	const stopped = $derived(error?.kind === 'engine_down' && error.code !== 'planner not started');
 	const view = $derived(plan ? nowView(plan, clock) : null);
 	// Занятость устарела: кроме решения, план — второй проход по последним известным значениям.
 	const basis = $derived(plan ? basisText(plan) : '');
@@ -100,7 +102,9 @@
 <section class="card" aria-labelledby="plan-title">
 	<h2 id="plan-title" class="card-title">План бота</h2>
 	{#if !plan}
-		{#if error}
+		{#if stopped}
+			<p class="text-sm text-fg-muted" role="status">План недоступен: движок не запущен.</p>
+		{:else if error}
 			<p class="text-sm text-bad-fg" role="alert">План недоступен: {errorText(error)}.</p>
 		{:else}
 			<p class="text-sm text-fg-muted" role="status">Загрузка плана…</p>

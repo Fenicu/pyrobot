@@ -26,6 +26,7 @@
 	);
 	// Его контекст — если открыт: точка связи и счётчик непрочитанных из потока.
 	const opened = $derived(ctx?.id === account ? ctx : null);
+	const stopped = $derived(opened?.engine.status?.running === false);
 	const main = $derived(account === null ? [] : mainNav(account));
 	const more = $derived(moreNav(account));
 	const moreActive = $derived(more.some((i) => isActive(path, i.href)));
@@ -70,7 +71,7 @@
 	>
 		<div class="flex items-center justify-between px-4 py-3">
 			<span class="text-base font-semibold">pyrobot</span>
-			<ConnectionDot status={opened?.live.status ?? 'idle'} retryIn={opened?.live.retryIn ?? 0} compact />
+			<ConnectionDot status={opened?.live.status ?? 'idle'} retryIn={opened?.live.retryIn ?? 0} {stopped} compact />
 		</div>
 		<AccountSwitcher variant="side" accounts={accounts.list} current={account} alerts={opened?.unread.count} {path} />
 		<nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2" aria-label="Разделы">
@@ -138,7 +139,7 @@
 {#if moreOpen}
 	<Modal title="Ещё" variant="sheet" onclose={() => (moreOpen = false)}>
 		<div class="mb-3 flex items-center justify-between">
-			<ConnectionDot status={opened?.live.status ?? 'idle'} retryIn={opened?.live.retryIn ?? 0} />
+			<ConnectionDot status={opened?.live.status ?? 'idle'} retryIn={opened?.live.retryIn ?? 0} {stopped} />
 			<ThemeSwitch />
 		</div>
 		<AccountSwitcher

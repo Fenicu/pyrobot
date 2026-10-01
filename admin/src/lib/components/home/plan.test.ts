@@ -203,4 +203,13 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		render(PlanCard, { plan: null, error: { kind: 'engine_down', status: 503, code: 'planner not started' }, state: {}, now: NOW });
 		expect(screen.getByRole('alert')).toHaveTextContent('План недоступен: Движок недоступен.');
 	});
+
+	it('движок не запущен — не тревога, а приглушённое пояснение', () => {
+		const error = { kind: 'engine_down', status: 503, code: 'engine not running' } as const;
+		render(PlanCard, { plan: null, error, state: {}, now: NOW });
+		expect(screen.queryByRole('alert')).toBeNull();
+		const note = screen.getByRole('status');
+		expect(note).toHaveTextContent('План недоступен: движок не запущен.');
+		expect(note).toHaveClass('text-fg-muted');
+	});
 });

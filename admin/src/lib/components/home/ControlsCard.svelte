@@ -84,14 +84,19 @@
 		<p class="text-sm text-fg-muted">Статус движка ещё не получен.</p>
 	{:else}
 		<div class="flex flex-wrap gap-2">
-			<button type="button" class="btn" disabled={busy} onclick={togglePause}>
+			<button type="button" class="btn" disabled={busy || !status.running} onclick={togglePause}>
 				{#if status.paused}
 					<Play class="size-4" aria-hidden="true" /> Продолжить
 				{:else}
 					<Pause class="size-4" aria-hidden="true" /> Пауза
 				{/if}
 			</button>
-			<button type="button" class="btn {status.killed ? '' : 'btn-danger'}" disabled={busy} onclick={toggleKill}>
+			<button
+				type="button"
+				class="btn {status.killed ? '' : 'btn-danger'}"
+				disabled={busy || !status.running}
+				onclick={toggleKill}
+			>
 				<OctagonX class="size-4" aria-hidden="true" />
 				{status.killed ? 'Снять kill' : 'Kill'}
 			</button>
@@ -100,5 +105,9 @@
 				{status.mode === 'live' ? 'В dry_run' : 'Включить live'}
 			</button>
 		</div>
+		{#if !status.running}
+			<!-- Режим без движка пишется прямо в настройки, пауза и kill — только через движок. -->
+			<p class="mt-2 text-xs text-fg-muted">Пауза и kill — у запущенного движка.</p>
+		{/if}
 	{/if}
 </section>

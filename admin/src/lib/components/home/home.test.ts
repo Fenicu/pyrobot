@@ -85,6 +85,28 @@ describe('Главная на снимке с прода', () => {
 		expect(header).not.toHaveTextContent('нет аренды аккаунта');
 	});
 
+	it('шапка: движок не запущен — одна приглушённая метка вместо ложных тревог', () => {
+		// Так отвечает GET /engine/status без движка: проверки здоровья — false, TG — stopped.
+		const down: EngineStatus = {
+			...status,
+			running: false,
+			status: 'disabled',
+			next_wake: null,
+			tg: { ...status.tg, state: 'stopped', user_id: null },
+			pipeline_healthy: false,
+			workers_ok: false,
+			lease_ok: false
+		};
+		render(StatusHeader, { status: down, error: null, live: 'offline', retryIn: 4000, state: prod.state, now: NOW });
+		const header = screen.getByRole('region', { name: 'Статус' });
+		expect(header).toHaveTextContent('LIVE');
+		expect(within(header).getByText('движок не запущен', { selector: '.pill' })).toHaveClass('pill-muted');
+		for (const alarm of ['TG:', 'нет аренды аккаунта', 'конвейер нездоров', 'фоновая задача упала', 'нет связи', 'след. решение']) {
+			expect(header).not.toHaveTextContent(alarm);
+		}
+		expect(header.querySelectorAll('.pill-bad')).toHaveLength(0);
+	});
+
 	it('шапка: статус Telegram тем же текстом, что на экране Telegram', () => {
 		const tg = { ...status.tg, state: 'unauthorized' as const };
 		render(StatusHeader, { status: { ...status, tg }, error: null, live: 'open', state: prod.state, now: NOW });
@@ -92,7 +114,7 @@ describe('Главная на снимке с прода', () => {
 	});
 });
 
-function controls(mode: 'live' | 'dry_run') {
+function controls(mode: 'live' | 'dry_run', running = true) {
 	const fetch = mockFetch((c) => {
 		if (c.method === 'GET') return json({ version: 13, values: {}, defaults: {}, schema: {} });
 		if (c.method === 'PATCH')
@@ -101,7 +123,7 @@ function controls(mode: 'live' | 'dry_run') {
 	});
 	const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 	render(ConfirmDialog);
-	render(ControlsCard, { api, status: { ...status, mode }, onchange: () => {} });
+	render(ControlsCard, { api, status: { ...status, mode, running }, onchange: () => {} });
 	return fetch;
 }
 
@@ -136,6 +158,16 @@ describe('управление', () => {
 		await vi_wait(() => fetch.calls.some((c) => c.method === 'PATCH'));
 		const patch = fetch.calls.find((c) => c.method === 'PATCH');
 		expect(JSON.parse(patch?.body ?? '{}')).toMatchObject({ confirm_live: false });
+	});
+
+	it('движок не запущен: пауза и kill недоступны, режим переключается прямой записью', async () => {
+		const user = userEvent.setup();
+		const fetch = controls('live', false);
+		expect(screen.getByRole('button', { name: 'Пауза' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Kill' })).toBeDisabled();
+		expect(screen.getByRole('region', { name: 'Управление' })).toHaveTextContent('Пауза и kill — у запущенного движка');
+		await user.click(screen.getByRole('button', { name: 'В dry_run' }));
+		await vi_wait(() => fetch.calls.some((c) => c.method === 'PATCH'));
 	});
 
 	it('kill — с причиной', async () => {

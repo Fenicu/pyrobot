@@ -34,17 +34,22 @@
 		{#if status.spending_blocked}
 			<Pill tone="bad"><span class="ext-text">траты заблокированы: {status.spending_blocked}</span></Pill>
 		{/if}
-		<Pill tone={status.tg.state === 'online' ? 'ok' : 'bad'}>TG: {tgStateLabel(status.tg.state)}</Pill>
-		{#if !status.lease_ok}<Pill tone="bad">нет аренды аккаунта</Pill>{/if}
-		{#if !status.pipeline_healthy}<Pill tone="bad">конвейер нездоров</Pill>{/if}
-		{#if !status.workers_ok}<Pill tone="bad">фоновая задача упала</Pill>{/if}
-		{#if status.scenario}
-			<Pill tone="dec">идёт: {status.scenario}</Pill>
+		{#if status.running}
+			<Pill tone={status.tg.state === 'online' ? 'ok' : 'bad'}>TG: {tgStateLabel(status.tg.state)}</Pill>
+			{#if !status.lease_ok}<Pill tone="bad">нет аренды аккаунта</Pill>{/if}
+			{#if !status.pipeline_healthy}<Pill tone="bad">конвейер нездоров</Pill>{/if}
+			{#if !status.workers_ok}<Pill tone="bad">фоновая задача упала</Pill>{/if}
+			{#if status.scenario}
+				<Pill tone="dec">идёт: {status.scenario}</Pill>
+			{/if}
+			{#if status.next_wake}
+				<Pill title={fmtRelative(status.next_wake, now)}>след. решение {fmtMoment(status.next_wake, now)}</Pill>
+			{/if}
+			{#if status.queue > 0}<Pill>в очереди: {status.queue}</Pill>{/if}
+		{:else}
+			<!-- Без движка проверки здоровья и TG — заглушки, а не сбой: причина — на плашке выше. -->
+			<Pill>движок не запущен</Pill>
 		{/if}
-		{#if status.next_wake}
-			<Pill title={fmtRelative(status.next_wake, now)}>след. решение {fmtMoment(status.next_wake, now)}</Pill>
-		{/if}
-		{#if status.queue > 0}<Pill>в очереди: {status.queue}</Pill>{/if}
 	{:else if error}
 		<Pill tone="bad">{error.kind === 'engine_down' ? 'движок не запущен' : 'статус недоступен'}</Pill>
 	{:else}
@@ -53,5 +58,5 @@
 	{#if busy}
 		<Pill title={fmtRelative(busy.until, now)}>{busyText(busy, now)}</Pill>
 	{/if}
-	<span class="ml-auto"><ConnectionDot status={live} {retryIn} /></span>
+	<span class="ml-auto"><ConnectionDot status={live} {retryIn} stopped={status?.running === false} /></span>
 </section>
