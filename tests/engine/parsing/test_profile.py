@@ -130,3 +130,73 @@ def test_profile_without_team_tag(line: str, company: str) -> None:
     own = _profile(3624478)
     assert p.team_tag is None and p.company == company
     assert replace(p, team_tag=own.team_tag, company=own.company) == own
+
+
+# Профиль нового персонажа без профессии (аккаунт 2): опыт в скобках строки уровня, без 🧵.
+_NO_PROFESSION = (
+    "🎙CEO:\n🛠 - 🍋🥕🍅🍏🍅 (23/08) - /del\n\nБитва через 8ч. 18 мин.!\n\n⚡️Frosty\n"
+    "🎚11 (881 из 1\xa0110💡)\n💵$274 🔋0% /to_eat\n📚4\xa0\xa0 🔩64\xa0\xa0 ⚙️29\n"
+    "🔥7 из 7 (/pr)\n🎒1 из 12 /inv\n\n🔨\xa013    🎓\xa011\n🐿\xa06    🐢\xa06\n"
+    "⭐️⭐️⭐️ /cool\n\n🛌 Через какое-то время\nПолный профиль /full"
+)
+
+
+def _recognized(text: str, base: int = 3624478) -> ProfileCompact:
+    events = recognize_compact(replace(game_msg("profile", base), text=text))
+    assert len(events) == 1 and isinstance(events[0], ProfileCompact)
+    return events[0]
+
+
+def test_profile_without_profession() -> None:
+    assert _recognized(_NO_PROFESSION) == ProfileCompact(
+        battle_in_s=29880,
+        level=11,
+        exp=881,
+        exp_next=1110,
+        money=274,
+        stamina=0,
+        knowledge=4,
+        raw=64,
+        details=29,
+        motivation=7,
+        motivation_max=7,
+        motivation_next_in_s=None,
+        bag=1,
+        bag_cap=12,
+        tangerines=None,
+        practice=13,
+        theory=11,
+        cunning=6,
+        wisdom=6,
+        battle_target=None,
+        sleep_in_s=None,
+        busy_kind=None,
+        busy_left_s=None,
+        company="stark",
+        team_tag=None,
+    )
+
+
+def test_profile_without_profession_and_ceo_block() -> None:
+    plain = _NO_PROFESSION[_NO_PROFESSION.index("Битва через") :]
+    assert _recognized(plain) == _recognized(_NO_PROFESSION)
+
+
+def test_level_line_formats_give_same_profile() -> None:
+    own = game_msg("profile", 3624478).text or ""
+    old = "🎚71   🧵16 (🪡)\n💡17\xa0496\xa0049 из 18\xa0155\xa0142\n"
+    assert old in own
+    short = own.replace(old, "🎚71 (17\xa0496\xa0049 из 18\xa0155\xa0142💡)\n")
+    assert _recognized(short) == _profile(3624478)
+
+
+@pytest.mark.parametrize(
+    ("sleep_line", "seconds"),
+    [("🛌 Через 2ч. 5 мин.", 7500), ("🛌 Через какое-то время", None)],
+)
+def test_sleep_in_needs_real_duration(sleep_line: str, seconds: int | None) -> None:
+    own = game_msg("profile", 3624478).text or ""
+    assert "🛌 Через 2д. 11ч." in own
+    p = _recognized(own.replace("🛌 Через 2д. 11ч.", sleep_line))
+    assert p.sleep_in_s == seconds
+    assert replace(p, sleep_in_s=_profile(3624478).sleep_in_s) == _profile(3624478)

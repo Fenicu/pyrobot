@@ -8,12 +8,18 @@ from app.engine.events import Event
 from app.engine.parsing.common import DURATION, NUM, company_of_mark, dur, num
 from app.engine.types import IncomingMessage
 
-_COMPACT = re.compile(
+_HEAD = (
     r"\AБитва через (?P<battle_in>[^!\n]+)!\n\n"
     # Тег команды — только у игрока в команде: «☣️💰[SU] Fenicu», без команды — «☣️Fenicu».
     r"(?P<who>(?:[^\[\n]*\[(?P<tag>[^\]]+)\][\xa0 ])?[^\n]+?)(?: (?P<pet>🐀|🐕))?\n"
-    r"🎚(?P<level>\d+)\s+🧵(?P<prof>\d+) \((?P<sub>[^)]+)\)\n"
-    r"💡(?P<exp>" + NUM + r") из (?P<exp_next>" + NUM + r")\n"
+)
+# Строка уровня: с профессией — опыт отдельной строкой; у новичка без неё — в скобках, без 🧵.
+_LEVELS = (
+    r"🎚(?P<level>\d+)\s+🧵\d+ \([^)]+\)\n"
+    r"💡(?P<exp>" + NUM + r") из (?P<exp_next>" + NUM + r")\n",
+    r"🎚(?P<level>\d+) \((?P<exp>" + NUM + r") из (?P<exp_next>" + NUM + r")💡\)\n",
+)
+_REST = (
     r"💵\$(?P<money>" + NUM + r")(?: 🌐\d+)? 🔋(?P<stamina>\d+)% /to_eat\n"
     r"📚(?P<knowledge>" + NUM + r")\s+🔩(?P<raw>" + NUM + r")\s+⚙️(?P<details>" + NUM + r")\n"
     r"🔥(?P<mot>\d+) из (?P<mot_max>\d+) \(/pr\)(?: \((?P<mot_in>[^)]*)\))?\n"
@@ -22,12 +28,12 @@ _COMPACT = re.compile(
     r"\n🔨\xa0(?P<practice>\d+)\s+🎓\xa0(?P<theory>\d+)\n"
     r"🐿\xa0(?P<cunning>\d+)\s+🐢\xa0(?P<wisdom>\d+)\n"
     r"[^\n]*/cool\n\n?"
-    r"(?P<tail>.*)\Z",
-    re.S,
+    r"(?P<tail>.*)\Z"
 )
+_COMPACT = tuple(re.compile(_HEAD + level + _REST, re.S) for level in _LEVELS)
 _CEO_BREAK = "\n\nБитва через"
 _TANGERINES = re.compile(r"^🍊(?P<n>\d+) ", re.M)
-_SLEEP_IN = re.compile(r"^🛌 Через (?P<t>[^\n]+)$", re.M)
+_SLEEP_IN = re.compile(r"^🛌 Через (?P<t>" + DURATION + r")$", re.M)
 _SLEEPING = re.compile(r"^🛌Спишь (?P<where>под мостом|в отеле) \((?P<t>[^)]+)\)$", re.M)
 _TARGET = re.compile(r"^⚔️Взлом (?P<target>[^\n]+)$", re.M)
 _DOING = re.compile(r"^(?P<act>(?!🛌)[^\n/]+?) \((?P<t>" + DURATION + r")\)$", re.M)
@@ -88,7 +94,7 @@ def recognize_compact(msg: IncomingMessage) -> list[Event]:
     # Сообщение CEO игра ставит перед профилем, отделяя пустой строкой.
     if text.startswith("🎙CEO:") and _CEO_BREAK in text:
         text = text[text.index(_CEO_BREAK) + 2 :]
-    m = _COMPACT.match(text)
+    m = next((m for rx in _COMPACT if (m := rx.match(text))), None)
     if m is None:
         return []
     tail = m["tail"]
