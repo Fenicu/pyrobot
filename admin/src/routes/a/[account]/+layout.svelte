@@ -5,6 +5,7 @@
 	import { accounts, api, current, startAccount } from '$lib/app.svelte';
 	import AccountsPending from '$lib/components/AccountsPending.svelte';
 	import EngineDownBanner from '$lib/components/EngineDownBanner.svelte';
+	import GameChatBanner from '$lib/components/GameChatBanner.svelte';
 	import { parseAccount, rememberAccount, setScreenAccount } from '$lib/nav';
 
 	let { children }: { children: Snippet } = $props();
@@ -47,6 +48,7 @@
 	{#key ctx}
 		{#if ctx.engine.status}
 			<EngineDownBanner status={ctx.engine.status} accountId={ctx.id} {api} onchange={reload} />
+			<GameChatBanner status={ctx.engine.status} api={ctx.api} onchange={() => void ctx.engine.load()} />
 		{/if}
 		{@render children()}
 	{/key}
