@@ -119,6 +119,12 @@
 				</Pill>
 				{#if status.user_id}<span>user_id <span class="font-mono">{status.user_id}</span></span>{/if}
 			</p>
+			{#if status.state === 'overload'}
+				<p class="mt-1 text-sm text-fg-muted">
+					Обновлений из Telegram больше, чем бот успевает записать: приём приостановлен. Когда накопленное
+					разобрано, бот подключится сам — входить заново не нужно, пропущенное он дочитает из истории чатов.
+				</p>
+			{/if}
 			{#if status.error}
 				<p class="ext-text mt-1 text-sm text-bad-fg">{ERRORS[status.error] ?? status.error}</p>
 			{/if}
@@ -163,7 +169,7 @@
 			</label>
 			<button type="submit" class="btn btn-primary" disabled={busy || !password}>Войти</button>
 		</form>
-	{:else if status}
+	{:else if status && phase !== 'overload'}
 		<form class="card space-y-2" onsubmit={start}>
 			<label class="block space-y-1">
 				<span class="label">Телефон аккаунта</span>

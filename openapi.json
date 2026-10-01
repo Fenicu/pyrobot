@@ -4880,6 +4880,7 @@
           "awaiting_code",
           "awaiting_password",
           "online",
+          "overload",
           "error",
           "stopped"
         ],

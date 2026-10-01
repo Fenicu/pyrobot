@@ -77,6 +77,7 @@ export const TG_STATE: Record<string, string> = {
 	awaiting_code: 'ждёт код',
 	awaiting_password: 'ждёт пароль 2FA',
 	online: 'online',
+	overload: 'перегрузка',
 	error: 'ошибка',
 	stopped: 'движок не запущен'
 };

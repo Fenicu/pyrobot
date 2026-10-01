@@ -2496,7 +2496,7 @@ export interface components {
          * TgState
          * @enum {string}
          */
-        TgState: "unauthorized" | "awaiting_code" | "awaiting_password" | "online" | "error" | "stopped";
+        TgState: "unauthorized" | "awaiting_code" | "awaiting_password" | "online" | "overload" | "error" | "stopped";
         /** TgStatusOut */
         TgStatusOut: {
             /** Attempt Id */

@@ -666,6 +666,7 @@ async def kurigram(tg: Telegram) -> AsyncIterator[KurigramTransport]:
             fence=long_fence(),
             chat_filter=ChatFilter.from_settings(CHATS),
             sink=FakeJournal().deliver,  # type: ignore[arg-type]
+            backlog=lambda: 0,
         )
         transport._client.invoke = tg.invoke
         transport._client.resolve_peer = tg.resolve_peer

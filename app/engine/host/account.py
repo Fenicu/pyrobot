@@ -238,6 +238,8 @@ class AccountRuntime:
         )
         if self._kurigram is not None:
             self._kurigram.on_auth_lost = self.tg.mark_lost
+            self._kurigram.on_overload = self.tg.mark_overload
+            self._kurigram.on_resumed = self.tg.mark_resumed
         settings = self.settings
         gateway = self.gateway
         reconciler = Reconciler(
@@ -451,6 +453,7 @@ class AccountRuntime:
             fence=self.fence,
             chat_filter=ChatFilter.from_settings(self.settings.current.chats),
             sink=pipeline.submit,
+            backlog=pipeline.backlog,
         )
         self._kurigram = kurigram
         return kurigram, kurigram

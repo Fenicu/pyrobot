@@ -16,6 +16,9 @@ from app.engine.types import IncomingMessage
 
 log = logging.getLogger(__name__)
 State = dict[str, Any]
+# Очередь конвейера ограничена (раздел 4.2 спеки): при заполнении обработчик kurigram ждёт места.
+# Поток обновлений транспорт перекрывает раньше — перегрузкой (`OVERLOAD_HIGH`).
+PIPELINE_QUEUE_MAX = 10000
 
 
 class Reducer(Protocol):
@@ -67,7 +70,7 @@ class Pipeline:
         self._bus = bus
         self._metrics = metrics
         self._react_max_age = react_max_age
-        self._queue: asyncio.Queue[IncomingMessage] = asyncio.Queue()
+        self._queue: asyncio.Queue[IncomingMessage] = asyncio.Queue(maxsize=PIPELINE_QUEUE_MAX)
         self._latest: OrderedDict[tuple[int, int], IncomingMessage] = OrderedDict()
         self._capacity = latest_capacity
         self._retry_base = retry_base_s
@@ -106,6 +109,7 @@ class Pipeline:
         self._remember(msg)
 
     async def submit(self, msg: IncomingMessage) -> None:
+        """В очередь конвейера; полная очередь — ждёт места."""
         await self._queue.put(msg)
 
     def backlog(self) -> int:

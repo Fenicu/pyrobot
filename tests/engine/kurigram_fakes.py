@@ -71,10 +71,12 @@ class FakeSession:
 
     async def stop(self) -> None:
         # Как `Session.stop` kurigram: ждёт приёма, закрытия соединения и задач `handle_updates`
-        # — в это время работают и обработчики диспетчера.
+        # — в это время работают и обработчики диспетчера; остановленная сессия — ничего.
+        if self.stopped:
+            return
+        self.stopped = True
         for _ in range(3):
             await asyncio.sleep(0)
-        self.stopped = True
         self.events.append("session.stop")
 
 
@@ -146,6 +148,7 @@ class FakeClient:
             raise ConnectionError("Client is already disconnected")
         if self.is_initialized:
             raise ConnectionError("Can't disconnect an initialized client")
+        self.events.append("disconnect")
         assert self.session is not None
         await self.session.stop()
         await self.storage.close()
@@ -237,6 +240,7 @@ class FakeClient:
             yield item
 
     async def send_phone_number_code(self, phone: str) -> Any:
+        self.invoked.append(("SendCode", {}))
         err = self.errors.pop("SendCode", None)
         if err is not None:
             raise err
@@ -257,13 +261,25 @@ def long_fence() -> Fence:
 
 
 class FakeKurigram(KurigramTransport):
+    """Транспорт на фейковых клиентах. `dispatch` — у каждого клиента обработчик диспетчера
+    передаёт обновления в транспорт, как `MessageHandler` kurigram; `backlog` — очередь
+    конвейера; `client_errors` — сбои вызовов у клиентов, созданных дальше."""
+
     def __init__(
-        self, *, authorized: bool = True, fence: Fence | None = None, sink: Sink = _drop
+        self,
+        *,
+        authorized: bool = True,
+        fence: Fence | None = None,
+        sink: Sink = _drop,
+        backlog: Callable[[], int] = lambda: 0,
+        dispatch: bool = False,
     ) -> None:
         self.clients: list[FakeClient] = []
         # События клиентов и хранилища по порядку: сессия, обработчики, хранилище.
         self.events: list[str] = []
         self.storage = FakeStorage(self.events, user_id=EXPECTED if authorized else None)
+        self._dispatch = dispatch
+        self.client_errors: dict[str, BaseException] = {}
         super().__init__(
             api_id=1,
             api_hash="x",
@@ -272,10 +288,14 @@ class FakeKurigram(KurigramTransport):
             fence=fence or long_fence(),
             chat_filter=ChatFilter.from_settings(ChatsSection()),
             sink=sink,
+            backlog=backlog,
         )
 
     def _make_client(self) -> FakeClient:
         client = FakeClient(self.storage, self.events)
+        client.errors.update(self.client_errors)
+        if self._dispatch:
+            client.dispatcher.handler = lambda update: self._on_new(client, update)
         self.clients.append(client)
         return client
 

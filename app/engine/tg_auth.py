@@ -64,6 +64,8 @@ class TgState(StrEnum):
     AWAITING_CODE = "awaiting_code"
     AWAITING_PASSWORD = "awaiting_password"
     ONLINE = "online"
+    # Перегрузка обновлениями: транспорт остановил приём и подключится сам, вход сохранён.
+    OVERLOAD = "overload"
     ERROR = "error"
     # Движок аккаунта не запущен: состояние входа неизвестно (только в API).
     STOPPED = "stopped"
@@ -157,7 +159,7 @@ class TgAuthManager:
 
     async def start(self, phone: str, owner: str) -> TgStatus:
         async with self._lock:
-            if self._state is TgState.ONLINE:
+            if self._state in (TgState.ONLINE, TgState.OVERLOAD):
                 raise AttemptMismatch("already online")
             active = self._attempt
             if active is not None and active.owner != owner and active.expires > time.monotonic():
@@ -244,13 +246,34 @@ class TgAuthManager:
 
     async def mark_lost(self) -> None:
         async with self._lock:
-            was_online = self._state is TgState.ONLINE
+            was_online = self._state in (TgState.ONLINE, TgState.OVERLOAD)
             self._user_id = None
             self._set(TgState.UNAUTHORIZED, error="session_revoked")
         if was_online and self._notifier is not None:
             await self._notifier.notify(
                 "error", "tg_auth_lost", "telegram session revoked; login again in admin"
             )
+
+    async def mark_overload(self) -> None:
+        """Перегрузка обновлениями (раздел 4.2 спеки): транспорт остановил приём, вход сохранён.
+        Только из онлайна — статус `overload` и одно предупреждение на перегрузку; перегрузка
+        сразу после выхода в онлайн ждёт, пока вход его закончит."""
+        async with self._lock:
+            if self._state is not TgState.ONLINE:
+                return
+            self._set(TgState.OVERLOAD)
+        if self._notifier is not None:
+            await self._notifier.notify(
+                "warn",
+                "account_overload",
+                "too many telegram updates queued; intake paused until the backlog is processed",
+            )
+
+    async def mark_resumed(self, error: str | None = None) -> None:
+        """Транспорт вышел из перегрузки: клиент снова онлайн или, с `error`, не поднялся."""
+        async with self._lock:
+            if self._state is TgState.OVERLOAD:
+                self._set(TgState.ERROR if error else TgState.ONLINE, error=error)
 
     def _check(self, attempt_id: str, owner: str, state: TgState) -> _Attempt:
         attempt = self._attempt

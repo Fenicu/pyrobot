@@ -1,6 +1,6 @@
 import asyncio
 import secrets
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import datetime
 from types import SimpleNamespace as NS
 from typing import Any
@@ -13,21 +13,34 @@ from app.config import AppConfig
 from app.db.base import Database
 from app.db.crypto import SecretBox
 from app.db.models import TgPeer, TgSession
+from app.engine.bus import Bus
 from app.engine.fence import Fence, LeaseLost
+from app.engine.host.account import pipeline_deliver
+from app.engine.memory import MemoryJournal
 from app.engine.notify import Level
+from app.engine.parsing import default_parser
+from app.engine.pipeline import NullReducer, Pipeline
 from app.engine.settings import ChatsSection
-from app.engine.tg_auth import InvalidPhone, SendCodeRejected, TgAuthManager, TgState
+from app.engine.tg_auth import (
+    AttemptMismatch,
+    InvalidPhone,
+    SendCodeRejected,
+    TgAuthManager,
+    TgState,
+)
 from app.engine.transport.base import (
     FloodWait,
     GroupInfo,
     TransportAuthLost,
     TransportRejected,
 )
-from app.engine.transport.kurigram import ChatFilter
+from app.engine.transport.history import HistorySync
+from app.engine.transport.kurigram import OVERLOAD_HIGH, OVERLOAD_LOW, ChatFilter
 from app.engine.types import IncomingMessage
 from tests.conftest import TEST_DB_URL
 from tests.engine.helpers import GAME, until
 from tests.engine.kurigram_fakes import EXPECTED, FakeClient, FakeKurigram, long_fence, rpc_error
+from tests.engine.test_history_sync import FakeSource, MemoryMarks
 
 TEAM = -1001149209877
 BOX = SecretBox(secrets.token_bytes(32))
@@ -494,7 +507,7 @@ async def _drop(msg: IncomingMessage) -> None:
 @pytest.mark.db
 async def test_client_uses_storage_engine_and_skips_updates(db: Database) -> None:
     from app.db.tg_storage import PgSessionStorage
-    from app.engine.transport.kurigram import KurigramTransport
+    from app.engine.transport.kurigram import CountingQueue, KurigramTransport
 
     storage = PgSessionStorage(db, 7, BOX, set)
     t = KurigramTransport(
@@ -505,6 +518,7 @@ async def test_client_uses_storage_engine_and_skips_updates(db: Database) -> Non
         fence=long_fence(),
         chat_filter=ChatFilter.from_settings(ChatsSection()),
         sink=_drop,
+        backlog=lambda: 0,
     )
     client = t._client
     # Сессия — в базе, а не в файле рабочего каталога; догонки kurigram нет — пропущенное
@@ -512,6 +526,8 @@ async def test_client_uses_storage_engine_and_skips_updates(db: Database) -> Non
     assert client.name == "account-7" and client.storage is storage
     assert client.skip_updates is True and client.workers == 1
     assert not client.in_memory and client.session_string is None
+    # Очередь обновлений диспетчера kurigram — с подсчётом перегрузки.
+    assert isinstance(client.dispatcher.updates_queue, CountingQueue)
 
 
 def _telegram_calls(t: FakeKurigram) -> list[Callable[[], Awaitable[Any]]]:
@@ -591,6 +607,216 @@ async def test_abort_stops_session_cancels_handlers_without_terminate() -> None:
     idle = FakeKurigram()
     await idle.abort()
     assert idle.events == ["storage.close"]
+
+
+class OverloadRig:
+    """Транспорт, у клиентов которого обработчик диспетчера передаёт обновления в конвейер, —
+    список, который тест разбирает сам (`backlog` — его длина); вход — `TgAuthManager`."""
+
+    def __init__(self, fence: Fence | None = None) -> None:
+        self.pipeline: list[int] = []
+        self.history: list[str] = []
+        self.t = FakeKurigram(
+            fence=fence, sink=self._submit, backlog=lambda: len(self.pipeline), dispatch=True
+        )
+        self.t.overload_check_s = 0.005
+        self.t.on_history_needed = self.history.append
+        self.notes = Recorder()
+        self.tg = TgAuthManager(self.t, expected_user_id=EXPECTED, notifier=self.notes)
+        _wire(self.t, self.tg)
+
+    async def _submit(self, msg: IncomingMessage) -> None:
+        self.pipeline.append(msg.msg_id)
+
+    async def overload(self) -> FakeClient:
+        """Онлайн, затем поток обновлений выше порога; ждёт, пока приём перекрыт."""
+        assert (await self.tg.boot()).state is TgState.ONLINE
+        client = self.t.client
+        self.t.events.clear()
+        _burst(self.t, 1, OVERLOAD_HIGH)
+        assert self.t.online
+        _burst(self.t, OVERLOAD_HIGH + 1, 1)
+        assert not self.t.online
+        await until(lambda: "storage.close" in self.t.events, timeout=5.0)
+        return client
+
+
+def _wire(t: FakeKurigram, tg: TgAuthManager) -> None:
+    t.on_auth_lost = tg.mark_lost
+    t.on_overload = tg.mark_overload
+    t.on_resumed = tg.mark_resumed
+
+
+def _burst(t: FakeKurigram, first: int, count: int) -> None:
+    """Обновления от сетевого слоя kurigram подряд, без передачи управления."""
+    queue = t.client.dispatcher.updates_queue
+    for msg_id in range(first, first + count):
+        queue.put_nowait(_game_message(msg_id))
+
+
+async def test_overload_stop_order_and_drain() -> None:
+    rig = OverloadRig()
+    client = await rig.overload()
+    # Сессия перестаёт принимать, диспетчер разбирает принятое, клиент отключается; хранилище
+    # закрыто, но не удалено — выхода из Telegram нет.
+    assert rig.t.events == [
+        "session.stop",
+        "terminate",
+        "storage.save",
+        "disconnect",
+        "storage.close",
+    ]
+    assert not client.is_connected and not client.is_initialized and not rig.t.storage.deleted
+    assert rig.pipeline == list(range(1, OVERLOAD_HIGH + 2))
+    st = rig.tg.status()
+    assert st.state is TgState.OVERLOAD and st.user_id == EXPECTED
+    assert rig.notes.items == [("warn", "account_overload")]
+    # Пока накопленное не разобрано, клиент не возвращается, а входа заново нет.
+    with pytest.raises(AttemptMismatch):
+        await rig.tg.start("+888", owner="s1")
+    await asyncio.sleep(0.05)
+    assert rig.t.clients == [client] and rig.tg.status().state is TgState.OVERLOAD
+    await rig.t.stop()
+
+
+async def test_resume_below_low_with_new_client_same_storage() -> None:
+    rig = OverloadRig()
+    old = await rig.overload()
+    # Ровно OVERLOAD_LOW — ещё не «ниже».
+    del rig.pipeline[:-OVERLOAD_LOW]
+    await asyncio.sleep(0.05)
+    assert rig.t.clients == [old] and rig.tg.status().state is TgState.OVERLOAD
+    rig.pipeline.pop()
+    await until(lambda: rig.tg.status().state is TgState.ONLINE)
+    new = rig.t.client
+    # Новый объект клиента на том же хранилище: сессия та же, кода не просили.
+    assert rig.t.clients == [old, new] and new.storage is old.storage is rig.t.storage
+    assert not rig.t.storage.deleted and new.is_connected and new.is_initialized and rig.t.online
+    assert [name for c in rig.t.clients for name, _ in c.invoked if name == "SendCode"] == []
+    assert rig.tg.status().user_id == EXPECTED
+    assert rig.notes.items == [("warn", "account_overload")]
+    # Пропущенное за перегрузку вернёт проход сверки истории.
+    assert rig.history == ["online", "online"]
+    _burst(rig.t, OVERLOAD_HIGH + 2, 1)
+    await until(lambda: rig.pipeline[-1] == OVERLOAD_HIGH + 2)
+    await rig.t.stop()
+
+
+async def test_resume_refused_after_fence_deadline() -> None:
+    # Подключение нового клиента — вызовы Telegram: после срока аренды они не начинаются.
+    clock = FakeMonotonic()
+    fence = Fence(1, 1, clock.now + 3600.0, monotonic=clock)
+    rig = OverloadRig(fence=fence)
+    await rig.overload()
+    clock.now = fence.deadline
+    rig.pipeline.clear()
+    await until(lambda: len(rig.t.clients) == 2)
+    await asyncio.sleep(0.01)
+    assert not rig.t.client.is_connected and rig.t.client.invoked == []
+    assert rig.tg.status().state is TgState.OVERLOAD
+    await rig.t.abort()
+
+
+@pytest.mark.parametrize(
+    ("error", "state", "code"),
+    [
+        ("OSError", TgState.ERROR, "online_failed"),
+        ("SessionRevoked", TgState.UNAUTHORIZED, "session_revoked"),
+    ],
+)
+async def test_resume_failure(error: str, state: TgState, code: str) -> None:
+    rig = OverloadRig()
+    await rig.overload()
+    # Новый клиент не выходит в онлайн: сбой связи — ошибка входа, как при старте; отозванная
+    # сессия — потеря входа.
+    failure = OSError("network down") if error == "OSError" else rpc_error(error)
+    rig.t.client_errors["GetState"] = failure
+    rig.pipeline.clear()
+    await until(lambda: rig.tg.status().state is state)
+    assert rig.tg.status().error == code and not rig.t.online
+    assert not rig.t.clients[1].is_connected
+    revoked = state is TgState.UNAUTHORIZED
+    assert rig.t.storage.deleted is revoked
+    lost = [("error", "tg_auth_lost")] if revoked else []
+    assert rig.notes.items == [("warn", "account_overload"), *lost]
+    await rig.t.stop()
+
+
+async def test_history_pass_does_not_reenter_overload() -> None:
+    # Проход после перегрузки — до 1000 сообщений новее отметки и 50 правок перед ней — идёт
+    # через ограниченную очередь конвейера вместе с живыми обновлениями и ниже OVERLOAD_HIGH.
+    gate = asyncio.Event()
+    gate.set()
+
+    class GatedJournal(MemoryJournal):
+        async def append(self, *args: Any, **kwargs: Any) -> int | None:
+            await gate.wait()
+            return await super().append(*args, **kwargs)
+
+    journal = GatedJournal()
+
+    async def known(chat_id: int, keys: Sequence[tuple[int, int, str]]) -> set[Any]:
+        stored = {
+            (m.msg_id, m.revision, m.content_hash())
+            for m, _ in journal.rows
+            if m.chat_id == chat_id
+        }
+        return {key for key in keys if key in stored}
+
+    pipeline = Pipeline(journal=journal, parser=default_parser(), reducer=NullReducer(), bus=Bus())
+    t = FakeKurigram(sink=pipeline.submit, backlog=pipeline.backlog, dispatch=True)
+    t.overload_check_s = 0.005
+    notes = Recorder()
+    tg = TgAuthManager(t, expected_user_id=EXPECTED, notifier=notes)
+    _wire(t, tg)
+    source = FakeSource()
+    for msg_id in range(1, 1001):
+        source.post(GAME, msg_id)
+    marks = MemoryMarks({(GAME, 0): 1000})
+    sync = HistorySync(
+        source,
+        marks,  # type: ignore[arg-type]
+        known,
+        pipeline_deliver(pipeline),
+        ChatFilter.from_settings(ChatsSection()).accepts,
+        notes,
+        {(GAME, 0)},
+        lambda: t.online,
+    )
+    t.on_history_needed = sync.request
+    tasks = [asyncio.create_task(pipeline.run()), asyncio.create_task(sync.run())]
+    try:
+        assert (await tg.boot()).state is TgState.ONLINE
+        await until(lambda: source.reads == 1)
+        gate.clear()
+        _burst(t, 10_001, OVERLOAD_HIGH + 1)
+        await until(lambda: "storage.close" in t.events, timeout=5.0)
+        assert tg.status().state is TgState.OVERLOAD
+        # Пропущенное за перегрузку: новые сообщения и правки перед отметкой.
+        for msg_id in range(1001, 2001):
+            source.post(GAME, msg_id)
+        for msg_id in range(951, 1001):
+            source.edit(GAME, msg_id, f"m{msg_id} правка")
+        source.gate = asyncio.Event()
+        gate.set()
+        await until(lambda: tg.status().state is TgState.ONLINE and source.reads == 2, 5.0)
+        await until(lambda: pipeline.unfinished == 0, 5.0)
+        gate.clear()
+        source.gate.set()
+        await until(lambda: pipeline.unfinished == 1050)
+        _burst(t, 20_001, 100)
+        await until(lambda: pipeline.unfinished == 1150)
+        assert t.online and len(t.clients) == 2 and t.events.count("session.stop") == 1
+        assert tg.status().state is TgState.ONLINE
+        assert notes.items == [("warn", "account_overload")]
+        gate.set()
+        await until(lambda: marks.marks[(GAME, 0)] == 2000, 5.0)
+        assert {m.msg_id for m, _ in journal.rows} >= set(range(951, 2001))
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await t.stop()
 
 
 def _kurigram_config() -> AppConfig:

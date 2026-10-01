@@ -11,7 +11,7 @@ from app.engine.events import AntiFlood, Event
 from app.engine.fence import LeaseLost
 from app.engine.memory import MemoryJournal
 from app.engine.parsing import default_parser
-from app.engine.pipeline import NullReducer, Pipeline
+from app.engine.pipeline import PIPELINE_QUEUE_MAX, NullReducer, Pipeline
 from app.engine.state.ledger import Effect
 from app.engine.types import IncomingMessage
 from tests.engine.helpers import GAME, make_msg, now
@@ -262,6 +262,32 @@ async def test_drain_times_out_on_hung_journal() -> None:
         await pipe.submit(make_msg("b", msg_id=2))
         assert await pipe.drain(0.05) is False
         assert pipe.unfinished == 2
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_pipeline_submit_waits_when_full() -> None:
+    # Очередь конвейера ограничена: при заполнении обработчик kurigram ждёт места.
+    gate = asyncio.Event()
+
+    class GatedJournal(MemoryJournal):
+        async def append(self, *args: Any, **kwargs: Any) -> int | None:
+            await gate.wait()
+            return await super().append(*args, **kwargs)
+
+    pipe, _, journal = _pipeline(journal=GatedJournal())
+    for i in range(PIPELINE_QUEUE_MAX):
+        await pipe.submit(make_msg("x", msg_id=i))
+    assert pipe.backlog() == PIPELINE_QUEUE_MAX
+    late = asyncio.create_task(pipe.submit(make_msg("late", msg_id=PIPELINE_QUEUE_MAX)))
+    await asyncio.sleep(0.01)
+    assert not late.done()
+    # Конвейер взял первое сообщение (запись в журнал ещё идёт) — место есть.
+    task = asyncio.create_task(pipe.run())
+    try:
+        await asyncio.wait_for(late, 1.0)
+        assert pipe.backlog() == PIPELINE_QUEUE_MAX and journal.rows == []
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)

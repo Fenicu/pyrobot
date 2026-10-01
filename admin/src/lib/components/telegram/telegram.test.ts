@@ -23,6 +23,13 @@ describe('Вход в Telegram', () => {
 		expect(screen.getByRole('button', { name: 'Выйти из Telegram' })).toBeInTheDocument();
 	});
 
+	it('перегрузка — пояснение, без формы входа', async () => {
+		setup(() => json(st('overload', { user_id: 267519921 })));
+		expect(await screen.findByText('перегрузка')).toBeInTheDocument();
+		expect(screen.getByText(/приём приостановлен/)).toBeInTheDocument();
+		expect(screen.queryByLabelText('Телефон аккаунта')).not.toBeInTheDocument();
+	});
+
 	it('телефон → код (неверный — тот же шаг) → 2FA → online; поля очищаются', async () => {
 		const user = userEvent.setup();
 		let codeTries = 0;
