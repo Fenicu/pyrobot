@@ -388,7 +388,9 @@ async def test_self_chat_on_first_login_binds_but_stays_offline() -> None:
     # Привязка записана, сессия не закрыта: после исправления настроек входить заново не нужно.
     assert rig.bound == [EXPECTED] and st.bound_user_id == EXPECTED and st.user_id is None
     await rig.assert_offline()
-    assert not rig.t.storage.deleted and rig.t.client.is_connected
+    # Клиент отключён — обновления, которые некому разбирать, не копятся; сессия — в хранилище.
+    assert all(not c.is_connected for c in rig.t.clients)
+    assert not rig.t.storage.deleted and await rig.t.storage.user_id() == EXPECTED
     assert "LogOut" not in [name for c in rig.t.clients for name, _ in c.invoked]
     [(level, code, text)] = rig.notes
     assert (level, code) == ("warn", "chat_is_self") and "chats.game_chat_id" in text
@@ -407,12 +409,16 @@ async def test_self_chat_checked_on_boot() -> None:
     await rig.assert_offline()
     assert [(level, code) for level, code, _ in rig.notes] == [("warn", "chat_is_self")]
     assert "chats.bulls_invite_chat_id" in rig.notes[0][2]
-    assert rig.bound == [] and not rig.t.storage.deleted
-    # Настройки, которые проверка читает, исправлены — следующий выход в онлайн проходит, и
-    # обновление, ждавшее в очереди клиента, уходит в конвейер.
+    assert rig.bound == [] and all(not c.is_connected for c in rig.t.clients)
+    assert not rig.t.storage.deleted and await rig.t.storage.user_id() == EXPECTED
+    assert "LogOut" not in [name for c in rig.t.clients for name, _ in c.invoked]
+    # Настройки, которые проверка читает, исправлены — следующий старт подключается заново по той
+    # же сессии и выходит в онлайн; обновления доходят до конвейера, а пришедшее отключённому
+    # клиенту вернёт сверка истории.
     rig.settings = Settings()
     assert (await rig.tg.boot()).state is TgState.ONLINE
-    await until(lambda: rig.sink == [1])
+    rig.update()
+    await until(lambda: rig.sink == [2])
     await rig.t.stop()
 
 

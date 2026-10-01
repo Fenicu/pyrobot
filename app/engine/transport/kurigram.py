@@ -614,6 +614,17 @@ class KurigramTransport:
         self._online = True
         self._history_needed("online")
 
+    async def disconnect(self) -> None:
+        """Отключение без выхода (свой чат в настройках, раздел 4.3 спеки): клиент, не вышедший в
+        онлайн, не копит обновления, которые некому разбирать. Сессия остаётся в хранилище,
+        следующий `connect()` — новым клиентом на нём (сессия kurigram одноразовая)."""
+        client = self._client
+        self._online = False
+        self._me = None
+        self._peers = {}
+        self._client = self._new_client()
+        await _force_close(client)
+
     @_fenced
     async def log_out(self) -> None:
         from pyrogram import errors, raw

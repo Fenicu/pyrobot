@@ -280,10 +280,19 @@ class ChatIsSelf(Exception):
         self.fields = fields
 
 
+# Поля `chats.*`, которые не id чата или пользователя: id сообщения не сравнивается с id
+# пользователя Telegram.
+_NOT_PEERS = frozenset({"tangerine_reply_to"})
+
+
 def self_chat_fields(settings: Settings, tg_user_id: int) -> list[str]:
-    """Пути `chats.*`, равные `tg_user_id`: «Избранное» аккаунта никогда не попадает в журнал
-    (раздел 4.3 спеки)."""
-    return [f"chats.{name}" for name, value in settings.chats if value == tg_user_id]
+    """Пути полей `chats.*` с id чата, равных `tg_user_id`: «Избранное» аккаунта никогда не
+    попадает в журнал (раздел 4.3 спеки)."""
+    return [
+        f"chats.{name}"
+        for name, value in settings.chats
+        if name not in _NOT_PEERS and value == tg_user_id
+    ]
 
 
 def check_self_chat(settings: Settings, tg_user_id: int | None) -> None:

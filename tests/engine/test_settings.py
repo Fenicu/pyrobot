@@ -5,6 +5,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from app.engine.settings import (
+    ChatsSection,
     EngineSection,
     Settings,
     SettingsConflict,
@@ -12,6 +13,7 @@ from app.engine.settings import (
     StaticSettings,
     apply_patch,
     restart_required,
+    self_chat_fields,
     settings_diff,
 )
 
@@ -391,3 +393,17 @@ def test_every_duration_setting_has_a_limit() -> None:
 
 def test_limited_settings_load() -> None:
     assert limited_settings().metro.min_budget_min == 1440
+
+
+def test_self_chat_fields_only_chat_ids() -> None:
+    user = 267519921
+    chats = ChatsSection(
+        game_chat_id=user, swinfo_user_id=user, tangerine_chat_id=user, tangerine_reply_to=user
+    )
+    # id сообщения, на которое отвечает /gt, — не чат: совпадение с пользователем не в счёт.
+    assert self_chat_fields(Settings(chats=chats), user) == [
+        "chats.game_chat_id",
+        "chats.swinfo_user_id",
+        "chats.tangerine_chat_id",
+    ]
+    assert self_chat_fields(Settings(chats=ChatsSection(tangerine_reply_to=user)), user) == []

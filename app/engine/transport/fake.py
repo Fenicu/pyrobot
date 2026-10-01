@@ -112,9 +112,11 @@ class FakeTgBackend:
         self.code = code
         self.logged_out = False
         self.online = False
+        self.connected = False
         self._code_ok = False
 
     async def connect(self) -> bool:
+        self.connected = True
         return self.authorized
 
     async def send_code(self, phone: str) -> str:
@@ -144,4 +146,8 @@ class FakeTgBackend:
     async def log_out(self) -> None:
         self.logged_out = True
         self.authorized = False
+        self.online = False
+
+    async def disconnect(self) -> None:
+        self.connected = False
         self.online = False

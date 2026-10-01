@@ -322,8 +322,15 @@ async def test_history_pass_runs_in_background_and_prunes_marks(
 
 
 async def test_self_chat_binds_and_stays_offline_until_restart(
-    kurigram: Engines, clean_db: Database
+    kurigram: Engines, clean_db: Database, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    clients: list[FakeClient] = []
+
+    def recording(transport: KurigramTransport) -> FakeClient:
+        clients.append(FakeClient(transport._storage))
+        return clients[-1]
+
+    monkeypatch.setattr(KurigramTransport, "_make_client", recording)
     # Аккаунт не привязан, сессия Telegram есть, а чат игры в настройках — его же пользователь.
     async with clean_db.sessions() as session, session.begin():
         sealed = BOX.seal(b"k" * 256, "auth_key", 1)
@@ -337,8 +344,11 @@ async def test_self_chat_binds_and_stays_offline_until_restart(
     # Привязка записана в базу, в онлайн аккаунт не вышел.
     account = await kurigram.deps.accounts.get(1)
     assert account is not None and account.tg_user_id == EXPECTED
-    client = runtime.transport._client  # type: ignore[union-attr]
-    assert isinstance(client, FakeClient) and client.is_connected and not client.is_initialized
+    # Клиент отключён без выхода: сессия — в базе.
+    assert clients and all(not c.is_connected and not c.is_initialized for c in clients)
+    assert "LogOut" not in [name for c in clients for name, _ in c.invoked]
+    row, _ = await _tg_rows(clean_db)
+    assert row is not None and row.user_id == EXPECTED
     assert await _codes(clean_db) == [("warn", "chat_is_self")]
     # Правка через движок сверяется с привязкой: свой чат — отказ, исправление проходит.
     with pytest.raises(ChatIsSelf):
@@ -350,7 +360,7 @@ async def test_self_chat_binds_and_stays_offline_until_restart(
     st = await runtime.tg.start("+888", owner="s1")
     st = await runtime.tg.submit_code(st.attempt_id or "", "s1", "12345")
     assert st.state is TgState.ERROR and st.error == "chat_is_self"
-    assert not runtime.transport._client.is_initialized  # type: ignore[union-attr]
+    assert all(not c.is_connected and not c.is_initialized for c in clients)
     await runtime.stop()
     await kurigram.leases.release(runtime.fence)
     again = await kurigram.start(1)

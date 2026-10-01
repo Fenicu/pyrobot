@@ -109,6 +109,8 @@ class TgAuthBackend(Protocol):
     async def identify(self) -> int: ...
     async def go_online(self) -> None: ...
     async def log_out(self) -> None: ...
+    # Отключение без выхода: сессия остаётся, следующий `connect()` подключает заново.
+    async def disconnect(self) -> None: ...
 
 
 @dataclass
@@ -322,7 +324,7 @@ class TgAuthManager:
         """Вошедший пользователь `user_id` (раздел 4.3 спеки): всё — до `go_online`, отказ в
         онлайн не выпускает, и обновления не обрабатываются. Другой пользователь или
         пользователь другого аккаунта — выход из сессии; свой чат в настройках — привязка
-        остаётся, сессия тоже: исправить настройки и перезапустить аккаунт."""
+        остаётся, сессия тоже, клиент отключается: исправить настройки и перезапустить аккаунт."""
         self._user_id = None
         if self._expected is not None and user_id != self._expected:
             await self._refuse("unexpected_user")
@@ -342,6 +344,11 @@ class TgAuthManager:
         fields = self._self_chat(user_id)
         if fields:
             self._set(TgState.ERROR, error="chat_is_self")
+            # Подключённый клиент копил бы обновления, которые некому разбирать.
+            try:
+                await self._backend.disconnect()
+            except Exception:
+                log.exception("telegram client not disconnected")
             if self._notifier is not None:
                 await self._notifier.notify(
                     "warn",
