@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import functools
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Concatenate
 
 from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.settings import ChatsSection
@@ -27,9 +28,25 @@ from app.engine.transport.base import (
 )
 from app.engine.types import Button, IncomingMessage, MessageKind
 
+if TYPE_CHECKING:
+    from app.config import AppConfig
+    from app.db.base import Database
+    from app.db.crypto import SecretBox
+    from app.db.tg_storage import PgSessionStorage
+    from app.engine.fence import Fence
+
 log = logging.getLogger(__name__)
 Sink = Callable[[IncomingMessage], Awaitable[None]]
 DIALOGS_WARMUP = 200
+# Устройство сессии в списке сессий пользователя в Telegram — у клиента движка и у временного
+# клиента выхода одинаковое.
+_DEVICE: dict[str, Any] = {
+    "sleep_threshold": 10,
+    "device_model": "pyrobot",
+    "app_version": "2.0",
+    "system_version": "Linux",
+    "lang_code": "ru",
+}
 
 
 def _aware(dt: datetime) -> datetime:
@@ -134,11 +151,27 @@ class ChatFilter:
         return self.bulls_chat_id is not None and chat == self.bulls_chat_id and has_join_fight(m)
 
 
+def session_peers(chats: ChatsSection) -> set[int]:
+    """Пиры, которые хранилище сессии держит в базе (раздел 4.3 спеки): чаты из настроек и
+    пользователь swinfo — поиску по отправителю нужен его `access_hash`, а kurigram не сохраняет
+    min-пользователей из обновлений супергрупп."""
+    peers = {
+        chats.game_chat_id,
+        chats.swinfo_chat_id,
+        chats.swinfo_user_id,
+        chats.smoothie_channel_id,
+        chats.tangerine_chat_id,
+        chats.bulls_invite_chat_id,
+        chats.team_chat_id,
+    }
+    return {peer for peer in peers if peer is not None}
+
+
 async def _force_close(client: Any) -> None:
     # watchdog обновлений kurigram, умерший на отозванной сессии, перевыбрасывает
     # Unauthorized внутри terminate() ДО is_initialized=False — stop() пропускает
-    # disconnect(), и утекают MTProto-сессия и sqlite-соединение storage. Форсируем
-    # закрытие каждым шагом отдельно, чтобы ни один ресурс не остался открытым.
+    # disconnect(), и утекает MTProto-сессия. Форсируем закрытие каждым шагом отдельно,
+    # чтобы ни один ресурс не остался открытым.
     try:
         if client.is_initialized:
             await client.stop()
@@ -156,13 +189,40 @@ async def _force_close(client: Any) -> None:
         await client.storage.close()
 
 
+def _fenced[**P, T](
+    method: Callable[Concatenate[KurigramTransport, P], Awaitable[T]],
+) -> Callable[Concatenate[KurigramTransport, P], Coroutine[Any, Any, T]]:
+    """Вызов Telegram — через ограду аренды аккаунта: не начинается после её местного срока и
+    обрывается на нём (`Fence.call`)."""
+
+    @functools.wraps(method)
+    async def fenced(self: KurigramTransport, /, *args: P.args, **kwargs: P.kwargs) -> T:
+        return await self._fence.call(lambda: method(self, *args, **kwargs))
+
+    return fenced
+
+
 class KurigramTransport:
+    """Клиент kurigram аккаунта на сессии из базы (`PgSessionStorage` — одно хранилище на все
+    клиенты транспорта). Своя догонка kurigram выключена (`skip_updates=True`). Все вызовы
+    Telegram идут через ограду аренды `fence`."""
+
     def __init__(
-        self, *, api_id: int, api_hash: str, workdir: Path, chat_filter: ChatFilter, sink: Sink
+        self,
+        *,
+        api_id: int,
+        api_hash: str,
+        account_id: int,
+        storage: PgSessionStorage,
+        fence: Fence,
+        chat_filter: ChatFilter,
+        sink: Sink,
     ) -> None:
         self._api_id = api_id
         self._api_hash = api_hash
-        self._workdir = workdir
+        self._account_id = account_id
+        self._storage = storage
+        self._fence = fence
         self._filter = chat_filter
         self._sink = sink
         self.on_auth_lost: Callable[[], Awaitable[None]] | None = None
@@ -175,19 +235,14 @@ class KurigramTransport:
         from pyrogram import Client
         from pyrogram.handlers import EditedMessageHandler, MessageHandler
 
-        self._workdir.mkdir(parents=True, exist_ok=True)
         client = Client(
-            "pyrobot",
+            f"account-{self._account_id}",
             api_id=self._api_id,
             api_hash=self._api_hash,
-            workdir=str(self._workdir),
+            storage_engine=self._storage,
             workers=1,
-            skip_updates=False,
-            sleep_threshold=10,
-            device_model="pyrobot",
-            app_version="2.0",
-            system_version="Linux",
-            lang_code="ru",
+            skip_updates=True,
+            **_DEVICE,
         )
         client.add_handler(MessageHandler(self._on_new))
         client.add_handler(EditedMessageHandler(self._on_edit))
@@ -216,7 +271,7 @@ class KurigramTransport:
 
     async def _reset_client(self, client: Any) -> bool:
         # Подмена до остановки: параллельный 401 старого клиента не сбросит сессию
-        # повторно; новый клиент не открывает файл сессии до connect().
+        # повторно; новый клиент не открывает хранилище до connect().
         if self._client is not client:
             return False
         self._me = None
@@ -224,9 +279,7 @@ class KurigramTransport:
         self._client = self._make_client()
         await _force_close(client)
         try:
-            await client.storage.delete()
-        except FileNotFoundError:
-            pass
+            await self._storage.delete()
         except Exception:
             log.exception("telegram session storage not deleted")
         return True
@@ -235,6 +288,7 @@ class KurigramTransport:
         if await self._reset_client(client):
             await self._auth_lost()
 
+    @_fenced
     async def connect(self) -> bool:
         from pyrogram import errors
 
@@ -247,6 +301,7 @@ class KurigramTransport:
             await self._reset_client(client)
             raise TransportAuthLost(str(exc)) from exc
 
+    @_fenced
     async def send_code(self, phone: str) -> str:
         from pyrogram import errors
 
@@ -261,6 +316,7 @@ class KurigramTransport:
             raise SendCodeRejected(str(exc.ID or exc).lower()) from exc
         return str(sent.phone_code_hash)
 
+    @_fenced
     async def sign_in(self, phone: str, code_hash: str, code: str) -> int:
         from pyrogram import errors, types
 
@@ -276,6 +332,7 @@ class KurigramTransport:
             raise SignUpRequired
         return int(user.id)
 
+    @_fenced
     async def check_password(self, password: str) -> int:
         from pyrogram import errors
 
@@ -285,6 +342,7 @@ class KurigramTransport:
             raise InvalidPassword from exc
         return int(user.id)
 
+    @_fenced
     async def identify(self) -> int:
         from pyrogram import errors
 
@@ -299,6 +357,7 @@ class KurigramTransport:
             raise TransportAuthLost(str(exc)) from exc
         return int(self._me.id)
 
+    @_fenced
     async def go_online(self) -> None:
         from pyrogram import raw
         from pyrogram.storage import UpdateState
@@ -316,6 +375,7 @@ class KurigramTransport:
             pass
         await self._client.initialize()
 
+    @_fenced
     async def log_out(self) -> None:
         from pyrogram import errors, raw
 
@@ -334,6 +394,7 @@ class KurigramTransport:
         if failure is not None:
             raise failure
 
+    @_fenced
     async def probe(self) -> None:
         from pyrogram import errors, raw
 
@@ -350,6 +411,25 @@ class KurigramTransport:
     async def stop(self) -> None:
         await _force_close(self._client)
 
+    async def abort(self) -> None:
+        """Аварийная остановка, когда аренда потеряна (раздел 4.2 спеки, п. 6): сессия больше не
+        принимает и не переподключается, обработчики диспетчера (и сторож обновлений) отменяются,
+        хранилище закрывается без `save()`. `terminate()` не вызывается: он сохранил бы хранилище
+        и доработал очередь диспетчера в конвейер, который после срока писать не может."""
+        client = self._client
+        if client.session is not None:
+            with suppress(Exception):
+                await client.session.stop()
+        tasks = [*client.dispatcher.handler_worker_tasks]
+        if client.updates_watchdog_task is not None:
+            tasks.append(client.updates_watchdog_task)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        with suppress(Exception):
+            await self._storage.close()
+
+    @_fenced
     async def resolve(self, chat_id: int) -> None:
         from pyrogram import errors
 
@@ -370,6 +450,7 @@ class KurigramTransport:
         peer = self._peers.get(chat_id) if client is self._client else None
         return peer if peer is not None else await client.resolve_peer(chat_id)
 
+    @_fenced
     async def send_text(self, chat_id: int, text: str, reply_to: int | None = None) -> int:
         from pyrogram import errors, raw
 
@@ -396,6 +477,7 @@ class KurigramTransport:
             raise TransportAuthLost(str(exc)) from exc
         return 0
 
+    @_fenced
     async def click(
         self, chat_id: int, message_id: int, data: str, timeout_s: float
     ) -> str | None:
@@ -427,6 +509,7 @@ class KurigramTransport:
         message = getattr(answer, "message", None)
         return str(message) if message else None
 
+    @_fenced
     async def forward(self, from_chat_id: int, message_id: int, to_chat_id: int) -> int:
         from pyrogram import errors, raw
 
@@ -462,6 +545,7 @@ class KurigramTransport:
             raise TransportRejected(str(exc.ID or exc)) from exc
         return _forwarded_id(updates, random_id)
 
+    @_fenced
     async def check_group(self, chat_id: int) -> GroupInfo:
         from pyrogram import enums, errors
 
@@ -490,6 +574,7 @@ class KurigramTransport:
             return GroupInfo("not_member", title)
         return GroupInfo("ok", title)
 
+    @_fenced
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         from pyrogram import errors
 
@@ -505,3 +590,42 @@ class KurigramTransport:
             return None
         kind: MessageKind = "edit" if message.edit_date else "new"
         return to_incoming(message, kind=kind, received_at=datetime.now(UTC))
+
+
+async def logout_offline(db: Database, box: SecretBox, config: AppConfig, account_id: int) -> None:
+    """Выход из Telegram удаляемого аккаунта, движка которого на хосте нет (раздел 4.2 спеки):
+    временный клиент на сессии из базы — только для `auth.LogOut`, затем сессия и пиры аккаунта
+    удаляются из базы. Хост зовёт его через ограду аренды. Входа в сессии нет — клиент не
+    поднимается; сбой выхода — исключение, но сессия из базы удалена."""
+    from pyrogram import Client, errors, raw
+
+    from app.db.tg_storage import PgSessionStorage
+
+    storage = PgSessionStorage(db, account_id, box, set)
+    await storage.open()
+    if await storage.user_id() is None:
+        await storage.delete()
+        return
+    client = Client(
+        f"account-{account_id}",
+        api_id=config.tg_api_id,
+        api_hash=config.tg_api_hash.get_secret_value(),
+        storage_engine=storage,
+        no_updates=True,
+        **_DEVICE,
+    )
+    failure: Exception | None = None
+    try:
+        if await client.connect():
+            await client.invoke(
+                raw.functions.auth.LogOut(), retries=1, sleep_threshold=0, retry_delay=0
+            )
+    except errors.Unauthorized:
+        log.info("session already revoked, deleting it")
+    except Exception as exc:
+        failure = exc
+    finally:
+        await _force_close(client)
+    await storage.delete()
+    if failure is not None:
+        raise failure

@@ -522,3 +522,19 @@ async def test_import_rejects_foreign_file_name(tmp_path: Path, clean_db: Databa
     with pytest.raises(ValueError, match="session"):
         await import_session_file(stray, _pg(clean_db), {GAME})
     assert _names(tmp_path) == ["pyrobot.db"]
+
+
+async def test_import_broken_file_raises_and_keeps_file(
+    tmp_path: Path, clean_db: Database
+) -> None:
+    import sqlite3
+
+    from app.db.tg_storage import import_session_file
+
+    path = tmp_path / "pyrobot.session"
+    path.write_bytes(b"not a database")
+    # Соединение с файлом, который не база SQLite, закрывается: иначе ResourceWarning.
+    with pytest.raises(sqlite3.DatabaseError):
+        await import_session_file(path, _pg(clean_db), {GAME})
+    assert _names(tmp_path) == ["pyrobot.session"]
+    assert await _session_row(clean_db) is None

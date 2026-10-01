@@ -1,10 +1,12 @@
-from collections.abc import AsyncIterator
-from pathlib import Path
+import asyncio
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from types import SimpleNamespace as NS
 from typing import Any
 
+from app.engine.fence import Fence
 from app.engine.settings import ChatsSection
-from app.engine.transport.kurigram import ChatFilter, KurigramTransport
+from app.engine.transport.kurigram import ChatFilter, KurigramTransport, Sink
 from app.engine.types import IncomingMessage
 
 EXPECTED = 267519921
@@ -25,21 +27,32 @@ def rpc_error(name: str) -> Exception:
 
 
 class FakeStorage:
-    def __init__(self) -> None:
+    """Хранилище с интерфейсом `PgSessionStorage`, которым пользуется транспорт: одно на все
+    клиенты транспорта, `delete()` сбрасывает вошедшего пользователя."""
+
+    def __init__(self, events: list[str], *, user_id: int | None) -> None:
+        self.events = events
         self.deleted = False
         self.closed = False
         self.states: list[Any] = []
+        self._user_id = user_id
+
+    async def open(self) -> None:
+        self.closed = False
 
     async def close(self) -> None:
         self.closed = True
+        self.events.append("storage.close")
 
     async def delete(self) -> None:
-        if self.deleted:
-            raise FileNotFoundError("session file")
         self.deleted = True
+        self._user_id = None
 
-    async def user_id(self) -> int | None:
-        return EXPECTED
+    async def user_id(self, value: Any = object) -> int | None:
+        if value is object:
+            return self._user_id
+        self._user_id = value
+        return None
 
     async def get_update_states(self, _id: int) -> list[Any]:
         return self.states
@@ -48,18 +61,64 @@ class FakeStorage:
         self.states.append(state)
 
     async def save(self) -> None:
-        return None
+        self.events.append("storage.save")
+
+
+class FakeSession:
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+        self.stopped = False
+
+    async def stop(self) -> None:
+        self.stopped = True
+        self.events.append("session.stop")
+
+
+class FakeDispatcher:
+    """Очередь обновлений и обработчики kurigram: `stop()` дорабатывает очередь, как
+    `Dispatcher.stop`. Обработчик (`handler`) задаёт тест, которому нужна доставка."""
+
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+        self.updates_queue: asyncio.Queue[Any] = asyncio.Queue()
+        self.handler_worker_tasks: list[asyncio.Task[None]] = []
+        self.handler: Callable[[Any], Awaitable[None]] | None = None
+
+    def start(self) -> None:
+        if self.handler is not None:
+            self.handler_worker_tasks.append(asyncio.create_task(self._worker(self.handler)))
+
+    async def _worker(self, handler: Callable[[Any], Awaitable[None]]) -> None:
+        try:
+            while (update := await self.updates_queue.get()) is not None:
+                await handler(update)
+        except asyncio.CancelledError:
+            self.events.append("handler.cancelled")
+            raise
+
+    async def stop(self) -> None:
+        for _ in self.handler_worker_tasks:
+            self.updates_queue.put_nowait(None)
+        await asyncio.gather(*self.handler_worker_tasks)
+        self.handler_worker_tasks.clear()
 
 
 class FakeClient:
-    """Минимальная модель pyrogram.Client: те же инварианты connect/initialize/stop."""
+    """Минимальная модель pyrogram.Client: те же инварианты connect/initialize/stop; вошёл ли
+    клиент — по `user_id` хранилища, как у kurigram."""
 
-    def __init__(self, *, authorized: bool) -> None:
-        self.storage = FakeStorage()
-        self.authorized = authorized
+    def __init__(self, storage: Any, events: list[str] | None = None) -> None:
+        self.events = events if events is not None else []
+        self.storage = storage
+        self.session: FakeSession | None = None
+        self.dispatcher = FakeDispatcher(self.events)
+        self.updates_watchdog_task: asyncio.Task[None] | None = None
         self.is_connected = False
         self.is_initialized = False
         self.errors: dict[str, BaseException] = {}
+        # Вызовы с этими именами висят, пока их не отменят (`cancelled`).
+        self.hang: set[str] = set()
+        self.cancelled: list[str] = []
         self.invoked: list[tuple[str, dict[str, Any]]] = []
         self.get_me_calls = 0
         self.stop_error: BaseException | None = None
@@ -73,15 +132,20 @@ class FakeClient:
     async def connect(self) -> bool:
         if self.is_connected:
             raise ConnectionError("Client is already connected")
+        await self.storage.open()
+        self.session = FakeSession(self.events)
         self.is_connected = True
-        return self.authorized
+        return bool(await self.storage.user_id())
 
     async def disconnect(self) -> None:
         if not self.is_connected:
             raise ConnectionError("Client is already disconnected")
         if self.is_initialized:
             raise ConnectionError("Can't disconnect an initialized client")
+        assert self.session is not None
+        await self.session.stop()
         await self.storage.close()
+        self.session = None
         self.is_connected = False
 
     async def initialize(self) -> None:
@@ -89,19 +153,36 @@ class FakeClient:
             raise ConnectionError("Can't initialize a disconnected client")
         if self.is_initialized:
             raise ConnectionError("Client is already initialized")
+        self.dispatcher.start()
         self.is_initialized = True
+
+    async def terminate(self) -> None:
+        if not self.is_initialized:
+            raise ConnectionError("Client is already terminated")
+        self.events.append("terminate")
+        await self.storage.save()
+        await self.dispatcher.stop()
+        self.is_initialized = False
 
     async def stop(self) -> None:
         if self.stop_error is not None:
             raise self.stop_error
-        if not self.is_initialized:
-            raise ConnectionError("Client is already terminated")
-        self.is_initialized = False
+        await self.terminate()
         await self.disconnect()
+
+    async def _hang(self, name: str) -> None:
+        if name not in self.hang:
+            return
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled.append(name)
+            raise
 
     async def invoke(self, query: Any, **kw: Any) -> Any:
         name = type(query).__name__
         self.invoked.append((name, kw))
+        await self._hang(name)
         err = self.errors.pop(name, None)
         if err is not None:
             raise err
@@ -134,6 +215,7 @@ class FakeClient:
         return self.member
 
     async def get_messages(self, chat_id: int, message_ids: int) -> Any:
+        self.invoked.append(("GetMessages", {}))
         err = self.errors.pop("GetMessages", None)
         if err is not None:
             raise err
@@ -157,7 +239,7 @@ class FakeClient:
         return NS(phone_code_hash="hash")
 
     async def sign_in(self, phone: str, code_hash: str, code: str) -> Any:
-        self.authorized = True
+        await self.storage.user_id(EXPECTED)
         return _user()
 
 
@@ -165,20 +247,31 @@ async def _drop(msg: IncomingMessage) -> None:
     return None
 
 
+def long_fence() -> Fence:
+    """Ограда, срок которой за время теста не наступит."""
+    return Fence(1, 1, time.monotonic() + 3600.0)
+
+
 class FakeKurigram(KurigramTransport):
-    def __init__(self, workdir: Path, *, authorized: bool = True) -> None:
+    def __init__(
+        self, *, authorized: bool = True, fence: Fence | None = None, sink: Sink = _drop
+    ) -> None:
         self.clients: list[FakeClient] = []
-        self._first_authorized = authorized
+        # События клиентов и хранилища по порядку: сессия, обработчики, хранилище.
+        self.events: list[str] = []
+        self.storage = FakeStorage(self.events, user_id=EXPECTED if authorized else None)
         super().__init__(
             api_id=1,
             api_hash="x",
-            workdir=workdir,
+            account_id=1,
+            storage=self.storage,  # type: ignore[arg-type]
+            fence=fence or long_fence(),
             chat_filter=ChatFilter.from_settings(ChatsSection()),
-            sink=_drop,
+            sink=sink,
         )
 
     def _make_client(self) -> FakeClient:
-        client = FakeClient(authorized=self._first_authorized and not self.clients)
+        client = FakeClient(self.storage, self.events)
         self.clients.append(client)
         return client
 

@@ -1,6 +1,8 @@
 import asyncio
+import base64
 import contextlib
 import itertools
+import secrets
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import timedelta
@@ -16,8 +18,9 @@ from app.config import AppConfig
 from app.db.accounts import AccountInfo, AccountRepo
 from app.db.actions import DbActionStore
 from app.db.base import Database
+from app.db.crypto import SecretBox, SecretKeyError, ensure_key
 from app.db.journal import DbJournal
-from app.db.models import DecisionRow, MessageRow, ScenarioRunRow
+from app.db.models import DecisionRow, MessageRow, ScenarioRunRow, TgPeer, TgSession
 from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
 from app.db.retention import DbRetention
@@ -39,16 +42,17 @@ pytestmark = pytest.mark.db
 A1 = "/api/v1/accounts/1"
 
 
-def _cfg() -> AppConfig:
-    return AppConfig(
-        _env_file=None,
-        database_url=TEST_DB_URL,
-        transport="fake",
-        cookie_secure=False,
-        admin_login="admin",
-        admin_password=SecretStr("correct horse battery"),
-        planner=False,
-    )
+def _cfg(**changes: Any) -> AppConfig:
+    values: dict[str, Any] = {
+        "database_url": TEST_DB_URL,
+        "transport": "fake",
+        "cookie_secure": False,
+        "admin_login": "admin",
+        "admin_password": SecretStr("correct horse battery"),
+        "planner": False,
+        **changes,
+    }
+    return AppConfig(_env_file=None, **values)
 
 
 async def _login(client: AsyncClient) -> dict[str, str]:
@@ -519,3 +523,85 @@ async def test_retention_failure_notifies_once(
         await until(lambda: calls[0] >= 3)
         assert await _notified(clean_db, "retention_failed") == 1
         assert "retention" not in runtime.supervisor._backoff
+
+
+def _key() -> str:
+    return base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+
+
+async def _seed_tg_session(db: Database) -> None:
+    async with db.sessions() as session, session.begin():
+        session.add(
+            TgSession(account_id=1, dc_id=2, date=0, auth_key=b"\x01" + b"k" * 60, user_id=7)
+        )
+        session.add(TgPeer(account_id=1, id=GAME, access_hash=42, type="bot"))
+
+
+async def _tg_counts(db: Database) -> tuple[int, int]:
+    async with db.sessions() as s:
+        sessions = await s.scalar(select(func.count()).select_from(TgSession))
+        peers = await s.scalar(select(func.count()).select_from(TgPeer))
+    return int(sessions or 0), int(peers or 0)
+
+
+@pytest.mark.parametrize("key", [None, "short"])
+async def test_process_refuses_without_valid_key(
+    clean_db: Database, key: str | None, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Review Focus 2: без ключа (или с испорченным) процесс с kurigram не стартует, сессии целы.
+    await _seed_tg_session(clean_db)
+    app = create_application(
+        _cfg(
+            transport="kurigram",
+            tg_api_id=1,
+            tg_api_hash=SecretStr("x"),
+            secret_key=None if key is None else SecretStr(key),
+        )
+    )
+    with pytest.raises(SecretKeyError):
+        async with app.router.lifespan_context(app):
+            pass
+    assert "secrets.token_bytes(32)" in caplog.text
+    assert await _tg_counts(clean_db) == (1, 1)
+
+
+async def test_fake_transport_checks_present_key(
+    clean_db: Database, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Транспорту fake сессии не нужны: без ключа он стартует (как все тесты выше), но заданный
+    # ключ сверяется всегда.
+    app = create_application(_cfg(secret_key=SecretStr("short")))
+    with pytest.raises(SecretKeyError):
+        async with app.router.lifespan_context(app):
+            pass
+    assert "secrets.token_bytes(32)" in caplog.text
+
+
+async def test_process_refuses_with_wrong_key_keeps_sessions(
+    clean_db: Database, caplog: pytest.LogCaptureFixture
+) -> None:
+    await ensure_key(clean_db, SecretBox(secrets.token_bytes(32)), reset=False)
+    await _seed_tg_session(clean_db)
+    app = create_application(_cfg(secret_key=SecretStr(_key())))
+    with pytest.raises(SecretKeyError):
+        async with app.router.lifespan_context(app):
+            pass
+    assert "ключ не подходит к базе" in caplog.text
+    assert await _tg_counts(clean_db) == (1, 1)
+    assert app.state.runtime.host.status().engines == []
+
+
+async def test_reset_flag_drops_sessions_and_starts(
+    clean_db: Database, caplog: pytest.LogCaptureFixture
+) -> None:
+    await ensure_key(clean_db, SecretBox(secrets.token_bytes(32)), reset=False)
+    await _seed_tg_session(clean_db)
+    key = _key()
+    app = create_application(_cfg(secret_key=SecretStr(key), secret_key_reset=True))
+    async with _started(app):
+        assert await _tg_counts(clean_db) == (0, 0)
+    assert "PYROBOT_SECRET_KEY_RESET" in caplog.text
+    # Новый ключ записан: следующий старт без флага проходит.
+    again = create_application(_cfg(secret_key=SecretStr(key)))
+    async with _started(again):
+        pass

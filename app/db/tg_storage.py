@@ -7,6 +7,7 @@
 import asyncio
 import time
 from collections.abc import Callable, Iterable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -302,9 +303,9 @@ async def import_session_file(path: Path, storage: PgSessionStorage, peer_ids: s
     if path.suffix != SQLiteStorage.FILE_EXTENSION:
         raise ValueError(f"файл сессии должен называться *{SQLiteStorage.FILE_EXTENSION}: {path}")
     source = SQLiteStorage(path.stem, workdir=path.parent)
-    # open/close у kurigram без аннотаций.
-    await source.open()  # type: ignore[no-untyped-call]
     try:
+        # open/close у kurigram без аннотаций.
+        await source.open()  # type: ignore[no-untyped-call]
         api_id, test_mode, is_bot = (
             await source.api_id(),
             await source.test_mode(),
@@ -322,7 +323,10 @@ async def import_session_file(path: Path, storage: PgSessionStorage, peer_ids: s
             tuple(peer_ids),
         ).fetchall()
     finally:
-        await source.close()  # type: ignore[no-untyped-call]
+        # `open()` падает и на файле, который не база SQLite, — уже открыв соединение. Упал до
+        # соединения — закрывать нечего (`conn` бросает RuntimeError).
+        with suppress(RuntimeError):
+            await source.close()  # type: ignore[no-untyped-call]
     await storage.api_id(api_id)
     await storage.test_mode(None if test_mode is None else bool(test_mode))
     await storage.is_bot(None if is_bot is None else bool(is_bot))

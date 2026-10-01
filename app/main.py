@@ -14,6 +14,7 @@ from app.config import AppConfig
 from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.crypto import SecretBox, SecretKeyError, ensure_key, parse_key
 from app.db.notifications import DbNotifier
 from app.db.retention import DbRetention
 from app.db.settings_store import DbSettingsStore
@@ -22,6 +23,7 @@ from app.engine.host.account import RuntimeDeps
 from app.engine.host.host import EngineHost
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
+from app.engine.transport.kurigram import logout_offline
 
 log = logging.getLogger("pyrobot")
 
@@ -29,6 +31,19 @@ SESSION_PURGE_S = 3600.0
 # Ретеншн: первый проход не в момент старта (там догон пропусков), дальше — раз в 6 часов.
 RETENTION_FIRST_S = 300.0
 RETENTION_S = 6 * 3600.0
+
+
+def _key_text(config: AppConfig) -> str | None:
+    key = config.secret_key
+    return None if key is None else key.get_secret_value()
+
+
+def _secret_box(config: AppConfig) -> SecretBox | None:
+    """Ключ сессий Telegram; не задан или испорчен — `None`: отказ старта — в `_check_key`."""
+    try:
+        return SecretBox(parse_key(_key_text(config)))
+    except SecretKeyError:
+        return None
 
 
 class Runtime:
@@ -48,12 +63,16 @@ class Runtime:
         self.auth = AuthRepo(self.db)
         self.lag = LoopLagMonitor()
         self.leases = LeaseManager(self.db, uuid4().hex)
-        deps = RuntimeDeps(db=self.db, config=config, accounts=self.accounts, lag=self.lag)
+        self.box = _secret_box(config)
+        deps = RuntimeDeps(
+            db=self.db, config=config, accounts=self.accounts, lag=self.lag, box=self.box
+        )
         self.host = EngineHost(
             deps,
             self.leases,
             max_engines=config.max_engines,
             start_gap_s=config.engine_start_gap_s,
+            logout_offline=self._logout_offline,
         )
         self.supervisor = self.host.supervisor
         self.container = Container(
@@ -80,6 +99,7 @@ class Runtime:
     async def _start(self) -> None:
         if "PYROBOT_ACCOUNT_ID" in os.environ:
             log.warning("PYROBOT_ACCOUNT_ID больше не читается")
+        await self._check_key()
         password = self.config.admin_password
         await self.auth.ensure_admin(
             self.config.admin_login, password.get_secret_value() if password else None
@@ -91,6 +111,25 @@ class Runtime:
         self.supervisor.start("retention", self._retention)
         # Движки включённых аккаунтов хост поднимает в фоне: HTTP и /readyz готовы сразу.
         await self.host.start()
+
+    async def _check_key(self) -> None:
+        """Ключ сессий Telegram (раздел 4.3 спеки) обязателен для kurigram; транспорту fake без
+        ключа сессии не нужны, но заданный ключ сверяется с базой всегда. Ключ не задан, испорчен
+        или не подходит к базе — ошибка в лог и отказ старта; сессии удаляет только осознанный
+        сброс `PYROBOT_SECRET_KEY_RESET=1`."""
+        if self.config.secret_key is None and self.config.transport == "fake":
+            return
+        try:
+            box = SecretBox(parse_key(_key_text(self.config)))
+            await ensure_key(self.db, box, reset=self.config.secret_key_reset)
+        except SecretKeyError as exc:
+            log.error("процесс не стартует: %s", exc)
+            raise
+
+    async def _logout_offline(self, account_id: int) -> None:
+        """Выход из Telegram удаляемого аккаунта без движка; у транспорта fake Telegram нет."""
+        if self.config.transport == "kurigram" and self.box is not None:
+            await logout_offline(self.db, self.box, self.config, account_id)
 
     async def _purge_sessions(self) -> None:
         while True:

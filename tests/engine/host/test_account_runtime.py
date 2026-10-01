@@ -1,36 +1,48 @@
+import secrets
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import SecretStr
 from sqlalchemy import func, insert, select
 
 from app.config import AppConfig
 from app.db.accounts import AccountRepo
 from app.db.base import Database
-from app.db.models import Account, MessageRow, SettingsRow
+from app.db.crypto import SecretBox
+from app.db.models import Account, MessageRow, SettingsRow, TgPeer, TgSession
+from app.db.notifications import DbNotifier
 from app.engine.facade import LockLostError
 from app.engine.fence import Fence, LeaseLost
 from app.engine.host.account import AccountRuntime, RuntimeDeps
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
+from app.engine.tg_auth import TgState
+from app.engine.transport.kurigram import KurigramTransport
 from app.logctx import current_account
 from tests.conftest import TEST_DB_URL
-from tests.engine.helpers import make_msg
+from tests.engine.helpers import GAME, make_msg
+from tests.engine.kurigram_fakes import EXPECTED, FakeClient
 
 pytestmark = pytest.mark.db
 ACCOUNT_TASKS = {"pipeline", "gateway", "reconcile", "reactions", "team-forward", "planner"}
+BOX = SecretBox(secrets.token_bytes(32))
+OTHER = -1002000000001
 
 
 class Engines:
     """Движки теста на арендах одного менеджера; в конце теста всё останавливается, аренды
     освобождаются."""
 
-    def __init__(self, db: Database) -> None:
-        config = AppConfig(
+    def __init__(
+        self, db: Database, config: AppConfig | None = None, box: SecretBox | None = None
+    ) -> None:
+        config = config or AppConfig(
             _env_file=None, database_url=TEST_DB_URL, transport="fake", planner=False
         )
         self.deps = RuntimeDeps(
-            db=db, config=config, accounts=AccountRepo(db), lag=LoopLagMonitor()
+            db=db, config=config, accounts=AccountRepo(db), lag=LoopLagMonitor(), box=box
         )
         # Продление в тестах не идёт: местный срок аренды с запасом на весь тест.
         self.leases = LeaseManager(db, "test-host", ttl_s=300.0)
@@ -60,6 +72,30 @@ class Engines:
 @pytest.fixture
 async def engines(clean_db: Database) -> AsyncIterator[Engines]:
     made = Engines(clean_db)
+    await made.leases.open()
+    try:
+        yield made
+    finally:
+        await made.close()
+
+
+@pytest.fixture
+async def kurigram(
+    clean_db: Database, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[Engines]:
+    """Движки на транспорте kurigram: клиент — фейк поверх настоящего `PgSessionStorage`,
+    каталог данных — `tmp_path`."""
+    monkeypatch.setattr(KurigramTransport, "_make_client", lambda self: FakeClient(self._storage))
+    config = AppConfig(
+        _env_file=None,
+        database_url=TEST_DB_URL,
+        transport="kurigram",
+        tg_api_id=1,
+        tg_api_hash=SecretStr("x"),
+        data_dir=tmp_path,
+        planner=False,
+    )
+    made = Engines(clean_db, config, BOX)
     await made.leases.open()
     try:
         yield made
@@ -154,3 +190,91 @@ async def test_writes_after_lost_lease_refused(engines: Engines, clean_db: Datab
     assert await _settings_row(clean_db) == before
     assert runtime.settings.current.engine.min_request_interval_s == 2
     await runtime.abort()
+
+
+async def _make_session_file(data_dir: Path) -> Path:
+    """Файл сессии прежней установки (`SQLiteStorage` kurigram) с вошедшим пользователем."""
+    from pyrogram.storage import SQLiteStorage
+
+    source = SQLiteStorage("pyrobot", workdir=data_dir)
+    await source.open()
+    try:
+        await source.api_id(12345)
+        await source.dc_id(2)
+        await source.test_mode(False)
+        await source.server_address("149.154.167.51")
+        await source.port(443)
+        await source.auth_key(b"k" * 256)
+        await source.user_id(EXPECTED)
+        await source.is_bot(False)
+        await source.update_peers([(GAME, 42, "bot", None), (OTHER, 99, "supergroup", None)])
+        await source.save()
+    finally:
+        await source.close()
+    return data_dir / "pyrobot.session"
+
+
+async def _tg_rows(db: Database) -> tuple[TgSession | None, set[int]]:
+    async with db.sessions() as session:
+        row = await session.get(TgSession, 1)
+        peers = await session.scalars(select(TgPeer.id).where(TgPeer.account_id == 1))
+        return row, set(peers)
+
+
+async def _codes(db: Database) -> list[tuple[str, str]]:
+    return [(row.level, row.code) for row in await DbNotifier(db, 1).recent()]
+
+
+@pytest.mark.parametrize("partial", [False, True])
+async def test_imports_session_file_and_goes_online_without_login(
+    kurigram: Engines, clean_db: Database, tmp_path: Path, partial: bool
+) -> None:
+    # Review Focus 1: перенос сессии прежней установки — аккаунт 1 онлайн без перелогина.
+    path = await _make_session_file(tmp_path)
+    if partial:
+        # Перенос прервался до `user_id` (он пишется последним): строка есть, входа в ней нет.
+        async with clean_db.sessions() as session, session.begin():
+            sealed = BOX.seal(b"x" * 256, "auth_key", 1)
+            session.add(TgSession(account_id=1, dc_id=4, date=0, auth_key=sealed))
+    await kurigram.deps.accounts.bind_telegram(1, EXPECTED)
+    runtime = await kurigram.start(1)
+    assert runtime.tg is not None and runtime.tg.status().state is TgState.ONLINE
+    assert runtime.tg.status().user_id == EXPECTED
+    client = runtime.transport._client  # type: ignore[union-attr]
+    assert isinstance(client, FakeClient) and client.is_initialized
+    assert [name for name, _ in client.invoked] == ["GetState"]
+    row, peers = await _tg_rows(clean_db)
+    assert row is not None and row.user_id == EXPECTED and row.auth_key is not None
+    assert BOX.open(row.auth_key, "auth_key", 1) == b"k" * 256
+    # Пиры — только чатов из настроек.
+    assert peers == {GAME}
+    assert not path.exists() and (tmp_path / "pyrobot.session.migrated").exists()
+    assert await _codes(clean_db) == []
+
+
+async def test_broken_session_file_warns_and_keeps_file(
+    kurigram: Engines, clean_db: Database, tmp_path: Path
+) -> None:
+    path = tmp_path / "pyrobot.session"
+    path.write_bytes(b"not a database")
+    runtime = await kurigram.start(1)
+    assert runtime.facade is not None and runtime.tg is not None
+    assert runtime.tg.status().state is TgState.UNAUTHORIZED
+    assert path.read_bytes() == b"not a database"
+    assert not (tmp_path / "pyrobot.session.migrated").exists()
+    assert await _codes(clean_db) == [("warn", "tg_session_import_failed")]
+
+
+async def test_undecryptable_session_dropped_and_reported(
+    kurigram: Engines, clean_db: Database
+) -> None:
+    foreign = SecretBox(secrets.token_bytes(32)).seal(b"k" * 256, "auth_key", 1)
+    async with clean_db.sessions() as session, session.begin():
+        session.add(TgSession(account_id=1, dc_id=2, date=0, auth_key=foreign, user_id=EXPECTED))
+        session.add(TgPeer(account_id=1, id=GAME, access_hash=42, type="bot"))
+    runtime = await kurigram.start(1)
+    assert runtime.facade is not None and runtime.tg is not None
+    assert runtime.tg.status().state is TgState.UNAUTHORIZED
+    assert set(runtime.supervisor._tasks) == ACCOUNT_TASKS | {"tg-probe"}
+    assert await _tg_rows(clean_db) == (None, set())
+    assert await _codes(clean_db) == [("error", "tg_session_unreadable")]

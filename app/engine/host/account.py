@@ -8,11 +8,13 @@ import logging
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from app.config import AppConfig
 from app.db.accounts import AccountInfo, AccountRepo
 from app.db.actions import DbActionStore
 from app.db.base import Database
+from app.db.crypto import SecretBox, Undecryptable
 from app.db.journal import DbJournal
 from app.db.metro import DbMetroRunStore
 from app.db.models import NotificationRow
@@ -46,12 +48,18 @@ from app.engine.team_forward import TeamForward
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
-from app.engine.transport.kurigram import ChatFilter, KurigramTransport
+from app.engine.transport.kurigram import ChatFilter, KurigramTransport, session_peers
 from app.engine.types import IncomingMessage
 from app.engine.unrecognized import UnrecognizedWatch
 from app.logctx import current_account
 
+if TYPE_CHECKING:
+    # pyrogram (его импортирует `tg_storage`) — лениво, внутри работающего цикла.
+    from app.db.tg_storage import PgSessionStorage
+
 log = logging.getLogger(__name__)
+# Файл сессии установки до мультиаккаунта в каталоге данных: его сессию перенимает аккаунт 1.
+LEGACY_SESSION_FILE = "pyrobot.session"
 REREAD_DRAIN_S = 10.0
 TG_PROBE_S = 60.0
 PIPELINE_DRAIN_S = 10.0
@@ -107,6 +115,8 @@ class RuntimeDeps:
     config: AppConfig
     accounts: AccountRepo
     lag: LoopLagMonitor
+    # Ключ сессий Telegram в базе; нет только у транспорта fake без `PYROBOT_SECRET_KEY`.
+    box: SecretBox | None = None
 
 
 class AccountRuntime:
@@ -179,7 +189,7 @@ class AccountRuntime:
             react_max_age=timedelta(minutes=react_age),
         )
         await self.pipeline.load()
-        transport, backend = self._make_transport(self.pipeline)
+        transport, backend = await self._make_transport(self.pipeline)
         self.transport = transport
         pipeline = self.pipeline
         self.gateway = ActionGateway(
@@ -328,12 +338,12 @@ class AccountRuntime:
     async def abort(self) -> None:
         """Аварийная остановка (аренда потеряна): без доработки конвейера и финальных записей
         — после срока движок в базу не пишет; что не дошло до журнала, вернёт сверка истории.
-        Транспорт закрывается его `stop()` (аварийного закрытия у него пока нет), затем
-        отменяются задачи."""
+        Транспорт закрывается аварийно (`KurigramTransport.abort`: очередь kurigram не
+        дорабатывается), затем отменяются задачи."""
         with _in_account(self.account_id):
             if self._kurigram is not None:
                 with contextlib.suppress(Exception):
-                    await self._kurigram.stop()
+                    await self._kurigram.abort()
             with contextlib.suppress(Exception):
                 await self.supervisor.stop()
             self.stream.close()
@@ -382,19 +392,70 @@ class AccountRuntime:
             return "pipeline_unhealthy"
         return self._can_send()
 
-    def _make_transport(self, pipeline: Pipeline) -> tuple[Transport, TgAuthBackend]:
+    async def _make_transport(self, pipeline: Pipeline) -> tuple[Transport, TgAuthBackend]:
         config = self._deps.config
         if config.transport == "fake":
             return FakeTransport(), FakeTgBackend(authorized=False)
         kurigram = KurigramTransport(
             api_id=config.tg_api_id,
             api_hash=config.tg_api_hash.get_secret_value(),
-            workdir=config.data_dir,
+            account_id=self.account_id,
+            storage=await self._session_storage(),
+            fence=self.fence,
             chat_filter=ChatFilter.from_settings(self.settings.current.chats),
             sink=pipeline.submit,
         )
         self._kurigram = kurigram
         return kurigram, kurigram
+
+    async def _session_storage(self) -> "PgSessionStorage":
+        """Сессия Telegram аккаунта в базе (раздел 4.3 спеки); пиры, которые она держит в базе, —
+        чаты из текущих настроек и пользователь swinfo. Сессия, которая не расшифровалась,
+        удаляется: движок стартует без Telegram, нужен вход заново. Аккаунт 1 без вошедшей
+        сессии перенимает файл сессии прежней установки (раздел 4.7)."""
+        from app.db.tg_storage import PgSessionStorage
+
+        box = self._deps.box
+        # Без ключа процесс с kurigram не стартует (`Runtime._check_key`).
+        assert box is not None
+        settings = self.settings
+        storage = PgSessionStorage(
+            self._deps.db, self.account_id, box, lambda: session_peers(settings.current.chats)
+        )
+        try:
+            await storage.open()
+        except Undecryptable:
+            log.error("telegram session not decrypted, deleted")
+            await storage.delete()
+            await self.notifier.notify(
+                "error",
+                "tg_session_unreadable",
+                "telegram session could not be decrypted and was deleted; login again in admin",
+            )
+        # Строки нет или она недописана прерванным переносом (`user_id` пишется последним).
+        if self.account_id == 1 and await storage.user_id() is None:
+            await self._import_session_file(storage)
+        return storage
+
+    async def _import_session_file(self, storage: "PgSessionStorage") -> None:
+        """Перенос `<data_dir>/pyrobot.session` в базу; файла нет — ничего. Сбой —
+        предупреждение аккаунта, файл остаётся, аккаунт требует входа."""
+        from app.db.tg_storage import import_session_file
+
+        path = self._deps.config.data_dir / LEGACY_SESSION_FILE
+        peers = session_peers(self.settings.current.chats)
+        try:
+            imported = await import_session_file(path, storage, peers)
+        except Exception as exc:
+            log.warning("telegram session file %s not imported", path, exc_info=True)
+            await self.notifier.notify(
+                "warn",
+                "tg_session_import_failed",
+                f"{path.name} not imported ({type(exc).__name__}); login again in admin",
+            )
+            return
+        if imported:
+            log.info("telegram session imported from %s", path)
 
     async def _probe_tg(self) -> None:
         while True:
