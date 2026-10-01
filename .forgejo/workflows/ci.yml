@@ -182,7 +182,9 @@ jobs:
           PYROBOT_SECRET_KEY: ${{ secrets.PYROBOT_SECRET_KEY }}
           # Нужен только первому старту (создание админа); дальше пароль меняется через API.
           PYROBOT_ADMIN_PASSWORD: ${{ secrets.PYROBOT_ADMIN_PASSWORD }}
-          # Переменная репозитория: true — только на первый выкат, пока не выполнен вход в Telegram.
+          # Переменная репозитория: true — после выкатки ждать только живости процесса (/healthz), без
+          # готовности (/readyz). Для первого выката больше не нужна: /readyz — готовность процесса
+          # (база и блокировки хоста), от входа в Telegram не зависит; осталась аварийным обходом.
           SKIP_READY: ${{ vars.PYROBOT_SKIP_READY }}
         run: |
           KEY="$(mktemp)"
