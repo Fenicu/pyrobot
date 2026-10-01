@@ -1,10 +1,13 @@
 import asyncio
+import contextlib
 import itertools
+from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 from sqlalchemy import func, select
@@ -73,6 +76,14 @@ async def _account(repo: AccountRepo) -> AccountInfo:
     return account
 
 
+@contextlib.asynccontextmanager
+async def _started(app: FastAPI) -> AsyncIterator[None]:
+    """Процесс запущен и движок аккаунта 1 поднят: плавный старт движков идёт в фоне."""
+    async with app.router.lifespan_context(app):
+        assert await app.state.runtime.host.wait_registered(1, 5.0) is not None
+        yield
+
+
 def _engine(runtime: Runtime, account_id: int = 1) -> Any:
     """Зарегистрированный движок аккаунта."""
     engine = runtime.host.get(account_id)
@@ -95,8 +106,10 @@ async def test_fake_runtime_ready_without_telegram(clean_db: Database) -> None:
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             assert (await client.get("/healthz")).status_code == 200
-            # Готовность процесса — база и соединение блокировок; Telegram аккаунта не в счёт.
+            # Готовность процесса — база и соединение блокировок; ни движки (их плавный старт
+            # идёт в фоне), ни Telegram аккаунта не в счёт.
             assert (await client.get("/readyz")).status_code == 200
+            assert await app.state.runtime.host.wait_registered(1, 5.0) is not None
             await _login_tg(client)
             assert (await client.get("/readyz")).status_code == 200
             status = (await client.get("/api/v1/accounts/1/engine/status")).json()
@@ -119,7 +132,7 @@ async def test_account_id_in_env_is_ignored_with_warning(
 ) -> None:
     monkeypatch.setenv("PYROBOT_ACCOUNT_ID", "7")
     app = create_application(_cfg())
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         assert app.state.runtime.host.status().engines == [1]
     assert "PYROBOT_ACCOUNT_ID больше не читается" in caplog.text
 
@@ -153,7 +166,7 @@ async def test_stop_order_engines_release_renewal_close(
     monkeypatch.setattr(leases, "run", renewing)
     monkeypatch.setattr(leases, "release", releasing)
     monkeypatch.setattr(leases, "close", closing)
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         engine = _engine(runtime)
         stop = engine.stop
 
@@ -169,7 +182,7 @@ async def test_first_login_binds_telegram_account(clean_db: Database) -> None:
     repo = AccountRepo(clean_db)
     assert (await _account(repo)).tg_user_id is None
     app = create_application(_cfg())
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             await _login_tg(client)
             assert (await client.get("/api/v1/accounts/1/tg/status")).json()[
@@ -186,7 +199,7 @@ async def test_start_takes_binding_from_account(clean_db: Database) -> None:
     repo = AccountRepo(clean_db)
     await repo.bind_telegram(1, 42)
     app = create_application(_cfg())
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             r = await client.post(
                 "/api/v1/auth/login", json={"login": "admin", "password": "correct horse battery"}
@@ -209,8 +222,9 @@ async def test_start_takes_binding_from_account(clean_db: Database) -> None:
 async def test_second_runtime_does_not_start_engine(clean_db: Database) -> None:
     first = create_application(_cfg())
     second = create_application(_cfg())
-    async with first.router.lifespan_context(first), second.router.lifespan_context(second):
+    async with _started(first), second.router.lifespan_context(second):
         host = second.state.runtime.host
+        await until(lambda: host.host_reason(1) is not None, 5.0)
         assert first.state.runtime.host.get(1) is not None
         assert host.get(1) is None and host.host_reason(1) == "locked_elsewhere"
         async with AsyncClient(transport=ASGITransport(app=second), base_url="http://t") as client:
@@ -224,7 +238,7 @@ async def test_second_runtime_does_not_start_engine(clean_db: Database) -> None:
 async def test_engine_abort_ends_its_event_streams(clean_db: Database) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             await _login(client)
             cookie = {"cookie": f"pyrobot_session={client.cookies['pyrobot_session']}"}
@@ -248,7 +262,7 @@ async def test_engine_abort_ends_its_event_streams(clean_db: Database) -> None:
 async def test_unkill_after_lock_lost_is_conflict(clean_db: Database) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             h = await _login_tg(client)
             # Ограда отозвана, аварийная остановка ещё не прошла: фасад на месте.
@@ -267,7 +281,7 @@ async def test_gateway_rejects_when_tg_offline(clean_db: Database) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
     nav = ActionRequest(kind=ActionKind.SEND, chat_id=GAME, text="😎Я")
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         engine = _engine(runtime)
         res = await engine.gateway.submit(nav)
         assert res.status is ActionStatus.REJECTED and res.reason == "tg_offline"
@@ -282,7 +296,7 @@ async def test_gateway_rejects_when_tg_offline(clean_db: Database) -> None:
 async def test_stop_drains_pipeline_into_journal(clean_db: Database) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         for i in range(50):
             await _engine(runtime).pipeline.submit(make_msg(f"m{i}", msg_id=i + 1))
     async with clean_db.sessions() as s:
@@ -317,7 +331,7 @@ async def test_reconciler_lifts_block_from_restart_obligation(
         )
         await _engine(runtime).pipeline.submit(msg)
 
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         engine = _engine(runtime)
         assert engine.gateway.spending_blocked == RECONCILE_REASON
         engine.transport.responder = respond
@@ -367,7 +381,7 @@ async def test_planner_refreshes_state_in_dry_run(
         )
         await _engine(runtime).pipeline.submit(msg)
 
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         engine = _engine(runtime)
         # Рефреш проверяется на механиках фазы 3: окна обязательств, сна и полуночи заданий
         # зависят от часов.
@@ -410,7 +424,7 @@ async def test_forward_left_by_previous_process_notified_not_retried(clean_db: D
     app = create_application(_cfg())
     runtime = app.state.runtime
     notifier = DbNotifier(clean_db, 1)
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         rows = [r for r in await notifier.recent() if r.code == "team_forward_unknown"]
         assert len(rows) == 1 and "3625831" in rows[0].text
         assert not any(r.code == "actions_outcome_unknown" for r in await notifier.recent())
@@ -421,7 +435,7 @@ async def test_forward_left_by_previous_process_notified_not_retried(clean_db: D
     assert (stored.status, stored.reason) == (ActionStatus.OUTCOME_UNKNOWN, "restart")
     # Повторный старт — без второго уведомления.
     again = create_application(_cfg())
-    async with again.router.lifespan_context(again):
+    async with _started(again):
         codes = [r.code for r in await notifier.recent()]
     assert codes.count("team_forward_unknown") == 1
 
@@ -433,7 +447,7 @@ async def test_start_interrupts_runs_left_by_previous_process(clean_db: Database
         await store.record(moment, Act("book", {}, "book_ready")), "book", {}, moment
     )
     app = create_application(_cfg())
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         pass
     async with clean_db.sessions() as s:
         run = await s.get(ScenarioRunRow, left)
@@ -444,7 +458,7 @@ async def test_start_interrupts_runs_left_by_previous_process(clean_db: Database
 async def test_runtime_streams_engine_events(clean_db: Database) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         engine = _engine(runtime)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             h = await _login_tg(client)
@@ -479,7 +493,7 @@ async def test_retention_task_purges_old_journal(clean_db: Database) -> None:
         async with clean_db.sessions() as s:
             return int(await s.scalar(select(func.count()).select_from(MessageRow)) or 0)
 
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         for _ in range(200):
             if await journal_size() == 0:
                 break
@@ -501,7 +515,7 @@ async def test_retention_failure_notifies_once(
         raise ConnectionError("db down")
 
     monkeypatch.setattr(DbRetention, "purge", broken)
-    async with app.router.lifespan_context(app):
+    async with _started(app):
         await until(lambda: calls[0] >= 3)
         assert await _notified(clean_db, "retention_failed") == 1
         assert "retention" not in runtime.supervisor._backoff

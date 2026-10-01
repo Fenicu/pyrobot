@@ -89,7 +89,7 @@ class Runtime:
         self.supervisor.start("lag", self.lag.run)
         self.supervisor.start("session-purge", self._purge_sessions)
         self.supervisor.start("retention", self._retention)
-        # Движки включённых аккаунтов — до готовности HTTP, как и прежде.
+        # Движки включённых аккаунтов хост поднимает в фоне: HTTP и /readyz готовы сразу.
         await self.host.start()
 
     async def _purge_sessions(self) -> None:

@@ -32,10 +32,10 @@ def _config() -> AppConfig:
 
 
 class Hosts:
-    """Хосты теста на одной базе (у каждого — свой менеджер аренды). Пауза между стартами не
-    ждёт, а пишется в `log` вместе со стартами движков; продления нет — местный срок аренды с
-    запасом на весь тест. В конце теста хосты останавливаются, соединения блокировок
-    закрываются."""
+    """Хосты теста на одной базе (у каждого — свой менеджер аренды). Пауза между стартами
+    пишется в `log` вместе со стартами движков и не ждёт (взведённый `gate` — ждёт его);
+    продления нет — местный срок аренды с запасом на весь тест. В конце теста хосты
+    останавливаются, соединения блокировок закрываются."""
 
     def __init__(self, db: Database) -> None:
         self.db = db
@@ -43,10 +43,13 @@ class Hosts:
         self.hosts: list[EngineHost] = []
         self.leases: list[LeaseManager] = []
         self.log: list[tuple[str, Any]] = []
+        self.gate: asyncio.Event | None = None
 
     async def sleep(self, seconds: float) -> None:
         self.log.append(("sleep", seconds))
         await asyncio.sleep(0)
+        if self.gate is not None:
+            await self.gate.wait()
 
     async def make(
         self, holder: str = "host-a", *, reconcile_s: float = 30.0
@@ -124,6 +127,13 @@ async def _wait_status(repo: AccountRepo, account_id: int, status: AccountStatus
             await asyncio.sleep(0.01)
 
 
+async def _registered(host: EngineHost, *account_ids: int) -> list[AccountRuntime]:
+    """Движки плавного старта (он идёт в фоне), как только они зарегистрированы."""
+    runtimes = [await host.wait_registered(account_id, 5.0) for account_id in account_ids]
+    assert all(runtime is not None for runtime in runtimes)
+    return [runtime for runtime in runtimes if runtime is not None]
+
+
 def _running(host: EngineHost, account_id: int) -> AccountRuntime:
     runtime = host.get(account_id)
     assert runtime is not None
@@ -161,6 +171,7 @@ async def test_starts_enabled_accounts_in_id_order_with_gap(
     await _add(clean_db, "error")
     await _add(clean_db, "deleting")
     host = await hosts.open()
+    await _registered(host, 1, two)
     assert hosts.log == [("start", 1), ("sleep", 3.0), ("start", two)]
     assert host.status().engines == [1, two]
     assert _alive(_running(host, 1)) and _alive(_running(host, two))
@@ -172,10 +183,36 @@ async def test_starts_enabled_accounts_in_id_order_with_gap(
     assert host.capacity == 20
 
 
+async def test_start_does_not_wait_for_staged_start(clean_db: Database, hosts: Hosts) -> None:
+    two = await _add(clean_db)
+    hosts.gate = asyncio.Event()
+    host = await hosts.open()
+    # start() вернулся, а плавный старт идёт в фоне: аккаунт 2 ещё ждёт паузы.
+    await until(lambda: ("sleep", 3.0) in hosts.log, 5.0)
+    assert hosts.log == [("start", 1), ("sleep", 3.0)]
+    await _registered(host, 1)
+    assert host.get(two) is None and host.status().lock_connection_ok
+    # Остановка посреди паузы: старт аккаунта 2 не начинается, захваченная аренда освобождается.
+    await host.stop()
+    assert hosts.log == [("start", 1), ("sleep", 3.0)] and not host._engines
+    assert await _holder(clean_db, 1) is None and await _holder(clean_db, two) is None
+
+
+async def test_staged_start_continues_after_gap(clean_db: Database, hosts: Hosts) -> None:
+    two = await _add(clean_db)
+    hosts.gate = asyncio.Event()
+    host = await hosts.open()
+    await until(lambda: ("sleep", 3.0) in hosts.log, 5.0)
+    assert host.get(two) is None
+    hosts.gate.set()
+    await _registered(host, 1, two)
+    assert hosts.log == [("start", 1), ("sleep", 3.0), ("start", two)]
+
+
 async def test_restart_one_account_leaves_other(clean_db: Database, hosts: Hosts) -> None:
     two = await _add(clean_db)
     host = await hosts.open()
-    first, other = _running(host, 1), _running(host, two)
+    first, other = await _registered(host, 1, two)
     await hosts.repo.restart(1)
     host.poke()
     await until(lambda: host.get(1) not in (None, first), 5.0)
@@ -188,7 +225,7 @@ async def test_restart_one_account_leaves_other(clean_db: Database, hosts: Hosts
 
 async def test_missed_poke_caught_by_periodic_reconcile(clean_db: Database, hosts: Hosts) -> None:
     host = await hosts.open(reconcile_s=0.1)
-    first = _running(host, 1)
+    (first,) = await _registered(host, 1)
     await hosts.repo.restart(1)
     await until(lambda: host.get(1) not in (None, first), 5.0)
     assert _running(host, 1).generation == first.generation + 1
@@ -197,7 +234,7 @@ async def test_missed_poke_caught_by_periodic_reconcile(clean_db: Database, host
 async def test_disable_stops_enable_starts(clean_db: Database, hosts: Hosts) -> None:
     two = await _add(clean_db)
     host = await hosts.open()
-    first = _running(host, 1)
+    first, _ = await _registered(host, 1, two)
     calls: list[str] = []
     _spy(first, calls)
     await hosts.repo.update(1, enabled=False, capacity=20)
@@ -224,7 +261,7 @@ async def test_disable_stops_enable_starts(clean_db: Database, hosts: Hosts) -> 
 async def test_crash_loop_sets_error_and_notifies(clean_db: Database, hosts: Hosts) -> None:
     two = await _add(clean_db)
     host = await hosts.open()
-    engine, other = _running(host, 1), _running(host, two)
+    engine, other = await _registered(host, 1, two)
     calls: list[str] = []
     _spy(engine, calls)
     runs: list[int] = []
@@ -266,12 +303,11 @@ async def test_crash_loop_during_start_is_acted_on(
     host, _ = await hosts.make()
     registered = asyncio.create_task(host.wait_registered(1, 0.3))
     await host.start()
+    account = await _wait_status(hosts.repo, 1, "error")
+    assert account.status_reason == "crash_loop:planner"
     await until(lambda: 1 not in host._engines, 5.0)
     # Движок с серией сбоев так и не регистрировался.
     assert await registered is None
-    account = await hosts.repo.get(1)
-    assert account is not None
-    assert (account.status, account.status_reason) == ("error", "crash_loop:planner")
     assert "account_crash_loop" in await _codes(clean_db, 1)
     assert await _holder(clean_db, 1) is None
 
@@ -283,9 +319,9 @@ async def test_start_failure_sets_error_other_accounts_unaffected(
         session.add(SettingsRow(account_id=1, version=1, data={"engine": {"mode": "warp"}}))
     two = await _add(clean_db)
     host = await hosts.open()
-    account = await hosts.repo.get(1)
-    assert account is not None
-    assert (account.status, account.status_reason) == ("error", "start_failed:ValidationError")
+    account = await _wait_status(hosts.repo, 1, "error")
+    assert account.status_reason == "start_failed:ValidationError"
+    await _registered(host, two)
     assert host.get(1) is None and 1 not in host._engines and host.host_reason(1) is None
     assert await _holder(clean_db, 1) is None
     assert _alive(_running(host, two))
@@ -307,6 +343,14 @@ async def test_two_hosts_one_engine_per_account(clean_db: Database, hosts: Hosts
     a, _ = await hosts.make("host-a")
     b, _ = await hosts.make("host-b")
     await asyncio.gather(a.start(), b.start())
+
+    def settled(account_id: int) -> bool:
+        return any(
+            host.get(account_id) is not None and other.host_reason(account_id) is not None
+            for host, other in ((a, b), (b, a))
+        )
+
+    await until(lambda: settled(1) and settled(two), 5.0)
     for account_id in (1, two):
         owners = [host for host in (a, b) if host.get(account_id) is not None]
         assert len(owners) == 1
@@ -323,7 +367,7 @@ async def test_two_hosts_one_engine_per_account(clean_db: Database, hosts: Hosts
 async def test_lost_lease_aborts_and_reacquires(clean_db: Database, hosts: Hosts) -> None:
     two = await _add(clean_db)
     host = await hosts.open()
-    first, other = _running(host, 1), _running(host, two)
+    first, other = await _registered(host, 1, two)
     calls: list[str] = []
     _spy(first, calls)
     first.fence.revoke()
@@ -362,7 +406,7 @@ async def test_lease_lost_during_start_is_lease_loss(
 
 async def test_restart_waits_for_previous_runtime(clean_db: Database, hosts: Hosts) -> None:
     host = await hosts.open()
-    first = _running(host, 1)
+    (first,) = await _registered(host, 1)
     release = asyncio.Event()
     stop = first.stop
     stopping: list[bool] = []
@@ -394,7 +438,8 @@ async def test_wait_registered_waits_for_live_engine(clean_db: Database, hosts: 
         fence = await other.acquire(1)
         assert isinstance(fence, Fence)
         host = await hosts.open()
-        assert host.get(1) is None and host.host_reason(1) == "locked_elsewhere"
+        await until(lambda: host.host_reason(1) == "locked_elsewhere", 5.0)
+        assert host.get(1) is None
         assert await host.wait_registered(1, 0.05) is None
         registered = asyncio.create_task(host.wait_registered(1, 5.0))
         await other.release(fence)
@@ -420,6 +465,7 @@ async def test_host_reason_never_stale(
         fence2 = await other.acquire(two)
         assert isinstance(fence, Fence) and isinstance(fence2, Fence)
         host = await hosts.open()
+        await until(lambda: host.host_reason(two) is not None, 5.0)
         assert (host.host_reason(1), host.host_reason(two)) == ("locked_elsewhere",) * 2
         # Аккаунт выключен — причины захвата у него больше нет.
         await hosts.repo.update(1, enabled=False, capacity=20)
@@ -464,7 +510,7 @@ async def test_lease_acquires_one_at_a_time(
     for account_id in ids:
         await hosts.repo.update(account_id, enabled=True, capacity=20)
         host.poke()
-    await until(lambda: all(host.get(i) is not None for i in ids), 5.0)
+    await until(lambda: all(host.get(i) is not None for i in [1, *ids]), 5.0)
     _running(host, 1).fence.revoke()
     await until(lambda: host.get(1) is not None, 5.0)
     assert most[0] == 1
@@ -473,7 +519,7 @@ async def test_lease_acquires_one_at_a_time(
 async def test_stop_stops_live_aborts_lost_and_releases(clean_db: Database, hosts: Hosts) -> None:
     two = await _add(clean_db)
     host = await hosts.open()
-    live, lost = _running(host, 1), _running(host, two)
+    live, lost = await _registered(host, 1, two)
     live_calls: list[str] = []
     lost_calls: list[str] = []
     _spy(live, live_calls)
