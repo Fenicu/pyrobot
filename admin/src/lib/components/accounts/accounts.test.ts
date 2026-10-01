@@ -106,6 +106,17 @@ describe('экран аккаунтов', () => {
 		expect(old.queryByRole('link')).toBeNull();
 	});
 
+	it('колонки таблицы одни для заголовка и всех строк; у колонки кнопок — заголовок для чтеца', async () => {
+		await setup(LIST);
+		const actions = screen.getByRole('columnheader', { name: 'Действия' });
+		expect(actions).toHaveClass('sr-only');
+		expect(screen.getAllByRole('columnheader')).toHaveLength(7);
+		// Последняя дорожка — фиксированной ширины: у строки «удаляется» кнопок нет, а колонки не сдвигаются.
+		const grids = screen.getAllByRole('row').map((r) => /md:grid-cols-\[[^\s]+\]/.exec(r.className)?.[0]);
+		expect(new Set(grids).size).toBe(1);
+		expect(grids[0]).toMatch(/_\d+(\.\d+)?rem\]$/);
+	});
+
 	it('удаляемый аккаунт перечитывается, пока чистка не закончится', async () => {
 		vi.useFakeTimers();
 		const { fetch, state } = await setup([account(1, 'main'), account(4, 'old', { status: 'deleting' })]);
@@ -207,6 +218,10 @@ describe('экран аккаунтов', () => {
 		});
 		await user.click(within(row('twink')).getByRole('button', { name: 'Удалить' }));
 		const dialog = screen.getByRole('dialog');
+		// Текст окна — обычный абзац (перенос строк шаблона не рисуется), как есть — только имя.
+		const name = within(dialog).getByText('twink', { selector: '.ext-text' });
+		expect(name.closest('p')).not.toHaveClass('ext-text');
+		expect(name.closest('p')).toHaveTextContent(/^Аккаунт «twink» будет удалён навсегда: движок остановится, сервис выйдет из сессии Telegram, журнал, настройки/);
 		const confirm = within(dialog).getByRole('button', { name: 'Удалить навсегда' });
 		const input = within(dialog).getByLabelText('Имя аккаунта для подтверждения');
 		expect(confirm).toBeDisabled();

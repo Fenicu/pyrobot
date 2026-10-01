@@ -23,9 +23,11 @@
 	let { api, store }: Props = $props();
 
 	// Колонки таблицы на ПК; на телефоне каждый аккаунт — карточка, подписи полей — в ней самой.
+	// Каждая строка — своя сетка: колонка кнопок фиксированной ширины (под три кнопки), иначе у
+	// заголовка и строки «удаляется» без кнопок `fr`-дорожки делились бы иначе и колонки съезжали.
 	const COLUMNS =
-		'md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto]';
-	const HEADERS = ['Аккаунт', 'Telegram', 'Статус', 'Режим', 'Последнее действие', 'Внимание', ''];
+		'md:grid md:grid-cols-[minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_9rem]';
+	const HEADERS = ['Аккаунт', 'Telegram', 'Статус', 'Режим', 'Последнее действие', 'Внимание'];
 	// Опрос списка, пока какой-то аккаунт удаляется: чистка в фоне, исчезнуть он должен сразу после.
 	const DELETING_POLL_MS = 3000;
 
@@ -176,6 +178,7 @@
 				class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase {COLUMNS}"
 			>
 				{#each HEADERS as header, i (i)}<span role="columnheader">{header}</span>{/each}
+				<span role="columnheader" class="sr-only">Действия</span>
 			</div>
 			{#each list as a (a.id)}
 				<div
@@ -288,9 +291,9 @@
 {#if removing}
 	<Modal title="Удалить аккаунт?" onclose={() => (removing = null)}>
 		<form id="remove-form" class="space-y-3" onsubmit={remove}>
-			<p class="ext-text text-sm text-fg-muted">
-				Аккаунт «{removing.name}» будет удалён навсегда: движок остановится, сервис выйдет из сессии Telegram, журнал,
-				настройки и привязка к пользователю Telegram пропадут. Отменить нельзя.
+			<p class="text-sm text-fg-muted">
+				Аккаунт «<span class="ext-text">{removing.name}</span>» будет удалён навсегда: движок остановится, сервис выйдет
+				из сессии Telegram, журнал, настройки и привязка к пользователю Telegram пропадут. Отменить нельзя.
 			</p>
 			<label class="block space-y-1">
 				<span class="label">Имя аккаунта для подтверждения</span>
