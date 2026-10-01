@@ -95,10 +95,22 @@
 		</div>
 	{/if}
 	{#if editor.restartRequired.length > 0}
-		<div class="card mb-3 text-sm text-warn-fg" role="status">
-			Сохранено, но вступит в силу после перезапуска сервиса: <span class="font-mono"
-				>{editor.restartRequired.join(', ')}</span
-			>
+		<div class="card mb-3 flex flex-wrap items-center gap-2 text-sm text-warn-fg" role="status">
+			{#if editor.restartAccepted}
+				<span class="flex-1">Аккаунт перезапускается</span>
+			{:else}
+				<span class="flex-1">
+					Изменения вступят в силу после перезапуска аккаунта: <span class="font-mono"
+						>{editor.restartRequired.join(', ')}</span
+					>
+				</span>
+				<button type="button" class="btn" disabled={editor.restarting} onclick={() => void editor.restart()}>
+					Перезапустить аккаунт
+				</button>
+			{/if}
+			{#if editor.restartError}
+				<p class="w-full text-bad-fg" role="alert">{errorText(editor.restartError)}</p>
+			{/if}
 		</div>
 	{/if}
 

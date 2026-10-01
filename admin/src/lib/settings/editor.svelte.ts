@@ -48,6 +48,10 @@ export class SettingsEditor {
 	formErrors = $state<string[]>([]);
 	/** Сохранено, но читается только при старте процесса. */
 	restartRequired = $state<string[]>([]);
+	/** Перезапуск аккаунта кнопкой плашки: запрос идёт / принят (202) и ошибка последней попытки. */
+	restarting = $state(false);
+	restartAccepted = $state(false);
+	restartError = $state<ApiError | null>(null);
 	#api: AccountApi;
 	#seenDuringSave: number | null = null;
 
@@ -151,6 +155,8 @@ export class SettingsEditor {
 			this.server = { ...server, version: out.version, values: out.values };
 			this.draft = draft;
 			this.restartRequired = out.restart_required;
+			this.restartAccepted = false;
+			this.restartError = null;
 			this.fieldErrors = {};
 			this.formErrors = [];
 			this.conflict = null;
@@ -167,6 +173,23 @@ export class SettingsEditor {
 		} finally {
 			this.saving = false;
 			this.#seenDuringSave = null;
+		}
+	}
+
+	/** `POST /engine/restart`: хост штатно остановит движок аккаунта и поднимет новый — так
+	 * применяются настройки из `restartRequired`. */
+	async restart(): Promise<void> {
+		if (this.restarting) return;
+		this.restarting = true;
+		this.restartError = null;
+		try {
+			await call(this.#api.POST('/engine/restart'));
+			this.restartAccepted = true;
+		} catch (e) {
+			if (!(e instanceof ApiFailure)) throw e;
+			this.restartError = e.error;
+		} finally {
+			this.restarting = false;
 		}
 	}
 

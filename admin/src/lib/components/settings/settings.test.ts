@@ -13,9 +13,10 @@ import SettingsView from './SettingsView.svelte';
 
 const settings = fixture<SettingsOut>('settings');
 
-async function view(patch?: (c: Call) => Response, current: () => SettingsOut = () => settings) {
+async function view(patch?: (c: Call) => Response, current: () => SettingsOut = () => settings, post?: (c: Call) => Response | Promise<Response>) {
 	const fetch = mockFetch((c) => {
 		if (c.url.startsWith('/api/v1/accounts/1/settings/history')) return json(fixture('settings_history'));
+		if (c.method === 'POST' && post) return post(c);
 		if (c.method === 'PATCH' && patch) return patch(c);
 		if (c.method === 'PATCH') return json({ version: 14, values: JSON.parse(c.body).changes ? settings.values : {}, changed: {}, restart_required: [] });
 		return json(current());
@@ -269,5 +270,77 @@ describe('Настройки', () => {
 		await user.click(screen.getByRole('switch', { name: 'Казино' }));
 		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
 		await vi.waitFor(() => expect(toasts.items.map((t) => t.text)).toEqual(['features: Value error, bad combo']));
+	});
+});
+
+describe('Перезапуск аккаунта после сохранения', () => {
+	const restartUrl = '/api/v1/accounts/1/engine/restart';
+
+	// Сохранение, после которого сервер просит перезапуск: плашка с кнопкой.
+	async function saved(post: (c: Call) => Response | Promise<Response>) {
+		const user = userEvent.setup();
+		const { fetch } = await view(
+			() => json({ version: 14, values: settings.values, changed: {}, restart_required: ['chats.game_chat_id'] }),
+			() => settings,
+			post
+		);
+		await user.click(screen.getByRole('button', { name: 'Функции' }));
+		await user.click(screen.getByRole('switch', { name: 'Казино' }));
+		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+		const banner = await screen.findByRole('status');
+		return { user, fetch, banner };
+	}
+
+	it('плашка после PATCH с restart_required: что применится и кнопка «Перезапустить аккаунт»', async () => {
+		const { banner, fetch } = await saved(() => new Response(null, { status: 202 }));
+		expect(banner).toHaveTextContent('Изменения вступят в силу после перезапуска аккаунта: chats.game_chat_id');
+		expect(within(banner).getByRole('button', { name: 'Перезапустить аккаунт' })).toBeEnabled();
+		expect(fetch.calls.some((c) => c.url === restartUrl)).toBe(false);
+	});
+
+	it('без restart_required плашки нет', async () => {
+		const user = userEvent.setup();
+		await view();
+		await user.click(screen.getByRole('button', { name: 'Функции' }));
+		await user.click(screen.getByRole('switch', { name: 'Казино' }));
+		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+		await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Несохранённые изменения' })).toBeNull());
+		expect(screen.queryByRole('button', { name: 'Перезапустить аккаунт' })).toBeNull();
+	});
+
+	it('клик → POST /engine/restart с CSRF; пока запрос идёт, кнопка неактивна; 202 → «Аккаунт перезапускается»', async () => {
+		let answer!: (r: Response) => void;
+		const pending = new Promise<Response>((resolve) => (answer = resolve));
+		const { user, fetch, banner } = await saved(() => pending);
+		await user.click(within(banner).getByRole('button', { name: 'Перезапустить аккаунт' }));
+		await vi.waitFor(() => expect(within(banner).getByRole('button', { name: 'Перезапустить аккаунт' })).toBeDisabled());
+		const posts = fetch.calls.filter((c) => c.method === 'POST');
+		expect(posts.map((c) => c.url)).toEqual([restartUrl]);
+		expect(posts[0]?.headers.get('x-csrf-token')).toBe('c');
+		answer(new Response(null, { status: 202 }));
+		await vi.waitFor(() => expect(banner).toHaveTextContent('Аккаунт перезапускается'));
+		expect(banner).not.toHaveTextContent('Изменения вступят в силу');
+		expect(within(banner).queryByRole('button')).toBeNull();
+	});
+
+	it('503 engine not running → «Движок недоступен», плашка с кнопкой остаётся, можно повторить', async () => {
+		let calls = 0;
+		const { user, banner } = await saved(() => {
+			calls += 1;
+			return calls === 1 ? json({ detail: 'engine not running' }, 503) : new Response(null, { status: 202 });
+		});
+		await user.click(within(banner).getByRole('button', { name: 'Перезапустить аккаунт' }));
+		expect(await within(banner).findByRole('alert')).toHaveTextContent('Движок недоступен');
+		expect(banner).toHaveTextContent('Изменения вступят в силу после перезапуска аккаунта');
+		await user.click(within(banner).getByRole('button', { name: 'Перезапустить аккаунт' }));
+		await vi.waitFor(() => expect(banner).toHaveTextContent('Аккаунт перезапускается'));
+		expect(within(banner).queryByRole('alert')).toBeNull();
+	});
+
+	it('409 account_deleting → «Аккаунт удаляется»', async () => {
+		const { user, banner } = await saved(() => json({ detail: 'account_deleting' }, 409));
+		await user.click(within(banner).getByRole('button', { name: 'Перезапустить аккаунт' }));
+		expect(await within(banner).findByRole('alert')).toHaveTextContent('Аккаунт удаляется');
+		expect(within(banner).getByRole('button', { name: 'Перезапустить аккаунт' })).toBeEnabled();
 	});
 });
