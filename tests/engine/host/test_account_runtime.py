@@ -365,3 +365,28 @@ async def test_self_chat_binds_and_stays_offline_until_restart(
     await kurigram.leases.release(runtime.fence)
     again = await kurigram.start(1)
     assert again.tg is not None and again.tg.status().state is TgState.ONLINE
+
+
+async def test_stale_unbound_snapshot_refused_by_binding_in_db(
+    kurigram: Engines, clean_db: Database
+) -> None:
+    # Снимок аккаунта при старте — без привязки, а в базе аккаунт уже привязан к другому
+    # пользователю: вход отклоняется до онлайна, сессия закрывается, привязка в базе прежняя.
+    async with clean_db.sessions() as session, session.begin():
+        sealed = BOX.seal(b"k" * 256, "auth_key", 1)
+        session.add(TgSession(account_id=1, dc_id=2, date=0, auth_key=sealed, user_id=EXPECTED))
+    fence = await kurigram.leases.acquire(1)
+    assert isinstance(fence, Fence)
+    account = await kurigram.deps.accounts.get(1)
+    assert account is not None and account.tg_user_id is None
+    await kurigram.deps.accounts.bind_telegram(1, 42)
+    runtime = AccountRuntime(account, kurigram.deps, fence, on_crash_loop=kurigram._crash_loop)
+    kurigram.runtimes.append(runtime)
+    await runtime.start()
+    assert runtime.tg is not None
+    st = runtime.tg.status()
+    assert st.state is TgState.ERROR and st.error == "unexpected_user"
+    assert st.bound_user_id == 42 and st.user_id is None
+    assert await _tg_rows(clean_db) == (None, set())
+    stored = await kurigram.deps.accounts.get(1)
+    assert stored is not None and stored.tg_user_id == 42

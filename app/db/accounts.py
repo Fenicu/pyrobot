@@ -305,15 +305,29 @@ class AccountRepo:
             )
             return len(result.all())
 
-    async def bind_telegram(self, account_id: int, tg_user_id: int) -> None:
-        """Привязка на всю жизнь: уже привязанный аккаунт не меняется; пользователь, занятый
-        другим аккаунтом, — `TgUserTaken`."""
+    async def bind_telegram(self, account_id: int, tg_user_id: int) -> int:
+        """Привязка на всю жизнь: непривязанный аккаунт получает `tg_user_id`, уже привязанный не
+        меняется. Ответ — привязка в базе после записи: у привязанного к другому — тот, другой.
+        Пользователь, занятый другим аккаунтом, — `TgUserTaken`; аккаунта нет — KeyError."""
         try:
-            await self._write(account_id, Account.tg_user_id.is_(None), tg_user_id=tg_user_id)
+            async with self._db.sessions() as session, session.begin():
+                bound: int | None = await session.scalar(
+                    update(Account)
+                    .where(Account.id == account_id, Account.tg_user_id.is_(None))
+                    .values(tg_user_id=tg_user_id, updated_at=func.now())
+                    .returning(Account.tg_user_id)
+                )
+                if bound is None:
+                    bound = await session.scalar(
+                        select(Account.tg_user_id).where(Account.id == account_id)
+                    )
         except IntegrityError as exc:
             if _violated(exc) == "uq_accounts_tg_user_id":
                 raise TgUserTaken(tg_user_id) from exc
             raise
+        if bound is None:
+            raise KeyError(account_id)
+        return bound
 
     async def adopt_orphans(self) -> int:
         """Аккаунты без владельца достаются первой (по `id`) учётке; сколько аккаунтов получили

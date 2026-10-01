@@ -146,14 +146,18 @@ async def test_second_account_after_migration_gets_next_id(
 
 async def test_bind_telegram_once_and_unique(repo: AccountRepo, admin_id: int) -> None:
     second = await repo.create(admin_id, "Второй", capacity=20)
-    await repo.bind_telegram(1, 111)
-    await repo.bind_telegram(1, 222)  # уже привязан — без изменений
+    assert await repo.bind_telegram(1, 111) == 111
+    # Уже привязан — без изменений; ответ — привязка из базы.
+    assert await repo.bind_telegram(1, 222) == 111
+    assert await repo.bind_telegram(1, 111) == 111
     assert (await _info(repo, 1)).tg_user_id == 111
     with pytest.raises(TgUserTaken):
         await repo.bind_telegram(second.id, 111)
     assert (await _info(repo, second.id)).tg_user_id is None
-    await repo.bind_telegram(second.id, 222)
+    assert await repo.bind_telegram(second.id, 222) == 222
     assert (await _info(repo, second.id)).tg_user_id == 222
+    with pytest.raises(KeyError):
+        await repo.bind_telegram(second.id + 1, 333)
 
 
 async def test_adopt_orphans_gives_first_admin(repo: AccountRepo, clean_db: Database) -> None:

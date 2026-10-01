@@ -191,6 +191,29 @@ async def test_failed_log_out_still_resets_client() -> None:
     )
 
 
+async def test_log_out_after_disconnect_reaches_telegram() -> None:
+    # Отключение без выхода (свой чат в настройках): клиент новый, не подключён, а сессия — в
+    # хранилище; выход подключает его только для `auth.LogOut`.
+    t = FakeKurigram()
+    assert await t.connect()
+    await t.disconnect()
+    assert not t.client.is_connected and not t.storage.deleted
+    await t.log_out()
+    assert [name for name, _ in t.clients[1].invoked] == ["LogOut"]
+    assert t.storage.deleted and len(t.clients) == 3
+    assert all(not c.is_connected for c in t.clients)
+
+
+async def test_log_out_without_session_does_not_connect() -> None:
+    # Сессии в хранилище нет (уже вышли): выходить у Telegram нечем — клиент не подключается.
+    t = FakeKurigram()
+    await _online(t)
+    await t.log_out()
+    await t.log_out()
+    assert len(t.clients) == 3
+    assert not t.clients[1].is_connected and t.clients[1].invoked == []
+
+
 async def test_log_out_of_revoked_session_is_success() -> None:
     t = FakeKurigram()
     await _online(t)

@@ -124,16 +124,16 @@ class _Attempt:
 
 class TgAuthManager:
     """Вход аккаунта `account_id` в Telegram. Перед каждым выходом в онлайн (`_accept`) —
-    привязка (`bind` пишет её, пользователь другого аккаунта — `TgUserTaken`) и свой чат в
-    настройках (`self_chat` — поля `chats.*`, равные пользователю). Запросы кода — через лимит
-    процесса `codes`."""
+    привязка (`bind` пишет её и отвечает привязкой из базы, пользователь другого аккаунта —
+    `TgUserTaken`) и свой чат в настройках (`self_chat` — поля `chats.*`, равные пользователю).
+    Запросы кода — через лимит процесса `codes`."""
 
     def __init__(
         self,
         backend: TgAuthBackend,
         *,
         expected_user_id: int | None,
-        bind: Callable[[int], Awaitable[None]],
+        bind: Callable[[int], Awaitable[int]],
         self_chat: Callable[[int], list[str]],
         codes: CodeLimiter | None = None,
         account_id: int,
@@ -322,33 +322,33 @@ class TgAuthManager:
 
     async def _accept(self, user_id: int) -> None:
         """Вошедший пользователь `user_id` (раздел 4.3 спеки): всё — до `go_online`, отказ в
-        онлайн не выпускает, и обновления не обрабатываются. Другой пользователь или
-        пользователь другого аккаунта — выход из сессии; свой чат в настройках — привязка
-        остаётся, сессия тоже, клиент отключается: исправить настройки и перезапустить аккаунт."""
+        онлайн не выпускает, и обновления не обрабатываются. Другой пользователь (и по привязке
+        в базе) или пользователь другого аккаунта — выход из сессии; свой чат в настройках или
+        сбой записи привязки — сессия остаётся, клиент отключается: исправить настройки и
+        перезапустить аккаунт."""
         self._user_id = None
         if self._expected is not None and user_id != self._expected:
             await self._refuse("unexpected_user")
             return
         if self._expected is None:
             try:
-                await self._bind(user_id)
+                bound = await self._bind(user_id)
             except TgUserTaken:
                 await self._refuse("tg_user_taken")
                 return
             except Exception:
                 # Не записалась — не проверено, что пользователь не занят: в онлайн нельзя.
                 log.exception("telegram account binding not persisted")
-                self._set(TgState.ERROR, error="bind_failed")
+                await self._hold("bind_failed")
                 return
-            self._expected = user_id
+            # В базе аккаунт уже привязан к другому: снимок аккаунта при старте устарел.
+            self._expected = bound
+            if bound != user_id:
+                await self._refuse("unexpected_user")
+                return
         fields = self._self_chat(user_id)
         if fields:
-            self._set(TgState.ERROR, error="chat_is_self")
-            # Подключённый клиент копил бы обновления, которые некому разбирать.
-            try:
-                await self._backend.disconnect()
-            except Exception:
-                log.exception("telegram client not disconnected")
+            await self._hold("chat_is_self")
             if self._notifier is not None:
                 await self._notifier.notify(
                     "warn",
@@ -370,6 +370,15 @@ class TgAuthManager:
                 await cb()
             except Exception:
                 log.exception("online callback failed")
+
+    async def _hold(self, error: str) -> None:
+        """Отказ в онлайне без выхода: сессия остаётся, клиент отключается — подключённый, он
+        копил бы обновления, которые некому разбирать."""
+        self._set(TgState.ERROR, error=error)
+        try:
+            await self._backend.disconnect()
+        except Exception:
+            log.exception("telegram client not disconnected")
 
     async def _refuse(self, error: str) -> None:
         """Отказ во входе с выходом из сессии: обновления этого пользователя не обработаются."""

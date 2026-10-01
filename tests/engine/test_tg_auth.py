@@ -218,8 +218,9 @@ async def test_sign_in_backend_failure_keeps_attempt() -> None:
 async def test_unbound_accepts_first_account_and_binds_it() -> None:
     bound: list[int] = []
 
-    async def bind(user_id: int) -> None:
+    async def bind(user_id: int) -> int:
         bound.append(user_id)
+        return user_id
 
     backend = FakeTgBackend(user_id=42)
     mgr = tg_auth(backend, expected_user_id=None, bind=bind)
@@ -238,8 +239,9 @@ async def test_unbound_accepts_first_account_and_binds_it() -> None:
 async def test_unbound_boot_binds_existing_session() -> None:
     bound: list[int] = []
 
-    async def bind(user_id: int) -> None:
+    async def bind(user_id: int) -> int:
         bound.append(user_id)
+        return user_id
 
     mgr = tg_auth(FakeTgBackend(authorized=True), expected_user_id=None, bind=bind)
     assert (await mgr.boot()).state is TgState.ONLINE
@@ -249,8 +251,9 @@ async def test_unbound_boot_binds_existing_session() -> None:
 async def test_bound_account_is_not_rebound() -> None:
     bound: list[int] = []
 
-    async def bind(user_id: int) -> None:
+    async def bind(user_id: int) -> int:
         bound.append(user_id)
+        return user_id
 
     mgr = tg_auth(FakeTgBackend(authorized=True), expected_user_id=EXPECTED, bind=bind)
     assert (await mgr.boot()).state is TgState.ONLINE
@@ -260,7 +263,7 @@ async def test_bound_account_is_not_rebound() -> None:
 async def test_bind_failure_stays_offline_without_logout() -> None:
     # Привязка не записалась (база недоступна): проверить, не занят ли пользователь другим
     # аккаунтом, нельзя — в онлайн не выходим, сессия остаётся для следующей попытки.
-    async def bind(user_id: int) -> None:
+    async def bind(user_id: int) -> int:
         raise ConnectionError("db down")
 
     backend = FakeTgBackend(authorized=True, user_id=42)
@@ -268,6 +271,8 @@ async def test_bind_failure_stays_offline_without_logout() -> None:
     st = await mgr.boot()
     assert st.state is TgState.ERROR and st.error == "bind_failed"
     assert st.bound_user_id is None and not backend.online and not backend.logged_out
+    # Клиент отключён: обновления, которые некому разбирать, не копятся.
+    assert not backend.connected and backend.authorized
 
 
 async def test_status_reports_binding_for_life() -> None:
@@ -296,14 +301,17 @@ class _Rig:
         authorized: bool,
         expected_user_id: int | None,
         chats: ChatsSection | None = None,
-        taken: bool = False,
+        bind_error: Exception | None = None,
+        stored: int | None = None,
     ) -> None:
         self.sink: list[int] = []
         self.sent = 0
         self.bound: list[int] = []
         self.notes: list[tuple[str, str, str]] = []
         self.settings = Settings(chats=chats or ChatsSection())
-        self.taken = taken
+        # Сбой записи привязки; привязка, которая уже в базе (None — записывается входящий).
+        self.bind_error = bind_error
+        self.stored = stored
         self.t = FakeKurigram(authorized=authorized, sink=self._submit, dispatch=True)
         self.tg = tg_auth(
             self.t,
@@ -316,10 +324,11 @@ class _Rig:
     async def _submit(self, msg: IncomingMessage) -> None:
         self.sink.append(msg.msg_id)
 
-    async def _bind(self, user_id: int) -> None:
-        if self.taken:
-            raise TgUserTaken(user_id)
+    async def _bind(self, user_id: int) -> int:
+        if self.bind_error is not None:
+            raise self.bind_error
         self.bound.append(user_id)
+        return self.stored if self.stored is not None else user_id
 
     async def notify(self, level: str, code: str, text: str) -> None:
         self.notes.append((level, code, text))
@@ -355,7 +364,7 @@ async def test_other_user_rejected_before_online() -> None:
 
 
 async def test_user_bound_elsewhere_rejected_before_online() -> None:
-    rig = _Rig(authorized=True, expected_user_id=None, taken=True)
+    rig = _Rig(authorized=True, expected_user_id=None, bind_error=TgUserTaken(EXPECTED))
     rig.update()
     st = await rig.tg.boot()
     assert st.state is TgState.ERROR and st.error == "tg_user_taken"
@@ -451,3 +460,43 @@ class _CountingSendCode(FakeTgBackend):
     async def send_code(self, phone: str) -> str:
         self.sent += 1
         return await super().send_code(phone)
+
+
+async def test_bind_failure_disconnects_without_logout() -> None:
+    rig = _Rig(authorized=True, expected_user_id=None, bind_error=ConnectionError("db down"))
+    rig.update()
+    st = await rig.tg.boot()
+    assert st.state is TgState.ERROR and st.error == "bind_failed"
+    await rig.assert_offline()
+    assert all(not c.is_connected for c in rig.t.clients)
+    assert not rig.t.storage.deleted and await rig.t.storage.user_id() == EXPECTED
+    assert "LogOut" not in [name for c in rig.t.clients for name, _ in c.invoked]
+    await rig.t.stop()
+
+
+async def test_binding_in_db_for_other_user_rejected_before_online() -> None:
+    # Снимок аккаунта устарел (или запись привязки разошлась с ответом): в базе аккаунт уже
+    # привязан к другому пользователю — вход отклоняется, как у привязанного.
+    rig = _Rig(authorized=True, expected_user_id=None, stored=42)
+    rig.update()
+    st = await rig.tg.boot()
+    assert st.state is TgState.ERROR and st.error == "unexpected_user"
+    assert st.bound_user_id == 42 and st.user_id is None
+    await rig.assert_offline()
+    assert "LogOut" in [name for name, _ in rig.t.clients[0].invoked]
+    assert rig.t.storage.deleted
+    await rig.t.stop()
+
+
+async def test_logout_after_self_chat_closes_telegram_session() -> None:
+    # Отказ chat_is_self отключил клиент; выход (кнопка админки, удаление аккаунта) всё равно
+    # закрывает сессию у Telegram.
+    rig = _Rig(
+        authorized=True, expected_user_id=EXPECTED, chats=ChatsSection(game_chat_id=EXPECTED)
+    )
+    assert (await rig.tg.boot()).error == "chat_is_self"
+    st = await rig.tg.logout()
+    assert st.state is TgState.UNAUTHORIZED and st.error is None
+    assert "LogOut" in [name for c in rig.t.clients for name, _ in c.invoked]
+    assert rig.t.storage.deleted and st.bound_user_id == EXPECTED
+    await rig.t.stop()

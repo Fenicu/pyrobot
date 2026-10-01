@@ -615,9 +615,10 @@ class KurigramTransport:
         self._history_needed("online")
 
     async def disconnect(self) -> None:
-        """Отключение без выхода (свой чат в настройках, раздел 4.3 спеки): клиент, не вышедший в
-        онлайн, не копит обновления, которые некому разбирать. Сессия остаётся в хранилище,
-        следующий `connect()` — новым клиентом на нём (сессия kurigram одноразовая)."""
+        """Отключение без выхода (отказ в онлайне: свой чат в настройках, сбой привязки, раздел
+        4.3 спеки): клиент, не вышедший в онлайн, не копит обновления, которые некому разбирать.
+        Сессия остаётся в хранилище, следующий `connect()` или выход — новым клиентом на нём
+        (сессия kurigram одноразовая)."""
         client = self._client
         self._online = False
         self._me = None
@@ -629,15 +630,17 @@ class KurigramTransport:
     async def log_out(self) -> None:
         from pyrogram import errors, raw
 
-        client = self._client
         failure: Exception | None = None
         if self._overload is not None:
             # Перегрузка: клиент отключён, а выход закрывает сессию и у Telegram (удаление
-            # аккаунта, раздел 4.2 спеки). Возврат клиента снимается; новый клиент на том же
-            # хранилище подключается только для `auth.LogOut`.
+            # аккаунта, раздел 4.2 спеки). Возврат клиента снимается.
             await self._end_overload()
             await _force_close(self._client)
-            client = self._client = self._new_client()
+            self._client = self._new_client()
+        client = self._client
+        if not client.is_connected and await self._storage.user_id() is not None:
+            # Клиент не подключён (перегрузка, отключение без выхода), а сессия — в хранилище:
+            # он подключается только для `auth.LogOut`.
             try:
                 await client.connect()
             except Exception as exc:

@@ -57,8 +57,8 @@ def tg_auth(
 ) -> TgAuthManager:
     """Вход в Telegram аккаунта 1: привязка — только в памяти, своего чата в настройках нет."""
 
-    async def bind(user_id: int) -> None:
-        return None
+    async def bind(user_id: int) -> int:
+        return user_id
 
     kw.setdefault("bind", bind)
     kw.setdefault("self_chat", lambda user_id: [])

@@ -413,9 +413,11 @@ class AccountRuntime:
             "notification", {"id": row.id, "level": row.level, "code": row.code, "text": row.text}
         )
 
-    async def _bind_telegram(self, user_id: int) -> None:
-        await self._deps.accounts.bind_telegram(self.account_id, user_id)
-        log.info("telegram account %d bound", user_id)
+    async def _bind_telegram(self, user_id: int) -> int:
+        bound = await self._deps.accounts.bind_telegram(self.account_id, user_id)
+        if bound == user_id:
+            log.info("telegram account %d bound", user_id)
+        return bound
 
     def _self_chat(self, started: Settings, user_id: int) -> list[str]:
         """Поля `chats.*`, равные пользователю Telegram, — в текущих настройках и в тех, с
