@@ -63,10 +63,11 @@ describe('экраны аккаунта', () => {
 			'/a/3/settings',
 			'/a/3/notifications',
 			'/a/3/telegram',
+			'/accounts',
 			'/password'
 		]);
 		// Без аккаунта — только общие пункты.
-		expect(moreNav(null).map((i) => i.href)).toEqual(['/password']);
+		expect(moreNav(null).map((i) => i.href)).toEqual(['/accounts', '/password']);
 
 		// Главная аккаунта — только сама, разделы — со вложенными путями.
 		expect(isActive('/a/3', '/a/3')).toBe(true);

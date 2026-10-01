@@ -40,6 +40,15 @@
 		logout_failed: 'Выход из Telegram не удался'
 	};
 
+	/** Код ошибки статуса: при отказе из-за чужого пользователя — с тем, к кому аккаунт привязан. */
+	function statusError(code: string): string {
+		const bound = status?.bound_user_id;
+		if (code === 'unexpected_user' && bound) {
+			return `Аккаунт привязан к пользователю Telegram ${bound}, а вошёл другой — сервис вышел из сессии. Для другого персонажа создайте новый аккаунт`;
+		}
+		return ERRORS[code] ?? code;
+	}
+
 	async function refresh() {
 		try {
 			status = await call(api.GET('/tg/status'));
@@ -132,7 +141,17 @@
 				</p>
 			{/if}
 			{#if status.error}
-				<p class="ext-text mt-1 text-sm text-bad-fg">{ERRORS[status.error] ?? status.error}</p>
+				<p class="ext-text mt-1 text-sm text-bad-fg">{statusError(status.error)}</p>
+			{/if}
+			{#if status.bound_user_id}
+				<p class="mt-2 text-sm text-fg-muted">
+					Аккаунт навсегда привязан к пользователю Telegram <span class="font-mono">{status.bound_user_id}</span>.
+					Другой персонаж — это новый аккаунт.
+				</p>
+			{:else if phase !== 'stopped'}
+				<p class="mt-2 text-sm text-fg-muted">
+					Первый вход навсегда привяжет аккаунт к пользователю Telegram. Другой персонаж — это новый аккаунт.
+				</p>
 			{/if}
 		{:else}
 			<p class="text-sm text-fg-muted">…</p>
@@ -175,7 +194,7 @@
 			</label>
 			<button type="submit" class="btn btn-primary" disabled={busy || !password}>Войти</button>
 		</form>
-	{:else if status && phase !== 'overload'}
+	{:else if status && phase !== 'overload' && phase !== 'stopped'}
 		<form class="card space-y-2" onsubmit={start}>
 			<label class="block space-y-1">
 				<span class="label">Телефон аккаунта</span>

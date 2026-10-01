@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/svelte';
+import { cleanup, render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { createAccountApi } from '$lib/api/account';
@@ -6,7 +6,14 @@ import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import TelegramView from './TelegramView.svelte';
 
-const st = (state: string, extra: object = {}) => ({ state, user_id: null, attempt_id: null, error: null, ...extra });
+const st = (state: string, extra: object = {}) => ({
+	state,
+	user_id: null,
+	attempt_id: null,
+	error: null,
+	bound_user_id: null,
+	...extra
+});
 
 function setup(handler: (c: Call) => Response) {
 	const fetch = mockFetch(handler);
@@ -19,7 +26,8 @@ function setup(handler: (c: Call) => Response) {
 describe('Вход в Telegram', () => {
 	it('online с прода — выход', async () => {
 		setup(() => json(fixture('tg_status')));
-		expect(await screen.findByText('267519921')).toBeInTheDocument();
+		// Пользователь входа и привязка аккаунта.
+		expect(await screen.findAllByText('267519921')).toHaveLength(2);
 		expect(screen.getByRole('button', { name: 'Выйти из Telegram' })).toBeInTheDocument();
 	});
 
@@ -101,5 +109,45 @@ describe('Вход в Telegram', () => {
 		expect(await screen.findByRole('alert')).toHaveTextContent(
 			'Слишком много запросов кода входа — следующий через 30 мин'
 		);
+	});
+
+	it('экран Telegram объясняет постоянную привязку', async () => {
+		setup(() => json(fixture('tg_status')));
+		const note = await screen.findByText(/навсегда привязан к пользователю Telegram/);
+		expect(note).toHaveTextContent(
+			'Аккаунт навсегда привязан к пользователю Telegram 267519921. Другой персонаж — это новый аккаунт'
+		);
+	});
+
+	it('без привязки — предупреждение перед первым входом', async () => {
+		setup(() => json(st('unauthorized')));
+		expect(await screen.findByLabelText('Телефон аккаунта')).toBeInTheDocument();
+		expect(screen.getByText(/Первый вход навсегда привяжет аккаунт/)).toBeInTheDocument();
+		expect(screen.queryByText(/навсегда привязан к пользователю/)).not.toBeInTheDocument();
+	});
+
+	it('движок не запущен — формы входа нет, привязка видна', async () => {
+		setup(() => json(st('stopped', { bound_user_id: 267519921 })));
+		expect(await screen.findByText(/навсегда привязан к пользователю Telegram/)).toHaveTextContent('267519921');
+		expect(screen.getByText('движок не запущен')).toBeInTheDocument();
+		expect(screen.queryByLabelText('Телефон аккаунта')).not.toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Получить код' })).not.toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Выйти из Telegram' })).not.toBeInTheDocument();
+	});
+
+	it('отказ входа: чужой пользователь, занятый другим аккаунтом, свой чат', async () => {
+		const status = { value: st('error', { error: 'unexpected_user', bound_user_id: 267519921 }) };
+		setup(() => json(status.value));
+		expect(await screen.findByText(/привязан к пользователю Telegram 267519921, а вошёл другой/)).toBeInTheDocument();
+		cleanup();
+
+		status.value = st('error', { error: 'tg_user_taken' });
+		setup(() => json(status.value));
+		expect(await screen.findByText(/уже привязан к другому аккаунту/)).toBeInTheDocument();
+		cleanup();
+
+		status.value = st('error', { error: 'chat_is_self' });
+		setup(() => json(status.value));
+		expect(await screen.findByText(/указан этот же пользователь Telegram/)).toBeInTheDocument();
 	});
 });

@@ -8,7 +8,7 @@ import { Session } from '$lib/stores/session.svelte';
 /** Синглтоны вкладки: сессия, глобальный клиент API, список аккаунтов и открытый аккаунт. */
 export const session = new Session(undefined, () => void goto(loginHref(new URL(location.href))));
 export const api = createApi(session.hooks);
-export const accounts = new AccountsStore(api);
+export const accounts = new AccountsStore(api, (list) => current.dropUnlisted(list));
 export const current = new CurrentAccount(
 	(id) =>
 		new AccountContext(id, {

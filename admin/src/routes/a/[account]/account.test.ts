@@ -1,11 +1,12 @@
 import { cleanup, render, screen } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
 import { accounts, current } from '$lib/app.svelte';
 import { page } from '$lib/test/page.svelte';
 import JournalRoute from './journal-route.test.svelte';
 
-const h = vi.hoisted(() => ({ calls: [] as string[] }));
+const h = vi.hoisted(() => ({ calls: [] as string[], patches: [] as string[], down: false }));
 
 vi.mock('$app/state', async () => ({ page: (await import('$lib/test/page.svelte')).page }));
 vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}), beforeNavigate: () => {} }));
@@ -32,7 +33,20 @@ vi.mock('$lib/app.svelte', async () => {
 	});
 	const fetch = mockFetch((c) => {
 		h.calls.push(c.url);
+		if (c.method === 'PATCH') {
+			h.patches.push(`${c.url} ${c.body}`);
+			h.down = false;
+			return json(account(1));
+		}
 		if (c.url === '/api/v1/accounts') return json([account(1), account(2)]);
+		if (c.url === '/api/v1/accounts/1/engine/status') {
+			const status = fixture<object>('engine_status');
+			return json(
+				h.down
+					? { ...status, running: false, status: 'disabled', status_reason: null, host_reason: null }
+					: { ...status, running: true, status: 'enabled', status_reason: null, host_reason: null }
+			);
+		}
 		if (/^\/api\/v1\/accounts\/\d+\/journal/.test(c.url)) return json(fixture('journal_page'));
 		return json({ detail: 'engine not running' }, 503);
 	});
@@ -46,8 +60,10 @@ vi.mock('$lib/app.svelte', async () => {
 				onUnauthorized: () => {}
 			})
 	);
+	const api = createApi(hooks, fetch);
 	return {
-		accounts: new AccountsStore(createApi(hooks, fetch)),
+		accounts: new AccountsStore(api),
+		api,
 		current,
 		startAccount: (id: number) => current.start(id)
 	};
@@ -60,6 +76,8 @@ afterEach(() => {
 	cleanup();
 	current.stop();
 	h.calls.length = 0;
+	h.patches.length = 0;
+	h.down = false;
 	vi.mocked(goto).mockClear();
 	localStorage.clear();
 });
@@ -96,5 +114,20 @@ describe('экраны аккаунта /a/[account]', () => {
 			unmount();
 			vi.mocked(goto).mockClear();
 		}
+	});
+
+	it('аккаунт без движка: плашка над экраном, включение перечитывает статус и список', async () => {
+		h.down = true;
+		await accounts.load();
+		page.params = { account: '1' };
+		render(JournalRoute);
+		expect(await screen.findByText('Движок не запущен: аккаунт выключен')).toBeInTheDocument();
+		expect(screen.getByRole('heading', { name: 'Журнал' })).toBeInTheDocument();
+
+		const lists = h.calls.filter((u) => u === '/api/v1/accounts').length;
+		await userEvent.setup().click(screen.getByRole('button', { name: 'Включить' }));
+		await vi.waitFor(() => expect(screen.queryByText(/Движок не запущен/)).toBeNull());
+		expect(h.patches).toEqual(['/api/v1/accounts/1 {"enabled":true}']);
+		expect(h.calls.filter((u) => u === '/api/v1/accounts').length).toBe(lists + 1);
 	});
 });

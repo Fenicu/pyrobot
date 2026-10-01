@@ -12,12 +12,15 @@ export class AccountsStore {
 	/** Последняя ошибка чтения (список остаётся прежним). */
 	error = $state<ApiError | null>(null);
 	#api: Api;
+	#onLoad: ((list: AccountOut[]) => void) | undefined;
 	#timer: ReturnType<typeof setInterval> | null = null;
 	// Номер чтения: ответ, который обогнало более новое чтение или `stop()`, не применяется.
 	#request = 0;
 
-	constructor(api: Api) {
+	/** `onLoad` — после каждого применённого чтения списка. */
+	constructor(api: Api, onLoad?: (list: AccountOut[]) => void) {
 		this.#api = api;
+		this.#onLoad = onLoad;
 	}
 
 	async load(): Promise<void> {
@@ -27,6 +30,7 @@ export class AccountsStore {
 			if (mine !== this.#request) return;
 			this.list = list;
 			this.error = null;
+			this.#onLoad?.(list);
 		} catch (e) {
 			if (mine === this.#request && e instanceof ApiFailure) this.error = e.error;
 		}

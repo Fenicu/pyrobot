@@ -1,9 +1,10 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { accounts, current, startAccount } from '$lib/app.svelte';
+	import { accounts, api, current, startAccount } from '$lib/app.svelte';
 	import AccountsPending from '$lib/components/AccountsPending.svelte';
+	import EngineDownBanner from '$lib/components/EngineDownBanner.svelte';
 	import { parseAccount, rememberAccount, setScreenAccount } from '$lib/nav';
 
 	let { children }: { children: Snippet } = $props();
@@ -17,13 +18,22 @@
 	setScreenAccount(() => id);
 
 	// Переключение — до отрисовки экрана: прежний контекст останавливается, у нового — свои поток и
-	// хранилища.
+	// хранилища. Зависимости — только адрес, список и открытый аккаунт: чтения внутри запуска
+	// (контекст прежнего аккаунта) эффект не отслеживает.
 	$effect.pre(() => {
 		if (known && id !== null && current.ctx?.id !== id) {
-			startAccount(id);
-			rememberAccount(id);
+			untrack(() => {
+				startAccount(id);
+				rememberAccount(id);
+			});
 		}
 	});
+
+	// Включение из плашки «движок не запущен»: статус движка и список аккаунтов — заново.
+	function reload() {
+		void current.ctx?.engine.load();
+		void accounts.load();
+	}
 
 	// Не число или нет в списке — к списку аккаунтов.
 	$effect(() => {
@@ -35,6 +45,9 @@
      настройки) и подписки на поток — нового аккаунта. -->
 {#if ctx}
 	{#key ctx}
+		{#if ctx.engine.status}
+			<EngineDownBanner status={ctx.engine.status} accountId={ctx.id} {api} onchange={reload} />
+		{/if}
 		{@render children()}
 	{/key}
 {:else}

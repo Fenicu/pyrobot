@@ -15,10 +15,14 @@
 	let { children }: { children: Snippet } = $props();
 	let moreOpen = $state(false);
 	const path = $derived(page.url.pathname);
-	// Аккаунт меню: из адреса, на общих экранах — открытый, иначе тот, куда ведёт «/».
+	// Аккаунт меню: из адреса, на общих экранах — открытый, иначе тот, куда ведёт «/». Аккаунт из
+	// адреса, которого нет в загруженном списке (удалён), меню не открывает.
 	const ctx = $derived(current.ctx);
+	const fromUrl = $derived(parseAccount(page.params.account));
 	const account = $derived(
-		parseAccount(page.params.account) ?? ctx?.id ?? pickAccount(accounts.list ?? [], lastAccount())
+		(fromUrl !== null && (accounts.list?.some((a) => a.id === fromUrl) ?? true) ? fromUrl : null) ??
+			ctx?.id ??
+			pickAccount(accounts.list ?? [], lastAccount())
 	);
 	// Его контекст — если открыт: точка связи и счётчик непрочитанных из потока.
 	const opened = $derived(ctx?.id === account ? ctx : null);

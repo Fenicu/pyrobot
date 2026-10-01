@@ -9,6 +9,7 @@ import ScrollText from '@lucide/svelte/icons/scroll-text';
 import Send from '@lucide/svelte/icons/send';
 import Settings from '@lucide/svelte/icons/settings';
 import TrainFront from '@lucide/svelte/icons/train-front';
+import Users from '@lucide/svelte/icons/users';
 
 export interface NavItem {
 	href: string;
@@ -46,7 +47,11 @@ export function moreNav(id: number | null): NavItem[] {
 					{ href: accountHref(id, '/notifications'), label: 'Уведомления', icon: Bell, badge: 'unread' },
 					{ href: accountHref(id, '/telegram'), label: 'Telegram', icon: Send }
 				];
-	return [...account, { href: '/password', label: 'Смена пароля', icon: KeyRound }];
+	return [
+		...account,
+		{ href: '/accounts', label: 'Аккаунты', icon: Users },
+		{ href: '/password', label: 'Смена пароля', icon: KeyRound }
+	];
 }
 
 const ACCOUNT_ROOT = /^\/a\/\d+$/;

@@ -85,6 +85,13 @@ export class CurrentAccount {
 		this.ctx = null;
 	}
 
+	/** Список аккаунтов перечитан: открытый аккаунт, которого в нём больше нет (удалён, в том числе в
+	 * другой вкладке), закрывается — его поток и опросы не должны идти к несуществующему аккаунту. */
+	dropUnlisted(list: readonly { id: number }[]): void {
+		const open = this.ctx;
+		if (open !== null && !list.some((a) => a.id === open.id)) this.stop();
+	}
+
 	/** Контекст экрана аккаунта: экраны `/a/[account]` рисуются только при открытом контексте. */
 	get(): AccountContext {
 		if (this.ctx === null) throw new Error('аккаунт не открыт');

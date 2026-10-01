@@ -91,6 +91,9 @@ const CODE_TEXT: Record<string, string> = {
 	'unknown scenario': 'Нет такого сценария',
 	'account not found': 'Аккаунт не найден',
 	account_deleting: 'Аккаунт удаляется',
+	name_taken: 'Аккаунт с таким именем уже есть',
+	capacity_reached: 'Достигнут предел включённых аккаунтов — выключите другой аккаунт',
+	confirm_name_mismatch: 'Имя аккаунта введено неверно',
 	[CHAT_IS_SELF]: 'Указан сам пользователь Telegram этого аккаунта — его «Избранное» бот не читает'
 };
 
