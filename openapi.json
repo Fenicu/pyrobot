@@ -6285,7 +6285,7 @@
     },
     "/api/v1/accounts/{account_id}/engine/restart": {
       "post": {
-        "description": "Новое поколение движка: хост штатно остановит запущенный и поднимет новый (настройки с\n`restart_required` применяются так).",
+        "description": "Новое поколение движка: хост штатно остановит запущенный и поднимет новый (настройки с\n`restart_required` применяются так). Удаляемый аккаунт не перезапускается — и тогда, когда\nего движок ещё зарегистрирован.",
         "operationId": "restart_engine_api_v1_accounts__account_id__engine_restart_post",
         "parameters": [
           {
@@ -6347,6 +6347,16 @@
               }
             },
             "description": "account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account_deleting"
           },
           "422": {
             "content": {

@@ -206,7 +206,8 @@ export interface paths {
         /**
          * Restart Engine
          * @description Новое поколение движка: хост штатно остановит запущенный и поднимет новый (настройки с
-         *     `restart_required` применяются так).
+         *     `restart_required` применяются так). Удаляемый аккаунт не перезапускается — и тогда, когда
+         *     его движок ещё зарегистрирован.
          */
         post: operations["restart_engine_api_v1_accounts__account_id__engine_restart_post"];
         delete?: never;
@@ -3428,6 +3429,15 @@ export interface operations {
             };
             /** @description account not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account_deleting */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

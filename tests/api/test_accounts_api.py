@@ -239,6 +239,19 @@ async def test_restart_bumps_generation_503_when_not_running(api: Api) -> None:
     assert await _generation(api, 1) == 1 and api.engines.pokes == 1
 
 
+async def test_restart_refused_for_deleting_account(api: Api) -> None:
+    # Движок удаляемого аккаунта ещё зарегистрирован (хост его останавливает) и без него.
+    path = f"{A1}/engine/restart"
+    run_engine(api.container, build())
+    await api.container.accounts.mark_deleting(1)
+    r = await api.client.post(path, headers=api.headers)
+    assert (r.status_code, r.json()) == (409, {"detail": "account_deleting"})
+    api.engines.engines.clear()
+    r = await api.client.post(path, headers=api.headers)
+    assert (r.status_code, r.json()) == (409, {"detail": "account_deleting"})
+    assert await _generation(api, 1) == 0 and api.engines.pokes == 0
+
+
 async def test_host_status(api: Api) -> None:
     run_engine(api.container, build())
     api.engines.reasons[2] = "locked_elsewhere"

@@ -31,7 +31,6 @@ from app.db.accounts import (
     CapacityReached,
     NameTaken,
 )
-from app.engine.facade import EngineFacade
 from app.engine.tg_auth import TgState
 
 router = APIRouter(prefix="/api/v1", tags=["accounts"])
@@ -230,16 +229,20 @@ async def delete_account(
     "/engine/restart",
     status_code=status.HTTP_202_ACCEPTED,
     response_class=Response,
-    responses={**CSRF, **ENGINE},
+    responses={**CSRF, **ENGINE, 409: error(ACCOUNT_DELETING)},
 )
 async def restart_engine(
     _: Annotated[SessionContext, Depends(require_csrf)],
     scope: Annotated[AccountScope, Depends(account_scope)],
-    __: Annotated[EngineFacade, Depends(running)],
     c: Annotated[Container, Depends(container)],
 ) -> Response:
     """Новое поколение движка: хост штатно остановит запущенный и поднимет новый (настройки с
-    `restart_required` применяются так)."""
+    `restart_required` применяются так). Удаляемый аккаунт не перезапускается — и тогда, когда
+    его движок ещё зарегистрирован."""
+    if scope.account.status == "deleting":
+        raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
+    # Движок не запущен — 503.
+    await running(scope)
     await c.accounts.restart(scope.account.id)
     c.engines.poke()
     return Response(status_code=status.HTTP_202_ACCEPTED)
