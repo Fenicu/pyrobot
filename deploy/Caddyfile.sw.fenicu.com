@@ -11,12 +11,15 @@ sw.fenicu.com {
 	# Пробы живости и готовности наружу не отдаются: деплой и HEALTHCHECK проверяют их изнутри.
 	@probes path /healthz /readyz
 	respond @probes 404
-	# Сжатие — всему, кроме потока SSE: кодировщик копит события в буфере, и они (в том числе
-	# досылка после переподключения) доходят до браузера с задержкой.
-	@compressible not path /api/v1/accounts/*/events
+	# Сжатие — всему, кроме потоков SSE: кодировщик копит события в буфере, и они (в том числе
+	# досылка после переподключения) доходят до браузера с задержкой. /api/v1/accounts/<id>/events —
+	# поток нынешней версии, /api/v1/events — прежней (с одним аккаунтом): нужен, пока она ещё
+	# работает, после выкатки новой его можно убрать.
+	@compressible not path /api/v1/events /api/v1/accounts/*/events
 	encode @compressible zstd gzip
 	reverse_proxy http://10.10.40.20:8089 {
-		# SSE (/api/v1/accounts/<id>/events): каждое событие уходит клиенту сразу, без буферизации.
+		# SSE (/api/v1/accounts/<id>/events и прежний /api/v1/events): каждое событие уходит
+		# клиенту сразу, без буферизации.
 		flush_interval -1
 	}
 }
