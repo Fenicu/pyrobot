@@ -56,6 +56,7 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
         "pipeline_healthy",
         "workers_ok",
         "lease_ok",
+        "game_chat_member",
     ]
     assert body == {
         "running": True,
@@ -83,6 +84,7 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
         "pipeline_healthy": True,
         "workers_ok": True,
         "lease_ok": True,
+        "game_chat_member": None,
     }
 
 

@@ -9,11 +9,11 @@ from app.api.container import Container
 from app.db.base import Database
 from app.engine.host.codes import CodeLimiter
 from app.engine.tg_auth import InvalidPhone, SendCodeRejected
-from app.engine.transport.base import FloodWait
-from app.engine.transport.fake import FakeTgBackend
+from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
+from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from app.logctx import current_account
 from tests.api.conftest import A1, Api, engines, login, run_engine
-from tests.engine.test_facade import build
+from tests.engine.test_facade import Watch, build
 from tests.engine.test_fence import FakeMonotonic
 
 pytestmark = pytest.mark.db
@@ -230,3 +230,81 @@ async def test_login_start_429_with_retry_after(api: Api) -> None:
     # Начатый вход не сброшен.
     st = (await api.client.get(f"{A1}/tg/status")).json()
     assert st["state"] == "awaiting_code" and st["attempt_id"] is not None
+
+
+JOIN = f"{A1}/tg/game-chat/join"
+
+
+async def _joining(api: Api, *, authorized: bool = True) -> tuple[FakeTransport, Watch]:
+    transport, watch = FakeTransport(), Watch()
+    f = build(authorized=authorized, transport=transport, history=watch)
+    run_engine(api.container, f)
+    await f.tg.boot()
+    return transport, watch
+
+
+async def test_game_chat_join(api: Api) -> None:
+    transport, watch = await _joining(api)
+    status = (await api.client.get(f"{A1}/engine/status")).json()
+    assert status["game_chat_member"] is False
+    assert (await api.client.post(JOIN)).status_code == 403
+    r = await api.client.post(JOIN, headers=api.headers)
+    assert (r.status_code, r.json()) == (200, {"status": "joined", "game_chat_member": True})
+    assert transport.joins == [("startupwarschat", -1001109615116)] and watch.joined == 1
+    status = (await api.client.get(f"{A1}/engine/status")).json()
+    assert status["game_chat_member"] is True
+
+
+async def test_game_chat_join_request_sent(api: Api) -> None:
+    transport, watch = await _joining(api)
+    transport.join_status = "request_sent"
+    r = await api.client.post(JOIN, headers=api.headers)
+    assert (r.status_code, r.json()) == (
+        200,
+        {"status": "request_sent", "game_chat_member": False},
+    )
+    assert watch.joined == 0
+
+
+@pytest.mark.parametrize(
+    ("failure", "code", "detail"),
+    [
+        (TransportRejected("chat_mismatch"), 409, "game_chat_mismatch"),
+        (TransportAuthLost("revoked"), 409, "tg_not_online"),
+        (TransportRejected("CHANNELS_TOO_MUCH"), 502, "CHANNELS_TOO_MUCH"),
+    ],
+)
+async def test_game_chat_join_errors(api: Api, failure: Exception, code: int, detail: str) -> None:
+    transport, watch = await _joining(api)
+    transport.join_fail_with = [failure]
+    r = await api.client.post(JOIN, headers=api.headers)
+    assert (r.status_code, r.json()) == (code, {"detail": detail})
+    assert watch.joined == 0
+
+
+async def test_game_chat_join_flood_wait(api: Api) -> None:
+    transport, _ = await _joining(api)
+    transport.join_fail_with = [FloodWait(30)]
+    r = await api.client.post(JOIN, headers=api.headers)
+    assert (r.status_code, r.json()) == (429, {"detail": "flood_wait"})
+    assert r.headers["Retry-After"] == "31"
+
+
+async def test_game_chat_join_needs_online_telegram(api: Api) -> None:
+    transport, _ = await _joining(api, authorized=False)
+    r = await api.client.post(JOIN, headers=api.headers)
+    assert (r.status_code, r.json()) == (409, {"detail": "tg_not_online"})
+    assert transport.joins == []
+
+
+async def test_game_chat_join_needs_engine(api: Api) -> None:
+    r = await api.client.post(JOIN, headers=api.headers)
+    assert (r.status_code, r.json()) == (503, {"detail": "engine not running"})
+
+
+async def test_game_chat_join_refused_for_deleting_account(api: Api) -> None:
+    transport, _ = await _joining(api)
+    await api.container.accounts.mark_deleting(1)
+    r = await api.client.post(JOIN, headers=api.headers)
+    assert (r.status_code, r.json()) == (409, {"detail": "account_deleting"})
+    assert transport.joins == []

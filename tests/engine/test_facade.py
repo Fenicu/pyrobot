@@ -7,7 +7,7 @@ import pytest
 
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
-from app.engine.facade import EngineFacade, LockLostError
+from app.engine.facade import EngineFacade, GameChatWatch, LockLostError, TgNotOnline
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.store import ActionStore
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
@@ -26,6 +26,7 @@ from app.engine.settings import (
 )
 from app.engine.state.model import company_of
 from app.engine.tg_auth import TgAuthBackend, TgState
+from app.engine.transport.base import TransportRejected
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from tests.engine.helpers import GAME, tg_auth, until
 
@@ -42,6 +43,8 @@ def build(
     snapshot: dict[str, Any] | None = None,
     bound_user_id: int | None = 267519921,
     codes: CodeLimiter | None = None,
+    transport: FakeTransport | None = None,
+    history: GameChatWatch | None = None,
 ) -> EngineFacade:
     """Фасад на памяти; `snapshot` — снимок состояния, его подхватит `pipeline.load()`. Вход в
     Telegram сверяет свой чат с настройками `settings`."""
@@ -50,8 +53,9 @@ def build(
     journal = MemoryJournal()
     journal.snapshot = (snapshot or {}, 0)
     pipeline = Pipeline(journal=journal, parser=default_parser(), reducer=NullReducer(), bus=bus)
+    transport = transport or FakeTransport()
     gateway = ActionGateway(
-        transport=FakeTransport(),
+        transport=transport,
         store=store or MemoryActionStore(),
         settings=settings,
         latest=pipeline.latest,
@@ -77,7 +81,21 @@ def build(
         notifier=notifier,
         planner=planner,  # type: ignore[arg-type]
         monotonic=monotonic,
+        transport=transport,
+        history=lambda: history,
     )
+
+
+class Watch:
+    """Сверка истории для фасада: членство в общем чате игры и отметки вступления."""
+
+    def __init__(self, member: bool | None = False) -> None:
+        self.game_chat_member = member
+        self.joined = 0
+
+    def game_chat_joined(self) -> None:
+        self.joined += 1
+        self.game_chat_member = True
 
 
 async def test_status_and_ready() -> None:
@@ -90,6 +108,44 @@ async def test_status_and_ready() -> None:
     assert not f.ready() and f.status().spending_blocked == "reconcile_required"
     await f.reconciled(by="admin")
     assert f.ready()
+
+
+async def test_game_chat_member_in_status() -> None:
+    assert build().status().game_chat_member is None
+    assert build(history=Watch(member=False)).status().game_chat_member is False
+
+
+async def test_join_game_chat_by_username_with_swinfo_id() -> None:
+    transport, watch = FakeTransport(), Watch()
+    f = build(transport=transport, history=watch)
+    await f.tg.boot()
+    assert await f.join_game_chat() == "joined"
+    assert transport.joins == [("startupwarschat", -1001109615116)]
+    assert watch.joined == 1 and f.status().game_chat_member is True
+    transport.join_status = "already_member"
+    assert await f.join_game_chat() == "already_member"
+    assert watch.joined == 2
+
+
+async def test_join_game_chat_request_or_refusal_keeps_member() -> None:
+    transport, watch = FakeTransport(), Watch()
+    f = build(transport=transport, history=watch)
+    await f.tg.boot()
+    transport.join_status = "request_sent"
+    assert await f.join_game_chat() == "request_sent"
+    transport.join_fail_with = [TransportRejected("chat_mismatch")]
+    with pytest.raises(TransportRejected, match="chat_mismatch"):
+        await f.join_game_chat()
+    assert watch.joined == 0 and f.status().game_chat_member is False
+
+
+async def test_join_game_chat_needs_online_telegram() -> None:
+    transport = FakeTransport()
+    f = build(authorized=False, transport=transport, history=Watch())
+    await f.tg.boot()
+    with pytest.raises(TgNotOnline):
+        await f.join_game_chat()
+    assert transport.joins == []
 
 
 async def test_kill_latches_even_if_persist_fails() -> None:

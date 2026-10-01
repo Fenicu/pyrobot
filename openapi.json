@@ -1028,6 +1028,17 @@
       },
       "EngineStatusOut": {
         "properties": {
+          "game_chat_member": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Chat Member"
+          },
           "host_reason": {
             "anyOf": [
               {
@@ -1178,7 +1189,8 @@
           "pipeline_backlog",
           "pipeline_healthy",
           "workers_ok",
-          "lease_ok"
+          "lease_ok",
+          "game_chat_member"
         ],
         "title": "EngineStatusOut",
         "type": "object"
@@ -1218,6 +1230,36 @@
           "high"
         ],
         "title": "FoodStockState",
+        "type": "object"
+      },
+      "GameChatJoinOut": {
+        "properties": {
+          "game_chat_member": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Chat Member"
+          },
+          "status": {
+            "enum": [
+              "joined",
+              "already_member",
+              "request_sent"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "game_chat_member"
+        ],
+        "title": "GameChatJoinOut",
         "type": "object"
       },
       "GorbushkaState": {
@@ -8176,6 +8218,135 @@
         "summary": "Get State",
         "tags": [
           "state"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/tg/game-chat/join": {
+      "post": {
+        "description": "Вступление аккаунта в общий чат игры @startupwarschat: перед вступлением id чата по\nusername сверяется с `chats.swinfo_chat_id`. После вступления сверка истории сразу\nперечитывает чат.",
+        "operationId": "tg_game_chat_join_api_v1_accounts__account_id__tg_game_chat_join_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameChatJoinOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account_deleting | tg_not_online | game_chat_mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "flood_wait"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "<код ошибки Telegram>"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not running"
+          }
+        },
+        "summary": "Tg Game Chat Join",
+        "tags": [
+          "engine"
         ]
       }
     },

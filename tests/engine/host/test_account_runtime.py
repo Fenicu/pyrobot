@@ -26,7 +26,7 @@ from app.engine.transport.kurigram import KurigramTransport
 from app.logctx import current_account
 from tests.conftest import TEST_DB_URL
 from tests.engine.helpers import GAME, make_msg, until
-from tests.engine.kurigram_fakes import EXPECTED, FakeClient
+from tests.engine.kurigram_fakes import EXPECTED, FakeClient, rpc_error
 
 pytestmark = pytest.mark.db
 ACCOUNT_TASKS = {"pipeline", "gateway", "reconcile", "reactions", "team-forward", "planner"}
@@ -319,6 +319,34 @@ async def test_history_pass_runs_in_background_and_prunes_marks(
     async with clean_db.sessions() as session:
         marks = await session.execute(select(TgChatMark.chat_id, TgChatMark.msg_id))
         assert {(chat_id, msg_id) for chat_id, msg_id in marks} == {(GAME, 7)}
+
+
+async def test_game_chat_membership_reaches_engine_status(
+    kurigram: Engines, clean_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Пир общего чата игры неизвестен: GetChannels с access_hash=0 — CHANNEL_INVALID.
+    def not_member(transport: KurigramTransport) -> FakeClient:
+        client = FakeClient(transport._storage)
+        client.errors["ResolvePeer"] = rpc_error("ChannelInvalid")
+        client.hang |= {"GetHistory"}
+        return client
+
+    monkeypatch.setattr(KurigramTransport, "_make_client", not_member)
+    async with clean_db.sessions() as session, session.begin():
+        sealed = BOX.seal(b"k" * 256, "auth_key", 1)
+        session.add(TgSession(account_id=1, dc_id=2, date=0, auth_key=sealed, user_id=EXPECTED))
+    await kurigram.deps.accounts.bind_telegram(1, EXPECTED)
+    runtime = await kurigram.start(1)
+    facade = runtime.facade
+    assert facade is not None
+    await until(lambda: facade.status().game_chat_member is False)
+    await until(
+        lambda: any(
+            e.type == "notification" and e.data["code"] == "game_chat_not_member"
+            for e in runtime.stream.history()
+        )
+    )
+    assert ("warn", "game_chat_not_member") in await _codes(clean_db)
 
 
 async def test_self_chat_binds_and_stays_offline_until_restart(

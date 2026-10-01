@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import ActionRequest, ActionResult
@@ -23,6 +23,7 @@ from app.engine.settings import (
 )
 from app.engine.state.model import company_of
 from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
+from app.engine.transport.base import GAME_CHAT_USERNAME, JoinStatus, Transport
 
 if TYPE_CHECKING:
     from app.engine.planner.loop import PlannerLoop
@@ -46,6 +47,23 @@ class PlannerUnavailable(Exception):
     pass
 
 
+class TgNotOnline(Exception):
+    pass
+
+
+def _no_watch() -> GameChatWatch | None:
+    return None
+
+
+class GameChatWatch(Protocol):
+    """Членство аккаунта в общем чате игры по сверке истории (`HistorySync`)."""
+
+    @property
+    def game_chat_member(self) -> bool | None: ...
+
+    def game_chat_joined(self) -> None: ...
+
+
 @dataclass(frozen=True)
 class EngineStatus:
     mode: str
@@ -63,6 +81,8 @@ class EngineStatus:
     workers_ok: bool
     # Аренда аккаунта действует (ограда жива).
     lease_ok: bool
+    # Аккаунт состоит в общем чате игры (по сверке истории); None — ещё не проверено.
+    game_chat_member: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +107,8 @@ class EngineFacade:
         planner: PlannerLoop | None = None,
         stream: EventStream | None = None,
         monotonic: Callable[[], float] = time.monotonic,
+        transport: Transport | None = None,
+        history: Callable[[], GameChatWatch | None] = _no_watch,
     ) -> None:
         self.settings = settings
         self.gateway = gateway
@@ -103,6 +125,9 @@ class EngineFacade:
         self._inflight: dict[str, Fingerprint] = {}
         self.stream = stream
         self._monotonic = monotonic
+        self._transport = transport
+        # Сверка истории стартует после фасада (от выхода в онлайн) — поэтому функция.
+        self._history = history
         self._outlook: tuple[tuple[int, int, int], float, datetime, Outlook] | None = None
 
     def state(self) -> tuple[int, dict[str, Any]]:
@@ -133,7 +158,24 @@ class EngineFacade:
             pipeline_healthy=self.pipeline.healthy,
             workers_ok=self._workers_ok(),
             lease_ok=self._lease_ok(),
+            game_chat_member=self.game_chat_member(),
         )
+
+    def game_chat_member(self) -> bool | None:
+        watch = self._history()
+        return watch.game_chat_member if watch is not None else None
+
+    async def join_game_chat(self) -> JoinStatus:
+        """Вступление в общий чат игры — вне шлюза команд, как выход из Telegram. Вступил или уже
+        участник — сверка сразу перечитывает чат."""
+        if self._transport is None or self.tg.status().state is not TgState.ONLINE:
+            raise TgNotOnline
+        chat_id = self.settings.current.chats.swinfo_chat_id
+        status = await self._transport.join_chat(GAME_CHAT_USERNAME, chat_id)
+        watch = self._history()
+        if status != "request_sent" and watch is not None:
+            watch.game_chat_joined()
+        return status
 
     def ready(self) -> bool:
         st = self.status()

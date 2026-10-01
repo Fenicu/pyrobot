@@ -9,10 +9,21 @@ from pydantic import BaseModel, Field, PlainSerializer
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, require_csrf
-from app.api.errors import AUTH, CSRF, ENGINE, TG_CODE_RATE_LIMITED, Responses, error
+from app.api.errors import (
+    ACCOUNT_DELETING,
+    AUTH,
+    CSRF,
+    ENGINE,
+    FLOOD_WAIT,
+    GAME_CHAT_MISMATCH,
+    TG_CODE_RATE_LIMITED,
+    TG_NOT_ONLINE,
+    Responses,
+    error,
+)
 from app.api.scope import AccountScope, account_router, account_scope, running
 from app.db.accounts import AccountStatus
-from app.engine.facade import EngineFacade, LockLostError
+from app.engine.facade import EngineFacade, LockLostError, TgNotOnline
 from app.engine.tg_auth import (
     AttemptMismatch,
     CodeRateLimited,
@@ -21,7 +32,12 @@ from app.engine.tg_auth import (
     TgState,
     TgStatus,
 )
-from app.engine.transport.base import FloodWait
+from app.engine.transport.base import (
+    FloodWait,
+    JoinStatus,
+    TransportAuthLost,
+    TransportRejected,
+)
 
 router = account_router("engine")
 # Даты — через isoformat(), как в прежнем ответе (jsonable_encoder) и `now` в /state: `+00:00`.
@@ -34,7 +50,7 @@ _TG_LOGIN: Responses = {
     **_WRITE,
     400: error("invalid_phone", "password_required", "<код TgAuthError>"),
     409: error("already online", "another login in progress", "unknown attempt", "state is …"),
-    429: error("flood_wait"),
+    429: error(FLOOD_WAIT),
     502: error("send_code_failed", "sign_in_failed", "check_password_failed"),
 }
 
@@ -96,6 +112,10 @@ class EngineStatusOut(BaseModel):
     workers_ok: bool
     # Аренда аккаунта у движка действует. Задержка цикла событий — здоровье хоста, а не аккаунта.
     lease_ok: bool
+    # Аккаунт состоит в общем чате игры (@startupwarschat, там пишет SWINFO): false — сверка
+    # истории его не читает, вступить — `POST …/tg/game-chat/join`; null — движок не запущен или
+    # чат ещё не читался.
+    game_chat_member: bool | None
 
 
 def _tg(st: TgStatus) -> TgStatusOut:
@@ -160,6 +180,7 @@ async def engine_status(
         pipeline_healthy=False,
         workers_ok=False,
         lease_ok=False,
+        game_chat_member=None,
     )
 
 
@@ -217,18 +238,20 @@ async def tg_status(scope: Annotated[AccountScope, Depends(account_scope)]) -> T
     return _tg(f.tg.status()) if f is not None else _stopped_tg(scope)
 
 
+def _flood_wait(exc: FloodWait) -> HTTPException:
+    retry_after = max(1, int(exc.seconds) + 1)
+    return HTTPException(
+        status.HTTP_429_TOO_MANY_REQUESTS, FLOOD_WAIT, headers={"Retry-After": str(retry_after)}
+    )
+
+
 async def _guard(coro: Awaitable[TgStatus]) -> TgStatusOut:
     try:
         return _tg(await coro)
     except AttemptMismatch as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except FloodWait as exc:
-        retry_after = max(1, int(exc.seconds) + 1)
-        raise HTTPException(
-            status.HTTP_429_TOO_MANY_REQUESTS,
-            "flood_wait",
-            headers={"Retry-After": str(retry_after)},
-        ) from exc
+        raise _flood_wait(exc) from exc
     except CodeRateLimited as exc:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
@@ -244,7 +267,7 @@ async def _guard(coro: Awaitable[TgStatus]) -> TgStatusOut:
 @router.post(
     "/tg/login/start",
     response_model=TgStatusOut,
-    responses={**_TG_LOGIN, 429: error("flood_wait", TG_CODE_RATE_LIMITED)},
+    responses={**_TG_LOGIN, 429: error(FLOOD_WAIT, TG_CODE_RATE_LIMITED)},
 )
 async def tg_start(
     body: PhoneIn,
@@ -280,3 +303,42 @@ async def tg_logout(
     f: Annotated[EngineFacade, Depends(running)],
 ) -> TgStatusOut:
     return _tg(await f.tg.logout())
+
+
+class GameChatJoinOut(BaseModel):
+    # `request_sent` — заявка ждёт одобрения админов чата, членство не меняется.
+    status: JoinStatus
+    game_chat_member: bool | None
+
+
+@router.post(
+    "/tg/game-chat/join",
+    response_model=GameChatJoinOut,
+    responses={
+        **_WRITE,
+        409: error(ACCOUNT_DELETING, TG_NOT_ONLINE, GAME_CHAT_MISMATCH),
+        429: error(FLOOD_WAIT),
+        502: error("<код ошибки Telegram>"),
+    },
+)
+async def tg_game_chat_join(
+    _: Annotated[SessionContext, Depends(require_csrf)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+) -> GameChatJoinOut:
+    """Вступление аккаунта в общий чат игры @startupwarschat: перед вступлением id чата по
+    username сверяется с `chats.swinfo_chat_id`. После вступления сверка истории сразу
+    перечитывает чат."""
+    if scope.account.status == "deleting":
+        raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
+    f = await running(scope)
+    try:
+        joined = await f.join_game_chat()
+    except (TgNotOnline, TransportAuthLost) as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, TG_NOT_ONLINE) from exc
+    except FloodWait as exc:
+        raise _flood_wait(exc) from exc
+    except TransportRejected as exc:
+        if str(exc) == "chat_mismatch":
+            raise HTTPException(status.HTTP_409_CONFLICT, GAME_CHAT_MISMATCH) from exc
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    return GameChatJoinOut(status=joined, game_chat_member=f.game_chat_member())

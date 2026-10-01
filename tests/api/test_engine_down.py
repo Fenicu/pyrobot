@@ -64,6 +64,7 @@ async def test_status_from_db_when_not_running(api: Api) -> None:
         "pipeline_healthy": False,
         "workers_ok": False,
         "lease_ok": False,
+        "game_chat_member": None,
     }
     assert (await api.client.get(f"{A1}/tg/status")).json() == tg
     # Запущенный движок: статус — его, поля аккаунта — из базы.

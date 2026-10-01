@@ -22,5 +22,6 @@
  "pipeline_backlog": 0,
  "pipeline_healthy": true,
  "workers_ok": true,
- "lease_ok": true
+ "lease_ok": true,
+ "game_chat_member": true
 }

@@ -318,6 +318,8 @@ class AccountRuntime:
             reconciler=reconciler,
             planner=self.planner,
             stream=self.stream,
+            transport=transport,
+            history=lambda: self.history,
         )
         self.supervisor.start("pipeline", pipeline.run)
         self.supervisor.start("gateway", self.gateway.run)

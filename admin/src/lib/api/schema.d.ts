@@ -529,6 +529,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{account_id}/tg/game-chat/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tg Game Chat Join
+         * @description Вступление аккаунта в общий чат игры @startupwarschat: перед вступлением id чата по
+         *     username сверяется с `chats.swinfo_chat_id`. После вступления сверка истории сразу
+         *     перечитывает чат.
+         */
+        post: operations["tg_game_chat_join_api_v1_accounts__account_id__tg_game_chat_join_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/tg/login/code": {
         parameters: {
             query?: never;
@@ -1177,6 +1199,8 @@ export interface components {
         };
         /** EngineStatusOut */
         EngineStatusOut: {
+            /** Game Chat Member */
+            game_chat_member: boolean | null;
             /** Host Reason */
             host_reason: string | null;
             /** In Flight */
@@ -1235,6 +1259,16 @@ export interface components {
             high: number;
             /** Low */
             low: number;
+        };
+        /** GameChatJoinOut */
+        GameChatJoinOut: {
+            /** Game Chat Member */
+            game_chat_member: boolean | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "joined" | "already_member" | "request_sent";
         };
         /** GorbushkaState */
         GorbushkaState: {
@@ -4524,6 +4558,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tg_game_chat_join_api_v1_accounts__account_id__tg_game_chat_join_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GameChatJoinOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account_deleting | tg_not_online | game_chat_mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description flood_wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description <код ошибки Telegram> */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

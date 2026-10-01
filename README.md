@@ -1071,6 +1071,20 @@ live не запускается); задания — `convDets` (перераб
   состояние персонажа бот обновит по следующим экранам игры; неполны только журнал и «Итоги дня» за
   этот промежуток.
 
+Чат, который аккаунт прочитать не может (Telegram не знает его для аккаунта, чат закрыт или аккаунт
+из него исключён), сбоем прохода не считается: в логе одна строка `history reader (<чат>, <отправитель>):
+chat unavailable (<ошибка>)` без трейсбека, остальные чаты сверяются как обычно, повторов с паузой
+(`history pass failed, retry in …`) из-за него нет — чат пробуется снова на каждом проходе.
+Уведомление — одно на переход в недоступность; после удачного чтения отметка снимается, и следующая
+недоступность снова уведомит.
+
+- `game_chat_not_member` (warn) — аккаунт не состоит в общем чате игры @startupwarschat (там пишет
+  SWINFO: анонсы фабрики, лотерея, цены акций), и бот его не читает. Вступи: кнопка в админке или
+  `POST /api/v1/accounts/<id>/tg/game-chat/join` (раздел «API»). Статус — поле `game_chat_member`
+  в `GET …/engine/status`.
+- `chat_unavailable` (warn) — недоступен другой чат из «Чатов» (id чата в тексте): проверь id и
+  что аккаунт в этом чате состоит.
+
 **Перегрузка.** Сообщения копятся быстрее, чем бот записывает их в журнал (после долгого простоя
 Telegram отдаёт накопленное разом, или база не успевает): когда очередь больше 5000, аккаунт
 перестаёт принимать обновления — статус Telegram «перегрузка» (`overload`), предупреждение
@@ -1124,8 +1138,8 @@ Telegram отдаёт накопленное разом, или база не у
   `disabled` и `error` — кнопка «Включить» в плашке (сперва исправь причину по логам). Состояние
   самого процесса — `GET /api/v1/host/status` (раздел «API»).
 - **Предупреждения о переносе сессии, сверке истории и перегрузке** —
-  `tg_session_import_failed`, `tg_session_unreadable`, `history_gap_truncated`, `account_overload`:
-  «Сверка истории и перегрузка».
+  `tg_session_import_failed`, `tg_session_unreadable`, `history_gap_truncated`,
+  `game_chat_not_member`, `chat_unavailable`, `account_overload`: «Сверка истории и перегрузка».
 - **«Нет связи с сервером», точка связи жёлтая или красная** — админка не достучалась до бота,
   например во время обновления. Переподключится сама; «Повторить» — сразу.
 - **Бот сделал что-то странное** — «Журнал»: решение перед этим действием, его «Причина» и
@@ -2588,7 +2602,16 @@ identity (`get_me`) проверяется до запуска апдейтов,
 перед отметкой и разрыв больше 1000 сообщений (с предупреждением); цена — запрос на чтение раз в 5
 минут и при событиях, после долгого простоя — до 10 страниц по 100. Сообщение, правленое до сверки,
 приходит как новое: его время события и ревизия — по дате правки, `created_at` — по дате создания,
-как у обычной правки.
+как у обычной правки. `CHANNEL_INVALID`, `CHANNEL_PRIVATE`, `PEER_ID_INVALID` и
+`USER_NOT_PARTICIPANT` при чтении транспорт отдаёт как `ChatUnavailable`: сверка пишет одну строку
+лога без трейсбека, проход не считается неудачным (без backoff), уведомление — одно на переход в
+недоступность (`game_chat_not_member` для чтения SWINFO, `chat_unavailable` для прочих); итог
+последнего чтения SWINFO — `game_chat_member` в статусе движка. Вступление в общий чат игры —
+`join_chat(username, expect_id)` транспорта: `get_chat` по username (`GAME_CHAT_USERNAME =
+"startupwarschat"` в `app/engine/transport/base.py`), чат с другим id — отказ `chat_mismatch` без
+вступления, затем `JoinChannel`; итог `joined`, `already_member` (`USER_ALREADY_PARTICIPANT`) или
+`request_sent` (заявка ждёт одобрения). Вызов — через ограду аренды, вне шлюза команд; пир чата
+после вступления сохраняется в `tg_peers` (чат SWINFO — среди чатов из настроек).
 
 **Сессия Telegram — в базе, а не в файле.** `PgSessionStorage` (`app/db/tg_storage.py`,
 `storage_engine` клиента kurigram) пишет поля сессии (`dc_id`, `api_id`, `test_mode`, `auth_key`,
@@ -2978,7 +3001,7 @@ found`. Запрос идёт в контексте аккаунта (в стр�
 `metrics`, `metro`, `unrecognized`, `notifications`, `daily` — так исправляется настройка, из-за
 которой аккаунт падает при старте. Остальным нужен движок, и они отвечают 503 `engine not running`:
 `engine/kill|unkill|pause|resume|reconciled|restart`, `tg/login/*`, `tg/logout`,
-`planner/outlook`, `commands/*`, `scenarios/{name}/run`, `events`.
+`tg/game-chat/join`, `planner/outlook`, `commands/*`, `scenarios/{name}/run`, `events`.
 
 ### Статус движка и Telegram
 
@@ -2994,7 +3017,10 @@ found`. Запрос идёт в контексте аккаунта (в стр�
 аккаунта, `crash_loop:<задача>` или `start_failed:<ошибка>` у `error`), `host_reason` (почему
 движок не запущен на этом хосте: `locked_elsewhere`, `lease_active`; `null` — запущен или хост не
 пытался) и паузу `paused`, текущий сценарий планировщика `scenario` и момент его следующего пробуждения `next_wake`
-(через `isoformat()`, с `+00:00`, как в прежнем ответе и как `now` в `/state`, а не `Z`). `POST
+(через `isoformat()`, с `+00:00`, как в прежнем ответе и как `now` в `/state`, а не `Z`), а также
+`game_chat_member` — аккаунт состоит в общем чате игры @startupwarschat: `true` — последнее чтение
+SWINFO сверкой истории прошло, `false` — чат недоступен (`game_chat_not_member`), `null` — ещё не
+читали или движок не запущен. Админка опрашивает этот статус на всех экранах аккаунта. `POST
 /api/v1/accounts/{id}/engine/pause` и `POST /api/v1/accounts/{id}/engine/resume` (CSRF) сохраняют `engine.paused`, будят
 планировщик и пишут аудит `engine_paused`/`engine_resumed` с логином. Успешные `kill`, `unkill` и `reconciled`
 пишут аудит-уведомление уровня `info` (`engine_killed`, `engine_unkilled`, `engine_reconciled`) с
@@ -3023,7 +3049,19 @@ code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/accounts/{id}
 `{"detail": "tg_code_rate_limited"}` с `Retry-After`, прочий
 `BadRequest` (кроме `invalid_phone`) — 400 с кодом в нижнем регистре из RPC ID Telegram (например
 `phone_number_banned`). Сбой `send_code` переводит статус Telegram в `ERROR` с тем же кодом, сбой
-`sign_in`/`check_password` оставляет попытку, чтобы код можно было отправить повторно. `GET
+`sign_in`/`check_password` оставляет попытку, чтобы код можно было отправить повторно.
+
+`POST /api/v1/accounts/{id}/tg/game-chat/join` (CSRF, без тела) — вступление аккаунта в общий чат
+игры @startupwarschat (`EngineFacade.join_game_chat`, вне шлюза команд, как выход из Telegram):
+id чата по username сверяется с `chats.swinfo_chat_id`, затем аккаунт вступает. 200
+`{"status": "joined" | "already_member" | "request_sent", "game_chat_member": bool | null}`;
+после `joined` и `already_member` членство отмечается сразу, и сверка истории тут же перечитывает
+чат; `request_sent` — заявка ждёт одобрения админов чата. Ошибки: 409 `game_chat_mismatch` (по
+username — другой чат, вступления нет), 409 `tg_not_online` (Telegram не в онлайне или вход
+потерян), 409 `account_deleting`, 429 `flood_wait` с `Retry-After`, 502 с кодом ошибки Telegram
+(например `CHANNELS_TOO_MUCH`, `USER_BANNED_IN_CHANNEL`), 503 `engine not running`.
+
+`GET
 /readyz` (без авторизации) — 200 `{"status":"ready"}`, если процесс готов (база отвечает, соединение
 блокировок хоста живо), иначе 503 `{"status":"not_ready"}`; готовность аккаунта — `ready()` в его
 статусе, а не `/readyz`.

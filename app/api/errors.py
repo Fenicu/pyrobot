@@ -63,6 +63,10 @@ CONFIRM_NAME_MISMATCH = "confirm_name_mismatch"
 CHAT_IS_SELF = "chat_is_self"
 # Запросов кода входа в Telegram больше лимита хоста или аккаунта (с `Retry-After`).
 TG_CODE_RATE_LIMITED = "tg_code_rate_limited"
+FLOOD_WAIT = "flood_wait"
+TG_NOT_ONLINE = "tg_not_online"
+# Чат по username общего чата игры — не `chats.swinfo_chat_id`: аккаунт в него не вступает.
+GAME_CHAT_MISMATCH = "game_chat_mismatch"
 # Сессия (cookie): без неё или с истёкшей — 401.
 AUTH: Responses = {401: error(NOT_AUTHENTICATED)}
 # Изменяющий запрос: сессия и заголовок X-CSRF-Token.
