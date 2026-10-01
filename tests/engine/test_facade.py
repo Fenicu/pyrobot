@@ -11,7 +11,6 @@ from app.engine.facade import EngineFacade, LockLostError
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.store import ActionStore
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
-from app.engine.lag import LoopLagMonitor
 from app.engine.memory import MemoryActionStore, MemoryJournal
 from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
@@ -32,7 +31,7 @@ from tests.engine.helpers import GAME, until
 def build(
     authorized: bool = True,
     settings: SettingsProvider | None = None,
-    lock_ok: Callable[[], bool] = lambda: True,
+    lease_ok: Callable[[], bool] = lambda: True,
     backend: TgAuthBackend | None = None,
     notifier: NotifierPort | None = None,
     planner: object | None = None,
@@ -66,8 +65,7 @@ def build(
         gateway=gateway,
         pipeline=pipeline,
         tg_auth=tg,
-        lag=LoopLagMonitor(),
-        lock_ok=lock_ok,
+        lease_ok=lease_ok,
         notifier=notifier,
         planner=planner,  # type: ignore[arg-type]
         monotonic=monotonic,
@@ -127,7 +125,7 @@ async def test_unkill_restores() -> None:
 
 async def test_unkill_refused_after_lock_lost() -> None:
     held = [True]
-    f = build(lock_ok=lambda: held[0])
+    f = build(lease_ok=lambda: held[0])
     await f.tg.boot()
     await f.gateway.kill("lock_lost")
     held[0] = False
@@ -148,7 +146,7 @@ class _Recorder:
 async def test_audit_notifications_name_actor() -> None:
     rec = _Recorder()
     held = [True]
-    f = build(lock_ok=lambda: held[0], notifier=rec)
+    f = build(lease_ok=lambda: held[0], notifier=rec)
     await f.kill("maintenance", by="alice")
     await f.unkill(by="bob")
     await f.reconciled(by="carol")

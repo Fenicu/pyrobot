@@ -82,7 +82,7 @@ const CODE_TEXT: Record<string, string> = {
 	donate: 'Донат-команды не отправляются',
 	'invalid current password': 'Неверный текущий пароль',
 	'invalid credentials': 'Неверный логин или пароль',
-	lock_lost: 'Экземпляр потерял блокировку — нужен перезапуск сервиса',
+	lock_lost: 'Движок потерял аренду аккаунта и перезапускается — повторите позже',
 	'idempotency_key reused': 'Этот ключ уже использован с другими параметрами',
 	'unknown scenario': 'Нет такого сценария',
 	'account not found': 'Аккаунт не найден',

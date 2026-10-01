@@ -9,7 +9,6 @@ from app.db.base import Database
 from app.db.planner import DbPlannerStore
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade
-from app.engine.lag import LoopLagMonitor
 from app.engine.planner.loop import PlannerLoop
 from app.engine.tg_auth import TgAuthManager
 from app.engine.transport.fake import FakeTgBackend
@@ -45,7 +44,6 @@ async def world(container: Container, clean_db: Database) -> AsyncIterator[World
             gateway=w.gateway,
             pipeline=w.pipeline,
             tg_auth=TgAuthManager(FakeTgBackend(), expected_user_id=267519921),
-            lag=LoopLagMonitor(),
             planner=planner,
         )
         run_engine(container, facade)

@@ -172,7 +172,7 @@ export const READY: Record<string, string> = {
 	killed: 'включён kill switch',
 	spending_blocked: 'траты заблокированы до сверки',
 	pipeline_unhealthy: 'конвейер сообщений нездоров',
-	lock_lost: 'потеряна блокировка экземпляра',
+	lock_lost: 'потеряна аренда аккаунта',
 	tg_offline: 'Telegram не в сети'
 };
 

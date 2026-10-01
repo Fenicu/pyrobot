@@ -30,7 +30,6 @@ class AppConfig(DbConfig):
     cookie_secure: bool = True
     transport: Literal["kurigram", "fake"] = "kurigram"
     log_level: str = "INFO"
-    account_id: int = 1
     planner: bool = True
     # Пул соединений базы на процесс; ёмкость хоста движков и пауза между стартами движков.
     db_pool_size: int = 10

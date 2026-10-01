@@ -64,13 +64,16 @@ def build_dir(tmp_path: Path) -> Path:
 def _app(admin_dir: Path | None) -> AsyncClient:
     db = Database(AppConfig.model_fields["database_url"].default)
     cfg = AppConfig(_env_file=None, transport="fake", admin_dir=admin_dir)  # type: ignore[call-arg]
+    # Соединение блокировок не открыто: /readyz отвечает 503, не обращаясь к базе.
+    engines = FakeEngines()
+    engines.lock_connection_ok = False
     container = Container(
         config=cfg,
         auth=AuthRepo(db),
         limiter=LoginRateLimiter(),
         db=db,
         accounts=AccountRepo(db),
-        engines=FakeEngines(),
+        engines=engines,
     )
     return AsyncClient(transport=ASGITransport(app=create_api(container)), base_url="http://t")
 

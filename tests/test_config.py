@@ -7,12 +7,14 @@ from app.config import AppConfig
 
 
 def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    for key in ("PYROBOT_TRANSPORT", "PYROBOT_COOKIE_SECURE", "PYROBOT_ACCOUNT_ID"):
+    for key in ("PYROBOT_TRANSPORT", "PYROBOT_COOKIE_SECURE"):
         monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("PYROBOT_ACCOUNT_ID", "5")
     cfg = AppConfig(_env_file=None, tg_api_id=1, tg_api_hash="x")
     assert cfg.transport == "kurigram"
     assert cfg.cookie_secure is True
-    assert cfg.account_id == 1
+    # Аккаунт больше не задаётся окружением: хост поднимает все включённые.
+    assert not hasattr(cfg, "account_id")
 
 
 def test_env_override_and_secret_hidden(monkeypatch: pytest.MonkeyPatch) -> None:

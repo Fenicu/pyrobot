@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import AsyncIterator
 from uuid import uuid4
 
@@ -17,10 +18,10 @@ from app.db.notifications import DbNotifier
 from app.db.retention import DbRetention
 from app.db.settings_store import DbSettingsStore
 from app.engine.clock import SystemClock
-from app.engine.host.account import AccountRuntime, RuntimeDeps
-from app.engine.host.lease import Busy, LeaseManager
+from app.engine.host.account import RuntimeDeps
+from app.engine.host.host import EngineHost
+from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
-from app.engine.supervisor import Supervisor
 
 log = logging.getLogger("pyrobot")
 
@@ -28,52 +29,46 @@ SESSION_PURGE_S = 3600.0
 # Ретеншн: первый проход не в момент старта (там догон пропусков), дальше — раз в 6 часов.
 RETENTION_FIRST_S = 300.0
 RETENTION_S = 6 * 3600.0
-# Повтор захвата и старта движка после ошибки (база, старт движка).
-ENGINE_RETRY_S = 30.0
 
 
 class Runtime:
-    """Процесс: база, вход в админку, `Container` и HTTP, аренды и задачи процесса (продление
-    аренды, монитор задержки цикла, очистка сессий админки, ретеншн). Движок аккаунта
-    `config.account_id` — `AccountRuntime` — стартует после захвата его аренды; процесс — реестр
-    движков для API (`EngineRegistry`) с этим одним аккаунтом."""
+    """Процесс: база и пул, вход в админку, `Container` и HTTP, аренды аккаунтов, хост движков
+    всех аккаунтов (`EngineHost` — он же реестр движков для API) и задачи процесса на
+    супервизоре хоста: продление аренды, монитор задержки цикла, очистка сессий админки,
+    ретеншн."""
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
-        self.db = Database(config.database_url)
+        self.db = Database(
+            config.database_url,
+            pool_size=config.db_pool_size,
+            max_overflow=config.db_max_overflow,
+        )
         self.accounts = AccountRepo(self.db)
         self.auth = AuthRepo(self.db)
-        # Без ограды: уведомления процесса об аккаунте (занят другим экземпляром, аренда
-        # потеряна, серия сбоев) пишутся и без его аренды.
-        self.notifier = DbNotifier(self.db, config.account_id)
         self.lag = LoopLagMonitor()
         self.leases = LeaseManager(self.db, uuid4().hex)
+        deps = RuntimeDeps(db=self.db, config=config, accounts=self.accounts, lag=self.lag)
+        self.host = EngineHost(
+            deps,
+            self.leases,
+            max_engines=config.max_engines,
+            start_gap_s=config.engine_start_gap_s,
+        )
+        self.supervisor = self.host.supervisor
         self.container = Container(
             config=config,
             auth=self.auth,
             limiter=LoginRateLimiter(),
             db=self.db,
             accounts=self.accounts,
-            engines=self,
+            engines=self.host,
         )
-        self.supervisor = Supervisor(self.notifier)
         self.session_purge_s = SESSION_PURGE_S
-        self.retention = DbRetention(self.db, config.account_id)
         self.retention_first_s = RETENTION_FIRST_S
         self.retention_s = RETENTION_S
-        self.engine_retry_s = ENGINE_RETRY_S
-        self.account: AccountRuntime | None = None
-        # Взведено, пока движок аккаунта зарегистрирован (`account` задан).
-        self._registered = asyncio.Event()
-        # Почему движка нет: аккаунт занят (`Busy.reason`).
-        self._host_reason: str | None = None
-        # Будит цикл движка: аренда потеряна (fence.on_lost) или серия сбоев задачи.
-        self._down = asyncio.Event()
-        # Серия сбоев задачи: движок не поднимается до перезапуска процесса.
-        self._halted: str | None = None
-        self._retry_in = 0.0
-        # Последнее уведомление о том, что движка нет: повтор того же не шлётся.
-        self._problem: str | None = None
+        # Аккаунты, чей ретеншн не удался: уведомление — одно на серию неудач.
+        self._retention_failing: set[int] = set()
 
     async def start(self) -> None:
         try:
@@ -83,138 +78,19 @@ class Runtime:
             raise
 
     async def _start(self) -> None:
+        if "PYROBOT_ACCOUNT_ID" in os.environ:
+            log.warning("PYROBOT_ACCOUNT_ID больше не читается")
         password = self.config.admin_password
         await self.auth.ensure_admin(
             self.config.admin_login, password.get_secret_value() if password else None
         )
-        # Аккаунт новой установки (без учётки на момент миграций) достаётся первой учётке:
-        # пути аккаунта открыты только владельцу.
-        await self.accounts.adopt_orphans()
         await self.leases.open()
         self.supervisor.start("lease", self.leases.run)
         self.supervisor.start("lag", self.lag.run)
         self.supervisor.start("session-purge", self._purge_sessions)
         self.supervisor.start("retention", self._retention)
-        # Первая попытка — до готовности HTTP: как и раньше, процесс начинает с движком.
-        await self._attempt()
-        self.supervisor.start("engine", self._keep_engine)
-
-    async def _keep_engine(self) -> None:
-        """Без движка — захват аренды с повтором (`lease_active` — по её сроку,
-        `locked_elsewhere` — через `busy_retry_s` менеджера, ошибка — через `engine_retry_s`);
-        потеря аренды — аварийная остановка и новый захват; серия сбоев задачи — аварийная
-        остановка, и движок не поднимается до перезапуска процесса."""
-        while True:
-            runtime = self.account
-            if runtime is not None:
-                await self._down.wait()
-                await self._abort_engine(runtime)
-            elif self._halted is not None:
-                await asyncio.Event().wait()
-            else:
-                await asyncio.sleep(self._retry_in)
-                await self._attempt()
-
-    async def _attempt(self) -> None:
-        account_id = self.config.account_id
-        try:
-            got = await self._try_engine()
-        except Exception:
-            log.exception("engine of account %d not started", account_id)
-            self._retry_in = self.engine_retry_s
-            await self._report(
-                "engine_start_failed", f"engine of account {account_id} not started"
-            )
-            return
-        if isinstance(got, Busy):
-            self._retry_in = got.retry_in_s
-            self._host_reason = got.reason
-            await self._report(
-                "second_instance",
-                f"account {account_id} is held by another pyrobot instance ({got.reason})",
-            )
-            return
-        self._problem = None
-        self._host_reason = None
-
-    async def _try_engine(self) -> Busy | None:
-        """Захват аренды аккаунта и старт его движка; `Busy` — аккаунт занят."""
-        account_id = self.config.account_id
-        got = await self.leases.acquire(account_id)
-        if isinstance(got, Busy):
-            return got
-        down = asyncio.Event()
-        # Вызывается синхронно из ограды: только будит цикл движка.
-        got.on_lost = down.set
-        try:
-            account = await self.accounts.get(account_id)
-            if account is None:
-                raise RuntimeError(f"account {account_id} not found")
-            deps = RuntimeDeps(
-                db=self.db, config=self.config, accounts=self.accounts, lag=self.lag
-            )
-            runtime = AccountRuntime(account, deps, got, on_crash_loop=self._crash_loop)
-            await runtime.start()
-        except BaseException:
-            await self.leases.release(got)
-            raise
-        self._down = down
-        self._register(runtime)
-        return None
-
-    async def _abort_engine(self, runtime: AccountRuntime) -> None:
-        await runtime.abort()
-        await self.leases.release(runtime.fence)
-        self._register(None)
-        self._retry_in = 0.0
-        if self._halted is not None:
-            await self.notifier.notify(
-                "error",
-                "account_crash_loop",
-                f"account {runtime.account_id} engine stopped: {self._halted}",
-            )
-            return
-        log.warning("account %d lease lost, engine aborted", runtime.account_id)
-        await self.notifier.notify(
-            "error", "lock_lost", f"account {runtime.account_id} lease lost; engine stopped"
-        )
-
-    def _register(self, runtime: AccountRuntime | None) -> None:
-        self.account = runtime
-        if runtime is None:
-            self._registered.clear()
-        else:
-            self._registered.set()
-
-    def get(self, account_id: int) -> AccountRuntime | None:
-        # Движок, который цикл уже останавливает (аренда потеряна, серия сбоев), API не видит.
-        if account_id != self.config.account_id or self._down.is_set():
-            return None
-        return self.account
-
-    async def wait_registered(self, account_id: int, timeout_s: float) -> AccountRuntime | None:
-        if account_id != self.config.account_id:
-            return None
-        with contextlib.suppress(TimeoutError):
-            async with asyncio.timeout(timeout_s):
-                await self._registered.wait()
-        return self.get(account_id)
-
-    def host_reason(self, account_id: int) -> str | None:
-        if account_id != self.config.account_id or self.account is not None:
-            return None
-        return self._host_reason
-
-    async def _crash_loop(self, account_id: int, task: str) -> None:
-        # Статус error аккаунта — с хостом движков; пока движок стоит до перезапуска процесса.
-        # Остановку делает цикл движка: здесь — задача самого движка.
-        self._halted = f"crash_loop:{task}"
-        self._down.set()
-
-    async def _report(self, code: str, text: str) -> None:
-        if self._problem != code:
-            await self.notifier.notify("error", code, text)
-        self._problem = code
+        # Движки включённых аккаунтов — до готовности HTTP, как и прежде.
+        await self.host.start()
 
     async def _purge_sessions(self) -> None:
         while True:
@@ -228,41 +104,45 @@ class Runtime:
                 log.info("purged %d expired admin sessions", purged)
 
     async def _retention(self) -> None:
-        # Сбой не роняет задачу (иначе супервизор слал бы task_failed на каждом рестарте):
-        # одно уведомление на серию неудач, следующая попытка — по расписанию. Политика —
-        # из настроек аккаунта в базе: движка в процессе может и не быть.
-        failing = False
         await asyncio.sleep(self.retention_first_s)
         while True:
+            await self._retention_pass()
+            await asyncio.sleep(self.retention_s)
+
+    async def _retention_pass(self) -> None:
+        """Все аккаунты, кроме удаляемых, — включая выключенные и упавшие, — каждый по своей
+        политике из настроек в базе: движка в процессе у аккаунта может и не быть. Сбой не
+        роняет задачу (иначе супервизор перезапускал бы её с начальной паузой): одно уведомление
+        аккаунту на серию неудач, следующая попытка — по расписанию."""
+        try:
+            accounts = await self.accounts.with_status("enabled", "disabled", "error")
+        except Exception:
+            log.exception("retention failed: accounts not listed")
+            return
+        for account in accounts:
             try:
-                settings = DbSettingsStore(self.db, self.config.account_id)
+                settings = DbSettingsStore(self.db, account.id)
                 await settings.load()
-                purged = await self.retention.purge(
+                purged = await DbRetention(self.db, account.id).purge(
                     SystemClock().now(), settings.current.retention
                 )
             except Exception:
-                log.exception("retention failed")
-                if not failing:
-                    await self.notifier.notify("warn", "retention_failed", "old rows not purged")
-                failing = True
+                log.exception("retention of account %d failed", account.id)
+                if account.id not in self._retention_failing:
+                    await DbNotifier(self.db, account.id).notify(
+                        "warn", "retention_failed", "old rows not purged"
+                    )
+                self._retention_failing.add(account.id)
             else:
-                failing = False
+                self._retention_failing.discard(account.id)
                 if any(purged.values()):
-                    log.info("retention purged %s", purged)
-            await asyncio.sleep(self.retention_s)
+                    log.info("retention of account %d purged %s", account.id, purged)
 
     async def stop(self) -> None:
-        # Цикл движка — первым: захват и старт не должны начаться посреди остановки.
+        # Хост — первым: сверка, затем движки (штатно, пока аренда действует, иначе аварийно) и
+        # освобождение их аренд.
         with contextlib.suppress(Exception):
-            await self.supervisor.cancel("engine")
-        runtime = self.account
-        self._register(None)
-        if runtime is not None:
-            # Аренда действует — штатная остановка с доработкой конвейера, пока идёт продление;
-            # потеряна — аварийная, и освобождение в базу не пишет.
-            with contextlib.suppress(Exception):
-                await (runtime.stop() if runtime.fence.alive else runtime.abort())
-            await self.leases.release(runtime.fence)
+            await self.host.stop()
         # Продление — после освобождения: отмена запроса по соединению блокировок обрывает
         # соединение вместе со всеми блокировками.
         with contextlib.suppress(Exception):

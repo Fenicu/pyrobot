@@ -878,13 +878,9 @@
             "title": "Killed",
             "type": "boolean"
           },
-          "lock_ok": {
-            "title": "Lock Ok",
+          "lease_ok": {
+            "title": "Lease Ok",
             "type": "boolean"
-          },
-          "loop_lag_ms": {
-            "title": "Loop Lag Ms",
-            "type": "number"
           },
           "mode": {
             "enum": [
@@ -995,8 +991,7 @@
           "pipeline_backlog",
           "pipeline_healthy",
           "workers_ok",
-          "lock_ok",
-          "loop_lag_ms"
+          "lease_ok"
         ],
         "title": "EngineStatusOut",
         "type": "object"

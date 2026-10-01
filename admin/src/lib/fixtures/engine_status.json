@@ -17,6 +17,5 @@
  "pipeline_backlog": 0,
  "pipeline_healthy": true,
  "workers_ok": true,
- "lock_ok": true,
- "loop_lag_ms": 1.4137430116534233
+ "lease_ok": true
 }

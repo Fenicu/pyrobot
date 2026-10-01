@@ -8,6 +8,7 @@ from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
 from app.engine.host.account import AccountRuntime
+from app.engine.host.host import HostStatus
 
 
 class _NoEngines:
@@ -19,6 +20,9 @@ class _NoEngines:
 
     def host_reason(self, account_id: int) -> str | None:
         return None
+
+    def status(self) -> HostStatus:
+        return HostStatus("", False, [], {}, 0.0, False)
 
 
 def build_schema() -> dict[str, Any]:

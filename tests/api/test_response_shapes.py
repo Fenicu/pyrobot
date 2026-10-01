@@ -55,8 +55,7 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
         "pipeline_backlog",
         "pipeline_healthy",
         "workers_ok",
-        "lock_ok",
-        "loop_lag_ms",
+        "lease_ok",
     ]
     assert body == {
         "running": True,
@@ -83,10 +82,8 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
         "pipeline_backlog": 0,
         "pipeline_healthy": True,
         "workers_ok": True,
-        "lock_ok": True,
-        "loop_lag_ms": body["loop_lag_ms"],
+        "lease_ok": True,
     }
-    assert isinstance(body["loop_lag_ms"], float)
 
 
 async def test_engine_status_without_wake(container: Container, api_client: AsyncClient) -> None:

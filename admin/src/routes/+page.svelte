@@ -24,7 +24,7 @@
 	$effect(() => {
 		const status = engine.status;
 		const ready = status
-			? `${status.lock_ok}|${status.pipeline_healthy}|${status.spending_blocked ?? ''}|${status.tg.state}`
+			? `${status.lease_ok}|${status.pipeline_healthy}|${status.spending_blocked ?? ''}|${status.tg.state}`
 			: null;
 		if (lastReady !== null && ready !== null && ready !== lastReady) plan.readyChanged();
 		lastReady = ready;

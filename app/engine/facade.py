@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import ActionRequest, ActionResult
-from app.engine.lag import LoopLagMonitor
 from app.engine.manual import Fingerprint, KeyReused, fingerprint, manual_key
 from app.engine.notify import NotifierPort
 from app.engine.pipeline import Pipeline
@@ -62,8 +61,8 @@ class EngineStatus:
     pipeline_backlog: int
     pipeline_healthy: bool
     workers_ok: bool
-    lock_ok: bool
-    loop_lag_ms: float
+    # Аренда аккаунта действует (ограда жива).
+    lease_ok: bool
 
 
 @dataclass(frozen=True)
@@ -81,8 +80,7 @@ class EngineFacade:
         gateway: ActionGateway,
         pipeline: Pipeline,
         tg_auth: TgAuthManager,
-        lag: LoopLagMonitor,
-        lock_ok: Callable[[], bool] = _always,
+        lease_ok: Callable[[], bool] = _always,
         workers_ok: Callable[[], bool] = _always,
         notifier: NotifierPort | None = None,
         reconciler: Reconciler | None = None,
@@ -94,8 +92,7 @@ class EngineFacade:
         self.gateway = gateway
         self.pipeline = pipeline
         self.tg = tg_auth
-        self.lag = lag
-        self._lock_ok = lock_ok
+        self._lease_ok = lease_ok
         self._workers_ok = workers_ok
         self._notifier = notifier
         self._reconciler = reconciler
@@ -135,14 +132,13 @@ class EngineFacade:
             pipeline_backlog=self.pipeline.backlog(),
             pipeline_healthy=self.pipeline.healthy,
             workers_ok=self._workers_ok(),
-            lock_ok=self._lock_ok(),
-            loop_lag_ms=self.lag.lag_ms,
+            lease_ok=self._lease_ok(),
         )
 
     def ready(self) -> bool:
         st = self.status()
         return (
-            st.lock_ok
+            st.lease_ok
             and st.workers_ok
             and st.tg.state is TgState.ONLINE
             and not st.killed
@@ -164,10 +160,10 @@ class EngineFacade:
         await self._audit("engine_killed", f"kill switch on by {by}: {reason}")
 
     async def unkill(self, *, by: str) -> None:
-        # Без блокировки единственного экземпляра latch не снимается: иначе на
-        # одном аккаунте могут оказаться два отправителя.
-        if not self._lock_ok():
-            raise LockLostError("single-instance lock lost")
+        # Без аренды аккаунта latch не снимается: иначе на одном аккаунте могут оказаться два
+        # отправителя.
+        if not self._lease_ok():
+            raise LockLostError("account lease lost")
 
         def change(s: Settings) -> Settings:
             engine = s.engine.model_copy(update={"killed": False, "kill_reason": None})

@@ -15,6 +15,7 @@ from app.db.accounts import AccountInfo
 from app.db.reads import DbReads
 from app.engine.facade import EngineFacade
 from app.engine.host.account import AccountRuntime
+from app.engine.host.host import HostStatus
 from app.logctx import current_account
 
 ACCOUNT_PREFIX = "/api/v1/accounts/{account_id}"
@@ -32,6 +33,10 @@ class EngineRegistry(Protocol):
     def host_reason(self, account_id: int) -> str | None:
         """Почему движок аккаунта не запущен здесь: `locked_elsewhere`, `lease_active`; None —
         запущен или причины нет."""
+        ...
+
+    def status(self) -> HostStatus:
+        """Здоровье хоста движков (процесса)."""
         ...
 
 

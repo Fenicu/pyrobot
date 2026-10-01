@@ -113,7 +113,7 @@ async def test_two_runtimes_share_process_without_crosstalk(
     assert all(t.done() for t in one_tasks.values())
     assert not any(t.done() for t in two_tasks.values())
     status = two.facade.status()
-    assert status.workers_ok and status.lock_ok and not status.paused
+    assert status.workers_ok and status.lease_ok and not status.paused
 
 
 async def test_stop_drains_pipeline_abort_does_not(engines: Engines, clean_db: Database) -> None:
@@ -144,7 +144,7 @@ async def test_writes_after_lost_lease_refused(engines: Engines, clean_db: Datab
     assert before is not None and before[0] == 1
 
     runtime.fence.revoke()
-    assert facade.status().lock_ok is False
+    assert facade.status().lease_ok is False
     with pytest.raises(LeaseLost):
         await facade.patch_settings(
             {"engine": {"min_request_interval_s": 3}}, version=1, by="test"

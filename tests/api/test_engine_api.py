@@ -1,14 +1,17 @@
 import asyncio
+from dataclasses import replace
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 
+from app.api.app import create_api
 from app.api.container import Container
+from app.db.base import Database
 from app.engine.tg_auth import InvalidPhone, SendCodeRejected
 from app.engine.transport.base import FloodWait
 from app.engine.transport.fake import FakeTgBackend
 from app.logctx import current_account
-from tests.api.conftest import login, run_engine
+from tests.api.conftest import engines, login, run_engine
 from tests.engine.test_facade import build
 
 pytestmark = pytest.mark.db
@@ -52,8 +55,7 @@ async def test_engine_status_kill_unkill(with_facade: Container, api_client: Asy
     assert empty.status_code == 422
 
 
-async def test_tg_login_flow_and_readyz(with_facade: Container, api_client: AsyncClient) -> None:
-    assert (await api_client.get("/readyz")).status_code == 503
+async def test_tg_login_flow(with_facade: Container, api_client: AsyncClient) -> None:
     csrf = await login(api_client)
     h = {"X-CSRF-Token": csrf}
     assert (await api_client.get("/api/v1/accounts/1/tg/status")).json()["state"] == "unauthorized"
@@ -71,7 +73,25 @@ async def test_tg_login_flow_and_readyz(with_facade: Container, api_client: Asyn
         json={"attempt_id": attempt, "code": "12345"},
     )
     assert ok.json()["state"] == "online"
-    assert (await api_client.get("/readyz")).status_code == 200
+
+
+async def test_readyz_is_process_readiness(container: Container, api_client: AsyncClient) -> None:
+    # Ни движков, ни Telegram: процесс готов, пока база отвечает и соединение блокировок живо.
+    ready = await api_client.get("/readyz")
+    assert (ready.status_code, ready.json()) == (200, {"status": "ready"})
+    engines(container).lock_connection_ok = False
+    down = await api_client.get("/readyz")
+    assert (down.status_code, down.json()) == (503, {"status": "not_ready"})
+
+
+async def test_readyz_needs_database(container: Container) -> None:
+    db = Database("postgresql+asyncpg://pyrobot:pyrobot@127.0.0.1:1/pyrobot")
+    app = create_api(replace(container, db=db))
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
+            assert (await client.get("/readyz")).status_code == 503
+    finally:
+        await db.dispose()
 
 
 class _SendCodeDown(FakeTgBackend):

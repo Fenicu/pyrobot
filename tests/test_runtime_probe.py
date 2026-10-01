@@ -99,6 +99,16 @@ async def test_session_purge_runs_periodically_and_survives_errors() -> None:
         await runtime.db.dispose()
 
 
+async def test_pool_size_from_config() -> None:
+    config = AppConfig(_env_file=None, transport="fake", db_pool_size=3, db_max_overflow=4)
+    runtime = Runtime(config)
+    try:
+        pool: Any = runtime.db.engine.pool
+        assert (pool.size(), pool._max_overflow) == (3, 4)
+    finally:
+        await runtime.db.dispose()
+
+
 async def test_stop_cancels_planner_before_closing_gateway(runtime: AccountRuntime) -> None:
     events: list[str] = []
 

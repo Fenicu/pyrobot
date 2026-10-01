@@ -120,6 +120,29 @@ async def test_failures_outside_window_do_not_count() -> None:
     await sup.stop()
 
 
+async def test_without_crash_limit_restarts_forever() -> None:
+    # Супервизор процесса: задача процесса не бросается после серии сбоев.
+    clock = Clock()
+    loops: list[str] = []
+
+    async def on_crash_loop(name: str) -> None:
+        loops.append(name)
+
+    sup = Supervisor(
+        Recorder(),
+        base_s=0.001,
+        max_s=0.001,
+        crash_limit=None,
+        on_crash_loop=on_crash_loop,
+        monotonic=clock,
+    )
+    runs: list[int] = []
+    sup.start("lease", crashing(clock, 1.0, runs))
+    await until(lambda: len(runs) >= 12)
+    assert loops == [] and not sup._tasks["lease"].done()
+    await sup.stop()
+
+
 async def test_crash_notification_refused_after_lost_lease_does_not_stop_restarts() -> None:
     class Fenced:
         async def notify(self, level: Level, code: str, text: str) -> None:

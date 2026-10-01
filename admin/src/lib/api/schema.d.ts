@@ -1022,10 +1022,8 @@ export interface components {
             kill_reason: string | null;
             /** Killed */
             killed: boolean;
-            /** Lock Ok */
-            lock_ok: boolean;
-            /** Loop Lag Ms */
-            loop_lag_ms: number;
+            /** Lease Ok */
+            lease_ok: boolean;
             /**
              * Mode
              * @enum {string}

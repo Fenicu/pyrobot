@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api.admin_static import install_admin
 from app.api.container import Container
@@ -15,6 +16,7 @@ from app.api.routes_planner import router as planner_router
 from app.api.routes_reference import router as reference_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_state import router as state_router
+from app.db.base import Database
 from app.engine.fence import LeaseLost
 
 
@@ -22,6 +24,15 @@ async def _lease_lost(_: Request, __: Exception) -> JSONResponse:
     # Аренда аккаунта потеряна посреди вызова движка: хост остановит его и захватит снова —
     # для клиента это движок, который сейчас не запущен.
     return JSONResponse({"detail": ENGINE_NOT_RUNNING}, status_code=503)
+
+
+async def _db_ok(db: Database) -> bool:
+    try:
+        async with db.engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        return False
+    return True
 
 
 def create_api(container: Container) -> FastAPI:
@@ -48,9 +59,9 @@ def create_api(container: Container) -> FastAPI:
 
     @app.get("/readyz")
     async def readyz() -> JSONResponse:
-        engine = container.engines.get(container.config.account_id)
-        f = engine.facade if engine is not None else None
-        if f is not None and f.ready():
+        # Готовность процесса: соединение блокировок хоста живо и база отвечает. Готовность
+        # аккаунта (Telegram онлайн, не kill) — в его статусе.
+        if container.engines.status().lock_connection_ok and await _db_ok(container.db):
             return JSONResponse({"status": "ready"})
         return JSONResponse({"status": "not_ready"}, status_code=503)
 

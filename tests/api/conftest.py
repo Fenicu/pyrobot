@@ -15,6 +15,7 @@ from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
 from app.engine.facade import EngineFacade
+from app.engine.host.host import HostStatus
 from app.engine.stream import EventStream
 
 PASSWORD = "correct horse battery"
@@ -33,13 +34,15 @@ class FakeEngine:
 
 class FakeEngines:
     """Реестр движков: тест кладёт движок руками (`put`). `starting` — движки, которые
-    регистрируются, как только их ждут; иначе `wait_registered` ждёт весь срок."""
+    регистрируются, как только их ждут; иначе `wait_registered` ждёт весь срок.
+    `lock_connection_ok` — соединение блокировок хоста (готовность процесса)."""
 
     def __init__(self) -> None:
         self.engines: dict[int, FakeEngine] = {}
         self.starting: dict[int, FakeEngine] = {}
         self.reasons: dict[int, str] = {}
         self.waited: list[tuple[int, float]] = []
+        self.lock_connection_ok = True
 
     def put(self, facade: EngineFacade, account_id: int = 1) -> FakeEngine:
         engine = FakeEngine(facade, account_id)
@@ -60,6 +63,16 @@ class FakeEngines:
 
     def host_reason(self, account_id: int) -> str | None:
         return self.reasons.get(account_id)
+
+    def status(self) -> HostStatus:
+        return HostStatus(
+            holder="test-host",
+            lock_connection_ok=self.lock_connection_ok,
+            engines=sorted(self.engines),
+            busy=dict(self.reasons),
+            loop_lag_ms=0.0,
+            tasks_ok=True,
+        )
 
 
 def engines(c: Container) -> FakeEngines:

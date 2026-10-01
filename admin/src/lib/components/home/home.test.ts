@@ -70,6 +70,11 @@ describe('Главная на снимке с прода', () => {
 		expect(screen.getByText(/Снимка ещё нет/)).toBeInTheDocument();
 	});
 
+	it('шапка-статус: движок без аренды аккаунта', () => {
+		render(StatusHeader, { status: { ...status, lease_ok: false }, error: null, live: 'open', state: prod.state, now: NOW });
+		expect(screen.getByRole('region', { name: 'Статус' })).toHaveTextContent('нет аренды аккаунта');
+	});
+
 	it('шапка-статус', () => {
 		render(StatusHeader, { status, error: null, live: 'open', state: prod.state, now: NOW });
 		const header = screen.getByRole('region', { name: 'Статус' });
@@ -77,6 +82,7 @@ describe('Главная на снимке с прода', () => {
 		expect(header).toHaveTextContent('TG: online');
 		expect(header).toHaveTextContent('след. решение 28.09 05:05');
 		expect(header).toHaveTextContent('связь есть');
+		expect(header).not.toHaveTextContent('нет аренды аккаунта');
 	});
 
 	it('шапка: статус Telegram тем же текстом, что на экране Telegram', () => {

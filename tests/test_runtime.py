@@ -14,14 +14,15 @@ from app.db.accounts import AccountInfo, AccountRepo
 from app.db.actions import DbActionStore
 from app.db.base import Database
 from app.db.journal import DbJournal
-from app.db.models import Account, DecisionRow, MessageRow, ScenarioRunRow
+from app.db.models import DecisionRow, MessageRow, ScenarioRunRow
+from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
+from app.db.retention import DbRetention
 from app.engine.commands import CommandClass
 from app.engine.fence import Fence
 from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
 from app.engine.host import account as account_engine
-from app.engine.host.lease import LeaseManager
 from app.engine.planner.types import Act
 from app.engine.settings import Settings
 from app.engine.transport.fake import Sent
@@ -72,39 +73,96 @@ async def _account(repo: AccountRepo) -> AccountInfo:
     return account
 
 
-def _engine(runtime: Runtime) -> Any:
-    """Движок аккаунта процесса (запущен)."""
-    assert runtime.account is not None
-    return runtime.account
+def _engine(runtime: Runtime, account_id: int = 1) -> Any:
+    """Зарегистрированный движок аккаунта."""
+    engine = runtime.host.get(account_id)
+    assert engine is not None
+    return engine
 
 
-async def test_fake_runtime_login_to_ready(clean_db: Database) -> None:
+async def _notified(db: Database, code: str, timeout: float = 5.0) -> int:  # noqa: ASYNC109
+    # Уведомление пишется в БД после остановки движка: ждём первую запись, а не паузу.
+    deadline = asyncio.get_running_loop().time() + timeout
+    while True:
+        count = sum(row.code == code for row in await DbNotifier(db, 1).recent())
+        if count or asyncio.get_running_loop().time() > deadline:
+            return count
+        await asyncio.sleep(0.01)
+
+
+async def test_fake_runtime_ready_without_telegram(clean_db: Database) -> None:
     app = create_application(_cfg())
     async with app.router.lifespan_context(app):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
             assert (await client.get("/healthz")).status_code == 200
-            assert (await client.get("/readyz")).status_code == 503
-            r = await client.post(
-                "/api/v1/auth/login", json={"login": "admin", "password": "correct horse battery"}
-            )
-            h = {"X-CSRF-Token": r.json()["csrf_token"]}
-            st = await client.post(
-                "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
-            )
-            code = await client.post(
-                "/api/v1/accounts/1/tg/login/code",
-                headers=h,
-                json={"attempt_id": st.json()["attempt_id"], "code": "12345"},
-            )
-            assert code.json()["state"] == "online"
+            # Готовность процесса — база и соединение блокировок; Telegram аккаунта не в счёт.
+            assert (await client.get("/readyz")).status_code == 200
+            await _login_tg(client)
             assert (await client.get("/readyz")).status_code == 200
             status = (await client.get("/api/v1/accounts/1/engine/status")).json()
-            assert status["mode"] == "dry_run" and status["lock_ok"] is True
+            assert status["mode"] == "dry_run" and status["lease_ok"] is True
+            assert "lock_ok" not in status and "loop_lag_ms" not in status
             # Реакция на ограбление и пересылка в чат команды — свои задачи под супервизором
-            # движка аккаунта, продление аренды и ретеншн — под супервизором процесса.
-            engine = _engine(app.state.runtime)
+            # движка аккаунта; сверка хоста, продление аренды и ретеншн — под супервизором
+            # процесса.
+            runtime = app.state.runtime
+            engine = _engine(runtime)
             assert {"reactions", "team-forward"} <= set(engine.supervisor._tasks)
-            assert {"lease", "retention", "engine"} <= set(app.state.runtime.supervisor._tasks)
+            assert {"reconcile", "lease", "lag", "session-purge", "retention"} <= set(
+                runtime.supervisor._tasks
+            )
+            assert runtime.host.status().tasks_ok
+
+
+async def test_account_id_in_env_is_ignored_with_warning(
+    clean_db: Database, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("PYROBOT_ACCOUNT_ID", "7")
+    app = create_application(_cfg())
+    async with app.router.lifespan_context(app):
+        assert app.state.runtime.host.status().engines == [1]
+    assert "PYROBOT_ACCOUNT_ID больше не читается" in caplog.text
+
+
+async def test_stop_order_engines_release_renewal_close(
+    clean_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Остановка: движки, освобождение их аренд, продление, соединение блокировок. Отмена
+    # продления посреди запроса обрывает соединение со всеми блокировками — поэтому после
+    # освобождения.
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    leases = runtime.leases
+    run, release, close = leases.run, leases.release, leases.close
+    order: list[str] = []
+
+    async def renewing() -> None:
+        try:
+            await run()
+        finally:
+            order.append("renewal stopped")
+
+    async def releasing(fence: Fence) -> None:
+        order.append(f"release {fence.account_id}")
+        await release(fence)
+
+    async def closing() -> None:
+        order.append("close")
+        await close()
+
+    monkeypatch.setattr(leases, "run", renewing)
+    monkeypatch.setattr(leases, "release", releasing)
+    monkeypatch.setattr(leases, "close", closing)
+    async with app.router.lifespan_context(app):
+        engine = _engine(runtime)
+        stop = engine.stop
+
+        async def stopping() -> None:
+            order.append("engine stop")
+            await stop()
+
+        engine.stop = stopping
+    assert order == ["engine stop", "release 1", "renewal stopped", "close"]
 
 
 async def test_first_login_binds_telegram_account(clean_db: Database) -> None:
@@ -152,78 +210,15 @@ async def test_second_runtime_does_not_start_engine(clean_db: Database) -> None:
     first = create_application(_cfg())
     second = create_application(_cfg())
     async with first.router.lifespan_context(first), second.router.lifespan_context(second):
+        host = second.state.runtime.host
+        assert first.state.runtime.host.get(1) is not None
+        assert host.get(1) is None and host.host_reason(1) == "locked_elsewhere"
         async with AsyncClient(transport=ASGITransport(app=second), base_url="http://t") as client:
-            assert (await client.get("/healthz")).status_code == 200
-            assert (await client.get("/readyz")).status_code == 503
-        assert first.state.runtime.account is not None
-        assert second.state.runtime.account is None
-        assert await _notified(second.state.runtime, "second_instance") == 1
-
-
-async def test_second_instance_starts_engine_after_lease_released(clean_db: Database) -> None:
-    # Аккаунт держит другой хост: процесс работает без движка и повторяет захват.
-    other = LeaseManager(clean_db, "other-host")
-    await other.open()
-    try:
-        fence = await other.acquire(1)
-        assert isinstance(fence, Fence)
-        app = create_application(_cfg())
-        runtime = app.state.runtime
-        runtime.leases = LeaseManager(runtime.db, "this-host", busy_retry_s=0.02)
-        async with app.router.lifespan_context(app):
-            assert runtime.account is None and runtime.get(1) is None
-            assert runtime.host_reason(1) == "locked_elsewhere"
-            assert await runtime.wait_registered(1, 0.05) is None
-            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
-                assert (await c.get("/readyz")).status_code == 503
-                await _login(c)
-                status = (await c.get(f"{A1}/engine/status")).json()
-                assert (status["running"], status["host_reason"]) == (False, "locked_elsewhere")
-            await asyncio.sleep(0.1)
-            # Повторы захвата не повторяют уведомление.
-            assert await _notified(runtime, "second_instance") == 1
-            registered = asyncio.create_task(runtime.wait_registered(1, 5.0))
-            await other.release(fence)
-            engine = await registered
-            assert engine is not None and engine is runtime.get(1) is runtime.account
-            assert runtime.host_reason(1) is None and runtime.get(2) is None
-            assert engine.fence.epoch == fence.epoch + 1
-    finally:
-        await other.close()
-
-
-async def _notified(runtime: Any, code: str, timeout: float = 5.0) -> int:  # noqa: ASYNC109
-    # Уведомление пишется в БД после остановки движка: ждём первую запись, а не паузу.
-    deadline = asyncio.get_running_loop().time() + timeout
-    while True:
-        count = sum(row.code == code for row in await runtime.notifier.recent())
-        if count or asyncio.get_running_loop().time() > deadline:
-            return count
-        await asyncio.sleep(0.01)
-
-
-async def test_lease_lost_aborts_engine_and_takes_lease_again(clean_db: Database) -> None:
-    app = create_application(_cfg())
-    runtime = app.state.runtime
-    async with app.router.lifespan_context(app):
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
-            await _login_tg(client)
+            # Процесс готов и без движков: аккаунт работает на другом хосте.
             assert (await client.get("/readyz")).status_code == 200
-            first = _engine(runtime)
-            tasks = list(first.supervisor._tasks.values())
-            first.fence.revoke()
-            # Останавливаемый движок API уже не видит.
-            assert runtime.get(1) is None
-            await until(lambda: runtime.account not in (None, first), 5.0)
-            # Аварийная остановка: задачи прежнего движка отменены; новый — на новой эпохе.
-            assert all(t.done() for t in tasks) and not first.supervisor._tasks
-            assert _engine(runtime).fence.epoch == first.fence.epoch + 1
-            assert runtime.get(1) is _engine(runtime)
-            assert await _notified(runtime, "lock_lost") == 1
-            await asyncio.sleep(0.1)
-            assert await _notified(runtime, "lock_lost") == 1
-            # Вход фейкового транспорта живёт в движке: новый движок — без входа.
-            assert (await client.get("/readyz")).status_code == 503
+            await _login(client)
+            status = (await client.get(f"{A1}/engine/status")).json()
+            assert (status["running"], status["host_reason"]) == (False, "locked_elsewhere")
 
 
 async def test_engine_abort_ends_its_event_streams(clean_db: Database) -> None:
@@ -246,27 +241,8 @@ async def test_engine_abort_ends_its_event_streams(clean_db: Database) -> None:
             )
             await task
             assert status == 200 and [e.event for e in events] == ["reset"]
-            await until(lambda: runtime.account not in (None, first), 5.0)
+            await until(lambda: runtime.host.get(1) not in (None, first), 5.0)
             assert _engine(runtime).stream is not first.stream
-
-
-async def test_crash_loop_stops_engine_until_restart(clean_db: Database) -> None:
-    app = create_application(_cfg())
-    runtime = app.state.runtime
-    async with app.router.lifespan_context(app):
-        engine = _engine(runtime)
-        # Так супервизор движка сообщает о серии сбоев задачи.
-        await engine.supervisor._on_crash_loop("gateway")
-        await until(lambda: runtime.account is None, 5.0)
-        assert not engine.supervisor._tasks
-        assert await _notified(runtime, "account_crash_loop") == 1
-        await asyncio.sleep(0.1)
-        assert runtime.account is None and runtime.get(1) is None
-        # Аренда освобождена штатно: другой хост захватит аккаунт без ожидания срока.
-        async with clean_db.sessions() as s:
-            holder = await s.scalar(select(Account.lease_holder).where(Account.id == 1))
-        assert holder is None
-        assert "lock_lost" not in {r.code for r in await runtime.notifier.recent()}
 
 
 async def test_unkill_after_lock_lost_is_conflict(clean_db: Database) -> None:
@@ -282,8 +258,9 @@ async def test_unkill_after_lock_lost_is_conflict(clean_db: Database) -> None:
             r = await client.post("/api/v1/accounts/1/engine/unkill", headers=h)
             assert r.status_code == 409 and r.json() == {"detail": "lock_lost"}
             status = (await client.get("/api/v1/accounts/1/engine/status")).json()
-            assert status["lock_ok"] is False
-            assert (await client.get("/readyz")).status_code == 503
+            assert status["lease_ok"] is False
+            # Аренда одного аккаунта — его статус, а не готовность процесса.
+            assert (await client.get("/readyz")).status_code == 200
 
 
 async def test_gateway_rejects_when_tg_offline(clean_db: Database) -> None:
@@ -432,12 +409,11 @@ async def test_forward_left_by_previous_process_notified_not_retried(clean_db: D
     )
     app = create_application(_cfg())
     runtime = app.state.runtime
+    notifier = DbNotifier(clean_db, 1)
     async with app.router.lifespan_context(app):
-        rows = [r for r in await runtime.notifier.recent() if r.code == "team_forward_unknown"]
+        rows = [r for r in await notifier.recent() if r.code == "team_forward_unknown"]
         assert len(rows) == 1 and "3625831" in rows[0].text
-        assert not any(
-            r.code == "actions_outcome_unknown" for r in await runtime.notifier.recent()
-        )
+        assert not any(r.code == "actions_outcome_unknown" for r in await notifier.recent())
         assert _engine(runtime).gateway.spending_blocked is None
         assert _engine(runtime).transport.sent == []
     stored = await store.get_by_key(f"forward:{GAME}:3625831")
@@ -446,7 +422,7 @@ async def test_forward_left_by_previous_process_notified_not_retried(clean_db: D
     # Повторный старт — без второго уведомления.
     again = create_application(_cfg())
     async with again.router.lifespan_context(again):
-        codes = [r.code for r in await again.state.runtime.notifier.recent()]
+        codes = [r.code for r in await notifier.recent()]
     assert codes.count("team_forward_unknown") == 1
 
 
@@ -511,7 +487,9 @@ async def test_retention_task_purges_old_journal(clean_db: Database) -> None:
         assert await journal_size() == 0
 
 
-async def test_retention_failure_notifies_once(clean_db: Database) -> None:
+async def test_retention_failure_notifies_once(
+    clean_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
     app = create_application(_cfg())
     runtime = app.state.runtime
     runtime.retention_first_s = 0.0
@@ -522,8 +500,8 @@ async def test_retention_failure_notifies_once(clean_db: Database) -> None:
         calls[0] += 1
         raise ConnectionError("db down")
 
-    runtime.retention.purge = broken
+    monkeypatch.setattr(DbRetention, "purge", broken)
     async with app.router.lifespan_context(app):
         await until(lambda: calls[0] >= 3)
-        assert await _notified(runtime, "retention_failed") == 1
+        assert await _notified(clean_db, "retention_failed") == 1
         assert "retention" not in runtime.supervisor._backoff

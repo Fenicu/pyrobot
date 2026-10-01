@@ -15,7 +15,7 @@ Factory = Callable[[], Awaitable[None]]
 class Supervisor:
     """Перезапуск задач с нарастающей паузой. Сбой одной задачи `crash_limit` раз за
     `crash_window_s` — серия сбоев: задача больше не перезапускается, один вызов
-    `on_crash_loop(имя)`."""
+    `on_crash_loop(имя)`. Без предела (`crash_limit=None`) задача перезапускается всегда."""
 
     def __init__(
         self,
@@ -23,7 +23,7 @@ class Supervisor:
         *,
         base_s: float = 1.0,
         max_s: float = 60.0,
-        crash_limit: int = 5,
+        crash_limit: int | None = 5,
         crash_window_s: float = 600.0,
         on_crash_loop: Callable[[str], Awaitable[None]] | None = None,
         monotonic: Callable[[], float] = time.monotonic,
@@ -85,7 +85,7 @@ class Supervisor:
                 crashes.append(now)
                 while crashes and crashes[0] <= now - self._crash_window:
                     crashes.popleft()
-                if len(crashes) >= self._crash_limit:
+                if self._crash_limit is not None and len(crashes) >= self._crash_limit:
                     log.error(
                         "task %s crashed %d times in %.0fs, not restarted",
                         name,

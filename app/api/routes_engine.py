@@ -85,8 +85,8 @@ class EngineStatusOut(BaseModel):
     pipeline_backlog: int
     pipeline_healthy: bool
     workers_ok: bool
-    lock_ok: bool
-    loop_lag_ms: float
+    # Аренда аккаунта у движка действует. Задержка цикла событий — здоровье хоста, а не аккаунта.
+    lease_ok: bool
 
 
 def _tg(st: TgStatus) -> TgStatusOut:
@@ -151,8 +151,7 @@ async def engine_status(
         pipeline_backlog=0,
         pipeline_healthy=False,
         workers_ok=False,
-        lock_ok=False,
-        loop_lag_ms=0.0,
+        lease_ok=False,
     )
 
 
