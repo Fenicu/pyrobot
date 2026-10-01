@@ -9,6 +9,10 @@ if TYPE_CHECKING:
 
 # Проверка чата команды: группа или супергруппа, где аккаунт — участник (`ok`).
 GroupCheck = Literal["ok", "not_group", "not_member", "unavailable"]
+# Итог вступления в чат: вступил, уже участник, заявка ждёт одобрения админов.
+JoinStatus = Literal["joined", "already_member", "request_sent"]
+# Username общего чата игры (`chats.swinfo_chat_id`): по числовому id в чат не вступить.
+GAME_CHAT_USERNAME = "startupwarschat"
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +38,16 @@ class TransportRejected(Exception):
     pass
 
 
+class ChatUnavailable(Exception):
+    """Чат не читается: пир неизвестен (аккаунт не состоит в чате), чат закрыт или аккаунт из
+    него исключён; `reason` — имя ошибки Telegram."""
+
+    def __init__(self, chat_id: int, reason: str) -> None:
+        super().__init__(f"chat {chat_id} unavailable: {reason}")
+        self.chat_id = chat_id
+        self.reason = reason
+
+
 class Transport(Protocol):
     async def resolve(self, chat_id: int) -> None:
         """Разрешить peer чата заранее (с кешем): send_text и click после этого вызывают RPC без
@@ -57,4 +71,9 @@ class Transport(Protocol):
 
     async def check_group(self, chat_id: int) -> GroupInfo:
         """Чат — группа или супергруппа, и аккаунт в ней состоит; название чата."""
+        ...
+
+    async def join_chat(self, username: str, expect_id: int) -> JoinStatus:
+        """Вступление в публичный чат по username; чат с другим id — отказ `chat_mismatch`
+        без вступления."""
         ...

@@ -29,6 +29,7 @@ from app.engine.tg_auth import (
     TgState,
 )
 from app.engine.transport.base import (
+    ChatUnavailable,
     FloodWait,
     GroupInfo,
     TransportAuthLost,
@@ -43,6 +44,8 @@ from tests.engine.kurigram_fakes import EXPECTED, FakeClient, FakeKurigram, long
 from tests.engine.test_history_sync import FakeSource, MemoryMarks
 
 TEAM = -1001149209877
+SWINFO = -1001109615116
+SW_USER = 376592453
 BOX = SecretBox(secrets.token_bytes(32))
 
 
@@ -498,6 +501,115 @@ async def test_check_group_unauthorized_resets_client() -> None:
     t.client.errors["GetChat"] = rpc_error("AuthKeyUnregistered")
     with pytest.raises(TransportAuthLost):
         await t.check_group(-1001149209877)
+    assert lost == [1]
+
+
+@pytest.mark.parametrize("where", ["ResolvePeer", "Search"])
+@pytest.mark.parametrize(
+    "error", ["ChannelInvalid", "ChannelPrivate", "PeerIdInvalid", "UserNotParticipant"]
+)
+async def test_history_of_unavailable_chat(where: str, error: str) -> None:
+    # Пир чата неизвестен (GetChannels с access_hash=0) или чат закрыт для аккаунта: сверка
+    # пишет одну строку и не уходит в backoff — ей нужно отличать это от прочих сбоев.
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors[where] = rpc_error(error)
+    with pytest.raises(ChatUnavailable) as caught:
+        await t.latest((SWINFO, SW_USER))
+    assert (caught.value.chat_id, caught.value.reason) == (SWINFO, error)
+
+
+async def test_history_other_errors_are_not_chat_unavailable() -> None:
+    from pyrogram import errors
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors["GetHistory"] = rpc_error("MsgIdInvalid")
+    with pytest.raises(errors.MsgIdInvalid):
+        await t.latest((GAME, 0))
+    t.client.errors["GetHistory"] = errors.FloodWait(7)
+    with pytest.raises(FloodWait):
+        await t.latest((GAME, 0))
+
+
+async def test_join_chat_with_other_id_does_not_join() -> None:
+    # Username мог смениться владельцем: вступать в чужой чат нельзя.
+    t = FakeKurigram()
+    await _online(t)
+    t.client.chat = NS(id=SWINFO - 1)
+    with pytest.raises(TransportRejected, match="chat_mismatch"):
+        await t.join_chat("startupwarschat", SWINFO)
+    assert t.client.joined == []
+
+
+async def test_join_chat_joined() -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.chat = NS(id=SWINFO)
+    assert await t.join_chat("startupwarschat", SWINFO) == "joined"
+    assert t.client.joined == ["startupwarschat"]
+
+
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [("UserAlreadyParticipant", "already_member"), ("InviteRequestSent", "request_sent")],
+)
+async def test_join_chat_status_from_error(error: str, status: str) -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.chat = NS(id=SWINFO)
+    t.client.errors["JoinChat"] = rpc_error(error)
+    assert await t.join_chat("startupwarschat", SWINFO) == status
+
+
+async def test_join_chat_request_sent_result() -> None:
+    from pyrogram import types
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.chat = NS(id=SWINFO)
+    t.client.join_result = types.ChatJoinResultRequestSent()
+    assert await t.join_chat("startupwarschat", SWINFO) == "request_sent"
+
+
+@pytest.mark.parametrize("where", ["GetChat", "JoinChat"])
+async def test_join_chat_flood_wait(where: str) -> None:
+    from pyrogram import errors
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.chat = NS(id=SWINFO)
+    t.client.errors[where] = errors.FloodWait(7)
+    with pytest.raises(FloodWait) as caught:
+        await t.join_chat("startupwarschat", SWINFO)
+    assert caught.value.seconds == 7.0
+
+
+@pytest.mark.parametrize(
+    ("where", "error", "code"),
+    [
+        ("GetChat", "UsernameNotOccupied", "USERNAME_NOT_OCCUPIED"),
+        ("JoinChat", "ChannelsTooMuch", "CHANNELS_TOO_MUCH"),
+        ("JoinChat", "UserBannedInChannel", "USER_BANNED_IN_CHANNEL"),
+    ],
+)
+async def test_join_chat_refusals(where: str, error: str, code: str) -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.chat = NS(id=SWINFO)
+    t.client.errors[where] = rpc_error(error)
+    with pytest.raises(TransportRejected, match=code):
+        await t.join_chat("startupwarschat", SWINFO)
+
+
+async def test_join_chat_unauthorized_resets_client() -> None:
+    t = FakeKurigram()
+    lost = await _online(t)
+    t.client.chat = NS(id=SWINFO)
+    t.client.errors["JoinChat"] = rpc_error("AuthKeyUnregistered")
+    with pytest.raises(TransportAuthLost):
+        await t.join_chat("startupwarschat", SWINFO)
+    _assert_reset(t)
     assert lost == [1]
 
 

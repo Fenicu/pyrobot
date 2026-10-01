@@ -15,7 +15,12 @@ from typing import TYPE_CHECKING, Any, Protocol
 from app.engine.fence import LeaseLost
 from app.engine.notify import NotifierPort
 from app.engine.settings import ChatsSection
-from app.engine.transport.base import FloodWait, TransportAuthLost
+from app.engine.transport.base import (
+    GAME_CHAT_USERNAME,
+    ChatUnavailable,
+    FloodWait,
+    TransportAuthLost,
+)
 from app.engine.transport.kurigram import to_incoming
 from app.engine.types import IncomingMessage, MessageKind
 
@@ -74,7 +79,9 @@ class HistorySync:
     главной сессии, разрыв обновлений) и раз в `period_s` — от молчаливых пропусков. Запрос во
     время прохода — ещё один проход сразу после него. Пока `online()` ложно, проходов нет.
     Неудачный проход отметку не меняет и повторяется через `backoff`; запросы повтор не
-    торопят — сбой мог быть FloodWait."""
+    торопят — сбой мог быть FloodWait. Недоступный чат (`ChatUnavailable`) проход неудачным не
+    делает: уведомление — на переход в недоступность, членство в общем чате игры — по чтению
+    `swinfo`."""
 
     def __init__(
         self,
@@ -92,6 +99,7 @@ class HistorySync:
         period_s: float = 300.0,
         backoff: tuple[float, ...] = (30.0, 60.0, 120.0, 300.0),
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        swinfo: Reader | None = None,
     ) -> None:
         self._source = source
         self._marks = marks
@@ -107,6 +115,24 @@ class HistorySync:
         self._backoff = backoff
         self._sleep = sleep
         self._wake = asyncio.Event()
+        self._swinfo = swinfo
+        # Итог последнего чтения: True — прочитано, False — чат недоступен.
+        self._readable: dict[Reader, bool] = {}
+
+    @property
+    def game_chat_member(self) -> bool | None:
+        """Аккаунт состоит в общем чате игры: последнее чтение swinfo прошло (True), чат
+        недоступен (False); None — ещё не читали."""
+        return self._readable.get(self._swinfo) if self._swinfo is not None else None
+
+    def game_chat_joined(self) -> None:
+        """Аккаунт вступил в общий чат игры: проход сразу его перечитает."""
+        if self._swinfo is not None:
+            chat_id = self._swinfo[0]
+            for reader in self._readers:
+                if reader[0] == chat_id:
+                    self._readable[reader] = True
+        self.request("game_chat_joined")
 
     def request(self, reason: str) -> None:
         """Проход как можно скорее; не ждёт его (обработчик подключения kurigram выполняется
@@ -151,9 +177,10 @@ class HistorySync:
             await asyncio.gather(*waiters, return_exceptions=True)
 
     async def pass_once(self) -> None:
-        """Проход по всем чтениям. Сбой одного чтения (чат недоступен, пир не найден) остальные
-        не останавливает: его отметка не меняется, а первый сбой пробрасывается после всех
-        чтений — проход повторится по `backoff`. Сбой всего аккаунта (FloodWait, потеря аренды или
+        """Проход по всем чтениям. Сбой одного чтения остальные не останавливает: его отметка не
+        меняется, а первый сбой пробрасывается после всех чтений — проход повторится по
+        `backoff`. Недоступный чат (пир неизвестен, аккаунт не участник) — не сбой: повтор не
+        поможет, пока аккаунт не вступит в чат. Сбой всего аккаунта (FloodWait, потеря аренды или
         входа) обрывает проход сразу: следующие чтения упёрлись бы в него же."""
         failure: Exception | None = None
         for reader in sorted(self._readers):
@@ -161,11 +188,37 @@ class HistorySync:
                 await self._sync(reader)
             except (FloodWait, LeaseLost, TransportAuthLost):
                 raise
+            except ChatUnavailable as exc:
+                log.warning("history reader %s: chat unavailable (%s)", reader, exc.reason)
+                await self._unavailable(reader, exc.reason)
             except Exception as exc:
                 log.warning("history reader %s failed", reader, exc_info=True)
                 failure = failure or exc
+            else:
+                self._readable[reader] = True
         if failure is not None:
             raise failure
+
+    async def _unavailable(self, reader: Reader, reason: str) -> None:
+        """Уведомление — один раз на переход чата в недоступность, а не на каждый проход."""
+        chat_id = reader[0]
+        known = any(r[0] == chat_id and not ok for r, ok in self._readable.items())
+        self._readable[reader] = False
+        if known:
+            return
+        if self._swinfo is not None and chat_id == self._swinfo[0]:
+            await self._notifier.notify(
+                "warn",
+                "game_chat_not_member",
+                f"account is not a member of the game chat @{GAME_CHAT_USERNAME};"
+                " SWINFO is not read; join it in admin",
+            )
+        else:
+            await self._notifier.notify(
+                "warn",
+                "chat_unavailable",
+                f"chat {chat_id} is unavailable ({reason}); its history is not read",
+            )
 
     async def _sync(self, reader: Reader) -> None:
         chat_id = reader[0]

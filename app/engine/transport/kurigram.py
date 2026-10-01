@@ -22,8 +22,10 @@ from app.engine.tg_auth import (
     SignUpRequired,
 )
 from app.engine.transport.base import (
+    ChatUnavailable,
     FloodWait,
     GroupInfo,
+    JoinStatus,
     TransportAuthLost,
     TransportRejected,
 )
@@ -846,6 +848,31 @@ class KurigramTransport:
         return GroupInfo("ok", title)
 
     @_fenced
+    async def join_chat(self, username: str, expect_id: int) -> JoinStatus:
+        from pyrogram import errors, types
+
+        client = self._client
+        try:
+            chat = await client.get_chat(username)
+            if chat.id != expect_id:
+                raise TransportRejected("chat_mismatch")
+            result = await client.join_chat(username)
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except errors.UserAlreadyParticipant:
+            return "already_member"
+        except errors.InviteRequestSent:
+            return "request_sent"
+        except errors.RPCError as exc:
+            raise TransportRejected(str(exc.ID or exc)) from exc
+        if isinstance(result, types.ChatJoinResultRequestSent):
+            return "request_sent"
+        return "joined"
+
+    @_fenced
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         from pyrogram import errors
 
@@ -936,6 +963,13 @@ class KurigramTransport:
         except errors.Unauthorized as exc:
             await self._lose_auth(client)
             raise TransportAuthLost(str(exc)) from exc
+        except (
+            errors.ChannelInvalid,
+            errors.ChannelPrivate,
+            errors.PeerIdInvalid,
+            errors.UserNotParticipant,
+        ) as exc:
+            raise ChatUnavailable(chat_id, type(exc).__name__) from exc
 
 
 async def logout_offline(db: Database, box: SecretBox, config: AppConfig, account_id: int) -> None:

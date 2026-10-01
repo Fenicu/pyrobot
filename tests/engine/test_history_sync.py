@@ -21,7 +21,7 @@ from app.engine.notify import Level
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
 from app.engine.settings import ChatsSection
-from app.engine.transport.base import FloodWait, TransportAuthLost
+from app.engine.transport.base import ChatUnavailable, FloodWait, TransportAuthLost
 from app.engine.transport.history import HistorySync, Reader, readers_for
 from app.engine.transport.kurigram import ChatFilter, KurigramTransport, to_incoming
 from app.engine.types import IncomingMessage
@@ -185,9 +185,11 @@ class FakeTime:
 class Recorder:
     def __init__(self) -> None:
         self.items: list[tuple[Level, str]] = []
+        self.texts: list[str] = []
 
     async def notify(self, level: Level, code: str, text: str) -> None:
         self.items.append((level, code))
+        self.texts.append(text)
 
 
 class Rig:
@@ -390,6 +392,108 @@ async def test_failing_reader_does_not_stop_others() -> None:
         rig.sync.request("online")
         await _wait(rig, 30.0)
     assert rig.marks.marks[(GAME, 0)] == 12 and rig.marks.marks[(SWINFO, SW_USER)] == 5
+
+
+SWINFO_READER = (SWINFO, SW_USER)
+NOT_MEMBER = ChatUnavailable(SWINFO, "ChannelInvalid")
+
+
+async def test_unavailable_game_chat_is_one_line_without_backoff(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Аккаунт не состоит в общем чате игры: пир неизвестен, чтение swinfo падает на каждом
+    # проходе. Это не сбой прохода — остальные чтения идут, повтора по backoff нет.
+    rig = Rig(
+        readers=readers_for(CHATS),
+        marks={(SMOOTHIE, 0): 3, SWINFO_READER: 5, (GAME, 0): 10},
+        swinfo=SWINFO_READER,
+    )
+    rig.source.post(SMOOTHIE, 4)
+    rig.source.post(GAME, 11)
+    rig.source.broken[SWINFO_READER] = NOT_MEMBER
+    assert rig.sync.game_chat_member is None
+    with caplog.at_level("WARNING", logger="app.engine.transport.history"):
+        await rig.sync.pass_once()
+    assert rig.marks.marks == {(SMOOTHIE, 0): 4, SWINFO_READER: 5, (GAME, 0): 11}
+    assert _ids(rig.journal.delivered) == [4, 11]
+    assert rig.sync.game_chat_member is False
+    assert rig.notifier.items == [("warn", "game_chat_not_member")]
+    assert "@startupwarschat" in rig.notifier.texts[0]
+    [record] = caplog.records
+    assert "chat unavailable" in record.getMessage() and record.exc_info is None
+    # Серия недоступности — одно уведомление; проходы идут по периоду, а не по backoff.
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="app.engine.transport.history"):
+        async with rig.running():
+            rig.sync.request("online")
+            await until(lambda: rig.source.reads == 6 and rig.time.waiting == [300.0])
+    assert rig.notifier.items == [("warn", "game_chat_not_member")]
+    assert not any("history pass failed" in r.getMessage() for r in caplog.records)
+    assert all(r.exc_info is None for r in caplog.records)
+
+
+async def test_game_chat_member_after_read_and_notice_on_new_transition() -> None:
+    rig = Rig(readers={SWINFO_READER}, marks={SWINFO_READER: 5}, swinfo=SWINFO_READER)
+    rig.source.broken[SWINFO_READER] = NOT_MEMBER
+    await rig.sync.pass_once()
+    assert rig.sync.game_chat_member is False
+    del rig.source.broken[SWINFO_READER]
+    rig.source.post(SWINFO, 6, sender=SW_USER)
+    await rig.sync.pass_once()
+    assert rig.sync.game_chat_member is True and _ids(rig.journal.delivered) == [6]
+    await rig.sync.pass_once()
+    assert rig.notifier.items == [("warn", "game_chat_not_member")]
+    # Снова недоступен — новый переход, новое уведомление.
+    rig.source.broken[SWINFO_READER] = NOT_MEMBER
+    await rig.sync.pass_once()
+    assert rig.sync.game_chat_member is False
+    assert rig.notifier.items == [("warn", "game_chat_not_member")] * 2
+
+
+async def test_first_read_of_game_chat_sets_member() -> None:
+    rig = Rig(readers={SWINFO_READER}, swinfo=SWINFO_READER)
+    await rig.sync.pass_once()
+    assert rig.sync.game_chat_member is True
+
+
+async def test_other_unavailable_chat_notice_with_its_id() -> None:
+    rig = Rig(
+        readers={(GAME, 0), (SMOOTHIE, 0)},
+        marks={(GAME, 0): 10, (SMOOTHIE, 0): 3},
+        swinfo=SWINFO_READER,
+    )
+    rig.source.post(GAME, 11)
+    rig.source.broken[(SMOOTHIE, 0)] = ChatUnavailable(SMOOTHIE, "ChannelPrivate")
+    await rig.sync.pass_once()
+    await rig.sync.pass_once()
+    assert rig.notifier.items == [("warn", "chat_unavailable")]
+    assert str(SMOOTHIE) in rig.notifier.texts[0]
+    assert _ids(rig.journal.delivered) == [11]
+    # Чтения swinfo нет — членство в общем чате не проверялось.
+    assert rig.sync.game_chat_member is None
+
+
+async def test_shared_chat_readers_one_notice() -> None:
+    # Чат приглашений к биржевикам — тот же общий чат: два чтения, одно уведомление.
+    readers = {SWINFO_READER, (SWINFO, 0)}
+    rig = Rig(readers=readers, marks=dict.fromkeys(readers, 5), swinfo=SWINFO_READER)
+    for reader in readers:
+        rig.source.broken[reader] = NOT_MEMBER
+    await rig.sync.pass_once()
+    assert rig.notifier.items == [("warn", "game_chat_not_member")]
+
+
+async def test_game_chat_joined_marks_member_and_requests_pass() -> None:
+    rig = Rig(readers={SWINFO_READER}, marks={SWINFO_READER: 5}, swinfo=SWINFO_READER)
+    rig.source.broken[SWINFO_READER] = NOT_MEMBER
+    await rig.sync.pass_once()
+    del rig.source.broken[SWINFO_READER]
+    rig.source.post(SWINFO, 6, sender=SW_USER)
+    async with rig.running():
+        await _wait(rig, 300.0)
+        rig.sync.game_chat_joined()
+        assert rig.sync.game_chat_member is True
+        await until(lambda: _ids(rig.journal.delivered) == [6])
 
 
 @pytest.mark.parametrize(

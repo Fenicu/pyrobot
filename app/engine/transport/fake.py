@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.engine.tg_auth import InvalidCode, InvalidPassword, PasswordRequired
-from app.engine.transport.base import GroupCheck, GroupInfo
+from app.engine.transport.base import GroupCheck, GroupInfo, JoinStatus
 from app.engine.types import IncomingMessage
 
 
@@ -44,6 +44,10 @@ class FakeTransport:
         # Разрешения peer перед отправкой и что меняется, пока peer разрешается.
         self.resolved: list[int] = []
         self.on_resolve: Callable[[int], Awaitable[None]] | None = None
+        # Вступления в чаты (username, ожидаемый id), их итог и ошибки очередных вступлений.
+        self.joins: list[tuple[str, int]] = []
+        self.join_status: JoinStatus = "joined"
+        self.join_fail_with: list[BaseException] = []
         self._next_id = 1000
         self._tasks: set[asyncio.Future[None]] = set()
 
@@ -95,6 +99,12 @@ class FakeTransport:
         if self.group_error is not None:
             raise self.group_error
         return GroupInfo(self.groups.get(chat_id, "ok"), self.titles.get(chat_id))
+
+    async def join_chat(self, username: str, expect_id: int) -> JoinStatus:
+        if self.join_fail_with:
+            raise self.join_fail_with.pop(0)
+        self.joins.append((username, expect_id))
+        return self.join_status
 
 
 class FakeTgBackend:

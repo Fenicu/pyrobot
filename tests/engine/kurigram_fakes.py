@@ -139,6 +139,9 @@ class FakeClient:
         self.chat: Any = None
         self.member: Any = None
         self.resolved: list[int] = []
+        # Вступления в чаты (`join_chat`) и что отвечает очередное из них.
+        self.joined: list[int | str] = []
+        self.join_result: Any = None
 
     async def connect(self) -> bool:
         if self.is_connected:
@@ -219,6 +222,13 @@ class FakeClient:
         if err is not None:
             raise err
         return self.chat
+
+    async def join_chat(self, chat_id: int | str) -> Any:
+        err = self.errors.pop("JoinChat", None)
+        if err is not None:
+            raise err
+        self.joined.append(chat_id)
+        return self.join_result
 
     async def get_chat_member(self, chat_id: int, user_id: int | str) -> Any:
         err = self.errors.pop("GetChatMember", None)

@@ -351,6 +351,7 @@ class AccountRuntime:
             notifier=self.notifier,
             readers=readers,
             online=lambda: kurigram.online,
+            swinfo=(chats.swinfo_chat_id, chats.swinfo_user_id),
         )
         kurigram.on_history_needed = self.history.request
         self.supervisor.start("history", self.history.run)
