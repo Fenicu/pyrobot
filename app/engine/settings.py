@@ -305,7 +305,7 @@ def check_self_chat(settings: Settings, tg_user_id: int | None) -> None:
         raise ChatIsSelf(fields)
 
 
-# Читаются только при старте процесса (парсер, фильтр чатов, конвейер).
+# Читаются только при старте движка аккаунта (парсер, фильтр чатов, конвейер).
 _RESTART_REQUIRED = ("chats.", "engine.recovered_react_max_age_min")
 # Чаты мандаринов и команды не входят ни в фильтр, ни в разбор: планировщик, шлюз и реакция
 # пересылки читают их на лету.
