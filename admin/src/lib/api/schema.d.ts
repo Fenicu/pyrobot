@@ -485,8 +485,9 @@ export interface paths {
          * @description Удаляемый аккаунт не правится — и тогда, когда его движок ещё зарегистрирован. С
          *     движком — через него. Без движка — прямая запись в базу, если аренда аккаунта свободна;
          *     занята — правку делает движок, который её взял: он ещё не зарегистрирован — ожидание до
-         *     `engine_wait_s`, затем 503 `engine_starting`. У привязанного аккаунта поле `chats.*`,
-         *     равное его пользователю Telegram, — 422 `chat_is_self` с этими полями.
+         *     `engine_wait_s`, затем 503 `engine_starting`; аренда потеряна посреди правки через движок —
+         *     503 `engine not running`. У привязанного аккаунта поле `chats.*`, равное его пользователю
+         *     Telegram, — 422 `chat_is_self` с этими полями.
          */
         patch: operations["patch_settings_api_v1_accounts__account_id__settings_patch"];
         trace?: never;
@@ -4415,7 +4416,7 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorOut"] | components["schemas"]["ChatIsSelfOut"];
                 };
             };
-            /** @description engine_starting */
+            /** @description engine_starting | engine not running */
             503: {
                 headers: {
                     [name: string]: unknown;
