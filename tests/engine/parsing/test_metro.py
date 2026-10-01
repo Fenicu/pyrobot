@@ -329,3 +329,47 @@ def test_early_exit_offer() -> None:
     half = {k: v - v // 2 for k, v in found.items()}
     assert recognize_metro(FRAMES2[390]) == [MetroEarlyExit(found=found, half=half)]
     assert recognize_metro(FRAMES2[398]) == [MetroFinished(loot=found, stamina=119)]
+
+
+CANCELLED_MOVE = (
+    "🔋0%\n"
+    "⬛️⬛️⬛️⬛️⬛️               \n"
+    "⬛️⬛️⬛️⬛️⬛️               \n"
+    "⬛️⬜️😎⬜️⬜️               \n"
+    "⬛️⬜️⬛️⬛️⬛️               \n"
+    "⬛️⬜️⬜️⬜️⬛️               \n"
+    "Отменено"
+)
+MAP_BUTTONS = (
+    Button(" ", 0, 0, data="maze_nothing"),
+    Button("⬆️", 0, 1, data="maze_up"),
+    Button(" ", 0, 2, data="maze_nothing"),
+    Button("⬅️", 1, 0, data="maze_left"),
+    Button(" ", 1, 1, data="maze_nothing"),
+    Button("➡️", 1, 2, data="maze_right"),
+    Button("🚫", 2, 0, data="maze_cancel_move"),
+    Button("⬇️", 2, 1, data="maze_down"),
+    Button("🚪", 2, 2, data="maze_exit"),
+)
+EARLY_FINISHED = (
+    "Ты вышел из метро досрочно. Но при этом потерял половину найденного.\n\n"
+    "Получено\n🍔Бургер: 1\n🔋Осталось выносливости: 0%\n\n"
+    "К персонажу - /main."
+)
+
+
+def test_cancelled_move_footer_stays_on_the_cell() -> None:
+    msg = replace(frame(7), text=CANCELLED_MOVE, inline=MAP_BUTTONS)
+    assert recognize_metro(msg) == [
+        MetroMap(
+            stamina=0,
+            window=("#####", "#####", "#.@..", "#.###", "#...#"),
+            footer="cancelled",
+            packs=None,
+        )
+    ]
+
+
+def test_finish_after_early_exit() -> None:
+    msg = replace(frame(532), text=EARLY_FINISHED, inline=())
+    assert recognize_metro(msg) == [MetroFinished(loot={"burger": 1}, stamina=0)]

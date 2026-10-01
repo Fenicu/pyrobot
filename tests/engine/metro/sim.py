@@ -422,7 +422,7 @@ class MazeGame:
             out = [self._chest()] if opened else [self._map("chest_declined")]
         elif isinstance(screen, MetroExit | MetroEarlyExit):
             if data == "maze_exit_accept":
-                # Итог досрочного выхода живьём не видели: считаем его обычным «Получено».
+                # Итог досрочного выхода — то же событие, что и после обычного.
                 self.finished = True
                 self.early_exit = isinstance(screen, MetroEarlyExit)
                 loot = screen.half if isinstance(screen, MetroEarlyExit) else dict(self.bank)

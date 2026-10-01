@@ -57,7 +57,7 @@ _TOKEN_PRICE = re.compile(r"^— \S+ за (?P<n>\d+)🕳", re.M)
 _STAMINA = re.compile(r"\A🔋(?P<st>\d+)%\Z")
 _FOOTER = re.compile(
     r"\A(?:(?P<going>Идёшь )?(?P<dir>Вверх|Вниз|Влево|Вправо)(?(going)\.?)"
-    r"|(?P<word>Вход|Ждёшь|Остался|Не бьёшся|Не открываешь|Стена))\Z"
+    r"|(?P<word>Вход|Ждёшь|Остался|Не бьёшся|Не открываешь|Стена|Отменено))\Z"
 )
 _PACKS = re.compile(r"\A❤️(?P<n>\d+)\Z")
 _LOOT = re.compile(r"\A\+?Нашёл \+(?P<n>\d+)(?P<emo>[^\w\s.]+)\. [^\n]+\Z")
@@ -88,7 +88,8 @@ _EARLY_EXIT = re.compile(
     r"Выходишь\?\Z"
 )
 _FINISHED = re.compile(
-    r"\AПолучено\n(?P<items>(?:[^\n]+\n)*?)🔋Осталось выносливости: (?P<st>\d+)%\n\n"
+    r"\A(?:Ты вышел из метро досрочно\. Но при этом потерял половину найденного\.\n\n)?"
+    r"Получено\n(?P<items>(?:[^\n]+\n)*?)🔋Осталось выносливости: (?P<st>\d+)%\n\n"
     r"К персонажу - /main\.\Z"
 )
 
@@ -101,6 +102,7 @@ Footer = Literal[
     "npc_declined",
     "chest_declined",
     "wall",
+    "cancelled",
     "none",
 ]
 ChestOutcome = Literal["stash", "arrow", "grenade"]
@@ -114,6 +116,8 @@ _WORDS: dict[str, Footer] = {
     "Не открываешь": "chest_declined",
     # Ход в стену не состоялся (тост «⬛️Там стена», подпись «Идёшь …» не приходит).
     "Стена": "wall",
+    # Отмена хода кнопкой 🚫 (maze_cancel_move).
+    "Отменено": "cancelled",
 }
 
 

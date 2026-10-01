@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from tests.engine.metro.helpers import (
     policy_with,
     window_at,
 )
+from tests.engine.parsing.test_metro import CANCELLED_MOVE, MAP_BUTTONS
 from tests.fixtures import game_versions
 
 RUN1 = Path(__file__).parents[2] / "fixtures" / "metro" / "run1.json"
@@ -297,6 +299,22 @@ def test_staying_footers_do_not_move(footer: str) -> None:
     s.observe(at((1, 1), "going", direction="down"))
     s.next(at((1, 1), footer), T0)
     assert (s.pos, s.steps) == ((1, 1), 0)
+
+
+def test_cancelled_move_frame_does_not_move() -> None:
+    [cancelled] = recognize_metro(
+        replace(
+            game_versions("metro", 3624441)[7],
+            text=CANCELLED_MOVE,
+            inline=MAP_BUTTONS,
+        )
+    )
+    assert isinstance(cancelled, MetroMap)
+    s = solver()
+    s.next(replace(cancelled, footer="entry"), T0)
+    s.observe(replace(cancelled, footer="going", direction="down"))
+    assert isinstance(s.next(cancelled, T0), Click)
+    assert (s.pos, s.steps, s.lost) == ((1, 1), 0, False)
 
 
 def test_npc_policy_without_packs() -> None:
