@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable, Iterable, Mapping
 from typing import Annotated, Any, Literal, Protocol
 
@@ -314,9 +315,38 @@ _LIVE = frozenset({"chats.tangerine_chat_id", "chats.tangerine_reply_to", "chats
 def apply_patch(settings: Settings, changes: Mapping[str, Any]) -> Settings:
     """Частичное изменение: секции сливаются, листья (в том числе словари и списки)
     заменяются целиком; незнакомый или read-only путь — `SettingsPatchError`."""
-    data = settings.model_dump(mode="json")
+    return _patched(settings.model_dump(mode="json"), changes)
+
+
+def _patched(values: Mapping[str, Any], changes: Mapping[str, Any]) -> Settings:
+    # Проверяется только итог: так изменение ложится и на значения, которые текущая сборка не
+    # принимает (`stored_values`). `values` не меняются.
+    data = copy.deepcopy(dict(values))
     _merge(Settings, data, changes, "")
     return Settings.model_validate(data)
+
+
+def stored_values(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Сохранённые настройки поверх умолчаний (JSON) без проверки значений: секции сливаются,
+    листья заменяются целиком, незнакомые поля отбрасываются (как при `model_validate`), секция
+    не объектом — по умолчанию. Так настройку, которую текущая сборка не принимает, видно в
+    форме и её можно исправить прямой записью (раздел 4.4 спеки)."""
+    values = Settings().model_dump(mode="json")
+    _overlay(Settings, values, data)
+    return values
+
+
+def _overlay(model: type[BaseModel], values: dict[str, Any], data: Mapping[str, Any]) -> None:
+    for key, value in data.items():
+        field = model.model_fields.get(key)
+        if field is None:
+            continue
+        section = field.annotation
+        if isinstance(section, type) and issubclass(section, BaseModel):
+            if isinstance(value, Mapping):
+                _overlay(section, values[key], value)
+        else:
+            values[key] = value
 
 
 def _merge(
@@ -342,8 +372,8 @@ def _merge(
 class SettingsPatch:
     """Частичное изменение настроек (`apply_patch`) как `SettingsChange`. Переход в `live` —
     только с `confirm_live`: из dry_run начинаются реальные траты. `self_id` — пользователь
-    Telegram привязанного аккаунта: свой чат в `chats.*` — `ChatIsSelf`. `before` — настройки,
-    к которым изменение применено последним."""
+    Telegram привязанного аккаунта: свой чат в `chats.*` — `ChatIsSelf`. `before` — JSON
+    настроек, к которым изменение применено последним."""
 
     def __init__(
         self,
@@ -355,14 +385,20 @@ class SettingsPatch:
         self.changes = changes
         self.confirm_live = confirm_live
         self.self_id = self_id
-        self.before: Settings | None = None
+        self.before: dict[str, Any] | None = None
 
     def __call__(self, settings: Settings) -> Settings:
-        new = apply_patch(settings, self.changes)
-        if new.engine.mode == "live" and settings.engine.mode != "live" and not self.confirm_live:
+        return self.apply(settings.model_dump(mode="json"))
+
+    def apply(self, values: dict[str, Any]) -> Settings:
+        """Изменение поверх JSON настроек — и тех, что текущая сборка не принимает
+        (`stored_values`): проверяется только итог."""
+        new = _patched(values, self.changes)
+        was_live = values["engine"]["mode"] == "live"
+        if new.engine.mode == "live" and not was_live and not self.confirm_live:
             raise SettingsPatchError("live_requires_confirm", "engine.mode")
         check_self_chat(new, self.self_id)
-        self.before = settings
+        self.before = values
         return new
 
 

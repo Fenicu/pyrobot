@@ -470,7 +470,8 @@ export interface paths {
         };
         /**
          * Get Settings
-         * @description Настройки движка; без движка — из базы.
+         * @description Настройки движка; без движка — из базы, и те, что текущая сборка не принимает: неверное
+         *     значение видно в `values` и исправляется правкой.
          */
         get: operations["get_settings_api_v1_accounts__account_id__settings_get"];
         put?: never;

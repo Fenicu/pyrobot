@@ -1,11 +1,14 @@
 import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import func, insert, select, update
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import func, insert, select
 
+from app.api.app import create_api
 from app.config import AppConfig
 from app.db.accounts import AccountInfo, AccountRepo, AccountStatus
 from app.db.auth_repo import AuthRepo
@@ -22,6 +25,7 @@ from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
 from app.engine.settings import RetentionSection, Settings
 from app.main import Runtime
+from tests.api.conftest import A1, PASSWORD, login, make_container
 from tests.conftest import TEST_DB_URL
 from tests.engine.helpers import make_msg, now, until
 
@@ -357,6 +361,7 @@ async def test_crash_loop_during_start_is_acted_on(
 async def test_start_failure_sets_error_other_accounts_unaffected(
     clean_db: Database, hosts: Hosts
 ) -> None:
+    await AuthRepo(clean_db).ensure_admin("admin", PASSWORD)
     async with clean_db.sessions() as session, session.begin():
         session.add(SettingsRow(account_id=1, version=1, data={"engine": {"mode": "warp"}}))
     two = await _add(clean_db)
@@ -367,16 +372,19 @@ async def test_start_failure_sets_error_other_accounts_unaffected(
     assert host.get(1) is None and 1 not in host._engines and host.host_reason(1) is None
     assert await _holder(clean_db, 1) is None
     assert _alive(_running(host, two))
-    # Настройки поправлены напрямую, аккаунт включён — движок поднимается без перезапуска хоста.
-    async with clean_db.sessions() as session, session.begin():
-        await session.execute(
-            update(SettingsRow)
-            .where(SettingsRow.account_id == 1)
-            .values(data=Settings().model_dump(mode="json"))
-        )
-    await hosts.repo.update(1, enabled=True, capacity=20)
-    host.poke()
-    await until(lambda: host.get(1) is not None, 5.0)
+    # Без движка настройки читаются и правятся через API (раздел 4.4 спеки); аккаунт включён —
+    # движок поднимается без перезапуска хоста.
+    c = replace(make_container(clean_db), engines=host)
+    async with AsyncClient(transport=ASGITransport(create_api(c)), base_url="http://t") as client:
+        headers = {"X-CSRF-Token": await login(client)}
+        settings = (await client.get(f"{A1}/settings")).json()
+        assert settings["values"]["engine"]["mode"] == "warp"
+        fix = {"version": 1, "changes": {"engine": {"mode": "dry_run"}}}
+        r = await client.patch(f"{A1}/settings", headers=headers, json=fix)
+        assert (r.status_code, r.json()["version"]) == (200, 2)
+        r = await client.patch(A1, headers=headers, json={"enabled": True})
+        assert (r.status_code, r.json()["status"]) == (200, "enabled")
+        await until(lambda: host.get(1) is not None, 5.0)
     assert _alive(_running(host, 1)) and _alive(_running(host, two))
 
 

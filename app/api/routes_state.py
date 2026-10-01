@@ -32,12 +32,12 @@ async def get_state(scope: Annotated[AccountScope, Depends(account_scope)]) -> J
     f = scope.facade
     if f is not None:
         version, snapshot = f.state()
-        settings = f.settings.current
+        engine = f.settings.current.engine
     else:
         version, snapshot = await scope.reads.state()
-        settings, _ = await scope.reads.settings()
+        engine = await scope.reads.engine()
     now = datetime.now(UTC)
-    max_age = timedelta(minutes=settings.engine.state_stale_after_min)
+    max_age = timedelta(minutes=engine.state_stale_after_min)
     # Снимок уходит без пересборки моделью: порядок, даты и поля — как в конвейере.
     return JSONResponse(
         {

@@ -15,6 +15,7 @@ from app.engine.settings import (
     restart_required,
     self_chat_fields,
     settings_diff,
+    stored_values,
 )
 
 
@@ -144,6 +145,26 @@ def test_patch_rejects_bad_paths(changes: dict[str, object], code: str, path: st
 def test_patch_validates_values() -> None:
     with pytest.raises(ValidationError):
         apply_patch(Settings(), {"sleep": {"duration_h": 13}})
+
+
+def test_stored_values_overlay_defaults_without_validation() -> None:
+    # Настройку, которую сборка уже не принимает, видно как есть — поверх умолчаний.
+    defaults = Settings().model_dump(mode="json")
+    stored = {
+        "engine": {"mode": "warp", "paused": True},
+        "strategy": {"reserve_ahead_min": {"metro": 30}},
+        "battle": {"overrides": {"13": "🤖Hooli"}},
+        "metro": "не секция",
+        "telegram": {"expected_user_id": 42},
+    }
+    values = stored_values(stored)
+    assert values["engine"] == {**defaults["engine"], "mode": "warp", "paused": True}
+    assert values["strategy"]["reserve_ahead_min"] == {"gorbushka": 60, "metro": 30}
+    assert values["battle"]["overrides"] == {"13": "🤖Hooli"}
+    # Секция не объектом — по умолчанию, незнакомая отбрасывается, как при `model_validate`.
+    assert values["metro"] == defaults["metro"] and "telegram" not in values
+    assert values["food"] == defaults["food"]
+    assert stored["engine"] == {"mode": "warp", "paused": True}
 
 
 def test_read_only_marked_in_schema() -> None:

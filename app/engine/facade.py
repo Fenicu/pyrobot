@@ -259,11 +259,10 @@ class EngineFacade:
         await self.gateway.wake()
         if self._planner is not None:
             self._planner.wake()
-        if old.engine.mode != new.engine.mode:
-            await self._audit(
-                "engine_mode", f"mode {old.engine.mode} -> {new.engine.mode} by {by}"
-            )
-        changed = settings_diff(old.model_dump(mode="json"), new.model_dump(mode="json"))
+        old_mode = old["engine"]["mode"]
+        if old_mode != new.engine.mode:
+            await self._audit("engine_mode", f"mode {old_mode} -> {new.engine.mode} by {by}")
+        changed = settings_diff(old, new.model_dump(mode="json"))
         return SettingsUpdate(new, saved, changed)
 
     async def reconciled(self, *, by: str) -> None:

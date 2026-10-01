@@ -119,6 +119,64 @@ async def test_settings_read_and_direct_write(api: Api) -> None:
     assert codes == ["engine_mode"]
 
 
+async def _store_invalid_settings(api: Api) -> None:
+    # Сохранено прошлой сборкой: текущая `warp` уже не принимает — движок падает на старте.
+    data = Settings().model_dump(mode="json")
+    data["engine"].update(mode="warp", paused=True)
+    data["food"]["banana_reserve"] = 40
+    async with api.db.sessions() as s, s.begin():
+        s.add(SettingsRow(account_id=1, version=3, data=data))
+
+
+async def test_reads_survive_invalid_stored_settings(
+    api: Api, caplog: pytest.LogCaptureFixture
+) -> None:
+    await _store_invalid_settings(api)
+    status = await api.client.get(f"{A1}/engine/status")
+    assert status.status_code == 200, status.text
+    # Секция движка не читается — по умолчанию, как в списке аккаунтов.
+    assert (status.json()["mode"], status.json()["paused"]) == ("dry_run", False)
+    assert (await api.client.get(f"{A1}/state")).status_code == 200
+    with caplog.at_level("WARNING", logger="app.db.reads"):
+        r = await api.client.get(f"{A1}/settings")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Неверное значение видно в форме — его и исправляют.
+    assert body["version"] == 3 and body["values"]["engine"]["mode"] == "warp"
+    assert body["values"]["engine"]["paused"] is True
+    assert body["values"]["food"]["banana_reserve"] == 40
+    assert body["defaults"]["engine"]["mode"] == "dry_run" and body["schema"]
+    [record] = [r for r in caplog.records if r.name == "app.db.reads"]
+    assert "engine.mode" in record.getMessage() and record.exc_info is None
+    assert (await api.client.get(f"{A1}/settings/history")).status_code == 200
+
+
+async def test_direct_write_repairs_invalid_stored_settings(api: Api) -> None:
+    await _store_invalid_settings(api)
+    # Правка не трогает неверное поле — 422 по нему, как обычно.
+    other = {"version": 3, "changes": {"food": {"banana_reserve": 30}}}
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=other)
+    assert r.status_code == 422, r.text
+    assert [e["loc"] for e in r.json()["detail"]] == [["body", "changes", "engine", "mode"]]
+    assert await _rows(api, SettingsHistory) == 0
+    fix = {"version": 3, "changes": {"engine": {"mode": "dry_run"}}}
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=fix)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["version"] == 4 and body["changed"] == {"engine.mode": ["warp", "dry_run"]}
+    assert body["values"]["engine"]["paused"] is True
+    assert body["values"]["food"]["banana_reserve"] == 40
+    async with api.db.sessions() as s:
+        row = await s.scalar(select(SettingsRow).where(SettingsRow.account_id == 1))
+        history = (await s.scalars(select(SettingsHistory))).all()
+        codes = (await s.scalars(select(NotificationRow.code))).all()
+    assert row is not None and row.version == 4
+    assert Settings.model_validate(row.data).engine.mode == "dry_run"
+    assert [h.version for h in history] == [4] and codes == ["engine_mode"]
+    status = (await api.client.get(f"{A1}/engine/status")).json()
+    assert (status["mode"], status["paused"]) == ("dry_run", True)
+
+
 async def test_direct_write_version_conflict_409(api: Api) -> None:
     patch = {"version": 0, "changes": {"food": {"banana_reserve": 40}}}
     assert (

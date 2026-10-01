@@ -140,8 +140,7 @@ async def engine_status(
                 "host_reason": host_reason,
             }
         )
-    settings, _ = await scope.reads.settings()
-    engine = settings.engine
+    engine = await scope.reads.engine()
     return EngineStatusOut(
         running=False,
         status=account.status,

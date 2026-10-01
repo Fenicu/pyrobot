@@ -110,9 +110,9 @@ _PURGED: tuple[Any, ...] = (
 )
 
 
-def _engine(data: dict[str, Any] | None) -> EngineSection:
-    """Секция движка из настроек в базе. Не читается — значения по умолчанию: список аккаунтов
-    отдаётся и с аккаунтом, упавшим на старте из-за настроек."""
+def engine_section(data: dict[str, Any] | None) -> EngineSection:
+    """Секция движка из настроек в базе. Не читается — значения по умолчанию: список аккаунтов,
+    статус и состояние без движка отдаются и у аккаунта, упавшего на старте из-за настроек."""
     try:
         return EngineSection.model_validate((data or {}).get("engine", {}))
     except ValidationError:
@@ -184,7 +184,7 @@ class AccountRepo:
         async with self._db.sessions() as session:
             rows = (await session.execute(stmt)).all()
         return [
-            AccountOverview(_info(row), _engine(data), last, int(warn), int(error))
+            AccountOverview(_info(row), engine_section(data), last, int(warn), int(error))
             for row, data, last, warn, error in rows
         ]
 

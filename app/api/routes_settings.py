@@ -75,15 +75,16 @@ def _unprocessable(errors: list[dict[str, Any]]) -> HTTPException:
 
 @router.get("/settings", response_model=SettingsOut, responses=AUTH)
 async def get_settings(scope: Annotated[AccountScope, Depends(account_scope)]) -> SettingsOut:
-    """Настройки движка; без движка — из базы."""
+    """Настройки движка; без движка — из базы, и те, что текущая сборка не принимает: неверное
+    значение видно в `values` и исправляется правкой."""
     f = scope.facade
     if f is not None:
-        current, version = f.settings.current, f.settings.version
+        values, version = f.settings.current.model_dump(mode="json"), f.settings.version
     else:
-        current, version = await scope.reads.settings()
+        values, version = await scope.reads.settings()
     return SettingsOut(
         version=version,
-        values=current.model_dump(mode="json"),
+        values=values,
         defaults=Settings().model_dump(mode="json"),
         json_schema=Settings.model_json_schema(),
     )
@@ -141,14 +142,16 @@ async def _direct(
         new, saved = await direct_update(
             c.db, account_id, patch, changed_by=by, expected_version=body.version
         )
+        # «До» — JSON и тех сохранённых настроек, что сборка не принимает (поверх умолчаний).
         old = patch.before
         assert old is not None
-        if old.engine.mode != new.engine.mode:
+        old_mode = old["engine"]["mode"]
+        if old_mode != new.engine.mode:
             # Как у правки через движок: смена режима остаётся в уведомлениях.
             await DbNotifier(c.db, account_id).notify(
-                "info", "engine_mode", f"mode {old.engine.mode} -> {new.engine.mode} by {by}"
+                "info", "engine_mode", f"mode {old_mode} -> {new.engine.mode} by {by}"
             )
-        changed = settings_diff(old.model_dump(mode="json"), new.model_dump(mode="json"))
+        changed = settings_diff(old, new.model_dump(mode="json"))
         return SettingsUpdate(new, saved, changed)
 
     async def version() -> int:

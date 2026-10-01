@@ -3,6 +3,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +12,14 @@ from app.db.accounts import AccountDeleting
 from app.db.base import Database
 from app.db.models import Account, SettingsHistory, SettingsRow
 from app.engine.fence import Fence
-from app.engine.settings import Settings, SettingsChange, SettingsConflict, check_self_chat
+from app.engine.settings import (
+    Settings,
+    SettingsChange,
+    SettingsConflict,
+    SettingsPatch,
+    check_self_chat,
+    stored_values,
+)
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +69,9 @@ async def direct_update(
     настройки только после захвата — запись до него он видит. Статус и привязка к Telegram
     читаются под той же блокировкой: пометка удаления ждёт коммита записи. Аккаунт удаляется —
     `AccountDeleting`, аренда занята — `LeaseHeld`, версия не та — `SettingsConflict`, поле
-    `chats.*` равно пользователю Telegram аккаунта — `ChatIsSelf`, аккаунта нет — KeyError."""
+    `chats.*` равно пользователю Telegram аккаунта — `ChatIsSelf`, аккаунта нет — KeyError.
+    Сохранённые настройки не проходят проверку текущей сборки — `SettingsPatch` применяется к
+    ним поверх умолчаний (`stored_values`), иное изменение — ValidationError."""
     async with db.sessions() as session, session.begin():
         lease = (
             await session.execute(
@@ -87,11 +97,20 @@ async def direct_update(
         row = await session.scalar(
             select(SettingsRow).where(SettingsRow.account_id == account_id).with_for_update()
         )
-        current = Settings.model_validate(row.data) if row is not None else Settings()
         previous = row.version if row is not None else 0
         if expected_version is not None and expected_version != previous:
             raise SettingsConflict(f"version {previous} != {expected_version}")
-        new = Settings.model_validate(change(current).model_dump())
+        data = row.data if row is not None else {}
+        try:
+            current = Settings.model_validate(data)
+        except ValidationError:
+            # Так исправляется настройка, из-за которой аккаунт падает на старте: правка ложится
+            # на сохранённое поверх умолчаний, проверяется только итог.
+            if not isinstance(change, SettingsPatch):
+                raise
+            new = change.apply(stored_values(data))
+        else:
+            new = Settings.model_validate(change(current).model_dump())
         check_self_chat(new, tg_user_id)
         version = previous + 1
         await _write(

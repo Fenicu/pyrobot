@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -7,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import Date, Select, and_, cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import distinct_on
 
+from app.db.accounts import engine_section
 from app.db.base import Database
 from app.db.models import (
     ActionRow,
@@ -24,7 +26,9 @@ from app.db.models import (
 )
 from app.engine.daily import LedgerEntry
 from app.engine.gametime import day_start, tasks_day
-from app.engine.settings import Settings, settings_diff
+from app.engine.settings import EngineSection, Settings, settings_diff, stored_values
+
+log = logging.getLogger(__name__)
 
 # Порядок типов записей на одном моменте: сообщение, потом действие, потом решение.
 FEED_TYPES = ("message", "action", "decision")
@@ -399,13 +403,33 @@ class DbReads:
             )
             return len(done.all())
 
-    async def settings(self) -> tuple[Settings, int]:
-        """Настройки аккаунта в базе и их версия; не сохранялись — по умолчанию, версия 0."""
+    async def _settings_row(self) -> SettingsRow | None:
         async with self._db.sessions() as session:
-            row = await session.scalar(
+            return await session.scalar(
                 select(SettingsRow).where(SettingsRow.account_id == self._account_id)
             )
-        return (Settings.model_validate(row.data), row.version) if row else (Settings(), 0)
+
+    async def settings(self) -> tuple[dict[str, Any], int]:
+        """Настройки аккаунта в базе (JSON) и их версия; не сохранялись — по умолчанию, версия 0.
+        Не проходят проверку текущей сборки — сохранённые поверх умолчаний как есть
+        (`stored_values`) и предупреждение в лог: неверное значение видно в форме и исправляется
+        прямой записью (раздел 4.4 спеки)."""
+        row = await self._settings_row()
+        if row is None:
+            return Settings().model_dump(mode="json"), 0
+        try:
+            return Settings.model_validate(row.data).model_dump(mode="json"), row.version
+        except ValidationError as exc:
+            paths = ", ".join(".".join(map(str, e["loc"])) for e in exc.errors())
+            log.warning(
+                "настройки аккаунта %d в базе не проходят проверку: %s", row.account_id, paths
+            )
+            return stored_values(row.data), row.version
+
+    async def engine(self) -> EngineSection:
+        """Секция движка из настроек в базе; не читается — по умолчанию (`engine_section`)."""
+        row = await self._settings_row()
+        return engine_section(row.data if row is not None else None)
 
     async def state(self) -> tuple[int, dict[str, Any]]:
         """Последний сохранённый снимок состояния и его версия; до первого — пустой, версия 0."""
@@ -442,11 +466,12 @@ class DbReads:
 
 def _settings_json(data: dict[str, Any]) -> dict[str, Any]:
     # Версия из прошлой сборки — в текущей форме: секция, появившаяся позже, у неё со значениями
-    # по умолчанию, а не отсутствует (иначе diff показал бы её изменённой).
+    # по умолчанию, а не отсутствует (иначе diff показал бы её изменённой); значение, которое
+    # сборка уже не принимает, — как есть.
     try:
         return Settings.model_validate(data).model_dump(mode="json")
     except ValidationError:
-        return data
+        return stored_values(data)
 
 
 def _feed_where(
