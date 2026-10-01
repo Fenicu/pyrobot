@@ -58,6 +58,9 @@ DEEDS = tuple(name for name in SCENARIOS if name.startswith("deed:"))
 SHARED_REFUSALS = frozenset(
     {"battle_soon", "battle_running", "factory_running", "tired", "levelup_required"}
 )
+# Отказ из-за уровня или профессии за минуты не изменится: пауза сценария до следующих суток. Пауза
+# в памяти, перезапуск её сбрасывает — одна лишняя попытка допустима.
+LONG_REFUSALS = frozenset({"min_level", "not_harvester"})
 
 
 class FixedParams(ValueError):
@@ -572,6 +575,8 @@ class PlannerLoop:
                 if LOTTERY_OPEN <= to_msk(finished).time() < LOTTERY_LATE_OPEN:
                     hold = LOTTERY_LATE_OPEN_HOLD
             self._cooldowns[key] = finished + hold
+        elif result.status == "refused" and result.reason in LONG_REFUSALS:
+            self._cooldowns[key] = day_start(tasks_day(started) + timedelta(days=1))
         else:
             shared = is_deed and result.reason in SHARED_REFUSALS
             for target in DEEDS if shared else (key,):

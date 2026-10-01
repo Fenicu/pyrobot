@@ -324,6 +324,33 @@ async def test_refusal_cooldowns(world: World) -> None:
     assert rig.notes.codes == []
 
 
+@pytest.mark.parametrize(
+    ("act", "reason"),
+    [
+        (Act("gorbushka", {"buy": False}, "gorbushka_fight"), "min_level"),
+        (Act("deed:harvest", {}, "best"), "not_harvester"),
+    ],
+)
+async def test_permanent_refusal_holds_scenario_until_next_game_day(
+    world: World, act: Act, reason: str
+) -> None:
+    rig = Rig(world)
+    at = msk_at(28, 20, 5)
+    await rig.loop._after(act, ScenarioResult("refused", reason), at, at)
+    assert rig.loop._cooldowns == {act.scenario: msk_at(29, 0)}
+    other = Rig(world)
+    await other.loop._after(act, ScenarioResult("refused", "no_money"), at, at)
+    assert other.loop._cooldowns == {act.scenario: at + RETRY_AFTER}
+
+
+async def test_permanent_refusal_does_not_spread_to_other_deeds(world: World) -> None:
+    rig = Rig(world)
+    at = msk_at(28, 20, 5)
+    harvest = Act("deed:harvest", {}, "best")
+    await rig.loop._after(harvest, ScenarioResult("refused", "not_harvester"), at, at)
+    assert set(rig.loop._cooldowns) == {"deed:harvest"}
+
+
 async def test_daily_refresh_marks_last_refresh_even_on_failure(world: World) -> None:
     rig = Rig(world)
     at = moment()
