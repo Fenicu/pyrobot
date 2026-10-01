@@ -980,6 +980,10 @@ def _tangerine(p: _Patch, e: TangerineRefused) -> None:
 def _metro_entrance(p: _Patch, e: MetroEntrance) -> None:
     # Экран входа вместо отказа — кулдаун прошёл.
     p.snap("metro_ready_at", p.at)
+    # Экран входа видно только снаружи метро: отметка забега больше не нужна.
+    inside: Obs[MetroRunRef | None] | None = p.get("metro_message")
+    if inside is not None and inside.value is not None:
+        p.snap("metro_message", None)
     if e.motivation < e.cost:
         # Планировщик считал, что 🔥 на вход хватит: без снимка он заходил бы снова.
         p.snap("motivation", e.motivation)

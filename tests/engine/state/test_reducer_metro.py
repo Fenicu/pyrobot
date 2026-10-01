@@ -128,3 +128,31 @@ def test_run_keeps_battle_known_at_its_start() -> None:
         "message_id": 3700000,
         "battle_at": state["battle_at"],
     }
+
+
+def _entrance_later(reducer: StateReducer, state: dict[str, Any], minutes: float) -> dict:
+    entrance = replace(RUN[0], msg_id=3700000, date=at(minutes), created_at=at(minutes))
+    return reducer.apply(state, entrance, PARSER.parse(entrance))
+
+
+def test_entrance_means_outside_metro_and_clears_hanging_run() -> None:
+    # Итог выхода не распознан — отметка забега повисла; экран входа игра показывает только
+    # снаружи метро.
+    reducer = StateReducer()
+    state = _version(reducer, _before_metro(reducer), 5, 4)
+    unknown = replace(RUN[5], text="🔋88%\nчто-то новое", date=at(5), created_at=at(2))
+    state = reducer.apply(state, unknown, PARSER.parse(unknown))
+    assert state["metro_message"]["src"] == "doubtful"
+    state = _entrance_later(reducer, state, 50)
+    assert value(state, "metro_message") is None
+    assert state["metro_message"]["at"] == "2026-09-26T09:50:00Z"
+    assert value(state, "metro_ready_at") == "2026-09-26T09:50:00Z"
+
+
+def test_entrance_without_run_leaves_run_mark_absent() -> None:
+    reducer = StateReducer()
+    before = _before_metro(reducer)
+    assert before["metro_message"] is None
+    state = _entrance_later(reducer, before, 50)
+    assert state["metro_message"] is None
+    assert value(state, "metro_ready_at") == "2026-09-26T09:50:00Z"
