@@ -3,7 +3,7 @@ import time
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, select, update
 
 from app.db.actions import DbActionStore
 from app.db.base import Base, Database
@@ -18,6 +18,7 @@ from app.engine.fence import Fence, LeaseLost
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
 from app.engine.planner.types import Wait
 from app.engine.settings import Settings
+from tests.db.helpers import backend_pid, wait_blocked
 from tests.engine.helpers import make_msg
 
 pytestmark = pytest.mark.db
@@ -125,16 +126,11 @@ async def test_acquire_waits_for_fenced_write(clean_db: Database) -> None:
         await fence.guard(session)
         session.add(NotificationRow(account_id=1, level="info", code="fenced", text="A"))
         acquire = asyncio.create_task(_acquire(clean_db))
-        waited = False
-        for _ in range(100):  # до 2 с: захват дошёл до строки аккаунта и ждёт её блокировку
-            waiting = await session.scalar(text("SELECT count(*) FROM pg_locks WHERE NOT granted"))
-            waited = bool(waiting) and not acquire.done()
-            if waited:
-                break
-            await asyncio.sleep(0.02)
+        # Захват дошёл до строки аккаунта и ждёт блокировку ограждённой транзакции.
+        await wait_blocked(clean_db, await backend_pid(session))
+        assert not acquire.done()
     # Захват ждал коммита ограждённой транзакции и прошёл после него.
     assert await asyncio.wait_for(acquire, 5) == 8
-    assert waited
     assert await _written(clean_db) == 1
     with pytest.raises(LeaseLost):
         await _write(clean_db, "journal", fence)
