@@ -63,7 +63,9 @@ _PACKS = re.compile(r"\A❤️(?P<n>\d+)\Z")
 _LOOT = re.compile(r"\A\+?Нашёл \+(?P<n>\d+)(?P<emo>[^\w\s.]+)\. [^\n]+\Z")
 _ITEM_LINE = re.compile(r"^(?P<emo>[^\w\s:]+)[А-ЯЁа-яё][^\n:]*: (?P<n>" + NUM + r")$", re.M)
 _FIGHT = re.compile(
-    r"\AТы сразился с (?P<enemy>[^\n]+)\n\n(?P<verdict>[^\n]+)\n\nПолучено\n", re.S
+    r"\AТы сразился с (?P<enemy>[^\n]+)\n\n(?P<verdict>[^\n]+)\n\n"
+    r"(?:Получено\n|(?=🔋Осталось выносливости))",
+    re.S,
 )
 _WON = "удалось победить"
 _LEFT_STAMINA = re.compile(r"^🔋Осталось выносливости: (?P<st>\d+)%$", re.M)

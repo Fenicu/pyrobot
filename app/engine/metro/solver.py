@@ -250,8 +250,7 @@ class MetroSolver:
                 return Click("maze_first_aid_accept", "heal")
             return Click("maze_first_aid_decline", "no_heal")
         if isinstance(screen, MetroFight) and not screen.won:
-            # Исход поражения живьём не видели: «Продолжить» на нём не нажимаем.
-            return Halt("fight_lost")
+            return Click("maze_continue", "fight_lost")
         if screen is not None and (reason := _CONTINUE.get(type(screen))) is not None:
             return Click("maze_continue", reason)
         if isinstance(screen, MetroNpc):

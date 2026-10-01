@@ -198,6 +198,24 @@ def test_npc_and_fight() -> None:
     ]
 
 
+LOST_FIGHT = (
+    "Ты сразился с 👨Продаваном 👨Георгий (11)\n\n"
+    "👎Ты сражался до последнего, но увы, сегодня не твой день - ты проиграл.\n\n"
+    "🔋Осталось выносливости: 0%"
+)
+
+
+def test_lost_fight_without_loot_block() -> None:
+    msg = replace(
+        frame(47),
+        text=LOST_FIGHT,
+        inline=(Button("Продолжить", 0, 0, data="maze_continue"),),
+    )
+    assert recognize_metro(msg) == [
+        MetroFight(enemy="👨Продаваном 👨Георгий (11)", won=False, loot={}, stamina=0)
+    ]
+
+
 def test_strong_npc_by_buttons() -> None:
     buttons = (
         Button("⚔Сразиться", 0, 0, data="maze_npc_high_accept"),

@@ -220,6 +220,27 @@ async def test_unknown_screen_stops_run(world: World) -> None:
 
 
 @certifies("metro")
+async def test_lost_fight_is_continued_then_unknown_screen_halts(world: World) -> None:
+    """Поражение в бою: игра молчит, пока не нажато «Продолжить»; экран после него неизвестен."""
+    expected = replay(world, 7, 47)
+    lost = replace(
+        game_msg("metro", RUN, 48),
+        text=(
+            "Ты сразился с 👨Продаваном 👨Георгий (11)\n\n"
+            "👎Ты сражался до последнего, но увы, сегодня не твой день - ты проиграл.\n\n"
+            "🔋Осталось выносливости: 0%"
+        ),
+    )
+    world.game.on_click("maze_npc_low_accept", edit=lost)
+    world.game.on_click("maze_continue", edit=OTHER)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("stopped", "unexpected_screen")
+    assert world.game.payloads() == [*expected, "maze_npc_low_accept", "maze_continue"]
+    assert notes.sent == [("warn", "metro_halted")]
+
+
+@certifies("metro")
 async def test_move_without_new_window_times_out(world: World) -> None:
     enter_with_real_frames(world.game)
     world.game.on_click("maze_start", edit=("metro", RUN, 5))

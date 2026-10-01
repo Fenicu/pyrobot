@@ -316,11 +316,13 @@ def test_npc_policy_without_packs() -> None:
     assert off.next(MetroNpc(strength="low"), T0) == Click("maze_npc_low_decline", "npc_off")
 
 
-def test_lost_fight_halts_without_continue() -> None:
+def test_lost_fight_is_continued() -> None:
     s = solver()
     s.next(at((1, 1)), T0)
     s.next(MetroNpc(strength="low"), T0)
-    assert s.next(MetroFight(enemy="👨", won=False, stamina=0), T0) == Halt("fight_lost")
+    assert s.next(MetroFight(enemy="👨", won=False, stamina=0), T0) == Click(
+        "maze_continue", "fight_lost"
+    )
 
 
 def _near_kick(minutes_to_battle: float) -> tuple[MetroSolver, datetime]:
