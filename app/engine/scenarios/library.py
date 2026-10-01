@@ -19,6 +19,7 @@ from app.engine.parsing.items import (
     PrizeboxOpened,
 )
 from app.engine.parsing.levelup import LevelUpStep
+from app.engine.parsing.refusals import Refused
 from app.engine.parsing.sleep import FellAsleep, SleepMenu, SleepPlace
 from app.engine.reconcile import FOOD, GIFTS, GORBUSHKA, INVENTORY, PROFILE
 from app.engine.scenarios.context import (
@@ -243,7 +244,9 @@ async def gorbushka(ctx: ScenarioContext, state: CharacterState, params: Params)
             await ctx.safe_point()
             require(
                 await ctx.click(
-                    message.msg_id, "gorbushka_new", expect_button("gorbushka_new_accept")
+                    message.msg_id,
+                    "gorbushka_new",
+                    expect_button("gorbushka_new_accept", refuse=(Refused,)),
                 )
             )
             await ctx.safe_point()

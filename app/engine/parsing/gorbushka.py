@@ -6,6 +6,7 @@ from typing import ClassVar
 
 from app.engine.events import Event
 from app.engine.parsing.common import DURATION, NUM, Rewards, dur, num, parse_rewards
+from app.engine.parsing.refusals import Refused
 from app.engine.types import IncomingMessage
 
 _HEAD = "🏛Горбушка, сэр"
@@ -25,6 +26,7 @@ _NEED_TICKET = re.compile(
 # Правило на каждом экране Горбушки; у экрана билета это единственный источник числа продаванов.
 _DAILY_LIMIT = re.compile(r"определённым количеством продаванов: (?P<n>\d+)")
 _SHORT = re.compile(r"❌Не хватает \$(?P<need>" + NUM + r")[\xa0 ]?💵 для входа")
+_MIN_LEVEL = re.compile(r"❌Заходить на Горбушку можно только с (?P<level>\d+) уровня")
 _NEXT = re.compile(r"Ты встретишь следующего 👨Продавана через (?P<t>" + DURATION + r")")
 _MEETING = re.compile(
     r"Встретился с продаваном\..*?🔋Выносливость: (?P<st>\d+)%.*?Требования: (?P<mot>\d+)🔥",
@@ -72,6 +74,8 @@ class GorbushkaNotice(Event):
 
 
 def _screen(text: str) -> list[Event]:
+    if m := _MIN_LEVEL.search(text):
+        return [Refused(reason="min_level", need=int(m["level"]))]
     if m := _ALL_DONE.search(text):
         return [GorbushkaScreen(state="done", comeback_in_s=dur(m["t"]))]
     if m := _NEED_TICKET.search(text):

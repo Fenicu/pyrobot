@@ -1,11 +1,15 @@
+from dataclasses import replace
+
 import pytest
 
 from app.engine.notify import Level
 from app.engine.scenarios.library import fastfood, gorbushka, levelup, run_scenario, sleep
 from app.engine.state.model import CharacterState, Obs, Skills
 from tests.engine.fakegame import Ref, World
+from tests.engine.parsing.test_gorbushka import MIN_LEVEL_EDIT
 from tests.engine.scenarios.certify import certifies
 from tests.engine.scenarios.conftest import context
+from tests.fixtures import game_msg
 
 
 class Notes:
@@ -176,6 +180,16 @@ async def test_gorbushka_skills_changed_is_refusal(world: World) -> None:
     world.game.on_click("gorbushka_fight", edit=("gorbushka", 3524271))
     result = await run_scenario(gorbushka, context(world), CharacterState(), {"buy": False})
     assert (result.status, result.reason) == ("refused", "skills_changed")
+
+
+@certifies("gorbushka")
+async def test_gorbushka_min_level_is_refusal(world: World) -> None:
+    world.game.on_text("/gorbushka", ("gorbushka", 3593569))
+    edit = replace(game_msg("gorbushka", 3593569), text=MIN_LEVEL_EDIT, inline=())
+    world.game.on_click("gorbushka_new", edit=edit)
+    result = await run_scenario(gorbushka, context(world), CharacterState(), {"buy": True})
+    assert (result.status, result.reason) == ("refused", "min_level")
+    assert world.game.payloads() == ["/gorbushka", "gorbushka_new"]
 
 
 @certifies("gorbushka")

@@ -77,12 +77,15 @@ def expect_events(
     return predicate
 
 
-def expect_button(data: str) -> Predicate:
-    """Подтверждает сообщение (или правку) с inline-кнопкой `data`."""
+def expect_button(data: str, *, refuse: tuple[type[Event], ...] = ()) -> Predicate:
+    """Подтверждает сообщение (или правку) с кнопкой `data`, отклоняет — событием из `refuse`."""
 
     def predicate(delivery: Delivery) -> Match | None:
         if delivery.msg.button(data) is not None:
             return Match(Verdict.CONFIRMED, data)
+        for event in delivery.events:
+            if isinstance(event, refuse):
+                return Match(Verdict.REFUSED, str(getattr(event, "reason", None) or event.kind))
         return None
 
     return predicate
