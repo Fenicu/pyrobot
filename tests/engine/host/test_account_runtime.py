@@ -11,7 +11,7 @@ from app.config import AppConfig
 from app.db.accounts import AccountRepo
 from app.db.base import Database
 from app.db.crypto import SecretBox
-from app.db.models import Account, MessageRow, SettingsRow, TgPeer, TgSession
+from app.db.models import Account, MessageRow, SettingsRow, TgChatMark, TgPeer, TgSession
 from app.db.notifications import DbNotifier
 from app.engine.facade import LockLostError
 from app.engine.fence import Fence, LeaseLost
@@ -22,11 +22,13 @@ from app.engine.tg_auth import TgState
 from app.engine.transport.kurigram import KurigramTransport
 from app.logctx import current_account
 from tests.conftest import TEST_DB_URL
-from tests.engine.helpers import GAME, make_msg
+from tests.engine.helpers import GAME, make_msg, until
 from tests.engine.kurigram_fakes import EXPECTED, FakeClient
 
 pytestmark = pytest.mark.db
 ACCOUNT_TASKS = {"pipeline", "gateway", "reconcile", "reactions", "team-forward", "planner"}
+# Задачи движка на kurigram: ещё проба Telegram и сверка истории.
+KURIGRAM_TASKS = ACCOUNT_TASKS | {"tg-probe", "history"}
 BOX = SecretBox(secrets.token_bytes(32))
 OTHER = -1002000000001
 
@@ -275,6 +277,37 @@ async def test_undecryptable_session_dropped_and_reported(
     runtime = await kurigram.start(1)
     assert runtime.facade is not None and runtime.tg is not None
     assert runtime.tg.status().state is TgState.UNAUTHORIZED
-    assert set(runtime.supervisor._tasks) == ACCOUNT_TASKS | {"tg-probe"}
+    assert set(runtime.supervisor._tasks) == KURIGRAM_TASKS
     assert await _tg_rows(clean_db) == (None, set())
     assert await _codes(clean_db) == [("error", "tg_session_unreadable")]
+
+
+async def test_history_pass_runs_in_background_and_prunes_marks(
+    kurigram: Engines, clean_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Review Focus 5: сверка истории — задача аккаунта; старт движка прохода не ждёт, даже если
+    # Telegram не отвечает на чтение истории.
+    def hanging(transport: KurigramTransport) -> FakeClient:
+        client = FakeClient(transport._storage)
+        client.hang |= {"GetHistory", "Search"}
+        return client
+
+    monkeypatch.setattr(KurigramTransport, "_make_client", hanging)
+    async with clean_db.sessions() as session, session.begin():
+        sealed = BOX.seal(b"k" * 256, "auth_key", 1)
+        session.add(TgSession(account_id=1, dc_id=2, date=0, auth_key=sealed, user_id=EXPECTED))
+        # Чтение, которого больше нет в настройках, и чтение чата игры.
+        session.add(TgChatMark(account_id=1, chat_id=OTHER, from_id=0, msg_id=5))
+        session.add(TgChatMark(account_id=1, chat_id=GAME, from_id=0, msg_id=7))
+    await kurigram.deps.accounts.bind_telegram(1, EXPECTED)
+    runtime = await kurigram.start(1)
+    assert runtime.tg is not None and runtime.tg.status().state is TgState.ONLINE
+    assert set(runtime.supervisor._tasks) == KURIGRAM_TASKS
+    client = runtime.transport._client  # type: ignore[union-attr]
+    assert isinstance(client, FakeClient)
+    # Проход начался сразу после выхода в онлайн и висит на чтении.
+    await until(lambda: "GetHistory" in [name for name, _ in client.invoked])
+    assert runtime.facade is not None and runtime.facade.status().workers_ok
+    async with clean_db.sessions() as session:
+        marks = await session.execute(select(TgChatMark.chat_id, TgChatMark.msg_id))
+        assert {(chat_id, msg_id) for chat_id, msg_id in marks} == {(GAME, 7)}

@@ -291,3 +291,66 @@ async def test_0012_session_tables_hang_on_accounts_without_cascade() -> None:
     await asyncio.to_thread(command.downgrade, _cfg(), "0011")
     assert not {"tg_sessions", "tg_peers", "tg_chat_marks", "server_meta"} & await _tables()
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def _message(chat_id: int, msg_id: int, from_id: int | None, account_id: int = 1) -> None:
+    await _exec(
+        "INSERT INTO messages (account_id, chat_id, msg_id, revision, content_hash, kind, date,"
+        " received_at, recovered, outgoing, from_id, text, events) VALUES (:a, :c, :m, 0, 'h',"
+        " 'new', :at, :at, false, false, :f, 'x', '[]')",
+        a=account_id,
+        c=chat_id,
+        m=msg_id,
+        f=from_id,
+        at=_at(msg_id),
+    )
+
+
+async def _marks() -> set[tuple[object, ...]]:
+    return set(await _exec("SELECT account_id, chat_id, from_id, msg_id FROM tg_chat_marks"))
+
+
+async def test_0013_seeds_marks_from_journal() -> None:
+    game, smoothie, swinfo, swinfo_user = 227859379, -1001356300612, -1001109615116, 376592453
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0012")
+    # Чат приглашений к биржевикам — общий чат swinfo; пользователь swinfo — из настроек.
+    data = '{"chats": {"swinfo_user_id": 555, "bulls_invite_chat_id": -1001109615116}}'
+    await _exec(
+        "INSERT INTO settings (account_id, version, data) VALUES (1, 3, CAST(:d AS jsonb))",
+        d=data,
+    )
+    await _exec("INSERT INTO accounts (id, name) VALUES (2, 'Второй')")
+    for chat_id, msg_id, from_id in (
+        (game, 10, game),
+        (game, 12, None),
+        (swinfo, 50, 555),
+        # Сообщение прежнего пользователя swinfo (значение по умолчанию) — другой отправитель.
+        (swinfo, 70, swinfo_user),
+        # Приглашение в общем чате: отметку чтения всего чата миграция не ставит.
+        (swinfo, 80, 9),
+    ):
+        await _message(chat_id, msg_id, from_id)
+    await _message(game, 99, game, account_id=2)
+    await asyncio.to_thread(command.upgrade, _cfg(), "0013")
+    # Канала смузи в журнале нет — нет и отметки: её поставит первый проход.
+    assert await _marks() == {(1, game, 0, 12), (1, swinfo, 555, 50)}
+    assert smoothie not in {chat for _, chat, _, _ in await _marks()}
+    await asyncio.to_thread(command.downgrade, _cfg(), "0012")
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0013_without_settings_uses_chat_defaults() -> None:
+    game, smoothie, swinfo, swinfo_user = 227859379, -1001356300612, -1001109615116, 376592453
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0012")
+    for chat_id, msg_id, from_id in (
+        (game, 10, game),
+        (smoothie, 7, None),
+        (swinfo, 50, swinfo_user),
+        (swinfo, 70, 9),
+    ):
+        await _message(chat_id, msg_id, from_id)
+    await asyncio.to_thread(command.upgrade, _cfg(), "0013")
+    assert await _marks() == {(1, game, 0, 10), (1, smoothie, 0, 7), (1, swinfo, swinfo_user, 50)}
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")

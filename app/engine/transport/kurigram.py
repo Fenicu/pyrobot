@@ -34,10 +34,13 @@ if TYPE_CHECKING:
     from app.db.crypto import SecretBox
     from app.db.tg_storage import PgSessionStorage
     from app.engine.fence import Fence
+    from app.engine.transport.history import Reader
 
 log = logging.getLogger(__name__)
 Sink = Callable[[IncomingMessage], Awaitable[None]]
 DIALOGS_WARMUP = 200
+# Сообщений истории за один запрос: больше Telegram не отдаёт.
+HISTORY_PAGE = 100
 # Устройство сессии в списке сессий пользователя в Telegram — у клиента движка и у временного
 # клиента выхода одинаковое.
 _DEVICE: dict[str, Any] = {
@@ -189,6 +192,44 @@ async def _force_close(client: Any) -> None:
         await client.storage.close()
 
 
+def _too_long(updates: Any) -> bool:
+    """Telegram сообщает о разрыве обновлений: `UpdatesTooLong` или `UpdateChannelTooLong` — в
+    пачке обновлений или одиночным `UpdateShort`."""
+    from pyrogram import raw
+
+    if isinstance(updates, raw.types.UpdatesTooLong):
+        return True
+    inner = [*getattr(updates, "updates", ()), getattr(updates, "update", None)]
+    return any(isinstance(update, raw.types.UpdateChannelTooLong) for update in inner)
+
+
+@functools.cache
+def _client_class() -> type[Any]:
+    """Клиент kurigram, который сообщает транспорту (`history_needed`) о разрывах обновлений.
+    `UpdatesTooLong`, `UpdateChannelTooLong` и ошибку внутри `handle_updates` (например,
+    `GetDifference` для `UpdateShortMessage` — так приходят личные сообщения игрового бота)
+    kurigram только пишет в лог, а своя догонка выключена: пропущенное вернёт сверка истории."""
+    from pyrogram import Client
+
+    class GapAwareClient(Client):
+        history_needed: Callable[[str], None] | None = None
+
+        def _need_history(self, reason: str) -> None:
+            if self.history_needed is not None:
+                self.history_needed(reason)
+
+        async def handle_updates(self, updates: Any) -> None:
+            if _too_long(updates):
+                self._need_history("gap")
+            try:
+                await super().handle_updates(updates)  # type: ignore[no-untyped-call]
+            except Exception:
+                self._need_history("handle_updates")
+                raise
+
+    return GapAwareClient
+
+
 def _fenced[**P, T](
     method: Callable[Concatenate[KurigramTransport, P], Awaitable[T]],
 ) -> Callable[Concatenate[KurigramTransport, P], Coroutine[Any, Any, T]]:
@@ -204,8 +245,10 @@ def _fenced[**P, T](
 
 class KurigramTransport:
     """Клиент kurigram аккаунта на сессии из базы (`PgSessionStorage` — одно хранилище на все
-    клиенты транспорта). Своя догонка kurigram выключена (`skip_updates=True`). Все вызовы
-    Telegram идут через ограду аренды `fence`."""
+    клиенты транспорта). Своя догонка kurigram выключена (`skip_updates=True`): пропущенное
+    возвращает сверка истории — транспорт её источник (`latest`, `read`, `tail`) и просит
+    проход (`on_history_needed`) после выхода в онлайн, при переподключении главной сессии и
+    разрыве обновлений. Все вызовы Telegram идут через ограду аренды `fence`."""
 
     def __init__(
         self,
@@ -228,16 +271,23 @@ class KurigramTransport:
         # Аварийная остановка началась: обновления в конвейер больше не передаются.
         self._aborted = False
         self.on_auth_lost: Callable[[], Awaitable[None]] | None = None
+        # Проход сверки истории — с поводом; обработчик только ставит его в очередь.
+        self.on_history_needed: Callable[[str], None] | None = None
+        # Клиент вошёл, прошёл проверку привязки и вышел в онлайн (`go_online`).
+        self._online = False
         self._me: Any = None
         # Peer чатов, разрешённые заранее (`resolve`), — для текущего клиента.
         self._peers: dict[int, Any] = {}
         self._client = self._make_client()
 
-    def _make_client(self) -> Any:
-        from pyrogram import Client
-        from pyrogram.handlers import EditedMessageHandler, MessageHandler
+    @property
+    def online(self) -> bool:
+        return self._online
 
-        client = Client(
+    def _make_client(self) -> Any:
+        from pyrogram.handlers import ConnectHandler, EditedMessageHandler, MessageHandler
+
+        client = _client_class()(
             f"account-{self._account_id}",
             api_id=self._api_id,
             api_hash=self._api_hash,
@@ -246,9 +296,22 @@ class KurigramTransport:
             skip_updates=True,
             **_DEVICE,
         )
+        client.history_needed = self._history_needed
         client.add_handler(MessageHandler(self._on_new))
         client.add_handler(EditedMessageHandler(self._on_edit))
+        client.add_handler(ConnectHandler(self._on_connect))
         return client
+
+    def _history_needed(self, reason: str) -> None:
+        if self.on_history_needed is not None:
+            self.on_history_needed(reason)
+
+    async def _on_connect(self, client: Any, session: Any) -> None:
+        # Переподключение главной сессии онлайн-клиента: пропущенное за обрыв вернёт сверка.
+        # При первом connect() `client.session` ещё не присвоена — его покрывает go_online;
+        # сессии других DC и медиа не в счёт. kurigram ждёт обработчик внутри Session.start.
+        if self._online and client is self._client and session is client.session:
+            self._history_needed("reconnect")
 
     async def _on_new(self, _client: Any, message: Any) -> None:
         await self._forward(message, "new")
@@ -278,6 +341,7 @@ class KurigramTransport:
         # повторно; новый клиент не открывает хранилище до connect().
         if self._client is not client:
             return False
+        self._online = False
         self._me = None
         self._peers = {}
         self._client = self._make_client()
@@ -378,6 +442,8 @@ class KurigramTransport:
         async for _ in self._client.get_dialogs(limit=DIALOGS_WARMUP):
             pass
         await self._client.initialize()
+        self._online = True
+        self._history_needed("online")
 
     @_fenced
     async def log_out(self) -> None:
@@ -413,6 +479,7 @@ class KurigramTransport:
             log.warning("telegram probe failed: %s", exc)
 
     async def stop(self) -> None:
+        self._online = False
         await _force_close(self._client)
 
     async def abort(self) -> None:
@@ -423,6 +490,7 @@ class KurigramTransport:
         в конвейер обрывается первой: пока сессия останавливается (`Session.stop` ждёт задачи
         `handle_updates`), обработчики ещё разбирают очередь."""
         self._aborted = True
+        self._online = False
         client = self._client
         if client.session is not None:
             with suppress(Exception):
@@ -597,6 +665,79 @@ class KurigramTransport:
             return None
         kind: MessageKind = "edit" if message.edit_date else "new"
         return to_incoming(message, kind=kind, received_at=datetime.now(UTC))
+
+    @_fenced
+    async def latest(self, reader: Reader) -> int | None:
+        page = await self._history(reader, limit=1)
+        return int(page[0].id) if page else None
+
+    @_fenced
+    async def read(self, reader: Reader, above: int, limit: int) -> list[Any]:
+        """Самые новые сообщения чтения с `id > above`, не больше `limit` — страницами от новых
+        к старым; неполная страница — последняя."""
+        found: list[Any] = []
+        offset_id = 0
+        while len(found) < limit:
+            size = min(HISTORY_PAGE, limit - len(found))
+            page = await self._history(reader, limit=size, offset_id=offset_id, min_id=above)
+            fresh = [m for m in page if m.id > above]
+            found.extend(fresh)
+            if len(fresh) < size:
+                break
+            offset_id = min(m.id for m in fresh)
+        return [m for m in found if not getattr(m, "empty", False)]
+
+    @_fenced
+    async def tail(self, reader: Reader, upto: int, count: int) -> list[Any]:
+        page = await self._history(reader, limit=count, offset_id=upto + 1)
+        return [m for m in page if m.id <= upto and not getattr(m, "empty", False)]
+
+    async def _history(
+        self, reader: Reader, *, limit: int, offset_id: int = 0, min_id: int = 0
+    ) -> list[Any]:
+        """Страница истории чтения, от новых к старым: `messages.getHistory` всего чата или
+        `messages.search` сообщений одного отправителя (`from_id`); `offset_id` и `min_id` —
+        границы, сами не входящие."""
+        from pyrogram import errors, raw, utils
+
+        client = self._client
+        chat_id, from_id = reader
+        try:
+            peer = await self._peer(client, chat_id)
+            query: Any
+            if from_id:
+                query = raw.functions.messages.Search(
+                    peer=peer,
+                    q="",
+                    filter=raw.types.InputMessagesFilterEmpty(),
+                    min_date=0,
+                    max_date=0,
+                    offset_id=offset_id,
+                    add_offset=0,
+                    limit=limit,
+                    max_id=0,
+                    min_id=min_id,
+                    hash=0,
+                    from_id=await self._peer(client, from_id),
+                )
+            else:
+                query = raw.functions.messages.GetHistory(
+                    peer=peer,
+                    offset_id=offset_id,
+                    offset_date=0,
+                    add_offset=0,
+                    limit=limit,
+                    max_id=0,
+                    min_id=min_id,
+                    hash=0,
+                )
+            answer = await client.invoke(query)
+            return list(await utils.parse_messages(client, answer, replies=0))
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
 
 
 async def logout_offline(db: Database, box: SecretBox, config: AppConfig, account_id: int) -> None:

@@ -2,7 +2,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -86,6 +86,23 @@ class DbJournal:
         async with self._db.sessions() as session:
             rows = await session.scalars(query)
             return [_restored(row) for row in rows]
+
+    async def known(
+        self, chat_id: int, keys: Sequence[tuple[int, int, str]]
+    ) -> set[tuple[int, int, str]]:
+        """Какие из ревизий (`msg_id`, `revision`, `content_hash`) сообщений чата уже в журнале —
+        одним запросом (сверка истории передаёт в конвейер только остальные)."""
+        if not keys:
+            return set()
+        columns = (MessageRow.msg_id, MessageRow.revision, MessageRow.content_hash)
+        query = select(*columns).where(
+            MessageRow.account_id == self._account_id,
+            MessageRow.chat_id == chat_id,
+            tuple_(*columns).in_(list(keys)),
+        )
+        async with self._db.sessions() as session:
+            rows = await session.execute(query)
+            return {(int(msg_id), int(rev), str(h)) for msg_id, rev, h in rows}
 
     async def append(
         self,

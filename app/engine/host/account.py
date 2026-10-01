@@ -1,6 +1,7 @@
 """Движок одного аккаунта (раздел 4.2 спеки): хранилища аккаунта под оградой его аренды, свой
-поток событий, конвейер, транспорт, шлюз, вход в Telegram, сверка, планировщик, реакции,
-пересылка в чат команды, фасад и свой супервизор. Процесс создаёт движок после захвата аренды."""
+поток событий, конвейер, транспорт, шлюз, вход в Telegram, сверка, сверка истории, планировщик,
+реакции, пересылка в чат команды, фасад и свой супервизор. Процесс создаёт движок после захвата
+аренды."""
 
 import asyncio
 import contextlib
@@ -14,6 +15,7 @@ from app.config import AppConfig
 from app.db.accounts import AccountInfo, AccountRepo
 from app.db.actions import DbActionStore
 from app.db.base import Database
+from app.db.chat_marks import ChatMarks
 from app.db.crypto import SecretBox, Undecryptable
 from app.db.journal import DbJournal
 from app.db.metro import DbMetroRunStore
@@ -48,6 +50,7 @@ from app.engine.team_forward import TeamForward
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
+from app.engine.transport.history import HistorySync, readers_for
 from app.engine.transport.kurigram import ChatFilter, KurigramTransport, session_peers
 from app.engine.types import IncomingMessage
 from app.engine.unrecognized import UnrecognizedWatch
@@ -63,6 +66,7 @@ LEGACY_SESSION_FILE = "pyrobot.session"
 REREAD_DRAIN_S = 10.0
 TG_PROBE_S = 60.0
 PIPELINE_DRAIN_S = 10.0
+HISTORY_DRAIN_S = 60.0
 RECONCILE_POLL_S = 5.0
 PLANNER_POLL_S = 5.0
 
@@ -95,6 +99,18 @@ def live_reread(transport: Transport, pipeline: Pipeline) -> Reread:
         return msg
 
     return reread
+
+
+def pipeline_deliver(pipeline: Pipeline) -> Callable[[list[IncomingMessage]], Awaitable[bool]]:
+    """Сообщения прохода сверки истории — в конвейер; проход удачен, когда конвейер их записал
+    (`drain`), — только тогда сверка двигает отметку."""
+
+    async def deliver(messages: list[IncomingMessage]) -> bool:
+        for msg in messages:
+            await pipeline.submit(msg)
+        return await pipeline.drain(HISTORY_DRAIN_S)
+
+    return deliver
 
 
 @contextlib.contextmanager
@@ -155,6 +171,7 @@ class AccountRuntime:
         self.reactions: RobberyDefense | None = None
         self.team_forward: TeamForward | None = None
         self.transport: Transport | None = None
+        self.history: HistorySync | None = None
         self._kurigram: KurigramTransport | None = None
 
     async def start(self) -> None:
@@ -301,7 +318,32 @@ class AccountRuntime:
         self.supervisor.start("planner", self.planner.run)
         if self._kurigram is not None:
             self.supervisor.start("tg-probe", self._probe_tg)
+            await self._start_history(self._kurigram, journal, pipeline)
         await self.tg.boot()
+
+    async def _start_history(
+        self, kurigram: KurigramTransport, journal: DbJournal, pipeline: Pipeline
+    ) -> None:
+        """Сверка истории (раздел 4.3 спеки): отметки чтений, которых больше нет в настройках,
+        удаляются; проходы идут задачей `history` от выхода в онлайн — старт движка их не ждёт."""
+        chats = self.settings.current.chats
+        readers = readers_for(chats)
+        marks = ChatMarks(self._deps.db, self.account_id, self.fence)
+        pruned = await marks.prune(readers)
+        if pruned:
+            log.info("history marks of %d removed chat readers deleted", pruned)
+        self.history = HistorySync(
+            source=kurigram,
+            marks=marks,
+            known=journal.known,
+            deliver=pipeline_deliver(pipeline),
+            accepts=ChatFilter.from_settings(chats).accepts,
+            notifier=self.notifier,
+            readers=readers,
+            online=lambda: kurigram.online,
+        )
+        kurigram.on_history_needed = self.history.request
+        self.supervisor.start("history", self.history.run)
 
     async def log_out(self) -> None:
         """Выход из Telegram перед штатной остановкой удаляемого аккаунта: сессия закрывается
@@ -311,11 +353,16 @@ class AccountRuntime:
                 await self.fence.call(self.tg.logout)
 
     async def stop(self) -> None:
-        """Штатная остановка: планировщик, шлюз, транспорт, доработка конвейера, задачи."""
+        """Штатная остановка: планировщик, сверка истории, шлюз, транспорт, доработка конвейера,
+        задачи."""
         with _in_account(self.account_id):
             # Планировщик — первым: новый шаг сценария не должен уйти в закрывающийся шлюз.
             with contextlib.suppress(Exception):
                 await self.supervisor.cancel("planner")
+            # Сверка истории — до транспорта: проход не читает из закрывающегося клиента; что
+            # она уже передала, конвейер дорабатывает.
+            with contextlib.suppress(Exception):
+                await self.supervisor.cancel("history")
             if self.gateway is not None:
                 with contextlib.suppress(Exception):
                     await self.gateway.shutdown()
