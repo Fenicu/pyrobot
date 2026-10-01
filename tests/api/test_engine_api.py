@@ -7,12 +7,14 @@ from httpx import ASGITransport, AsyncClient
 from app.api.app import create_api
 from app.api.container import Container
 from app.db.base import Database
+from app.engine.host.codes import CodeLimiter
 from app.engine.tg_auth import InvalidPhone, SendCodeRejected
 from app.engine.transport.base import FloodWait
 from app.engine.transport.fake import FakeTgBackend
 from app.logctx import current_account
-from tests.api.conftest import engines, login, run_engine
+from tests.api.conftest import A1, Api, engines, login, run_engine
 from tests.engine.test_facade import build
+from tests.engine.test_fence import FakeMonotonic
 
 pytestmark = pytest.mark.db
 
@@ -209,3 +211,22 @@ async def test_engine_calls_run_in_account_log_context(
     # запроса наружу не протекает.
     assert backend.seen == [1, 1]
     assert current_account.get() is None
+
+
+async def test_login_start_429_with_retry_after(api: Api) -> None:
+    clock = FakeMonotonic(0.0)
+    f = build(authorized=False, codes=CodeLimiter(10, monotonic=clock))
+    run_engine(api.container, f)
+    await f.tg.boot()
+    start = f"{A1}/tg/login/start"
+    for _ in range(3):
+        r = await api.client.post(start, headers=api.headers, json={"phone": "+888"})
+        assert r.status_code == 200 and r.json()["state"] == "awaiting_code"
+    clock.now = 0.25
+    r = await api.client.post(start, headers=api.headers, json={"phone": "+888"})
+    assert (r.status_code, r.json()) == (429, {"detail": "tg_code_rate_limited"})
+    # Целые секунды вверх: до места — 3599.75 с.
+    assert r.headers["retry-after"] == "3600"
+    # Начатый вход не сброшен.
+    st = (await api.client.get(f"{A1}/tg/status")).json()
+    assert st["state"] == "awaiting_code" and st["attempt_id"] is not None

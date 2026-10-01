@@ -10,10 +10,10 @@ from app.db.planner import DbPlannerStore
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade
 from app.engine.planner.loop import PlannerLoop
-from app.engine.tg_auth import TgAuthManager
 from app.engine.transport.fake import FakeTgBackend
 from tests.api.conftest import login, run_engine
 from tests.engine.fakegame import World, running_world
+from tests.engine.helpers import tg_auth
 from tests.engine.planner.test_loop import QUIET
 from tests.engine.test_facade import build
 
@@ -43,7 +43,7 @@ async def world(container: Container, clean_db: Database) -> AsyncIterator[World
             settings=w.settings,
             gateway=w.gateway,
             pipeline=w.pipeline,
-            tg_auth=TgAuthManager(FakeTgBackend(), expected_user_id=267519921),
+            tg_auth=tg_auth(FakeTgBackend()),
             planner=planner,
         )
         run_engine(container, facade)

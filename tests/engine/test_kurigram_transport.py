@@ -38,7 +38,7 @@ from app.engine.transport.history import HistorySync
 from app.engine.transport.kurigram import OVERLOAD_HIGH, OVERLOAD_LOW, ChatFilter
 from app.engine.types import IncomingMessage
 from tests.conftest import TEST_DB_URL
-from tests.engine.helpers import GAME, until
+from tests.engine.helpers import GAME, tg_auth, until
 from tests.engine.kurigram_fakes import EXPECTED, FakeClient, FakeKurigram, long_fence, rpc_error
 from tests.engine.test_history_sync import FakeSource, MemoryMarks
 
@@ -202,7 +202,7 @@ async def test_log_out_of_revoked_session_is_success() -> None:
 async def test_relogin_after_loss_reaches_online() -> None:
     t = FakeKurigram()
     rec = Recorder()
-    mgr = TgAuthManager(t, expected_user_id=EXPECTED, notifier=rec)
+    mgr = tg_auth(t, expected_user_id=EXPECTED, notifier=rec)
     t.on_auth_lost = mgr.mark_lost
     assert (await mgr.boot()).state is TgState.ONLINE
     t.client.errors["GetState"] = rpc_error("SessionRevoked")
@@ -302,7 +302,7 @@ async def test_identify_unauthorized_resets_client_without_callback() -> None:
 async def test_boot_revoked_session_reports_and_resets_without_deadlock() -> None:
     t = FakeKurigram()
     rec = Recorder()
-    mgr = TgAuthManager(t, expected_user_id=EXPECTED, notifier=rec)
+    mgr = tg_auth(t, expected_user_id=EXPECTED, notifier=rec)
     t.on_auth_lost = mgr.mark_lost
     t.client.errors["GetMe"] = rpc_error("SessionRevoked")
     st = await mgr.boot()
@@ -312,7 +312,7 @@ async def test_boot_revoked_session_reports_and_resets_without_deadlock() -> Non
 
 async def test_boot_calls_get_me_once() -> None:
     t = FakeKurigram()
-    mgr = TgAuthManager(t, expected_user_id=EXPECTED)
+    mgr = tg_auth(t, expected_user_id=EXPECTED)
     assert (await mgr.boot()).state is TgState.ONLINE
     assert t.client.get_me_calls == 1
     assert t.client.me is not None and t.client.me.id == EXPECTED
@@ -625,7 +625,7 @@ class OverloadRig:
         self.t.overload_check_s = 0.005
         self.t.on_history_needed = self.history.append
         self.notes = Recorder()
-        self.tg = TgAuthManager(self.t, expected_user_id=EXPECTED, notifier=self.notes)
+        self.tg = tg_auth(self.t, expected_user_id=EXPECTED, notifier=self.notes)
         _wire(self.t, self.tg)
 
     async def _submit(self, msg: IncomingMessage) -> None:
@@ -873,7 +873,7 @@ async def test_history_pass_does_not_reenter_overload() -> None:
     t = FakeKurigram(sink=pipeline.submit, backlog=pipeline.backlog, dispatch=True)
     t.overload_check_s = 0.005
     notes = Recorder()
-    tg = TgAuthManager(t, expected_user_id=EXPECTED, notifier=notes)
+    tg = tg_auth(t, expected_user_id=EXPECTED, notifier=notes)
     _wire(t, tg)
     source = FakeSource()
     for msg_id in range(1, 1001):

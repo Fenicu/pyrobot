@@ -1,13 +1,14 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
 from app.api.container import Container
 from app.api.errors import VersionConflictOut
 from app.db.base import Database
 from app.db.models import SettingsHistory, SettingsRow
 from app.db.settings_store import DbSettingsStore
-from app.engine.settings import Settings
-from tests.api.conftest import login, run_engine
+from app.engine.settings import Settings, StaticSettings
+from tests.api.conftest import A1, Api, login, run_engine
 from tests.engine.test_facade import build
 
 pytestmark = pytest.mark.db
@@ -263,3 +264,47 @@ async def test_settings_without_engine_from_db(
     body = (await api_client.get("/api/v1/accounts/1/settings")).json()
     assert body["version"] == 0 and body["values"] == Settings().model_dump(mode="json")
     assert (await api_client.get("/api/v1/accounts/1/settings/history")).status_code == 200
+
+
+async def test_patch_self_chat_422(api: Api) -> None:
+    # Аккаунт не привязан — сравнить не с чем: правка проходит, свой чат найдёт вход.
+    ok = {"version": 0, "changes": {"chats": {"bulls_invite_chat_id": 42}}}
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=ok)
+    assert r.status_code == 200, r.text
+    await api.container.accounts.bind_telegram(1, 42)
+    # Без движка — прямая запись: привязка читается в её транзакции. Своё поле в настройках —
+    # отказ, пока его не исправят, и для правки других полей.
+    other = {"version": 1, "changes": {"food": {"banana_reserve": 40}}}
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=other)
+    assert (r.status_code, r.json()) == (
+        422,
+        {"detail": "chat_is_self", "fields": ["chats.bulls_invite_chat_id"]},
+    )
+    both = {
+        "version": 1,
+        "changes": {"chats": {"game_chat_id": 42, "bulls_invite_chat_id": None}},
+    }
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=both)
+    assert (r.status_code, r.json()) == (
+        422,
+        {"detail": "chat_is_self", "fields": ["chats.game_chat_id"]},
+    )
+    fixed = {"version": 1, "changes": {"chats": {"bulls_invite_chat_id": None}}}
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=fixed)
+    assert r.status_code == 200 and r.json()["version"] == 2
+    async with api.db.sessions() as s:
+        history = (await s.scalars(select(SettingsHistory.version))).all()
+    assert sorted(history) == [1, 2]
+    # С движком — через него: сверка с его привязкой.
+    settings = StaticSettings()
+    run_engine(api.container, build(settings=settings, bound_user_id=42))
+    self_user = {"version": 0, "changes": {"chats": {"swinfo_user_id": 42}}}
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=self_user)
+    assert (r.status_code, r.json()) == (
+        422,
+        {"detail": "chat_is_self", "fields": ["chats.swinfo_user_id"]},
+    )
+    assert settings.version == 0
+    run_engine(api.container, build(settings=settings, bound_user_id=None))
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=self_user)
+    assert r.status_code == 200 and settings.current.chats.swinfo_user_id == 42

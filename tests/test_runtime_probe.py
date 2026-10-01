@@ -11,11 +11,12 @@ from app.db.accounts import AccountInfo, AccountRepo
 from app.db.base import Database
 from app.engine.fence import Fence
 from app.engine.host.account import AccountRuntime, RuntimeDeps
+from app.engine.host.codes import CodeLimiter
 from app.engine.lag import LoopLagMonitor
-from app.engine.tg_auth import TgAuthManager, TgState
+from app.engine.tg_auth import TgState
 from app.engine.transport.fake import FakeTgBackend
 from app.main import Runtime
-from tests.engine.helpers import until
+from tests.engine.helpers import tg_auth, until
 
 
 @pytest.fixture
@@ -23,7 +24,13 @@ async def runtime() -> AsyncIterator[AccountRuntime]:
     """Движок аккаунта без старта: база не открывается, пока к ней не обратятся."""
     config = AppConfig(_env_file=None, transport="fake")
     db = Database(config.database_url)
-    deps = RuntimeDeps(db=db, config=config, accounts=AccountRepo(db), lag=LoopLagMonitor())
+    deps = RuntimeDeps(
+        db=db,
+        config=config,
+        accounts=AccountRepo(db),
+        lag=LoopLagMonitor(),
+        codes=CodeLimiter(10),
+    )
     account = AccountInfo(
         id=1,
         owner_id=None,
@@ -55,7 +62,7 @@ class _Probe:
 async def test_tg_probe_runs_only_while_online(runtime: AccountRuntime) -> None:
     probe = _Probe()
     runtime._kurigram = probe  # type: ignore[assignment]
-    runtime.tg = TgAuthManager(FakeTgBackend(authorized=True), expected_user_id=267519921)
+    runtime.tg = tg_auth(FakeTgBackend(authorized=True))
     runtime.tg_probe_s = 0.01
     task: asyncio.Task[Any] = asyncio.create_task(runtime._probe_tg())
     try:

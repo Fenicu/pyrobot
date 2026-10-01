@@ -551,6 +551,29 @@
         "title": "BusyState",
         "type": "object"
       },
+      "ChatIsSelfOut": {
+        "description": "Поля `chats.*` равны пользователю Telegram, к которому привязан аккаунт: его «Избранное»\nне попадает в журнал.",
+        "properties": {
+          "detail": {
+            "const": "chat_is_self",
+            "title": "Detail",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail",
+          "fields"
+        ],
+        "title": "ChatIsSelfOut",
+        "type": "object"
+      },
       "ChosenTaskState": {
         "properties": {
           "activities": {
@@ -5113,6 +5136,56 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "ValidationErrorOut": {
+        "description": "Значения не прошли проверку: ошибка с путём на каждое поле.",
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationIssueOut"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ValidationErrorOut",
+        "type": "object"
+      },
+      "ValidationIssueOut": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Loc",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Msg",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationIssueOut",
+        "type": "object"
+      },
       "VersionConflict": {
         "properties": {
           "code": {
@@ -7809,7 +7882,7 @@
         ]
       },
       "patch": {
-        "description": "Удаляемый аккаунт не правится — и тогда, когда его движок ещё зарегистрирован. С\nдвижком — через него. Без движка — прямая запись в базу, если аренда аккаунта свободна;\nзанята — правку делает движок, который её взял: он ещё не зарегистрирован — ожидание до\n`engine_wait_s`, затем 503 `engine_starting`.",
+        "description": "Удаляемый аккаунт не правится — и тогда, когда его движок ещё зарегистрирован. С\nдвижком — через него. Без движка — прямая запись в базу, если аренда аккаунта свободна;\nзанята — правку делает движок, который её взял: он ещё не зарегистрирован — ожидание до\n`engine_wait_s`, затем 503 `engine_starting`. У привязанного аккаунта поле `chats.*`,\nравное его пользователю Telegram, — 422 `chat_is_self` с этими полями.",
         "operationId": "patch_settings_api_v1_accounts__account_id__settings_patch",
         "parameters": [
           {
@@ -7911,11 +7984,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ValidationErrorOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChatIsSelfOut"
+                    }
+                  ],
+                  "title": "Response 422 Patch Settings Api V1 Accounts  Account Id  Settings Patch"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "invalid body or changes | chat_is_self: `chats.*` fields equal to the account's Telegram user"
           },
           "503": {
             "content": {
@@ -8386,6 +8467,7 @@
     },
     "/api/v1/accounts/{account_id}/tg/login/start": {
       "post": {
+        "description": "Запрос кода входа: не больше `PYROBOT_TG_CODES_PER_HOUR` на хост и 3 в час на аккаунт,\nсверх — 429 `tg_code_rate_limited` с `Retry-After`.",
         "operationId": "tg_start_api_v1_accounts__account_id__tg_login_start_post",
         "parameters": [
           {
@@ -8503,7 +8585,7 @@
                 }
               }
             },
-            "description": "flood_wait"
+            "description": "flood_wait | tg_code_rate_limited"
           },
           "502": {
             "content": {

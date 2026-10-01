@@ -7,10 +7,13 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from app.engine.notify import NotifierPort
 from app.engine.transport.base import FloodWait, TransportAuthLost
+
+if TYPE_CHECKING:
+    from app.engine.host.codes import CodeLimiter
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +62,23 @@ class TgBackendError(TgAuthError):
         self.code = code
 
 
+class TgUserTaken(TgAuthError):
+    """Пользователь Telegram уже привязан к другому аккаунту."""
+
+    code = "tg_user_taken"
+
+
+class CodeRateLimited(TgAuthError):
+    """Запросов кода входа больше лимита хоста или аккаунта: следующий — через
+    `retry_after_s` секунд."""
+
+    code = "tg_code_rate_limited"
+
+    def __init__(self, retry_after_s: float) -> None:
+        super().__init__(f"retry after {retry_after_s:.0f} s")
+        self.retry_after_s = retry_after_s
+
+
 class TgState(StrEnum):
     UNAUTHORIZED = "unauthorized"
     AWAITING_CODE = "awaiting_code"
@@ -101,12 +121,20 @@ class _Attempt:
 
 
 class TgAuthManager:
+    """Вход аккаунта `account_id` в Telegram. Перед каждым выходом в онлайн (`_accept`) —
+    привязка (`bind` пишет её, пользователь другого аккаунта — `TgUserTaken`) и свой чат в
+    настройках (`self_chat` — поля `chats.*`, равные пользователю). Запросы кода — через лимит
+    процесса `codes`."""
+
     def __init__(
         self,
         backend: TgAuthBackend,
         *,
         expected_user_id: int | None,
-        on_bind: Callable[[int], Awaitable[None]] | None = None,
+        bind: Callable[[int], Awaitable[None]],
+        self_chat: Callable[[int], list[str]],
+        codes: CodeLimiter | None = None,
+        account_id: int,
         attempt_ttl_s: float = 600.0,
         notifier: NotifierPort | None = None,
     ) -> None:
@@ -114,7 +142,10 @@ class TgAuthManager:
         self._notifier = notifier
         # None — аккаунт не привязан: первый вход привязывает, дальше пускается только он.
         self._expected = expected_user_id
-        self._on_bind = on_bind
+        self._bind = bind
+        self._self_chat = self_chat
+        self._codes = codes
+        self._account_id = account_id
         self._ttl = attempt_ttl_s
         self._lock = asyncio.Lock()
         self._state = TgState.UNAUTHORIZED
@@ -164,6 +195,10 @@ class TgAuthManager:
             active = self._attempt
             if active is not None and active.owner != owner and active.expires > time.monotonic():
                 raise AttemptMismatch("another login in progress")
+            if self._codes is not None:
+                wait = self._codes.take(self._account_id)
+                if wait is not None:
+                    raise CodeRateLimited(wait)
             try:
                 await self._backend.connect()
                 code_hash = await self._backend.send_code(phone)
@@ -284,40 +319,58 @@ class TgAuthManager:
         return attempt
 
     async def _accept(self, user_id: int) -> None:
+        """Вошедший пользователь `user_id` (раздел 4.3 спеки): всё — до `go_online`, отказ в
+        онлайн не выпускает, и обновления не обрабатываются. Другой пользователь или
+        пользователь другого аккаунта — выход из сессии; свой чат в настройках — привязка
+        остаётся, сессия тоже: исправить настройки и перезапустить аккаунт."""
+        self._user_id = None
         if self._expected is not None and user_id != self._expected:
+            await self._refuse("unexpected_user")
+            return
+        if self._expected is None:
             try:
-                await self._backend.log_out()
+                await self._bind(user_id)
+            except TgUserTaken:
+                await self._refuse("tg_user_taken")
+                return
             except Exception:
-                log.exception("log_out of unexpected user failed")
-            self._user_id = None
-            self._set(TgState.ERROR, error="unexpected_user")
+                # Не записалась — не проверено, что пользователь не занят: в онлайн нельзя.
+                log.exception("telegram account binding not persisted")
+                self._set(TgState.ERROR, error="bind_failed")
+                return
+            self._expected = user_id
+        fields = self._self_chat(user_id)
+        if fields:
+            self._set(TgState.ERROR, error="chat_is_self")
+            if self._notifier is not None:
+                await self._notifier.notify(
+                    "warn",
+                    "chat_is_self",
+                    f"telegram user {user_id} is set as a chat in settings "
+                    f"({', '.join(fields)}); fix settings and restart the account",
+                )
             return
         try:
             await self._backend.go_online()
         except Exception:
             log.exception("go_online failed")
-            self._user_id = None
             self._set(TgState.ERROR, error="online_failed")
             return
         self._user_id = user_id
         self._set(TgState.ONLINE)
-        if self._expected is None:
-            await self._bind(user_id)
         for cb in self._callbacks:
             try:
                 await cb()
             except Exception:
                 log.exception("online callback failed")
 
-    async def _bind(self, user_id: int) -> None:
-        # В памяти — сразу: не сохранилась привязка — до перезапуска всё равно пускается только он.
-        self._expected = user_id
-        if self._on_bind is None:
-            return
+    async def _refuse(self, error: str) -> None:
+        """Отказ во входе с выходом из сессии: обновления этого пользователя не обработаются."""
         try:
-            await self._on_bind(user_id)
+            await self._backend.log_out()
         except Exception:
-            log.exception("telegram account binding not persisted")
+            log.exception("log_out of refused telegram user failed")
+        self._set(TgState.ERROR, error=error)
 
     def _set(self, state: TgState, *, error: str | None = None) -> None:
         self._state = state

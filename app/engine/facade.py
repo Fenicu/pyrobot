@@ -248,8 +248,11 @@ class EngineFacade:
         confirm_live: bool = False,
     ) -> SettingsUpdate:
         """Частичное изменение настроек с оптимистичной блокировкой по `version`.
-        Переход в `live` — только с `confirm_live`: из dry_run начинаются реальные траты."""
-        patch = SettingsPatch(changes, confirm_live=confirm_live)
+        Переход в `live` — только с `confirm_live`: из dry_run начинаются реальные траты.
+        Поле `chats.*`, равное пользователю Telegram привязанного аккаунта, — `ChatIsSelf`."""
+        patch = SettingsPatch(
+            changes, confirm_live=confirm_live, self_id=self.tg.status().bound_user_id
+        )
         new, saved = await self.settings.update(patch, changed_by=by, expected_version=version)
         old = patch.before
         assert old is not None

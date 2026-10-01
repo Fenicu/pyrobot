@@ -13,11 +13,14 @@ from app.db.base import Database
 from app.db.crypto import SecretBox
 from app.db.models import Account, MessageRow, SettingsRow, TgChatMark, TgPeer, TgSession
 from app.db.notifications import DbNotifier
+from app.db.settings_store import direct_update
 from app.engine.facade import LockLostError
 from app.engine.fence import Fence, LeaseLost
 from app.engine.host.account import AccountRuntime, RuntimeDeps
+from app.engine.host.codes import CodeLimiter
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
+from app.engine.settings import ChatIsSelf, SettingsPatch
 from app.engine.tg_auth import TgState
 from app.engine.transport.kurigram import KurigramTransport
 from app.logctx import current_account
@@ -44,7 +47,12 @@ class Engines:
             _env_file=None, database_url=TEST_DB_URL, transport="fake", planner=False
         )
         self.deps = RuntimeDeps(
-            db=db, config=config, accounts=AccountRepo(db), lag=LoopLagMonitor(), box=box
+            db=db,
+            config=config,
+            accounts=AccountRepo(db),
+            lag=LoopLagMonitor(),
+            codes=CodeLimiter(10),
+            box=box,
         )
         # Продление в тестах не идёт: местный срок аренды с запасом на весь тест.
         self.leases = LeaseManager(db, "test-host", ttl_s=300.0)
@@ -311,3 +319,39 @@ async def test_history_pass_runs_in_background_and_prunes_marks(
     async with clean_db.sessions() as session:
         marks = await session.execute(select(TgChatMark.chat_id, TgChatMark.msg_id))
         assert {(chat_id, msg_id) for chat_id, msg_id in marks} == {(GAME, 7)}
+
+
+async def test_self_chat_binds_and_stays_offline_until_restart(
+    kurigram: Engines, clean_db: Database
+) -> None:
+    # Аккаунт не привязан, сессия Telegram есть, а чат игры в настройках — его же пользователь.
+    async with clean_db.sessions() as session, session.begin():
+        sealed = BOX.seal(b"k" * 256, "auth_key", 1)
+        session.add(TgSession(account_id=1, dc_id=2, date=0, auth_key=sealed, user_id=EXPECTED))
+    own_chat = SettingsPatch({"chats": {"game_chat_id": EXPECTED}})
+    await direct_update(clean_db, 1, own_chat, changed_by="t", expected_version=0)
+    runtime = await kurigram.start(1)
+    assert runtime.tg is not None and runtime.facade is not None
+    st = runtime.tg.status()
+    assert st.state is TgState.ERROR and st.error == "chat_is_self"
+    # Привязка записана в базу, в онлайн аккаунт не вышел.
+    account = await kurigram.deps.accounts.get(1)
+    assert account is not None and account.tg_user_id == EXPECTED
+    client = runtime.transport._client  # type: ignore[union-attr]
+    assert isinstance(client, FakeClient) and client.is_connected and not client.is_initialized
+    assert await _codes(clean_db) == [("warn", "chat_is_self")]
+    # Правка через движок сверяется с привязкой: свой чат — отказ, исправление проходит.
+    with pytest.raises(ChatIsSelf):
+        await runtime.facade.patch_settings(
+            {"chats": {"swinfo_user_id": EXPECTED}}, version=1, by="t"
+        )
+    await runtime.facade.patch_settings({"chats": {"game_chat_id": GAME}}, version=1, by="t")
+    # Фильтр чатов и разбор движка — с прежними чатами: до перезапуска вход — тот же отказ.
+    st = await runtime.tg.start("+888", owner="s1")
+    st = await runtime.tg.submit_code(st.attempt_id or "", "s1", "12345")
+    assert st.state is TgState.ERROR and st.error == "chat_is_self"
+    assert not runtime.transport._client.is_initialized  # type: ignore[union-attr]
+    await runtime.stop()
+    await kurigram.leases.release(runtime.fence)
+    again = await kurigram.start(1)
+    assert again.tg is not None and again.tg.status().state is TgState.ONLINE

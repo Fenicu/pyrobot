@@ -27,7 +27,11 @@
 		signup_required: 'Номер не зарегистрирован в Telegram',
 		invalid_phone: 'Неверный номер телефона',
 		password_required: 'Нужен пароль 2FA',
-		unexpected_user: 'Вошли не в тот аккаунт — сервис вышел из него',
+		unexpected_user: 'Аккаунт привязан к другому пользователю Telegram — сервис вышел из сессии',
+		tg_user_taken: 'Этот пользователь Telegram уже привязан к другому аккаунту — сервис вышел из сессии',
+		chat_is_self:
+			'В настройках чатов указан этот же пользователь Telegram — исправьте настройки и перезапустите аккаунт',
+		bind_failed: 'Привязка к пользователю Telegram не сохранилась — бот не вышел в сеть, повторите вход позже',
 		session_revoked: 'Сессия Telegram отозвана — войдите снова',
 		flood_wait: 'Telegram просит подождать',
 		send_code_failed: 'Код не отправлен — Telegram недоступен',
@@ -63,6 +67,8 @@
 				attempt = null;
 				message =
 					err.status === 400 && ERRORS[err.code] ? ERRORS[err.code]! : 'Попытка входа устарела или начата в другой вкладке — начните заново';
+			} else if (err.kind === 'rate_limited' && err.code !== 'flood_wait') {
+				message = errorText(err);
 			} else if (err.kind === 'rate_limited') {
 				message = err.retryAfter !== null ? `Telegram просит подождать ${err.retryAfter} с` : 'Telegram просит подождать';
 			} else if (err.kind === 'unavailable') {

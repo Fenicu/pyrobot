@@ -9,7 +9,7 @@ export type ApiError =
 	| { kind: 'version_conflict'; status: 409; version: number }
 	| { kind: 'conflict'; status: 409; code: string }
 	| { kind: 'validation'; status: 422; issues: ValidationIssue[] }
-	| { kind: 'invalid'; status: 422; code: string }
+	| { kind: 'invalid'; status: 422; code: string; fields?: string[] }
 	| { kind: 'not_found'; status: 404; code: string }
 	| { kind: 'rate_limited'; status: 429; code: string; retryAfter: number | null }
 	| { kind: 'engine_down'; status: 503; code: string }
@@ -25,6 +25,10 @@ export interface ValidationIssue {
 }
 
 export const CSRF_MISMATCH = 'csrf token mismatch';
+// Правка настроек: поле `chats.*` — сам пользователь Telegram аккаунта (`fields` — какие).
+export const CHAT_IS_SELF = 'chat_is_self';
+// Запросов кода входа в Telegram больше лимита хоста или аккаунта.
+export const TG_CODE_RATE_LIMITED = 'tg_code_rate_limited';
 // Движок аккаунта не запущен, ещё регистрируется или без цикла планировщика.
 const ENGINE_DOWN = new Set(['engine not running', 'engine_starting', 'planner not started']);
 
@@ -59,9 +63,9 @@ export function normalizeError(status: number, body: unknown, headers?: Headers)
 	}
 	if (status === 409) return { kind: 'conflict', status, code };
 	if (status === 422) {
-		return Array.isArray(detail)
-			? { kind: 'validation', status, issues: issues(detail) }
-			: { kind: 'invalid', status, code };
+		if (Array.isArray(detail)) return { kind: 'validation', status, issues: issues(detail) };
+		const fields = isRecord(body) && Array.isArray(body.fields) ? body.fields.map(String) : null;
+		return fields ? { kind: 'invalid', status, code, fields } : { kind: 'invalid', status, code };
 	}
 	if (status === 404) return { kind: 'not_found', status, code };
 	if (status === 429) {
@@ -86,8 +90,14 @@ const CODE_TEXT: Record<string, string> = {
 	'idempotency_key reused': 'Этот ключ уже использован с другими параметрами',
 	'unknown scenario': 'Нет такого сценария',
 	'account not found': 'Аккаунт не найден',
-	account_deleting: 'Аккаунт удаляется'
+	account_deleting: 'Аккаунт удаляется',
+	[CHAT_IS_SELF]: 'Указан сам пользователь Telegram этого аккаунта — его «Избранное» бот не читает'
 };
+
+/** Ожидание для человека: секунды до минуты, дальше — минуты вверх. */
+function waitText(seconds: number): string {
+	return seconds < 60 ? `${seconds} с` : `${Math.ceil(seconds / 60)} мин`;
+}
 
 /** Текст ошибки для человека; код сервера — как есть, если перевода нет. */
 export function errorText(err: ApiError): string {
@@ -103,9 +113,17 @@ export function errorText(err: ApiError): string {
 		case 'validation':
 			return err.issues.map((i) => `${i.loc.slice(1).join('.')}: ${i.msg}`).join('\n') || 'Ошибка проверки';
 		case 'rate_limited':
+			if (err.code === TG_CODE_RATE_LIMITED) {
+				const text = 'Слишком много запросов кода входа';
+				return err.retryAfter !== null ? `${text} — следующий через ${waitText(err.retryAfter)}` : text;
+			}
 			return err.retryAfter !== null
 				? `Слишком часто — подождите ${err.retryAfter} с`
 				: 'Слишком часто — подождите';
+		case 'invalid':
+			return err.fields?.length
+				? `${CODE_TEXT[err.code] ?? err.code}: ${err.fields.join(', ')}`
+				: (CODE_TEXT[err.code] ?? err.code);
 		case 'engine_down':
 			return 'Движок недоступен';
 		case 'store_failed':

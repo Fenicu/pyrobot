@@ -2,10 +2,14 @@ import asyncio
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
+from app.engine.tg_auth import TgAuthBackend, TgAuthManager
 from app.engine.types import Button, IncomingMessage
 
 GAME = 227859379
+# Пользователь Telegram фейковых бэкендов входа.
+TG_USER = 267519921
 
 
 def now() -> datetime:
@@ -46,3 +50,17 @@ async def until(pred: Callable[[], bool], timeout: float = 1.0) -> None:  # noqa
         if time.monotonic() > deadline:
             raise AssertionError("condition not reached in time")
         await asyncio.sleep(0.005)
+
+
+def tg_auth(
+    backend: TgAuthBackend, expected_user_id: int | None = TG_USER, **kw: Any
+) -> TgAuthManager:
+    """Вход в Telegram аккаунта 1: привязка — только в памяти, своего чата в настройках нет."""
+
+    async def bind(user_id: int) -> None:
+        return None
+
+    kw.setdefault("bind", bind)
+    kw.setdefault("self_chat", lambda user_id: [])
+    kw.setdefault("account_id", 1)
+    return TgAuthManager(backend, expected_user_id=expected_user_id, **kw)

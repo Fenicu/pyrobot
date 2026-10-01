@@ -1,3 +1,4 @@
+import math
 from collections.abc import Awaitable
 from dataclasses import asdict
 from datetime import datetime
@@ -8,11 +9,18 @@ from pydantic import BaseModel, Field, PlainSerializer
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, require_csrf
-from app.api.errors import AUTH, CSRF, ENGINE, Responses, error
+from app.api.errors import AUTH, CSRF, ENGINE, TG_CODE_RATE_LIMITED, Responses, error
 from app.api.scope import AccountScope, account_router, account_scope, running
 from app.db.accounts import AccountStatus
 from app.engine.facade import EngineFacade, LockLostError
-from app.engine.tg_auth import AttemptMismatch, TgAuthError, TgBackendError, TgState, TgStatus
+from app.engine.tg_auth import (
+    AttemptMismatch,
+    CodeRateLimited,
+    TgAuthError,
+    TgBackendError,
+    TgState,
+    TgStatus,
+)
 from app.engine.transport.base import FloodWait
 
 router = account_router("engine")
@@ -53,7 +61,8 @@ class TgStatusOut(BaseModel):
     state: TgState
     user_id: int | None
     attempt_id: str | None
-    # Код последней ошибки входа (`invalid_code`, `session_revoked`, …).
+    # Код последней ошибки входа (`invalid_code`, `session_revoked`, …); отказ в онлайне после
+    # входа — `unexpected_user`, `tg_user_taken`, `chat_is_self`, `bind_failed`.
     error: str | None
     # Пользователь Telegram, к которому аккаунт привязан на всю жизнь (`accounts.tg_user_id`);
     # None — привязывает первый вход. Выход из Telegram привязку не снимает.
@@ -221,18 +230,30 @@ async def _guard(coro: Awaitable[TgStatus]) -> TgStatusOut:
             "flood_wait",
             headers={"Retry-After": str(retry_after)},
         ) from exc
+    except CodeRateLimited as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            TG_CODE_RATE_LIMITED,
+            headers={"Retry-After": str(max(1, math.ceil(exc.retry_after_s)))},
+        ) from exc
     except TgBackendError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, exc.code) from exc
     except TgAuthError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.code) from exc
 
 
-@router.post("/tg/login/start", response_model=TgStatusOut, responses=_TG_LOGIN)
+@router.post(
+    "/tg/login/start",
+    response_model=TgStatusOut,
+    responses={**_TG_LOGIN, 429: error("flood_wait", TG_CODE_RATE_LIMITED)},
+)
 async def tg_start(
     body: PhoneIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(running)],
 ) -> TgStatusOut:
+    """Запрос кода входа: не больше `PYROBOT_TG_CODES_PER_HOUR` на хост и 3 в час на аккаунт,
+    сверх — 429 `tg_code_rate_limited` с `Retry-After`."""
     return await _guard(f.tg.start(body.phone, owner=str(ctx.session_id)))
 
 

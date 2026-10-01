@@ -20,6 +20,7 @@ from app.db.retention import DbRetention
 from app.db.settings_store import DbSettingsStore
 from app.engine.clock import SystemClock
 from app.engine.host.account import RuntimeDeps
+from app.engine.host.codes import CodeLimiter
 from app.engine.host.host import EngineHost
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
@@ -65,7 +66,12 @@ class Runtime:
         self.leases = LeaseManager(self.db, uuid4().hex)
         self.box = _secret_box(config)
         deps = RuntimeDeps(
-            db=self.db, config=config, accounts=self.accounts, lag=self.lag, box=self.box
+            db=self.db,
+            config=config,
+            accounts=self.accounts,
+            lag=self.lag,
+            codes=CodeLimiter(config.tg_codes_per_hour),
+            box=self.box,
         )
         self.host = EngineHost(
             deps,

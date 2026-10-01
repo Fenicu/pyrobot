@@ -28,6 +28,7 @@ from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade
 from app.engine.fence import Fence
 from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
+from app.engine.host.codes import CodeLimiter
 from app.engine.lag import LoopLagMonitor
 from app.engine.parsing import default_parser
 from app.engine.parsing.sleep import RobberyAlert
@@ -36,7 +37,7 @@ from app.engine.planner.loop import PlannerLoop
 from app.engine.reactions import RobberyDefense
 from app.engine.reconcile import Reconciler
 from app.engine.scenarios.context import History, Reread
-from app.engine.settings import Settings
+from app.engine.settings import Settings, self_chat_fields
 from app.engine.state.model import company_of, load_state
 from app.engine.state.reducer import StateReducer
 from app.engine.stream import (
@@ -131,6 +132,8 @@ class RuntimeDeps:
     config: AppConfig
     accounts: AccountRepo
     lag: LoopLagMonitor
+    # Лимит запросов кода входа в Telegram — общий для движков процесса.
+    codes: CodeLimiter
     # Ключ сессий Telegram в базе; нет только у транспорта fake без `PYROBOT_SECRET_KEY`.
     box: SecretBox | None = None
 
@@ -188,6 +191,8 @@ class AccountRuntime:
         config = self._deps.config
         db = self._deps.db
         await self.settings.load()
+        # Настройки, с которыми движок запущен: по ним — фильтр чатов, разбор и сверка истории.
+        started = self.settings.current
         actions = PublishingActionStore(
             DbActionStore(db, self.account_id, fence=self.fence), self.stream
         )
@@ -233,7 +238,10 @@ class AccountRuntime:
         self.tg = TgAuthManager(
             backend,
             expected_user_id=self._account.tg_user_id,
-            on_bind=self._bind_telegram,
+            bind=self._bind_telegram,
+            self_chat=lambda user_id: self._self_chat(started, user_id),
+            codes=self._deps.codes,
+            account_id=self.account_id,
             notifier=self.notifier,
         )
         if self._kurigram is not None:
@@ -408,6 +416,13 @@ class AccountRuntime:
     async def _bind_telegram(self, user_id: int) -> None:
         await self._deps.accounts.bind_telegram(self.account_id, user_id)
         log.info("telegram account %d bound", user_id)
+
+    def _self_chat(self, started: Settings, user_id: int) -> list[str]:
+        """Поля `chats.*`, равные пользователю Telegram, — в текущих настройках и в тех, с
+        которыми движок запущен: исправленные правкой чаты вступают в силу только перезапуском
+        аккаунта, а до него фильтр пускал бы «Избранное» в журнал."""
+        current = self_chat_fields(self.settings.current, user_id)
+        return list(dict.fromkeys(self_chat_fields(started, user_id) + current))
 
     def _publish_settings(self, settings: Settings, version: int) -> None:
         engine = settings.engine

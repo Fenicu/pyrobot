@@ -272,6 +272,29 @@ class SettingsPatchError(ValueError):
         self.path = path
 
 
+class ChatIsSelf(Exception):
+    """Поля `chats.*` указывают на пользователя Telegram, к которому привязан аккаунт."""
+
+    def __init__(self, fields: list[str]) -> None:
+        super().__init__(f"chat_is_self: {', '.join(fields)}")
+        self.fields = fields
+
+
+def self_chat_fields(settings: Settings, tg_user_id: int) -> list[str]:
+    """Пути `chats.*`, равные `tg_user_id`: «Избранное» аккаунта никогда не попадает в журнал
+    (раздел 4.3 спеки)."""
+    return [f"chats.{name}" for name, value in settings.chats if value == tg_user_id]
+
+
+def check_self_chat(settings: Settings, tg_user_id: int | None) -> None:
+    """Аккаунт привязан, а поле `chats.*` равно его пользователю Telegram — `ChatIsSelf`."""
+    if tg_user_id is None:
+        return
+    fields = self_chat_fields(settings, tg_user_id)
+    if fields:
+        raise ChatIsSelf(fields)
+
+
 # Читаются только при старте процесса (парсер, фильтр чатов, конвейер).
 _RESTART_REQUIRED = ("chats.", "engine.recovered_react_max_age_min")
 # Чаты мандаринов и команды не входят ни в фильтр, ни в разбор: планировщик, шлюз и реакция
@@ -309,18 +332,27 @@ def _merge(
 
 class SettingsPatch:
     """Частичное изменение настроек (`apply_patch`) как `SettingsChange`. Переход в `live` —
-    только с `confirm_live`: из dry_run начинаются реальные траты. `before` — настройки, к
-    которым изменение применено последним."""
+    только с `confirm_live`: из dry_run начинаются реальные траты. `self_id` — пользователь
+    Telegram привязанного аккаунта: свой чат в `chats.*` — `ChatIsSelf`. `before` — настройки,
+    к которым изменение применено последним."""
 
-    def __init__(self, changes: Mapping[str, Any], *, confirm_live: bool = False) -> None:
+    def __init__(
+        self,
+        changes: Mapping[str, Any],
+        *,
+        confirm_live: bool = False,
+        self_id: int | None = None,
+    ) -> None:
         self.changes = changes
         self.confirm_live = confirm_live
+        self.self_id = self_id
         self.before: Settings | None = None
 
     def __call__(self, settings: Settings) -> Settings:
         new = apply_patch(settings, self.changes)
         if new.engine.mode == "live" and settings.engine.mode != "live" and not self.confirm_live:
             raise SettingsPatchError("live_requires_confirm", "engine.mode")
+        check_self_chat(new, self.self_id)
         self.before = settings
         return new
 

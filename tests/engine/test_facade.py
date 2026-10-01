@@ -11,6 +11,7 @@ from app.engine.facade import EngineFacade, LockLostError
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.store import ActionStore
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
+from app.engine.host.codes import CodeLimiter
 from app.engine.memory import MemoryActionStore, MemoryJournal
 from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
@@ -21,11 +22,12 @@ from app.engine.settings import (
     SettingsPatchError,
     SettingsProvider,
     StaticSettings,
+    self_chat_fields,
 )
 from app.engine.state.model import company_of
-from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
+from app.engine.tg_auth import TgAuthBackend, TgState
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
-from tests.engine.helpers import GAME, until
+from tests.engine.helpers import GAME, tg_auth, until
 
 
 def build(
@@ -39,8 +41,10 @@ def build(
     monotonic: Callable[[], float] = time.monotonic,
     snapshot: dict[str, Any] | None = None,
     bound_user_id: int | None = 267519921,
+    codes: CodeLimiter | None = None,
 ) -> EngineFacade:
-    """Фасад на памяти; `snapshot` — снимок состояния, его подхватит `pipeline.load()`."""
+    """Фасад на памяти; `snapshot` — снимок состояния, его подхватит `pipeline.load()`. Вход в
+    Telegram сверяет свой чат с настройками `settings`."""
     settings = settings or StaticSettings()
     bus = Bus()
     journal = MemoryJournal()
@@ -57,8 +61,12 @@ def build(
         own_company=lambda: company_of(pipeline.state),
     )
     bus.subscribe(gateway.on_delivery, priority=0)
-    tg = TgAuthManager(
-        backend or FakeTgBackend(authorized=authorized), expected_user_id=bound_user_id
+    current = settings
+    tg = tg_auth(
+        backend or FakeTgBackend(authorized=authorized),
+        expected_user_id=bound_user_id,
+        self_chat=lambda user_id: self_chat_fields(current.current, user_id),
+        codes=codes,
     )
     return EngineFacade(
         settings=settings,

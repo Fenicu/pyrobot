@@ -483,7 +483,8 @@ export interface paths {
          * @description Удаляемый аккаунт не правится — и тогда, когда его движок ещё зарегистрирован. С
          *     движком — через него. Без движка — прямая запись в базу, если аренда аккаунта свободна;
          *     занята — правку делает движок, который её взял: он ещё не зарегистрирован — ожидание до
-         *     `engine_wait_s`, затем 503 `engine_starting`.
+         *     `engine_wait_s`, затем 503 `engine_starting`. У привязанного аккаунта поле `chats.*`,
+         *     равное его пользователю Telegram, — 422 `chat_is_self` с этими полями.
          */
         patch: operations["patch_settings_api_v1_accounts__account_id__settings_patch"];
         trace?: never;
@@ -568,7 +569,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Tg Start */
+        /**
+         * Tg Start
+         * @description Запрос кода входа: не больше `PYROBOT_TG_CODES_PER_HOUR` на хост и 3 в час на аккаунт,
+         *     сверх — 429 `tg_code_rate_limited` с `Retry-After`.
+         */
         post: operations["tg_start_api_v1_accounts__account_id__tg_login_start_post"];
         delete?: never;
         options?: never;
@@ -985,6 +990,20 @@ export interface components {
              * Format: date-time
              */
             until: string;
+        };
+        /**
+         * ChatIsSelfOut
+         * @description Поля `chats.*` равны пользователю Telegram, к которому привязан аккаунт: его «Избранное»
+         *     не попадает в журнал.
+         */
+        ChatIsSelfOut: {
+            /**
+             * Detail
+             * @constant
+             */
+            detail: "chat_is_self";
+            /** Fields */
+            fields: string[];
         };
         /** ChosenTaskState */
         ChosenTaskState: {
@@ -2568,6 +2587,23 @@ export interface components {
             /** Message */
             msg: string;
             /** Error Type */
+            type: string;
+        };
+        /**
+         * ValidationErrorOut
+         * @description Значения не прошли проверку: ошибка с путём на каждое поле.
+         */
+        ValidationErrorOut: {
+            /** Detail */
+            detail: components["schemas"]["ValidationIssueOut"][];
+        };
+        /** ValidationIssueOut */
+        ValidationIssueOut: {
+            /** Loc */
+            loc: (string | number)[];
+            /** Msg */
+            msg: string;
+            /** Type */
             type: string;
         };
         /** VersionConflict */
@@ -4359,13 +4395,13 @@ export interface operations {
                     "application/json": components["schemas"]["VersionConflictOut"] | components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description Validation Error */
+            /** @description invalid body or changes | chat_is_self: `chats.*` fields equal to the account's Telegram user */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorOut"] | components["schemas"]["ChatIsSelfOut"];
                 };
             };
             /** @description engine_starting */
@@ -4778,7 +4814,7 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description flood_wait */
+            /** @description flood_wait | tg_code_rate_limited */
             429: {
                 headers: {
                     [name: string]: unknown;

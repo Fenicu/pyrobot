@@ -29,6 +29,7 @@ from app.db.models import (
     TgSession,
 )
 from app.engine.settings import EngineSection, Settings
+from app.engine.tg_auth import TgUserTaken
 
 AccountStatus = Literal["enabled", "disabled", "error", "deleting"]
 
@@ -43,10 +44,6 @@ class NameTaken(Exception):
 
 class CapacityReached(Exception):
     """Включённых аккаунтов стало бы больше ёмкости."""
-
-
-class TgUserTaken(Exception):
-    """Пользователь Telegram уже привязан к другому аккаунту."""
 
 
 class AccountDeleting(Exception):

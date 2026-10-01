@@ -75,10 +75,28 @@ describe('normalizeError', () => {
 		expect(errorText(err)).toBe('changes.sleep.duration_h: too big');
 	});
 
+	it('422 — свой чат в настройках, с полями', () => {
+		const err = normalizeError(422, { detail: 'chat_is_self', fields: ['chats.game_chat_id'] });
+		expect(err).toEqual({ kind: 'invalid', status: 422, code: 'chat_is_self', fields: ['chats.game_chat_id'] });
+		expect(errorText(err)).toBe(
+			'Указан сам пользователь Telegram этого аккаунта — его «Избранное» бот не читает: chats.game_chat_id'
+		);
+	});
+
 	it('429 с Retry-After', () => {
 		const err = normalizeError(429, { detail: 'flood_wait' }, new Headers({ 'Retry-After': '42' }));
 		expect(err).toEqual({ kind: 'rate_limited', status: 429, code: 'flood_wait', retryAfter: 42 });
 		expect(errorText(err)).toBe('Слишком часто — подождите 42 с');
+	});
+
+	it('429 лимита кодов входа — ожидание в минутах', () => {
+		const headers = new Headers({ 'Retry-After': '3541' });
+		expect(errorText(normalizeError(429, { detail: 'tg_code_rate_limited' }, headers))).toBe(
+			'Слишком много запросов кода входа — следующий через 60 мин'
+		);
+		expect(
+			errorText(normalizeError(429, { detail: 'tg_code_rate_limited' }, new Headers({ 'Retry-After': '9' })))
+		).toBe('Слишком много запросов кода входа — следующий через 9 с');
 	});
 
 	it('тело не JSON (страница прокси)', () => {

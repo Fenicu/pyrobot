@@ -11,7 +11,7 @@ from app.db.accounts import AccountDeleting
 from app.db.base import Database
 from app.db.models import Account, SettingsHistory, SettingsRow
 from app.engine.fence import Fence
-from app.engine.settings import Settings, SettingsChange, SettingsConflict
+from app.engine.settings import Settings, SettingsChange, SettingsConflict, check_self_chat
 
 log = logging.getLogger(__name__)
 
@@ -58,20 +58,27 @@ async def direct_update(
 ) -> tuple[Settings, int]:
     """Запись настроек аккаунта без движка (раздел 4.4 спеки) — одной транзакцией, пока строка
     аккаунта под FOR SHARE: захват аренды (UPDATE accounts) ждёт её коммита, а движок читает
-    настройки только после захвата — запись до него он видит. Статус читается под той же
-    блокировкой: пометка удаления ждёт коммита записи. Аккаунт удаляется — `AccountDeleting`,
-    аренда занята — `LeaseHeld`, версия не та — `SettingsConflict`, аккаунта нет — KeyError."""
+    настройки только после захвата — запись до него он видит. Статус и привязка к Telegram
+    читаются под той же блокировкой: пометка удаления ждёт коммита записи. Аккаунт удаляется —
+    `AccountDeleting`, аренда занята — `LeaseHeld`, версия не та — `SettingsConflict`, поле
+    `chats.*` равно пользователю Telegram аккаунта — `ChatIsSelf`, аккаунта нет — KeyError."""
     async with db.sessions() as session, session.begin():
         lease = (
             await session.execute(
-                select(Account.status, Account.lease_holder, Account.lease_expires_at, func.now())
+                select(
+                    Account.status,
+                    Account.lease_holder,
+                    Account.lease_expires_at,
+                    Account.tg_user_id,
+                    func.now(),
+                )
                 .where(Account.id == account_id)
                 .with_for_update(read=True)
             )
         ).one_or_none()
         if lease is None:
             raise KeyError(account_id)
-        status, holder, expires, now = lease
+        status, holder, expires, tg_user_id, now = lease
         if status == "deleting":
             raise AccountDeleting(account_id)
         # Свободна — как при захвате: держателя нет или срок прошёл.
@@ -85,6 +92,7 @@ async def direct_update(
         if expected_version is not None and expected_version != previous:
             raise SettingsConflict(f"version {previous} != {expected_version}")
         new = Settings.model_validate(change(current).model_dump())
+        check_self_chat(new, tg_user_id)
         version = previous + 1
         await _write(
             session,

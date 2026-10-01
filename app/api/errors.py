@@ -24,6 +24,26 @@ class VersionConflictOut(BaseModel):
     detail: VersionConflict
 
 
+class ValidationIssueOut(BaseModel):
+    loc: list[str | int]
+    msg: str
+    type: str
+
+
+class ValidationErrorOut(BaseModel):
+    """Значения не прошли проверку: ошибка с путём на каждое поле."""
+
+    detail: list[ValidationIssueOut]
+
+
+class ChatIsSelfOut(BaseModel):
+    """Поля `chats.*` равны пользователю Telegram, к которому привязан аккаунт: его «Избранное»
+    не попадает в журнал."""
+
+    detail: Literal["chat_is_self"]
+    fields: list[str]
+
+
 def error(*codes: str) -> dict[str, Any]:
     """Описание ответа `{"detail": "<код>"}` с перечнем возможных кодов."""
     return {"model": ErrorOut, "description": " | ".join(codes)}
@@ -40,6 +60,9 @@ ACCOUNT_DELETING = "account_deleting"
 NAME_TAKEN = "name_taken"
 CAPACITY_REACHED = "capacity_reached"
 CONFIRM_NAME_MISMATCH = "confirm_name_mismatch"
+CHAT_IS_SELF = "chat_is_self"
+# Запросов кода входа в Telegram больше лимита хоста или аккаунта (с `Retry-After`).
+TG_CODE_RATE_LIMITED = "tg_code_rate_limited"
 # Сессия (cookie): без неё или с истёкшей — 401.
 AUTH: Responses = {401: error(NOT_AUTHENTICATED)}
 # Изменяющий запрос: сессия и заголовок X-CSRF-Token.

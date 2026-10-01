@@ -12,7 +12,9 @@ from app.api.errors import (
     AUTH,
     CSRF,
     ENGINE_STARTING,
+    ChatIsSelfOut,
     ErrorOut,
+    ValidationErrorOut,
     VersionConflictOut,
     error,
 )
@@ -164,6 +166,11 @@ async def _direct(
             "model": VersionConflictOut | ErrorOut,
             "description": f"settings changed since `version` | {ACCOUNT_DELETING}",
         },
+        422: {
+            "model": ValidationErrorOut | ChatIsSelfOut,
+            "description": "invalid body or changes | chat_is_self: `chats.*` fields equal to "
+            "the account's Telegram user",
+        },
         503: error(ENGINE_STARTING),
     },
 )
@@ -176,7 +183,8 @@ async def patch_settings(
     """Удаляемый аккаунт не правится — и тогда, когда его движок ещё зарегистрирован. С
     движком — через него. Без движка — прямая запись в базу, если аренда аккаунта свободна;
     занята — правку делает движок, который её взял: он ещё не зарегистрирован — ожидание до
-    `engine_wait_s`, затем 503 `engine_starting`."""
+    `engine_wait_s`, затем 503 `engine_starting`. У привязанного аккаунта поле `chats.*`,
+    равное его пользователю Telegram, — 422 `chat_is_self` с этими полями."""
     if scope.account.status == "deleting":
         raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
     f = scope.facade

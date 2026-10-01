@@ -16,6 +16,7 @@ from app.db.notifications import DbNotifier
 from app.db.retention import DbRetention
 from app.engine.fence import Fence, LeaseLost
 from app.engine.host.account import AccountRuntime, RuntimeDeps
+from app.engine.host.codes import CodeLimiter
 from app.engine.host.host import EngineHost
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
@@ -54,7 +55,13 @@ class Hosts:
     async def make(
         self, holder: str = "host-a", *, reconcile_s: float = 30.0, **kwargs: Any
     ) -> tuple[EngineHost, LeaseManager]:
-        deps = RuntimeDeps(db=self.db, config=_config(), accounts=self.repo, lag=LoopLagMonitor())
+        deps = RuntimeDeps(
+            db=self.db,
+            config=_config(),
+            accounts=self.repo,
+            lag=LoopLagMonitor(),
+            codes=CodeLimiter(10),
+        )
         leases = LeaseManager(self.db, holder, ttl_s=300.0, busy_retry_s=0.05)
         await leases.open()
         self.leases.append(leases)

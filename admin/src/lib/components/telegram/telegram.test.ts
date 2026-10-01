@@ -88,4 +88,18 @@ describe('Вход в Telegram', () => {
 		expect(await screen.findByRole('alert')).toHaveTextContent('Попытка входа устарела');
 		expect(await screen.findByLabelText('Телефон аккаунта')).toBeInTheDocument();
 	});
+
+	it('лимит кодов входа — 429 со своим текстом; свой чат в настройках — пояснение', async () => {
+		const user = userEvent.setup();
+		setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(st('error', { error: 'chat_is_self' }));
+			return json({ detail: 'tg_code_rate_limited' }, 429, { 'Retry-After': '1800' });
+		});
+		expect(await screen.findByText(/указан этот же пользователь Telegram/)).toBeInTheDocument();
+		await user.type(screen.getByLabelText('Телефон аккаунта'), '+7999');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'Слишком много запросов кода входа — следующий через 30 мин'
+		);
+	});
 });
