@@ -4,6 +4,7 @@ import pytest
 
 from app.engine.events import Event
 from app.engine.parsing.activities import (
+    _STARTS,
     RECOGNIZERS,
     ActivityCancelled,
     ActivityFinished,
@@ -42,6 +43,66 @@ def _events(msg_id: int) -> list[Event]:
 )
 def test_starts(msg_id: int, expected: ActivityStarted) -> None:
     assert _events(msg_id) == [expected]
+
+
+# Персонаж без пета и снаряжения (прод, 11 уровень).
+_WALK_BARE = (
+    '"Немного пройдусь", - сказал ты всем в офисе, но никто не услышал. Всем пофиг. '
+    "Вернёшься через 5 минут.\n\nОтменить: /decline"
+)
+_JOB_BADMINTON = (
+    "Взял любимый 🏸Бадминтон - размяться с коллегами на работе. "
+    "Закончишь через 4 мин. 55 сек.\n\nОтменить: /decline"
+)
+
+
+def _text_events(text: str) -> list[Event]:
+    msg = replace(game_msg("activities", 3625686), text=text)
+    return [e for recognize in RECOGNIZERS for e in recognize(msg)]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (_WALK_BARE, ActivityStarted(activity="walk", duration_s=300)),
+        (_JOB_BADMINTON, ActivityStarted(activity="job", duration_s=295)),
+    ],
+    ids=["walk", "job"],
+)
+def test_starts_without_pet(text: str, expected: ActivityStarted) -> None:
+    assert _text_events(text) == [expected]
+
+
+@pytest.mark.parametrize(
+    ("text", "activity"),
+    [
+        (_WALK_BARE, "walk"),
+        (_JOB_BADMINTON, "job"),
+        *(
+            (game_msg("activities", msg_id).text, activity)
+            for msg_id, activity in [
+                (3517276, "harvest"),
+                (3517898, "job"),
+                (3603614, "learn"),
+                (3624728, "dconv"),
+                (3625686, "walk"),
+                (3213190, "walk"),
+            ]
+        ),
+    ],
+    ids=[
+        "walk_bare",
+        "job_badminton",
+        "harvest",
+        "job",
+        "learn",
+        "dconv",
+        "walk_club",
+        "walk_dog",
+    ],
+)
+def test_start_patterns_do_not_overlap(text: str, activity: str) -> None:
+    assert [kind for kind, pattern in _STARTS if pattern.match(text)] == [activity]
 
 
 def _finished(msg_id: int) -> ActivityFinished:
