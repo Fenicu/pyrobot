@@ -5,7 +5,6 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { accounts, session, startApp, stopApp } from '$lib/app.svelte';
-	import AccountsPending from '$lib/components/AccountsPending.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import Shell from '$lib/components/Shell.svelte';
 	import Toasts from '$lib/components/Toasts.svelte';
@@ -37,8 +36,8 @@
 		}
 	});
 
-	// Старые ссылки (`/journal` и т. п.) — тот же экран последнего аккаунта; страница «не найдено»
-	// не рисуется.
+	// Старые ссылки (`/journal` и т. п.; маршрут `[legacy=legacy]` — ожидание) — тот же экран
+	// последнего аккаунта.
 	$effect(() => {
 		if (session.status !== 'authenticated' || !legacy || accounts.list === null) return;
 		const href = legacyHref(page.url, pickAccount(accounts.list, lastAccount()));
@@ -49,7 +48,7 @@
 {#if onLogin}
 	{@render children()}
 {:else if session.status === 'authenticated' && legacy}
-	<AccountsPending error={accounts.list === null ? accounts.error : null} onretry={() => void accounts.load()} />
+	{@render children()}
 {:else if session.status === 'authenticated'}
 	<Shell>{@render children()}</Shell>
 {:else if session.offline}
