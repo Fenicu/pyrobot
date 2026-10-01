@@ -4,6 +4,57 @@
  */
 
 export interface paths {
+    "/api/v1/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description Аккаунты текущей учётки, удаляемые — до конца чистки.
+         */
+        get: operations["list_accounts_api_v1_accounts_get"];
+        put?: never;
+        /**
+         * Create Account
+         * @description Новый аккаунт — `enabled`, настройки по умолчанию (`dry_run`): движок поднимет хост, он
+         *     работает без Telegram до первого входа.
+         */
+        post: operations["create_account_api_v1_accounts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Account
+         * @description Аккаунт становится `deleting`; хост останавливает его движок с выходом из Telegram и
+         *     удаляет данные в фоне — до конца чистки аккаунт виден в списке.
+         */
+        delete: operations["delete_account_api_v1_accounts__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Account
+         * @description Переименование, включение (снимает причину `error`) и выключение; удаляемый аккаунт не
+         *     правится.
+         */
+        patch: operations["patch_account_api_v1_accounts__account_id__patch"];
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/actions/{action_id}": {
         parameters: {
             query?: never;
@@ -137,6 +188,27 @@ export interface paths {
         put?: never;
         /** Engine Reconciled */
         post: operations["engine_reconciled_api_v1_accounts__account_id__engine_reconciled_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/engine/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restart Engine
+         * @description Новое поколение движка: хост штатно остановит запущенный и поднимет новый (настройки с
+         *     `restart_required` применяются так).
+         */
+        post: operations["restart_engine_api_v1_accounts__account_id__engine_restart_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -408,9 +480,10 @@ export interface paths {
         head?: never;
         /**
          * Patch Settings
-         * @description С движком — через него. Без движка — прямая запись в базу, если аренда аккаунта
-         *     свободна; занята — правку делает движок, который её взял: он ещё не зарегистрирован —
-         *     ожидание до `engine_wait_s`, затем 503 `engine_starting`.
+         * @description Удаляемый аккаунт не правится — и тогда, когда его движок ещё зарегистрирован. С
+         *     движком — через него. Без движка — прямая запись в базу, если аренда аккаунта свободна;
+         *     занята — правку делает движок, который её взял: он ещё не зарегистрирован — ожидание до
+         *     `engine_wait_s`, затем 503 `engine_starting`.
          */
         patch: operations["patch_settings_api_v1_accounts__account_id__settings_patch"];
         trace?: never;
@@ -639,6 +712,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/host/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Host Status */
+        get: operations["host_status_api_v1_host_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scenarios": {
         parameters: {
             query?: never;
@@ -697,6 +787,57 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountCreateIn */
+        AccountCreateIn: {
+            /** Name */
+            name: string;
+        };
+        /** AccountDeleteIn */
+        AccountDeleteIn: {
+            /** Confirm Name */
+            confirm_name: string;
+        };
+        /** AccountOut */
+        AccountOut: {
+            /** Id */
+            id: number;
+            /** Killed */
+            killed: boolean;
+            /** Last Action At */
+            last_action_at: string | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "dry_run" | "live";
+            /** Name */
+            name: string;
+            /** Paused */
+            paused: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "enabled" | "disabled" | "error" | "deleting";
+            /** Status Reason */
+            status_reason: string | null;
+            tg: components["schemas"]["AccountTgOut"];
+            unread: components["schemas"]["UnreadOut"];
+        };
+        /** AccountPatchIn */
+        AccountPatchIn: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+        };
+        /** AccountTgOut */
+        AccountTgOut: {
+            /** Online */
+            online: boolean;
+            /** User Id */
+            user_id: number | null;
+        };
         /** AckIn */
         AckIn: {
             /** Ids */
@@ -1094,6 +1235,26 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * HostStatusOut
+         * @description Здоровье процесса и хоста движков — отдельно от статусов аккаунтов.
+         */
+        HostStatusOut: {
+            /** Busy */
+            busy: {
+                [key: string]: string;
+            };
+            /** Engines */
+            engines: number[];
+            /** Holder */
+            holder: string;
+            /** Lock Connection Ok */
+            lock_connection_ok: boolean;
+            /** Loop Lag Ms */
+            loop_lag_ms: number;
+            /** Tasks Ok */
+            tasks_ok: boolean;
         };
         /** JournalPage */
         JournalPage: {
@@ -2348,6 +2509,16 @@ export interface components {
             /** User Id */
             user_id: number | null;
         };
+        /**
+         * UnreadOut
+         * @description Непрочитанные уведомления аккаунта по уровням.
+         */
+        UnreadOut: {
+            /** Error */
+            error: number;
+            /** Warn */
+            warn: number;
+        };
         /** UnrecognizedOut */
         UnrecognizedOut: {
             /** Acked */
@@ -2422,6 +2593,230 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_accounts_api_v1_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOut"][];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    create_account_api_v1_accounts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description name_taken | capacity_reached */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_accounts__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountDeleteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description invalid body | confirm_name_mismatch */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patch_account_api_v1_accounts__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountPatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description name_taken | capacity_reached | account_deleting */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     action_api_v1_accounts__account_id__actions__action_id__get: {
         parameters: {
             query?: never;
@@ -2904,6 +3299,73 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    restart_engine_api_v1_accounts__account_id__engine_restart_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4758,6 +5220,35 @@ export interface operations {
             };
             /** @description too many attempts */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    host_status_api_v1_host_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostStatusOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

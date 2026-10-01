@@ -37,6 +37,9 @@ ENGINE_NOT_RUNNING = "engine not running"
 # Аренда аккаунта занята, а его движок ещё не зарегистрирован в хосте: повторить позже.
 ENGINE_STARTING = "engine_starting"
 ACCOUNT_DELETING = "account_deleting"
+NAME_TAKEN = "name_taken"
+CAPACITY_REACHED = "capacity_reached"
+CONFIRM_NAME_MISMATCH = "confirm_name_mismatch"
 # Сессия (cookie): без неё или с истёкшей — 401.
 AUTH: Responses = {401: error(NOT_AUTHENTICATED)}
 # Изменяющий запрос: сессия и заголовок X-CSRF-Token.

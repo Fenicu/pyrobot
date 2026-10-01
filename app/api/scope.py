@@ -19,6 +19,7 @@ from app.engine.host.host import HostStatus
 from app.logctx import current_account
 
 ACCOUNT_PREFIX = "/api/v1/accounts/{account_id}"
+_ID_MAX = 2**31 - 1
 
 
 class EngineRegistry(Protocol):
@@ -37,6 +38,10 @@ class EngineRegistry(Protocol):
 
     def status(self) -> HostStatus:
         """Здоровье хоста движков (процесса)."""
+        ...
+
+    def poke(self) -> None:
+        """Желаемое состояние аккаунтов изменилось: сверить движки сейчас."""
         ...
 
 
@@ -59,6 +64,9 @@ async def account_scope(
 ) -> AsyncIterator[AccountScope]:
     """Аккаунт текущей учётки. Запрос идёт в контексте аккаунта: строки лога и задачи, созданные
     внутри (клиент kurigram при входе в Telegram), получают `account=<id>`."""
+    # `accounts.id` — int4: вне его диапазона аккаунта нет, а запрос с таким id база отвергла бы.
+    if not 1 <= account_id <= _ID_MAX:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, ACCOUNT_NOT_FOUND)
     account = await c.accounts.get(account_id)
     if account is None or account.owner_id != ctx.admin_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, ACCOUNT_NOT_FOUND)

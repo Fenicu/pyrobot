@@ -24,6 +24,9 @@ class _NoEngines:
     def status(self) -> HostStatus:
         return HostStatus("", False, [], {}, 0.0, False)
 
+    def poke(self) -> None:
+        pass
+
 
 def build_schema() -> dict[str, Any]:
     """OpenAPI без запуска сервиса и БД (движок ленивый, соединений не открывает): в самом

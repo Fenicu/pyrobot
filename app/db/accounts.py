@@ -1,15 +1,34 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal, cast
 
-from sqlalchemy import func, select, text, update
+from pydantic import ValidationError
+from sqlalchemy import ScalarSelect, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import Database
-from app.db.models import Account, AdminUser, SettingsRow
-from app.engine.settings import Settings
+from app.db.models import (
+    Account,
+    ActionRow,
+    AdminUser,
+    DecisionRow,
+    LedgerRow,
+    MessageRow,
+    MetricRow,
+    MetroRunRow,
+    NotificationRow,
+    ScenarioRunRow,
+    SettingsHistory,
+    SettingsRow,
+    StateSnapshot,
+    TgChatMark,
+    TgPeer,
+    TgSession,
+)
+from app.engine.settings import EngineSection, Settings
 
 AccountStatus = Literal["enabled", "disabled", "error", "deleting"]
 
@@ -45,6 +64,18 @@ class AccountInfo:
     engine_generation: int
 
 
+@dataclass(frozen=True)
+class AccountOverview:
+    """Аккаунт в списке учётки: режим, пауза и kill из настроек в базе, последнее действие и
+    непрочитанные уведомления `warn` и `error`."""
+
+    account: AccountInfo
+    engine: EngineSection
+    last_action_at: datetime | None
+    unread_warn: int
+    unread_error: int
+
+
 def _info(row: Account) -> AccountInfo:
     return AccountInfo(
         id=row.id,
@@ -59,6 +90,48 @@ def _info(row: Account) -> AccountInfo:
 
 # `deleting` конечный: записи, которые его сняли бы или перезапустили движок, его не затрагивают.
 _NOT_DELETING = Account.status != "deleting"
+
+
+# Чистка удаляемого аккаунта: журнал — в порядке `DbRetention` (нераспознанные уходят каскадом с
+# сообщениями), затем сессия Telegram, пиры, отметки сверки, настройки, их история и снимок
+# состояния.
+_PURGED: tuple[Any, ...] = (
+    MessageRow,
+    ActionRow,
+    ScenarioRunRow,
+    NotificationRow,
+    DecisionRow,
+    MetricRow,
+    MetroRunRow,
+    LedgerRow,
+    TgSession,
+    TgPeer,
+    TgChatMark,
+    SettingsRow,
+    SettingsHistory,
+    StateSnapshot,
+)
+
+
+def _engine(data: dict[str, Any] | None) -> EngineSection:
+    """Секция движка из настроек в базе. Не читается — значения по умолчанию: список аккаунтов
+    отдаётся и с аккаунтом, упавшим на старте из-за настроек."""
+    try:
+        return EngineSection.model_validate((data or {}).get("engine", {}))
+    except ValidationError:
+        return EngineSection()
+
+
+def _unread(level: str) -> ScalarSelect[int]:
+    return (
+        select(func.count())
+        .where(
+            NotificationRow.account_id == Account.id,
+            NotificationRow.level == level,
+            NotificationRow.read.is_(False),
+        )
+        .scalar_subquery()
+    )
 
 
 def _violated(exc: IntegrityError) -> str | None:
@@ -96,6 +169,34 @@ class AccountRepo:
                 select(Account).where(Account.owner_id == owner_id).order_by(Account.id)
             )
             return [_info(r) for r in rows]
+
+    async def overview(self, owner_id: int) -> list[AccountOverview]:
+        """Аккаунты учётки для списка — одним запросом: настройки, последнее действие и
+        непрочитанные предупреждения и ошибки каждого."""
+        last_action = (
+            select(func.max(ActionRow.created_at))
+            .where(ActionRow.account_id == Account.id)
+            .scalar_subquery()
+        )
+        stmt = (
+            select(Account, SettingsRow.data, last_action, _unread("warn"), _unread("error"))
+            .outerjoin(SettingsRow, SettingsRow.account_id == Account.id)
+            .where(Account.owner_id == owner_id)
+            .order_by(Account.id)
+        )
+        async with self._db.sessions() as session:
+            rows = (await session.execute(stmt)).all()
+        return [
+            AccountOverview(_info(row), _engine(data), last, int(warn), int(error))
+            for row, data, last, warn, error in rows
+        ]
+
+    async def has_tg_session(self, account_id: int) -> bool:
+        async with self._db.sessions() as session:
+            found = await session.scalar(
+                select(TgSession.account_id).where(TgSession.account_id == account_id)
+            )
+        return found is not None
 
     async def with_status(self, *statuses: AccountStatus) -> list[AccountInfo]:
         async with self._db.sessions() as session:
@@ -172,6 +273,40 @@ class AccountRepo:
 
     async def mark_deleting(self, account_id: int) -> None:
         await self._write(account_id, status="deleting")
+
+    async def purge(self, account_id: int, *, batch: int = 5000) -> None:
+        """Данные удаляемого аккаунта и его строка (чистка удаления, раздел 4.2 спеки). Строки
+        с ключом `id` удаляются пачками по `batch`, каждая своей транзакцией: длинный DELETE
+        держал бы блокировки; у таблиц с ключом по аккаунту строк на аккаунт единицы — они
+        удаляются разом. Прерванная чистка продолжается повтором; аккаунта уже нет — ничего не
+        делается, аккаунт не `deleting` — ValueError."""
+        account = await self.get(account_id)
+        if account is None:
+            return
+        if account.status != "deleting":
+            raise ValueError(f"account {account_id} is not deleting")
+        for model in _PURGED:
+            deleted = batch
+            while deleted >= batch:
+                deleted = await self._delete_rows(model, account_id, batch)
+        async with self._db.sessions() as session, session.begin():
+            await session.execute(
+                delete(Account).where(Account.id == account_id, Account.status == "deleting")
+            )
+
+    async def _delete_rows(self, model: Any, account_id: int, batch: int) -> int:
+        """Пачка строк аккаунта; сколько удалено. Без пачек (0) — у таблиц, чей ключ включает
+        аккаунт."""
+        own = model.account_id == account_id
+        async with self._db.sessions() as session, session.begin():
+            if "account_id" in model.__table__.primary_key.columns:
+                await session.execute(delete(model).where(own))
+                return 0
+            ids = select(model.id).where(own).limit(batch).scalar_subquery()
+            result = await session.execute(
+                delete(model).where(own, model.id.in_(ids)).returning(model.id)
+            )
+            return len(result.all())
 
     async def bind_telegram(self, account_id: int, tg_user_id: int) -> None:
         """Привязка на всю жизнь: уже привязанный аккаунт не меняется; пользователь, занятый

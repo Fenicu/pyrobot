@@ -32,10 +32,10 @@ def _config() -> AppConfig:
 
 
 class Hosts:
-    """Хосты теста на одной базе (у каждого — свой менеджер аренды). Пауза между стартами
-    пишется в `log` вместе со стартами движков и не ждёт (взведённый `gate` — ждёт его);
-    продления нет — местный срок аренды с запасом на весь тест. В конце теста хосты
-    останавливаются, соединения блокировок закрываются."""
+    """Хосты теста на одной базе (у каждого — свой менеджер аренды; прочие параметры хоста —
+    в `make`). Пауза между стартами пишется в `log` вместе со стартами движков и не ждёт
+    (взведённый `gate` — ждёт его); продления нет — местный срок аренды с запасом на весь тест.
+    В конце теста хосты останавливаются, соединения блокировок закрываются."""
 
     def __init__(self, db: Database) -> None:
         self.db = db
@@ -52,7 +52,7 @@ class Hosts:
             await self.gate.wait()
 
     async def make(
-        self, holder: str = "host-a", *, reconcile_s: float = 30.0
+        self, holder: str = "host-a", *, reconcile_s: float = 30.0, **kwargs: Any
     ) -> tuple[EngineHost, LeaseManager]:
         deps = RuntimeDeps(db=self.db, config=_config(), accounts=self.repo, lag=LoopLagMonitor())
         leases = LeaseManager(self.db, holder, ttl_s=300.0, busy_retry_s=0.05)
@@ -65,12 +65,15 @@ class Hosts:
             start_gap_s=3.0,
             reconcile_s=reconcile_s,
             sleep=self.sleep,
+            **kwargs,
         )
         self.hosts.append(host)
         return host, leases
 
-    async def open(self, holder: str = "host-a", *, reconcile_s: float = 30.0) -> EngineHost:
-        host, _ = await self.make(holder, reconcile_s=reconcile_s)
+    async def open(
+        self, holder: str = "host-a", *, reconcile_s: float = 30.0, **kwargs: Any
+    ) -> EngineHost:
+        host, _ = await self.make(holder, reconcile_s=reconcile_s, **kwargs)
         await host.start()
         return host
 

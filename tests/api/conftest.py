@@ -35,7 +35,8 @@ class FakeEngine:
 class FakeEngines:
     """Реестр движков: тест кладёт движок руками (`put`). `starting` — движки, которые
     регистрируются, как только их ждут; иначе `wait_registered` ждёт весь срок.
-    `lock_connection_ok` — соединение блокировок хоста (готовность процесса)."""
+    `lock_connection_ok` — соединение блокировок хоста (готовность процесса); `pokes` — сколько
+    раз API будило сверку хоста."""
 
     def __init__(self) -> None:
         self.engines: dict[int, FakeEngine] = {}
@@ -43,6 +44,7 @@ class FakeEngines:
         self.reasons: dict[int, str] = {}
         self.waited: list[tuple[int, float]] = []
         self.lock_connection_ok = True
+        self.pokes = 0
 
     def put(self, facade: EngineFacade, account_id: int = 1) -> FakeEngine:
         engine = FakeEngine(facade, account_id)
@@ -63,6 +65,9 @@ class FakeEngines:
 
     def host_reason(self, account_id: int) -> str | None:
         return self.reasons.get(account_id)
+
+    def poke(self) -> None:
+        self.pokes += 1
 
     def status(self) -> HostStatus:
         return HostStatus(

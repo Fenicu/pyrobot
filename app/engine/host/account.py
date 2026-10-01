@@ -293,6 +293,13 @@ class AccountRuntime:
             self.supervisor.start("tg-probe", self._probe_tg)
         await self.tg.boot()
 
+    async def log_out(self) -> None:
+        """Выход из Telegram перед штатной остановкой удаляемого аккаунта: сессия закрывается
+        и у Telegram. Вызов идёт через ограду аренды."""
+        with _in_account(self.account_id):
+            if self.tg is not None:
+                await self.fence.call(self.tg.logout)
+
     async def stop(self) -> None:
         """Штатная остановка: планировщик, шлюз, транспорт, доработка конвейера, задачи."""
         with _in_account(self.account_id):

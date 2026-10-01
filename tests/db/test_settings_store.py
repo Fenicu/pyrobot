@@ -4,6 +4,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import func, select, text, update
 
+from app.db.accounts import AccountDeleting, AccountRepo
 from app.db.base import Database
 from app.db.models import Account, SettingsHistory, SettingsRow
 from app.db.settings_store import DbSettingsStore, LeaseHeld, direct_update
@@ -144,3 +145,26 @@ async def test_direct_update_refused_with_active_lease(clean_db: Database) -> No
             )
         ).all()
     assert [tuple(h) for h in history] == [(1, "admin"), (2, "b")]
+
+
+async def test_direct_update_refused_for_deleting_account(clean_db: Database) -> None:
+    repo = AccountRepo(clean_db)
+    await direct_update(clean_db, 1, lambda s: s, changed_by="admin", expected_version=0)
+    # Прямая запись держит строку аккаунта FOR SHARE: пометка удаления (UPDATE accounts) ждёт
+    # её коммита и не проскакивает между проверкой статуса и записью.
+    async with clean_db.engine.connect() as blocker, blocker.begin():
+        await blocker.execute(text("SELECT 1 FROM settings WHERE account_id = 1 FOR UPDATE"))
+        write = asyncio.create_task(
+            direct_update(clean_db, 1, _to_live, changed_by="admin", expected_version=1)
+        )
+        await _until_waiting(clean_db, 1)
+        mark = asyncio.create_task(repo.mark_deleting(1))
+        await _until_waiting(clean_db, 2)
+        assert not write.done() and not mark.done()
+    assert await write == (_to_live(Settings()), 2)
+    await asyncio.wait_for(mark, 5)
+    # Удаляемый аккаунт — конечный статус: прямой записи больше нет.
+    with pytest.raises(AccountDeleting):
+        await direct_update(clean_db, 1, lambda s: s, changed_by="admin", expected_version=2)
+    async with clean_db.sessions() as session:
+        assert await session.scalar(select(func.max(SettingsHistory.version))) == 2

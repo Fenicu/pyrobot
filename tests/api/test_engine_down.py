@@ -142,6 +142,18 @@ async def test_direct_write_refused_for_deleting_account(api: Api) -> None:
     assert await _rows(api, SettingsHistory) == 0
 
 
+async def test_settings_refused_for_deleting_account_with_engine(api: Api) -> None:
+    # Движок удаляемого аккаунта ещё зарегистрирован (хост его останавливает): правка
+    # отклоняется и через него.
+    settings = StaticSettings()
+    api.engines.put(build(settings=settings))
+    await api.container.accounts.mark_deleting(1)
+    patch = {"version": 0, "changes": {"food": {"banana_reserve": 40}}}
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=patch)
+    assert (r.status_code, r.json()) == (409, {"detail": "account_deleting"})
+    assert settings.version == 0 and await _rows(api, SettingsHistory) == 0
+
+
 async def _hold_lease(api: Api) -> None:
     async with api.db.sessions() as s, s.begin():
         await s.execute(

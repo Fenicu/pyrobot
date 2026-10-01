@@ -1,6 +1,170 @@
 {
   "components": {
     "schemas": {
+      "AccountCreateIn": {
+        "properties": {
+          "name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AccountCreateIn",
+        "type": "object"
+      },
+      "AccountDeleteIn": {
+        "properties": {
+          "confirm_name": {
+            "title": "Confirm Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm_name"
+        ],
+        "title": "AccountDeleteIn",
+        "type": "object"
+      },
+      "AccountOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "killed": {
+            "title": "Killed",
+            "type": "boolean"
+          },
+          "last_action_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Action At"
+          },
+          "mode": {
+            "enum": [
+              "dry_run",
+              "live"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "enabled",
+              "disabled",
+              "error",
+              "deleting"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "tg": {
+            "$ref": "#/components/schemas/AccountTgOut"
+          },
+          "unread": {
+            "$ref": "#/components/schemas/UnreadOut"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "status_reason",
+          "tg",
+          "mode",
+          "paused",
+          "killed",
+          "last_action_at",
+          "unread"
+        ],
+        "title": "AccountOut",
+        "type": "object"
+      },
+      "AccountPatchIn": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "AccountPatchIn",
+        "type": "object"
+      },
+      "AccountTgOut": {
+        "properties": {
+          "online": {
+            "title": "Online",
+            "type": "boolean"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "user_id",
+          "online"
+        ],
+        "title": "AccountTgOut",
+        "type": "object"
+      },
       "AckIn": {
         "properties": {
           "ids": {
@@ -1126,6 +1290,51 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HostStatusOut": {
+        "description": "Здоровье процесса и хоста движков — отдельно от статусов аккаунтов.",
+        "properties": {
+          "busy": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Busy",
+            "type": "object"
+          },
+          "engines": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Engines",
+            "type": "array"
+          },
+          "holder": {
+            "title": "Holder",
+            "type": "string"
+          },
+          "lock_connection_ok": {
+            "title": "Lock Connection Ok",
+            "type": "boolean"
+          },
+          "loop_lag_ms": {
+            "title": "Loop Lag Ms",
+            "type": "number"
+          },
+          "tasks_ok": {
+            "title": "Tasks Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "holder",
+          "lock_connection_ok",
+          "engines",
+          "busy",
+          "loop_lag_ms",
+          "tasks_ok"
+        ],
+        "title": "HostStatusOut",
         "type": "object"
       },
       "JournalPage": {
@@ -4737,6 +4946,25 @@
         "title": "TgStatusOut",
         "type": "object"
       },
+      "UnreadOut": {
+        "description": "Непрочитанные уведомления аккаунта по уровням.",
+        "properties": {
+          "error": {
+            "title": "Error",
+            "type": "integer"
+          },
+          "warn": {
+            "title": "Warn",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "warn",
+          "error"
+        ],
+        "title": "UnreadOut",
+        "type": "object"
+      },
       "UnrecognizedOut": {
         "properties": {
           "acked": {
@@ -4923,6 +5151,322 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/accounts": {
+      "get": {
+        "description": "Аккаунты текущей учётки, удаляемые — до конца чистки.",
+        "operationId": "list_accounts_api_v1_accounts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountOut"
+                  },
+                  "title": "Response List Accounts Api V1 Accounts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          }
+        },
+        "summary": "List Accounts",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "post": {
+        "description": "Новый аккаунт — `enabled`, настройки по умолчанию (`dry_run`): движок поднимет хост, он\nработает без Telegram до первого входа.",
+        "operationId": "create_account_api_v1_accounts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "name_taken | capacity_reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Account",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}": {
+      "delete": {
+        "description": "Аккаунт становится `deleting`; хост останавливает его движок с выходом из Telegram и\nудаляет данные в фоне — до конца чистки аккаунт виден в списке.",
+        "operationId": "delete_account_api_v1_accounts__account_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "422": {
+            "description": "invalid body | confirm_name_mismatch"
+          }
+        },
+        "summary": "Delete Account",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "patch": {
+        "description": "Переименование, включение (снимает причину `error`) и выключение; удаляемый аккаунт не\nправится.",
+        "operationId": "patch_account_api_v1_accounts__account_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "name_taken | capacity_reached | account_deleting"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Account",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/api/v1/accounts/{account_id}/actions/{action_id}": {
       "get": {
         "operationId": "action_api_v1_accounts__account_id__actions__action_id__get",
@@ -5662,6 +6206,98 @@
         "summary": "Engine Reconciled",
         "tags": [
           "engine"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/engine/restart": {
+      "post": {
+        "description": "Новое поколение движка: хост штатно остановит запущенный и поднимет новый (настройки с\n`restart_required` применяются так).",
+        "operationId": "restart_engine_api_v1_accounts__account_id__engine_restart_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not running"
+          }
+        },
+        "summary": "Restart Engine",
+        "tags": [
+          "accounts"
         ]
       }
     },
@@ -7172,7 +7808,7 @@
         ]
       },
       "patch": {
-        "description": "С движком — через него. Без движка — прямая запись в базу, если аренда аккаунта\nсвободна; занята — правку делает движок, который её взял: он ещё не зарегистрирован —\nожидание до `engine_wait_s`, затем 503 `engine_starting`.",
+        "description": "Удаляемый аккаунт не правится — и тогда, когда его движок ещё зарегистрирован. С\nдвижком — через него. Без движка — прямая запись в базу, если аренда аккаунта свободна;\nзанята — правку делает движок, который её взял: он ещё не зарегистрирован — ожидание до\n`engine_wait_s`, затем 503 `engine_starting`.",
         "operationId": "patch_settings_api_v1_accounts__account_id__settings_patch",
         "parameters": [
           {
@@ -8492,6 +9128,37 @@
         "summary": "Change Password",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/host/status": {
+      "get": {
+        "operationId": "host_status_api_v1_host_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HostStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          }
+        },
+        "summary": "Host Status",
+        "tags": [
+          "accounts"
         ]
       }
     },

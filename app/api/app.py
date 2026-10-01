@@ -5,6 +5,8 @@ from sqlalchemy import text
 from app.api.admin_static import install_admin
 from app.api.container import Container
 from app.api.errors import ENGINE_NOT_RUNNING
+from app.api.routes_accounts import account as account_router
+from app.api.routes_accounts import router as accounts_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_commands import catalog_router
 from app.api.routes_commands import router as commands_router
@@ -42,6 +44,8 @@ def create_api(container: Container) -> FastAPI:
     app.state.container = container
     app.add_exception_handler(LeaseLost, _lease_lost)
     app.include_router(auth_router)
+    app.include_router(accounts_router)
+    app.include_router(account_router)
     app.include_router(catalog_router)
     app.include_router(engine_router)
     app.include_router(planner_router)

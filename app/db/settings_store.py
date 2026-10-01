@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.accounts import AccountDeleting
 from app.db.base import Database
 from app.db.models import Account, SettingsHistory, SettingsRow
 from app.engine.fence import Fence
@@ -57,19 +58,22 @@ async def direct_update(
 ) -> tuple[Settings, int]:
     """Запись настроек аккаунта без движка (раздел 4.4 спеки) — одной транзакцией, пока строка
     аккаунта под FOR SHARE: захват аренды (UPDATE accounts) ждёт её коммита, а движок читает
-    настройки только после захвата — запись до него он видит. Аренда занята — `LeaseHeld`,
-    версия не та — `SettingsConflict`, аккаунта нет — KeyError."""
+    настройки только после захвата — запись до него он видит. Статус читается под той же
+    блокировкой: пометка удаления ждёт коммита записи. Аккаунт удаляется — `AccountDeleting`,
+    аренда занята — `LeaseHeld`, версия не та — `SettingsConflict`, аккаунта нет — KeyError."""
     async with db.sessions() as session, session.begin():
         lease = (
             await session.execute(
-                select(Account.lease_holder, Account.lease_expires_at, func.now())
+                select(Account.status, Account.lease_holder, Account.lease_expires_at, func.now())
                 .where(Account.id == account_id)
                 .with_for_update(read=True)
             )
         ).one_or_none()
         if lease is None:
             raise KeyError(account_id)
-        holder, expires, now = lease
+        status, holder, expires, now = lease
+        if status == "deleting":
+            raise AccountDeleting(account_id)
         # Свободна — как при захвате: держателя нет или срок прошёл.
         if holder is not None and not (expires is not None and expires < now):
             raise LeaseHeld(account_id)

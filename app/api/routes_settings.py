@@ -17,6 +17,7 @@ from app.api.errors import (
     error,
 )
 from app.api.scope import AccountScope, account_router, account_scope
+from app.db.accounts import AccountDeleting
 from app.db.notifications import DbNotifier
 from app.db.settings_store import LeaseHeld, direct_update
 from app.engine.facade import EngineFacade, SettingsUpdate
@@ -172,15 +173,19 @@ async def patch_settings(
     scope: Annotated[AccountScope, Depends(account_scope)],
     c: Annotated[Container, Depends(container)],
 ) -> SettingsPatchOut:
-    """С движком — через него. Без движка — прямая запись в базу, если аренда аккаунта
-    свободна; занята — правку делает движок, который её взял: он ещё не зарегистрирован —
-    ожидание до `engine_wait_s`, затем 503 `engine_starting`."""
+    """Удаляемый аккаунт не правится — и тогда, когда его движок ещё зарегистрирован. С
+    движком — через него. Без движка — прямая запись в базу, если аренда аккаунта свободна;
+    занята — правку делает движок, который её взял: он ещё не зарегистрирован — ожидание до
+    `engine_wait_s`, затем 503 `engine_starting`."""
+    if scope.account.status == "deleting":
+        raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
     f = scope.facade
     if f is None:
-        if scope.account.status == "deleting":
-            raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
         try:
             return await _direct(c, scope, body, ctx.login)
+        except AccountDeleting as exc:
+            # Пометка удаления пришла после чтения аккаунта.
+            raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING) from exc
         except LeaseHeld:
             engine = await c.engines.wait_registered(scope.account.id, c.engine_wait_s)
             f = engine.facade if engine is not None else None

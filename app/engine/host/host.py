@@ -3,7 +3,9 @@
 `poke()` и раз в `reconcile_s`. Аккаунтом на хосте в каждый момент занят кто-то один (замок
 аккаунта): новый движок стартует только после полной остановки прежнего. Старты идут по одному с
 паузой `start_gap_s` — без залпа подключений к Telegram с одного IP. Падение одного аккаунта
-(серия сбоев задачи, ошибка старта, потеря аренды) остальные движки не трогает."""
+(серия сбоев задачи, ошибка старта, потеря аренды) остальные движки не трогает. Удаляемый
+аккаунт (`deleting`) хост чистит: движок останавливается штатно с выходом из Telegram, затем
+задача чистки захватывает аренду аккаунта и удаляет его данные."""
 
 import asyncio
 import contextlib
@@ -18,10 +20,17 @@ from app.engine.host.account import AccountRuntime, RuntimeDeps
 from app.engine.host.lease import Busy, LeaseManager
 from app.engine.notify import Level, LogNotifier
 from app.engine.supervisor import Supervisor
+from app.logctx import current_account
 
 log = logging.getLogger(__name__)
 
 _STATUSES: tuple[AccountStatus, ...] = ("enabled", "disabled", "error", "deleting")
+# Выход из Telegram удаляемого аккаунта — движком или без него — не дольше этого.
+LOGOUT_TIMEOUT_S = 30.0
+
+
+async def _no_offline_logout(account_id: int) -> None:
+    """Выхода без движка нет."""
 
 
 @dataclass(frozen=True)
@@ -53,6 +62,8 @@ class _Engine:
     lost: bool = False
     # Задача, ушедшая в серию сбоев.
     crash: str | None = None
+    # Аккаунт удаляется: перед штатной остановкой — выход из Telegram.
+    log_out: bool = False
 
 
 class EngineHost:
@@ -67,6 +78,7 @@ class EngineHost:
         start_gap_s: float,
         reconcile_s: float = 30.0,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        logout_offline: Callable[[int], Awaitable[None]] = _no_offline_logout,
     ) -> None:
         self.capacity = max_engines
         self._deps = deps
@@ -74,6 +86,9 @@ class EngineHost:
         self._start_gap = start_gap_s
         self._reconcile_s = reconcile_s
         self._sleep = sleep
+        # Выход из Telegram удаляемого аккаунта, движка которого на хосте не было: временный
+        # клиент на сессии из базы.
+        self._logout_offline = logout_offline
         # Супервизор процесса: сверка хоста и задачи процесса (`app.main`). Без предела сбоев:
         # задача процесса — например, продление аренды — не бросается после серии падений, а
         # перезапускается с паузой до минуты. Уведомлять некого (у процесса нет аккаунта) —
@@ -93,6 +108,10 @@ class EngineHost:
         self._changed = asyncio.Event()
         # Остановки движков, назначенные из ограды и супервизоров движков.
         self._ops: set[asyncio.Task[None]] = set()
+        # Задачи чистки удаляемых аккаунтов — не больше одной на аккаунт.
+        self._cleanups: dict[int, asyncio.Task[None]] = {}
+        # Удаляемые аккаунты, чей движок на этом хосте уже вышел из Telegram.
+        self._logged_out: set[int] = set()
         self._last_start: float | None = None
 
     async def start(self) -> None:
@@ -105,10 +124,15 @@ class EngineHost:
 
     async def stop(self) -> None:
         """Сверка — первой, вместе с незаконченным плавным стартом: новый старт не начнётся
-        посреди остановки, начатый остановится и освободит аренду. Затем все движки разом:
-        штатно, пока аренда действует (иначе аварийно), и освобождение аренды каждого. Продление
-        аренд и соединение блокировок останавливает процесс — после этого."""
+        посреди остановки, начатый остановится и освободит аренду. Чистки отменяются (с
+        освобождением аренды): прерванная продолжится при следующем старте. Затем все движки
+        разом: штатно, пока аренда действует (иначе аварийно), и освобождение аренды каждого.
+        Продление аренд и соединение блокировок останавливает процесс — после этого."""
         await self.supervisor.cancel("reconcile")
+        cleanups = list(self._cleanups.values())
+        for task in cleanups:
+            task.cancel()
+        await asyncio.gather(*cleanups, return_exceptions=True)
         await asyncio.gather(*(self._shutdown(account_id) for account_id in list(self._engines)))
         # Назначенные остановки уже остановленных движков ничего не делают.
         await asyncio.gather(*self._ops, return_exceptions=True)
@@ -162,11 +186,14 @@ class EngineHost:
 
     async def _reconcile(self) -> None:
         """Движок аккаунта, который не `enabled` (или удалён), и движок не того поколения
-        останавливаются штатно; `enabled` без движка захватываются и стартуют по возрастанию `id`.
-        Аккаунт, занятый остановкой, ждёт её конца: она сама будит сверку."""
+        останавливаются штатно, удаляемого — с выходом из Telegram. Удаляемые без движка
+        получают задачу чистки, `enabled` без движка захватываются и стартуют по возрастанию
+        `id`. Аккаунт, занятый остановкой, ждёт её конца: она сама будит сверку."""
         accounts = {a.id: a for a in await self._deps.accounts.with_status(*_STATUSES)}
         for account_id, engine in list(self._engines.items()):
             account = accounts.get(account_id)
+            if account is not None and account.status == "deleting":
+                engine.log_out = True
             if (
                 account is None
                 or account.status != "enabled"
@@ -174,19 +201,77 @@ class EngineHost:
             ):
                 self._end(account_id, engine)
         wanted = sorted(a.id for a in accounts.values() if a.status == "enabled")
-        for account_id in (set(self._reasons) | set(self._retry_at)) - set(wanted):
+        deleting = sorted(a.id for a in accounts.values() if a.status == "deleting")
+        for account_id in (set(self._reasons) | set(self._retry_at)) - {*wanted, *deleting}:
             self._reasons.pop(account_id, None)
             self._retry_at.pop(account_id, None)
-        loop = asyncio.get_running_loop()
+        self._logged_out &= set(deleting)
+        for account_id in deleting:
+            if account_id not in self._cleanups and self._due(account_id):
+                self._clean_up(account_id)
         for account_id in wanted:
-            if account_id in self._engines or self._lock(account_id).locked():
-                continue
-            if self._retry_at.get(account_id, 0.0) > loop.time():
+            if not self._due(account_id):
                 continue
             try:
                 await self._start_engine(account_id)
             except Exception:
                 log.exception("engine of account %d not started", account_id)
+
+    def _due(self, account_id: int) -> bool:
+        """Аккаунт свободен на хосте (ни движка, ни занятого замка), и срок повтора захвата
+        наступил."""
+        if account_id in self._engines or self._lock(account_id).locked():
+            return False
+        return self._retry_at.get(account_id, 0.0) <= asyncio.get_running_loop().time()
+
+    def _clean_up(self, account_id: int) -> None:
+        task = asyncio.create_task(self._clean(account_id), name=f"cleanup-{account_id}")
+        self._cleanups[account_id] = task
+        task.add_done_callback(lambda _: self._cleanups.pop(account_id, None))
+
+    async def _clean(self, account_id: int) -> None:
+        """Чистка удаляемого аккаунта (раздел 4.2 спеки) под замком аккаунта — значит, после
+        полной остановки его движка на этом хосте. Аренда — по пп. 1–3: занята (блокировка у
+        другого хоста или его аренда ещё действует) — причина и повтор по `retry_in_s`. Движок
+        здесь из Telegram не выходил, а сессия в базе есть, — выход без движка; затем данные
+        аккаунта и его строка, освобождение аренды."""
+        current_account.set(account_id)
+        loop = asyncio.get_running_loop()
+        try:
+            async with self._lock(account_id):
+                account = await self._deps.accounts.get(account_id)
+                if account is None or account.status != "deleting" or account_id in self._engines:
+                    return
+                got = await self._acquire(account_id)
+                if isinstance(got, Busy):
+                    self._reasons[account_id] = got.reason
+                    self._retry_at[account_id] = loop.time() + got.retry_in_s
+                    # Цикл сверки пересчитает сон до срока повтора.
+                    self.poke()
+                    return
+                self._reasons.pop(account_id, None)
+                self._retry_at.pop(account_id, None)
+                try:
+                    if account_id not in self._logged_out and (
+                        await self._deps.accounts.has_tg_session(account_id)
+                    ):
+                        await self._log_out_offline(account_id, got)
+                    await self._deps.accounts.purge(account_id)
+                finally:
+                    await self._complete(self._leases.release(got))
+                self._logged_out.discard(account_id)
+                log.info("account %d deleted", account_id)
+        except Exception:
+            log.exception("account %d not cleaned up", account_id)
+
+    async def _log_out_offline(self, account_id: int, fence: Fence) -> None:
+        """Сбой или таймаут — предупреждение: сессия останется в списке сессий пользователя в
+        Telegram, а чистка идёт дальше."""
+        try:
+            async with asyncio.timeout(LOGOUT_TIMEOUT_S):
+                await fence.call(lambda: self._logout_offline(account_id))
+        except Exception as exc:
+            log.warning("account %d telegram session not logged out: %r", account_id, exc)
 
     async def _start_engine(self, account_id: int) -> None:
         """Захват аренды и старт движка под замком аккаунта. Занят — причина и срок повтора;
@@ -331,12 +416,21 @@ class EngineHost:
 
     async def _finish(self, account_id: int, engine: _Engine) -> None:
         """Остановка движка под замком аккаунта: штатная, пока аренда действует (доработка
-        конвейера идёт под продлением), иначе аварийная; затем освобождение аренды. Серия
-        сбоев — `error` и уведомление до освобождения."""
+        конвейера идёт под продлением; у удаляемого аккаунта перед ней — выход из Telegram),
+        иначе аварийная; затем освобождение аренды. Серия сбоев — `error` и уведомление до
+        освобождения."""
         engine.ending = True
         self._hide(engine)
         runtime = engine.runtime
         fence = runtime.fence
+        if engine.log_out and fence.alive:
+            try:
+                async with asyncio.timeout(LOGOUT_TIMEOUT_S):
+                    await runtime.log_out()
+            except Exception as exc:
+                log.warning("account %d telegram session not logged out: %r", account_id, exc)
+            # Выход сделал движок: чистке выход без движка не нужен.
+            self._logged_out.add(account_id)
         try:
             await (runtime.stop() if fence.alive else runtime.abort())
         except Exception:
