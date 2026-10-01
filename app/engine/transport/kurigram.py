@@ -139,7 +139,7 @@ class ChatFilter:
     game_chat_id: int
     swinfo_chat_id: int
     swinfo_user_id: int
-    smoothie_channel_id: int
+    smoothie_channel_id: int | None
     bulls_chat_id: int | None
 
     @classmethod

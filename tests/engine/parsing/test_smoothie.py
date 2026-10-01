@@ -13,6 +13,7 @@ from app.engine.settings import ChatsSection
 from tests.fixtures import game_msg, game_versions
 
 FOOD_BONUS = "🍴На еде или фастфуде получаешь дополнительно +110%🔋 с шансом 75%."
+CHANNEL = -1001356300612
 FULL = {"lemon": 4, "grape": 4, "apple": 4, "carrot": 4, "tomato": 4}
 
 
@@ -60,7 +61,7 @@ def test_cooking_cancelled() -> None:
 
 
 def test_channel_recipe_only_in_channel() -> None:
-    parser = default_parser(ChatsSection())
+    parser = default_parser(ChatsSection(smoothie_channel_id=CHANNEL))
     assert parser.parse(game_msg("smoothie", 2344)) == [
         SmoothieRecipe(recipe="🍇🥕🥕🍋🍅", bonus=FOOD_BONUS)
     ]
@@ -71,8 +72,13 @@ def test_channel_recipe_only_in_channel() -> None:
     ]
 
 
+def test_no_channel_gives_no_recipe() -> None:
+    events = default_parser(ChatsSection()).parse(game_msg("smoothie", 2344))
+    assert not any(isinstance(e, SmoothieRecipe) for e in events)
+
+
 def test_recipe_text_in_game_chat_gives_no_recipe_event() -> None:
-    chats = ChatsSection()
+    chats = ChatsSection(smoothie_channel_id=CHANNEL)
     parser = default_parser(chats)
     recipe = replace(game_msg("smoothie", 2344), chat_id=chats.game_chat_id)
     events = parser.parse(recipe)

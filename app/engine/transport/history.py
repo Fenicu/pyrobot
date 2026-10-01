@@ -30,15 +30,16 @@ Key = tuple[int, int, str]
 
 
 def readers_for(chats: ChatsSection) -> set[Reader]:
-    """Чтения настроек аккаунта: чаты игры и смузи и чат приглашений к биржевикам — целиком,
-    swinfo — по отправителю (фильтр берёт там сообщения одного пользователя, и сервер отдаёт
-    только их). Чат приглашений, совпадающий с чатом swinfo, — второе чтение того же чата:
-    сообщения swinfo не вытесняются из лимита чужими."""
+    """Чтения настроек аккаунта: чат игры, канал смузи и чат приглашений к биржевикам (если
+    заданы) — целиком, swinfo — по отправителю (фильтр берёт там сообщения одного пользователя,
+    и сервер отдаёт только их). Чат приглашений, совпадающий с чатом swinfo, — второе чтение
+    того же чата: сообщения swinfo не вытесняются из лимита чужими."""
     readers = {
         (chats.game_chat_id, 0),
-        (chats.smoothie_channel_id, 0),
         (chats.swinfo_chat_id, chats.swinfo_user_id),
     }
+    if chats.smoothie_channel_id is not None:
+        readers.add((chats.smoothie_channel_id, 0))
     if chats.bulls_invite_chat_id is not None:
         readers.add((chats.bulls_invite_chat_id, 0))
     return readers

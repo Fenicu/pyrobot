@@ -132,8 +132,9 @@ def default_parser(chats: ChatsSection | None = None) -> MessageParser:
     routes.setdefault(chats.game_chat_id, []).append(Route(game))
     swinfo_route = Route(Parser(swinfo.RECOGNIZERS), sender=chats.swinfo_user_id)
     routes.setdefault(chats.swinfo_chat_id, []).append(swinfo_route)
-    channel = Route(Parser(smoothie.CHANNEL_RECOGNIZERS))
-    routes.setdefault(chats.smoothie_channel_id, []).append(channel)
+    if chats.smoothie_channel_id is not None:
+        channel = Route(Parser(smoothie.CHANNEL_RECOGNIZERS))
+        routes.setdefault(chats.smoothie_channel_id, []).append(channel)
     if chats.bulls_invite_chat_id is not None:
         invites = Route(Parser(bulls.INVITE_RECOGNIZERS))
         routes.setdefault(chats.bulls_invite_chat_id, []).append(invites)

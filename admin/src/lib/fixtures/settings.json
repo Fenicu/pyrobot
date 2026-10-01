@@ -169,7 +169,7 @@
    "game_chat_id": 227859379,
    "swinfo_chat_id": -1001109615116,
    "swinfo_user_id": 376592453,
-   "smoothie_channel_id": -1001356300612,
+   "smoothie_channel_id": null,
    "tangerine_chat_id": -1001377961602,
    "tangerine_reply_to": 927136,
    "bulls_invite_chat_id": null
@@ -347,9 +347,16 @@
       "type": "integer"
      },
      "smoothie_channel_id": {
-      "default": -1001356300612,
-      "title": "Smoothie Channel Id",
-      "type": "integer"
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Smoothie Channel Id"
      },
      "tangerine_chat_id": {
       "default": -1001377961602,

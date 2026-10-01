@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace as NS
 
 from app.engine.settings import ChatsSection
-from app.engine.transport.kurigram import ChatFilter, has_join_fight, to_incoming
+from app.engine.transport.kurigram import ChatFilter, has_join_fight, session_peers, to_incoming
 
 T0 = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 
@@ -79,6 +79,15 @@ def test_chat_filter_and_join_fight() -> None:
     assert not f.accepts(malformed)
     assert not f.accepts(_m(chat=NS(id=-100500), from_user=NS(id=5), text="привет"))
     assert not f.accepts(_m(chat=NS(id=42)))
+
+
+def test_smoothie_channel_only_when_set() -> None:
+    channel = -1001356300612
+    post = _m(chat=NS(id=channel), from_user=None, text="Рецепт: 🍇🥕🥕🍋🍅")
+    assert not ChatFilter.from_settings(ChatsSection()).accepts(post)
+    assert channel not in session_peers(ChatsSection())
+    chats = ChatsSection(smoothie_channel_id=channel)
+    assert ChatFilter.from_settings(chats).accepts(post) and channel in session_peers(chats)
 
 
 def test_invite_chat_may_be_swinfo_chat() -> None:

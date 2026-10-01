@@ -77,7 +77,7 @@ def test_swinfo_battle_summaries_have_all_prices() -> None:
 
 @no_research
 def test_every_channel_recipe_parsed() -> None:
-    parser = default_parser(ChatsSection())
+    parser = default_parser(ChatsSection(smoothie_channel_id=-1001356300612))
     posts = [r for r in _records(CHANNEL) if str(r.get("text") or "").startswith("Рецепт: ")]
     assert posts
     for rec in posts:

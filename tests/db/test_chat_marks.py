@@ -66,7 +66,7 @@ async def test_prune_removes_readers_not_in_settings(clean_db: Database) -> None
         await marks.advance(reader, msg_id)
     await ChatMarks(clean_db, other).advance((SWINFO, 0), 50)
     # swinfo — другой отправитель, чата приглашений больше нет.
-    chats = ChatsSection(swinfo_user_id=555)
+    chats = ChatsSection(smoothie_channel_id=SMOOTHIE, swinfo_user_id=555)
     assert readers_for(chats) == {(GAME, 0), (SMOOTHIE, 0), (SWINFO, 555)}
     assert await marks.prune(readers_for(chats)) == 2
     assert await _rows(clean_db) == {

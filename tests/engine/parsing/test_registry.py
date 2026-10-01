@@ -5,6 +5,8 @@ from app.engine.parsing import default_parser
 from app.engine.settings import ChatsSection
 from tests.fixtures import game
 
+# Посты канала смузи в семействе smoothie разбираются только при заданном канале.
+CHATS = ChatsSection(smoothie_channel_id=-1001356300612)
 FAMILIES = (
     "profile",
     "battle",
@@ -27,7 +29,7 @@ FAMILIES = (
 
 
 def test_every_fixture_recognized_and_json_safe() -> None:
-    parser = default_parser(ChatsSection())
+    parser = default_parser(CHATS)
     for family in FAMILIES:
         for msg_id, msg in game(family).items():
             events = parser.parse(msg)
@@ -38,7 +40,7 @@ def test_every_fixture_recognized_and_json_safe() -> None:
 
 
 def test_one_recognizer_per_message() -> None:
-    parser = default_parser(ChatsSection())
+    parser = default_parser(CHATS)
     for family in FAMILIES:
         for msg_id, msg in game(family).items():
             kinds = [e.kind for e in parser.parse(msg)]

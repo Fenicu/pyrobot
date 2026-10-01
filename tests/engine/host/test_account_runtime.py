@@ -314,7 +314,7 @@ async def test_history_pass_runs_in_background_and_prunes_marks(
     client = runtime.transport._client  # type: ignore[union-attr]
     assert isinstance(client, FakeClient)
     # Проход начался сразу после выхода в онлайн и висит на чтении.
-    await until(lambda: "GetHistory" in [name for name, _ in client.invoked])
+    await until(lambda: any(name in {"GetHistory", "Search"} for name, _ in client.invoked))
     assert runtime.facade is not None and runtime.facade.status().workers_ok
     async with clean_db.sessions() as session:
         marks = await session.execute(select(TgChatMark.chat_id, TgChatMark.msg_id))

@@ -32,7 +32,7 @@ SMOOTHIE = -1001356300612
 SWINFO = -1001109615116
 SW_USER = 376592453
 TEAM = -1001149209877
-CHATS = ChatsSection()
+CHATS = ChatsSection(smoothie_channel_id=SMOOTHIE)
 INVITE = "join_fight_I16YW9RrvSq"
 Key = tuple[int, int, str]
 
@@ -700,8 +700,12 @@ async def test_filtered_chat_mark_is_chat_head_short_gap_one_request() -> None:
     assert _ids(rig.journal.delivered) == [301] and rig.notifier.items == []
 
 
+def test_no_smoothie_channel_no_reader() -> None:
+    assert readers_for(ChatsSection()) == {(GAME, 0), (SWINFO, SW_USER)}
+
+
 async def test_swinfo_read_by_sender_and_shared_invites_chat_has_two_readers() -> None:
-    chats = ChatsSection(bulls_invite_chat_id=SWINFO)
+    chats = ChatsSection(smoothie_channel_id=SMOOTHIE, bulls_invite_chat_id=SWINFO)
     readers = readers_for(chats)
     assert readers == {(GAME, 0), (SMOOTHIE, 0), (SWINFO, SW_USER), (SWINFO, 0)}
     tg = Telegram()

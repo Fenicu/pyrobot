@@ -210,6 +210,15 @@ def test_telegram_binding_left_settings() -> None:
     assert err.value.code == "unknown_field"
 
 
+def test_smoothie_channel_off_by_default() -> None:
+    assert Settings().chats.smoothie_channel_id is None
+    patched = apply_patch(Settings(), {"chats": {"smoothie_channel_id": -1001356300612}})
+    assert patched.chats.smoothie_channel_id == -1001356300612
+    # Без канала его прежний id — обычная супергруппа: годится в чат команды.
+    team = apply_patch(Settings(), {"chats": {"team_chat_id": -1001356300612}})
+    assert team.chats.team_chat_id == -1001356300612
+
+
 def test_team_chat_off_by_default() -> None:
     assert Settings().chats.team_chat_id is None
     patched = apply_patch(Settings(), {"chats": {"team_chat_id": -1001149209877}})
@@ -232,8 +241,9 @@ def test_team_chat_off_by_default() -> None:
     ],
 )
 def test_team_chat_only_other_supergroup(chat: int) -> None:
+    channel = apply_patch(Settings(), {"chats": {"smoothie_channel_id": -1001356300612}})
     with pytest.raises(ValidationError) as err:
-        apply_patch(Settings(), {"chats": {"team_chat_id": chat}})
+        apply_patch(channel, {"chats": {"team_chat_id": chat}})
     assert err.value.errors()[0]["loc"] == ("chats", "team_chat_id")
 
 

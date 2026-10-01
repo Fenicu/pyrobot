@@ -41,14 +41,16 @@ class ChatsSection(BaseModel):
     game_chat_id: int = 227859379
     swinfo_chat_id: int = -1001109615116
     swinfo_user_id: int = 376592453
-    smoothie_channel_id: int = -1001356300612
+    # Канал рецептов смузи своей компании; None — смузи не варится.
+    smoothie_channel_id: int | None = None
     tangerine_chat_id: int = -1001377961602
     # Сообщение того, кому дарить мандарины (/gt уходит ответом на него); None — не дарить.
     tangerine_reply_to: int | None = None
     bulls_invite_chat_id: int | None = None
     # Чат команды для пересылки итогов задания и отчёта о фабрике; None — не пересылать. Только
-    # супергруппа (-100…) и не чат игры, SWINFO, канал смузи или мандарины: личный отчёт не должен
-    # уйти не туда. С чатом приглашений к биржевикам совпадать можно: там читаются только они.
+    # супергруппа (-100…) и не чат игры, SWINFO, канал смузи (если задан) или мандарины: личный
+    # отчёт не должен уйти не туда. С чатом приглашений к биржевикам совпадать можно: там
+    # читаются только они.
     team_chat_id: int | None = Field(default=None, le=SUPERGROUP_MAX_ID)
 
     @field_validator("team_chat_id")

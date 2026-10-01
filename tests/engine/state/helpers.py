@@ -9,7 +9,7 @@ from app.engine.types import IncomingMessage
 from tests.fixtures import game_msg
 
 T0 = datetime(2026, 9, 26, 9, 0, tzinfo=UTC)
-PARSER = default_parser(ChatsSection())
+PARSER = default_parser(ChatsSection(smoothie_channel_id=-1001356300612))
 
 
 def at(minutes: float) -> datetime:

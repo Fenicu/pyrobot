@@ -56,9 +56,16 @@
      "type": "integer"
     },
     "smoothie_channel_id": {
-     "default": -1001356300612,
-     "title": "Smoothie Channel Id",
-     "type": "integer"
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Smoothie Channel Id"
     },
     "swinfo_chat_id": {
      "default": -1001109615116,
