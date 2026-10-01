@@ -263,7 +263,7 @@ def long_fence() -> Fence:
 class FakeKurigram(KurigramTransport):
     """Транспорт на фейковых клиентах. `dispatch` — у каждого клиента обработчик диспетчера
     передаёт обновления в транспорт, как `MessageHandler` kurigram; `backlog` — очередь
-    конвейера; `client_errors` — сбои вызовов у клиентов, созданных дальше."""
+    конвейера; `client_errors` — сбои вызовов у следующего созданного клиента."""
 
     def __init__(
         self,
@@ -294,6 +294,7 @@ class FakeKurigram(KurigramTransport):
     def _make_client(self) -> FakeClient:
         client = FakeClient(self.storage, self.events)
         client.errors.update(self.client_errors)
+        self.client_errors.clear()
         if self._dispatch:
             client.dispatcher.handler = lambda update: self._on_new(client, update)
         self.clients.append(client)

@@ -44,9 +44,11 @@ DIALOGS_WARMUP = 200
 HISTORY_PAGE = 100
 # Перегрузка (раздел 4.2 спеки): очередь kurigram и очередь конвейера вместе выше OVERLOAD_HIGH —
 # приём останавливается; ниже OVERLOAD_LOW (проверка раз в OVERLOAD_CHECK_S) — новый клиент.
+# Не подключился — повтор через OVERLOAD_RETRY_S, дальше раз в последнюю паузу.
 OVERLOAD_HIGH = 5000
 OVERLOAD_LOW = 500
 OVERLOAD_CHECK_S = 1.0
+OVERLOAD_RETRY_S = (5.0, 30.0, 60.0)
 # Устройство сессии в списке сессий пользователя в Telegram — у клиента движка и у временного
 # клиента выхода одинаковое.
 _DEVICE: dict[str, Any] = {
@@ -307,10 +309,11 @@ class KurigramTransport:
         # Перегрузка: приём остановлен до возврата клиента; None — приём идёт.
         self._overload: asyncio.Task[None] | None = None
         self.overload_check_s = OVERLOAD_CHECK_S
+        self.overload_retry_s = OVERLOAD_RETRY_S
         self.on_auth_lost: Callable[[], Awaitable[None]] | None = None
-        # Приём остановлен перегрузкой; вышли из неё — None или код ошибки (клиент не поднялся).
+        # Приём остановлен перегрузкой; клиент после неё снова онлайн.
         self.on_overload: Callable[[], Awaitable[None]] | None = None
-        self.on_resumed: Callable[[str | None], Awaitable[None]] | None = None
+        self.on_resumed: Callable[[], Awaitable[None]] | None = None
         # Проход сверки истории — с поводом; обработчик только ставит его в очередь.
         self.on_history_needed: Callable[[str], None] | None = None
         # Клиент вошёл, прошёл проверку привязки и вышел в онлайн (`go_online`).
@@ -370,7 +373,8 @@ class KurigramTransport:
         """Перегрузка (раздел 4.2 спеки): сессия перестаёт принимать, статус — перегрузка,
         `terminate()` — диспетчер разбирает принятое в конвейер, `disconnect()` закрывает
         хранилище, не удаляя его; выхода из Telegram нет. Когда накопленное разобрано ниже
-        `OVERLOAD_LOW`, возвращается новый клиент. Своей догонки у kurigram нет, поэтому
+        `OVERLOAD_LOW`, возвращается новый клиент; не подключился — повтор через
+        `overload_retry_s`, статус остаётся перегрузкой. Своей догонки у kurigram нет, поэтому
         пропущенное за перегрузку вернёт сверка истории, а не поток, который снова перегрузит."""
         try:
             # Статус — сразу, вместе с остановкой сессии: она может идти секунды (ждёт задачи
@@ -378,22 +382,34 @@ class KurigramTransport:
             await asyncio.gather(_stop_session(client), self._report(self.on_overload))
             # terminate() и disconnect(), без утечки сессии при сбое одного из них.
             await _force_close(client)
-            # Опрос, а не событие: конвейер о разборе очереди не сообщает.
-            while self._pending(client) >= OVERLOAD_LOW:  # noqa: ASYNC110
-                await asyncio.sleep(self.overload_check_s)
-            await self._resume(client)
+            # Накопленное считается по остановленному клиенту: его очередь разобрал terminate(),
+            # а очередь клиента, не вышедшего в онлайн, разбирать некому.
+            stopped, failures = client, 0
+            while True:
+                # Опрос, а не событие: конвейер о разборе очереди не сообщает.
+                while self._pending(stopped) >= OVERLOAD_LOW:  # noqa: ASYNC110
+                    await asyncio.sleep(self.overload_check_s)
+                if await self._resume(client):
+                    return
+                retry = self.overload_retry_s
+                delay = retry[min(failures, len(retry) - 1)]
+                failures += 1
+                log.info("telegram client back after overload: retry in %.0fs", delay)
+                await asyncio.sleep(delay)
+                client = self._client
         finally:
             self._overload = None
 
-    async def _resume(self, stopped: Any) -> None:
+    async def _resume(self, previous: Any) -> bool:
         """Новый объект клиента на том же хранилище — сессия kurigram одноразовая, а `terminate()`
         снял обработчики, — `connect()` и `go_online()` через ограду аренды. Входа заново и
-        проверки привязки нет: сессия в хранилище та же. Выход в онлайн просит проход сверки."""
+        проверки привязки нет: сессия в хранилище та же. Выход в онлайн просит проход сверки.
+        False — сбой, после которого стоит повторить (новый клиент закрыт)."""
         from pyrogram import errors
 
-        if self._client is not stopped:
+        if self._client is not previous:
             # За время перегрузки клиент сброшен (выход, потеря входа) — возвращать нечего.
-            return
+            return True
         client = self._client = self._new_client()
         self._peers = {}
         try:
@@ -402,26 +418,28 @@ class KurigramTransport:
             await self.go_online()
         except LeaseLost:
             # Аренда потеряна: движок останавливается аварийно.
-            return
+            return True
         except (TransportAuthLost, errors.Unauthorized):
             # connect() при отозванной сессии уже сбросил клиент.
             await self._reset_client(client)
             await self._auth_lost()
-            return
+            return True
         except Exception:
-            if self._client is client:
-                log.exception("telegram client not back online after overload")
-                await _force_close(client)
-                await self._report(self.on_resumed, "online_failed")
-            return
+            if self._client is not client:
+                # Клиент сброшен выходом во время подключения.
+                return True
+            log.warning("telegram client not back online after overload", exc_info=True)
+            await _force_close(client)
+            return False
         log.info("telegram client back online after overload")
-        await self._report(self.on_resumed, None)
+        await self._report(self.on_resumed)
+        return True
 
     @staticmethod
-    async def _report(callback: Callable[..., Awaitable[None]] | None, *args: Any) -> None:
+    async def _report(callback: Callable[[], Awaitable[None]] | None) -> None:
         if callback is not None:
             try:
-                await callback(*args)
+                await callback()
             except Exception:
                 log.exception("overload callback failed")
 
@@ -576,7 +594,18 @@ class KurigramTransport:
 
         client = self._client
         failure: Exception | None = None
-        if client.is_connected:
+        if self._overload is not None:
+            # Перегрузка: клиент отключён, а выход закрывает сессию и у Telegram (удаление
+            # аккаунта, раздел 4.2 спеки). Возврат клиента снимается; новый клиент на том же
+            # хранилище подключается только для `auth.LogOut`.
+            await self._end_overload()
+            await _force_close(self._client)
+            client = self._client = self._new_client()
+            try:
+                await client.connect()
+            except Exception as exc:
+                failure = exc
+        if failure is None and client.is_connected:
             try:
                 await client.invoke(
                     raw.functions.auth.LogOut(), retries=1, sleep_threshold=0, retry_delay=0

@@ -269,11 +269,11 @@ class TgAuthManager:
                 "too many telegram updates queued; intake paused until the backlog is processed",
             )
 
-    async def mark_resumed(self, error: str | None = None) -> None:
-        """Транспорт вышел из перегрузки: клиент снова онлайн или, с `error`, не поднялся."""
+    async def mark_resumed(self) -> None:
+        """Транспорт вышел из перегрузки: клиент снова онлайн."""
         async with self._lock:
             if self._state is TgState.OVERLOAD:
-                self._set(TgState.ERROR if error else TgState.ONLINE, error=error)
+                self._set(TgState.ONLINE)
 
     def _check(self, attempt_id: str, owner: str, state: TgState) -> _Attempt:
         attempt = self._attempt

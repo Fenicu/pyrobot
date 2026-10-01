@@ -717,28 +717,56 @@ async def test_resume_refused_after_fence_deadline() -> None:
     await rig.t.abort()
 
 
-@pytest.mark.parametrize(
-    ("error", "state", "code"),
-    [
-        ("OSError", TgState.ERROR, "online_failed"),
-        ("SessionRevoked", TgState.UNAUTHORIZED, "session_revoked"),
-    ],
-)
-async def test_resume_failure(error: str, state: TgState, code: str) -> None:
+async def test_resume_retries_after_transient_failure() -> None:
+    rig = OverloadRig()
+    old = await rig.overload()
+    rig.t.overload_retry_s = (0.2,)
+    # Первый новый клиент не выходит в онлайн из-за сбоя связи: статус остаётся перегрузкой,
+    # повтор — по паузе, со следующим новым клиентом на том же хранилище.
+    rig.t.client_errors["GetState"] = OSError("network down")
+    rig.pipeline.clear()
+    await until(lambda: len(rig.t.clients) == 2 and not rig.t.clients[1].is_connected)
+    assert rig.tg.status().state is TgState.OVERLOAD and rig.history == ["online"]
+    await until(lambda: rig.tg.status().state is TgState.ONLINE)
+    failed, new = rig.t.clients[1:]
+    assert rig.t.clients == [old, failed, new] and new.is_initialized and rig.t.online
+    assert not rig.t.storage.deleted and new.storage is rig.t.storage
+    assert [name for c in rig.t.clients for name, _ in c.invoked if name == "SendCode"] == []
+    assert rig.history == ["online", "online"]
+    assert rig.notes.items == [("warn", "account_overload")]
+    await rig.t.stop()
+
+
+async def test_resume_with_revoked_session_loses_auth() -> None:
     rig = OverloadRig()
     await rig.overload()
-    # Новый клиент не выходит в онлайн: сбой связи — ошибка входа, как при старте; отозванная
-    # сессия — потеря входа.
-    failure = OSError("network down") if error == "OSError" else rpc_error(error)
-    rig.t.client_errors["GetState"] = failure
+    rig.t.client_errors["GetState"] = rpc_error("SessionRevoked")
     rig.pipeline.clear()
-    await until(lambda: rig.tg.status().state is state)
-    assert rig.tg.status().error == code and not rig.t.online
-    assert not rig.t.clients[1].is_connected
-    revoked = state is TgState.UNAUTHORIZED
-    assert rig.t.storage.deleted is revoked
-    lost = [("error", "tg_auth_lost")] if revoked else []
-    assert rig.notes.items == [("warn", "account_overload"), *lost]
+    await until(lambda: rig.tg.status().state is TgState.UNAUTHORIZED)
+    assert rig.tg.status().error == "session_revoked" and rig.t.storage.deleted
+    assert rig.notes.items == [("warn", "account_overload"), ("error", "tg_auth_lost")]
+    # Повтора нет: вход нужен заново.
+    await asyncio.sleep(0.05)
+    assert len(rig.t.clients) == 3 and not rig.t.client.is_connected
+    await rig.t.stop()
+
+
+async def test_log_out_during_overload_closes_telegram_session() -> None:
+    rig = OverloadRig()
+    old = await rig.overload()
+    st = await rig.tg.logout()
+    assert st.state is TgState.UNAUTHORIZED and rig.t.storage.deleted
+    # Отключённый клиент перегрузки выходить не может: выход — через новый подключённый клиент.
+    logout = rig.t.clients[1]
+    assert old.invoked[-1][0] != "LogOut"
+    assert logout.invoked == [("LogOut", {"retries": 1, "sleep_threshold": 0, "retry_delay": 0})]
+    assert not logout.is_connected
+    assert [name for c in rig.t.clients for name, _ in c.invoked if name == "SendCode"] == []
+    # Возврат клиента снят: разобранная очередь его не поднимает.
+    rig.pipeline.clear()
+    await asyncio.sleep(0.05)
+    assert len(rig.t.clients) == 3 and not rig.t.client.is_connected
+    assert rig.notes.items == [("warn", "account_overload")]
     await rig.t.stop()
 
 
