@@ -51,7 +51,7 @@ from app.config import AppConfig, DbConfig  # noqa: E402
 from app.db.models import Account, MessageRow, StateSnapshot  # noqa: E402
 from app.engine.host.account import AccountRuntime  # noqa: E402
 from app.engine.pipeline import Pipeline  # noqa: E402
-from app.engine.tg_auth import TgAuthBackend  # noqa: E402
+from app.engine.tg_auth import TgAuthBackend, TgState  # noqa: E402
 from app.engine.transport.base import Transport  # noqa: E402
 from app.engine.transport.fake import FakeTgBackend, FakeTransport  # noqa: E402
 from app.engine.types import IncomingMessage  # noqa: E402
@@ -226,6 +226,8 @@ async def _measure(args: argparse.Namespace) -> dict[str, Any]:
         engine_start_gap_s=START_GAP_S,
     )
     traffic = Traffic()
+    # Подмена не должна молча осесть новым атрибутом, если метод переименуют.
+    assert hasattr(AccountRuntime, "_make_transport")
     AccountRuntime._make_transport = _online_transport
     runtime = Runtime(config)
     # Ретеншн (первый проход через 5 минут) в замер разной длины не входит.
@@ -239,6 +241,12 @@ async def _measure(args: argparse.Namespace) -> dict[str, Any]:
         engines = await _engines(runtime, accounts)
         rss_started = _rss_mb()
         await asyncio.sleep(args.warmup)
+        # Подмена транспорта сработала: без входа шлюз и реакции простаивали бы.
+        offline = [
+            e.account_id
+            for e in engines
+            if e.tg is None or e.tg.status().state is not TgState.ONLINE
+        ]
         feeds = _feeds(accounts, _pool(), args.seed)
         pairs = [(feeds[e.account_id], e.pipeline) for e in engines if e.pipeline is not None]
         for feed, pipe in pairs:
@@ -264,6 +272,7 @@ async def _measure(args: argparse.Namespace) -> dict[str, Any]:
         return {
             "engines": n,
             "alive": len(status.engines),
+            "offline": offline,
             "tasks_ok": status.tasks_ok and all(e.supervisor.healthy() for e in engines),
             "rss_mb": rss,
             "rss_started_mb": rss_started,
@@ -358,8 +367,11 @@ def _table(results: list[dict[str, Any]]) -> str:
 
 
 def _problems(r: dict[str, Any]) -> list[str]:
-    """Прогон считается чистым, только если все движки дожили, а сообщения дошли до журнала."""
+    """Прогон считается чистым, только если все движки вошли в онлайн и дожили до конца, а
+    сообщения дошли до журнала."""
     found = []
+    if r["offline"]:
+        found.append(f"не вошли в Telegram (фейк): аккаунты {r['offline']}")
     if r["alive"] != r["engines"]:
         found.append(f"движков в конце {r['alive']} из {r['engines']}")
     if not r["tasks_ok"]:
@@ -395,6 +407,11 @@ def main(argv: list[str] | None = None) -> int:
     if "bench" not in args.bench_db:
         print("--bench-db: имя базы замера должно содержать «bench»", file=sys.stderr)
         return 2
+    if args.bench_db == make_url(args.database_url).database:
+        print(
+            "--bench-db совпадает с базой из --database-url: она была бы удалена", file=sys.stderr
+        )
+        return 2
     results = []
     for n in (int(part) for part in args.engines.split(",")):
         print(f"N={n}: {args.minutes} мин...", file=sys.stderr, flush=True)
@@ -411,7 +428,8 @@ def main(argv: list[str] | None = None) -> int:
     fit = [r["engines"] for r in results if r["p99_ms"] < P99_LIMIT_MS and not _problems(r)]
     verdict = f"наибольшее N с p99 < {P99_LIMIT_MS:.0f} мс: {max(fit)}" if fit else "ни одно N"
     print(f"\n{verdict}")
-    return 0
+    # Нечистый прогон мерил не то, что нужно: таблицу видно, но выход ненулевой.
+    return 1 if any(_problems(r) for r in results) else 0
 
 
 if __name__ == "__main__":
