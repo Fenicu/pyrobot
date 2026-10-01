@@ -2610,7 +2610,8 @@ identity (`get_me`) проверяется до запуска апдейтов,
 `join_chat(username, expect_id)` транспорта: `get_chat` по username (`GAME_CHAT_USERNAME =
 "startupwarschat"` в `app/engine/transport/base.py`), чат с другим id — отказ `chat_mismatch` без
 вступления, затем `JoinChannel`; итог `joined`, `already_member` (`USER_ALREADY_PARTICIPANT`) или
-`request_sent` (заявка ждёт одобрения). Вызов — через ограду аренды, вне шлюза команд; пир чата
+`request_sent` (заявка ждёт одобрения, в том числе бота-охранника чата); отклонённая заявка —
+отказ `join_declined`. Вызов — через ограду аренды, вне шлюза команд; пир чата
 после вступления сохраняется в `tg_peers` (чат SWINFO — среди чатов из настроек).
 
 **Сессия Telegram — в базе, а не в файле.** `PgSessionStorage` (`app/db/tg_storage.py`,
@@ -3059,7 +3060,7 @@ id чата по username сверяется с `chats.swinfo_chat_id`, зате
 чат; `request_sent` — заявка ждёт одобрения админов чата. Ошибки: 409 `game_chat_mismatch` (по
 username — другой чат, вступления нет), 409 `tg_not_online` (Telegram не в онлайне или вход
 потерян), 409 `account_deleting`, 429 `flood_wait` с `Retry-After`, 502 с кодом ошибки Telegram
-(например `CHANNELS_TOO_MUCH`, `USER_BANNED_IN_CHANNEL`), 503 `engine not running`.
+(например `CHANNELS_TOO_MUCH`, `USER_BANNED_IN_CHANNEL`, `join_declined` — заявку отклонили), 503 `engine not running`.
 
 `GET
 /readyz` (без авторизации) — 200 `{"status":"ready"}`, если процесс готов (база отвечает, соединение

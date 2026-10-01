@@ -572,6 +572,30 @@ async def test_join_chat_request_sent_result() -> None:
     assert await t.join_chat("startupwarschat", SWINFO) == "request_sent"
 
 
+async def test_join_chat_guard_bot_approval_is_request_sent() -> None:
+    from pyrogram import types
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.chat = NS(id=SWINFO)
+    t.client.join_result = types.ChatJoinResultGuardBotApprovalRequired(
+        bot=NS(id=1), url="https://t.me/guard", query_id="q"
+    )
+    assert await t.join_chat("startupwarschat", SWINFO) == "request_sent"
+
+
+async def test_join_chat_declined_is_rejected() -> None:
+    from pyrogram import types
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.chat = NS(id=SWINFO)
+    t.client.join_result = types.ChatJoinResultDeclined()
+    with pytest.raises(TransportRejected) as caught:
+        await t.join_chat("startupwarschat", SWINFO)
+    assert str(caught.value) == "join_declined"
+
+
 @pytest.mark.parametrize("where", ["GetChat", "JoinChat"])
 async def test_join_chat_flood_wait(where: str) -> None:
     from pyrogram import errors

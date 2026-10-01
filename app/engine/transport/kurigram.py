@@ -868,7 +868,11 @@ class KurigramTransport:
             return "request_sent"
         except errors.RPCError as exc:
             raise TransportRejected(str(exc.ID or exc)) from exc
-        if isinstance(result, types.ChatJoinResultRequestSent):
+        if isinstance(result, types.ChatJoinResultDeclined):
+            raise TransportRejected("join_declined")
+        if isinstance(
+            result, (types.ChatJoinResultRequestSent, types.ChatJoinResultGuardBotApprovalRequired)
+        ):
             return "request_sent"
         return "joined"
 
