@@ -170,15 +170,21 @@ class EngineHost:
         )
 
     async def _run(self) -> None:
-        """Цикл сверки: по `poke()`, раз в `reconcile_s` и к сроку повтора захвата."""
+        """Цикл сверки: по `poke()`, раз в `reconcile_s` и к сроку повтора захвата. Повтор,
+        назначенный проходом (захват не удался), мог к концу прохода уже наступить — старты
+        других аккаунтов идут с паузами, — и тогда следующий проход начинается сразу. Повтор,
+        назначенный раньше и проходом не исполненный (сбой захвата), ждёт `reconcile_s`: иначе
+        сбой повторялся бы без пауз."""
         loop = asyncio.get_running_loop()
+        began = loop.time()
         while True:
             now = loop.time()
-            due = [at - now for at in self._retry_at.values() if at > now]
+            due = [max(at - now, 0.0) for at in self._retry_at.values() if at > began]
             with contextlib.suppress(TimeoutError):
                 async with asyncio.timeout(min([self._reconcile_s, *due])):
                     await self._wake.wait()
             self._wake.clear()
+            began = loop.time()
             try:
                 await self._reconcile()
             except Exception:

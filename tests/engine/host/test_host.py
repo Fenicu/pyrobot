@@ -234,6 +234,38 @@ async def test_missed_poke_caught_by_periodic_reconcile(clean_db: Database, host
     assert _running(host, 1).generation == first.generation + 1
 
 
+async def test_retry_due_during_pass_is_not_postponed(
+    clean_db: Database, hosts: Hosts, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    two = await _add(clean_db)
+    # Аккаунт 1 занят другим хостом, а старт аккаунта 2 держится: срок повтора захвата аккаунта 1
+    # наступает посреди прохода сверки, и к его концу уже прошёл.
+    other = LeaseManager(clean_db, "other-host", ttl_s=300.0)
+    await other.open()
+    try:
+        fence = await other.acquire(1)
+        assert isinstance(fence, Fence)
+        gate = asyncio.Event()
+        start = AccountRuntime._start
+
+        async def held(self: AccountRuntime) -> None:
+            if self.account_id == two:
+                await gate.wait()
+            await start(self)
+
+        monkeypatch.setattr(AccountRuntime, "_start", held)
+        host = await hosts.open()
+        await until(lambda: host.host_reason(1) == "locked_elsewhere", 5.0)
+        loop = asyncio.get_running_loop()
+        await until(lambda: loop.time() > host._retry_at[1], 5.0)
+        await other.release(fence)
+        gate.set()
+        # Просроченный повтор исполняется сразу, а не через `reconcile_s` (30 с).
+        await until(lambda: host.get(1) is not None and host.get(two) is not None, 5.0)
+    finally:
+        await other.close()
+
+
 async def test_disable_stops_enable_starts(clean_db: Database, hosts: Hosts) -> None:
     two = await _add(clean_db)
     host = await hosts.open()
