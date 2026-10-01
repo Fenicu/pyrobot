@@ -70,6 +70,10 @@ class FakeSession:
         self.stopped = False
 
     async def stop(self) -> None:
+        # Как `Session.stop` kurigram: ждёт приёма, закрытия соединения и задач `handle_updates`
+        # — в это время работают и обработчики диспетчера.
+        for _ in range(3):
+            await asyncio.sleep(0)
         self.stopped = True
         self.events.append("session.stop")
 

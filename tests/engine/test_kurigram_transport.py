@@ -567,24 +567,24 @@ async def test_call_cut_when_invoke_hangs_past_deadline() -> None:
 
 async def test_abort_stops_session_cancels_handlers_without_terminate() -> None:
     received: list[int] = []
-    gate = asyncio.Event()
 
     async def sink(msg: IncomingMessage) -> None:
         received.append(msg.msg_id)
-        await gate.wait()
 
     t = FakeKurigram(sink=sink)
     client = t.client
     client.dispatcher.handler = lambda update: t._on_new(client, update)
     await _online(t)
-    for msg_id in (1, 2, 3):
-        client.dispatcher.updates_queue.put_nowait(_game_message(msg_id))
+    client.dispatcher.updates_queue.put_nowait(_game_message(1))
     await until(lambda: received == [1])
+    # Принятое до остановки: обработчик диспетчера разобрал бы его, пока останавливается сессия.
+    for msg_id in (2, 3):
+        client.dispatcher.updates_queue.put_nowait(_game_message(msg_id))
     t.events.clear()
     await t.abort()
     # Без terminate(): он сохранил бы хранилище и доработал очередь диспетчера в конвейер.
     assert t.events == ["session.stop", "handler.cancelled", "storage.close"]
-    assert received == [1] and client.dispatcher.updates_queue.qsize() == 2
+    assert received == [1]
     assert all(task.done() for task in client.dispatcher.handler_worker_tasks)
 
     # Клиент не подключался: сессии нет — закрывается только хранилище.

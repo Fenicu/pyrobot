@@ -225,6 +225,8 @@ class KurigramTransport:
         self._fence = fence
         self._filter = chat_filter
         self._sink = sink
+        # Аварийная остановка началась: обновления в конвейер больше не передаются.
+        self._aborted = False
         self.on_auth_lost: Callable[[], Awaitable[None]] | None = None
         self._me: Any = None
         # Peer чатов, разрешённые заранее (`resolve`), — для текущего клиента.
@@ -255,6 +257,8 @@ class KurigramTransport:
         await self._forward(message, "edit")
 
     async def _forward(self, message: Any, kind: MessageKind) -> None:
+        if self._aborted:
+            return
         try:
             if not self._filter.accepts(message):
                 return
@@ -415,7 +419,10 @@ class KurigramTransport:
         """Аварийная остановка, когда аренда потеряна (раздел 4.2 спеки, п. 6): сессия больше не
         принимает и не переподключается, обработчики диспетчера (и сторож обновлений) отменяются,
         хранилище закрывается без `save()`. `terminate()` не вызывается: он сохранил бы хранилище
-        и доработал очередь диспетчера в конвейер, который после срока писать не может."""
+        и доработал очередь диспетчера в конвейер, который после срока писать не может. Передача
+        в конвейер обрывается первой: пока сессия останавливается (`Session.stop` ждёт задачи
+        `handle_updates`), обработчики ещё разбирают очередь."""
+        self._aborted = True
         client = self._client
         if client.session is not None:
             with suppress(Exception):
