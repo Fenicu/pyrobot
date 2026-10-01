@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { accountApi, live, unread } from '$lib/app.svelte';
+	import { current } from '$lib/app.svelte';
 	import NotificationList from '$lib/components/notifications/NotificationList.svelte';
 	import UnrecognizedList from '$lib/components/notifications/UnrecognizedList.svelte';
 
 	let tab = $state<'notifications' | 'unrecognized'>('notifications');
+	const { api, live, unread } = current.get();
 	const subscribe = live.subscribe.bind(live);
 </script>
 
@@ -32,8 +33,8 @@
 </div>
 <div id="panel" role="tabpanel" aria-labelledby="tab-{tab}">
 	{#if tab === 'notifications'}
-		<NotificationList api={accountApi} {subscribe} onread={() => void unread.load()} />
+		<NotificationList {api} {subscribe} onread={() => void unread.load()} />
 	{:else}
-		<UnrecognizedList api={accountApi} />
+		<UnrecognizedList {api} />
 	{/if}
 </div>

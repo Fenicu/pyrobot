@@ -15,6 +15,7 @@ import ActionDetail from './ActionDetail.svelte';
 import DecisionDetail from './DecisionDetail.svelte';
 import RunSteps from './RunSteps.svelte';
 import { actionCommand } from '$lib/util/game';
+import { screenAccountContext } from '$lib/nav';
 
 const page = fixture<JournalPage>('journal_page');
 
@@ -231,6 +232,14 @@ describe('Шаги идущего запуска', () => {
 		emit({ type: 'action', id: 'e:4', data: { id: 500, status: 'confirmed', reason: '' } });
 		await tick();
 		expect(fetch.calls).toHaveLength(3);
+	});
+
+	it('забег метро — ссылка в метро аккаунта экрана', async () => {
+		const fetch = mockFetch(() => json({ ...runOf('done', [step]), metro_run_id: 12 }));
+		const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 3, fetch);
+		render(RunSteps, { props: { api, runId: 34 }, context: screenAccountContext(3) });
+		const link = await screen.findByRole('link', { name: 'забег метро #12' });
+		expect(link).toHaveAttribute('href', '/a/3/metro?run=12');
 	});
 });
 

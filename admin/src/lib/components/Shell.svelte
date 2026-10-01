@@ -3,10 +3,11 @@
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
-	import { live, session, unread } from '$lib/app.svelte';
+	import { accounts, current, session } from '$lib/app.svelte';
 	import { signOutWithRetry } from '$lib/logout';
-	import { isActive, MAIN_NAV, MORE_NAV, type NavItem } from '$lib/nav';
+	import { isActive, lastAccount, mainNav, moreNav, parseAccount, pickAccount, type NavItem } from '$lib/nav';
 	import { dialogs } from '$lib/stores/confirm.svelte';
+	import AccountSwitcher from './AccountSwitcher.svelte';
 	import ConnectionDot from './ConnectionDot.svelte';
 	import Modal from './Modal.svelte';
 	import ThemeSwitch from './ThemeSwitch.svelte';
@@ -14,10 +15,20 @@
 	let { children }: { children: Snippet } = $props();
 	let moreOpen = $state(false);
 	const path = $derived(page.url.pathname);
-	const moreActive = $derived(MORE_NAV.some((i) => isActive(path, i.href)));
+	// Аккаунт меню: из адреса, на общих экранах — открытый, иначе тот, куда ведёт «/».
+	const ctx = $derived(current.ctx);
+	const account = $derived(
+		parseAccount(page.params.account) ?? ctx?.id ?? pickAccount(accounts.list ?? [], lastAccount())
+	);
+	// Его контекст — если открыт: точка связи и счётчик непрочитанных из потока.
+	const opened = $derived(ctx?.id === account ? ctx : null);
+	const main = $derived(account === null ? [] : mainNav(account));
+	const more = $derived(moreNav(account));
+	const moreActive = $derived(more.some((i) => isActive(path, i.href)));
+	const unread = $derived(opened?.unread.count ?? 0);
 
 	function badge(item: NavItem): number {
-		return item.badge === 'unread' ? unread.count : 0;
+		return item.badge === 'unread' ? unread : 0;
 	}
 
 	async function logout() {
@@ -55,12 +66,13 @@
 	>
 		<div class="flex items-center justify-between px-4 py-3">
 			<span class="text-base font-semibold">pyrobot</span>
-			<ConnectionDot status={live.status} retryIn={live.retryIn} compact />
+			<ConnectionDot status={opened?.live.status ?? 'idle'} retryIn={opened?.live.retryIn ?? 0} compact />
 		</div>
-		<nav class="flex flex-1 flex-col gap-0.5 px-2" aria-label="Разделы">
-			{#each MAIN_NAV as item (item.href)}{@render link(item)}{/each}
-			<div class="my-2 border-t border-line-soft"></div>
-			{#each MORE_NAV as item (item.href)}{@render link(item)}{/each}
+		<AccountSwitcher variant="side" accounts={accounts.list} current={account} alerts={opened?.unread.count} {path} />
+		<nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2" aria-label="Разделы">
+			{#each main as item (item.href)}{@render link(item)}{/each}
+			{#if main.length > 0}<div class="my-2 border-t border-line-soft"></div>{/if}
+			{#each more as item (item.href)}{@render link(item)}{/each}
 		</nav>
 		<div class="space-y-2 border-t border-line-soft px-3 py-3">
 			<ThemeSwitch />
@@ -74,6 +86,14 @@
 	</aside>
 
 	<main class="min-w-0 flex-1 px-3 pt-3 pb-[calc(6rem_+_env(safe-area-inset-bottom))] md:px-6 md:pt-5 md:pb-8">
+		<AccountSwitcher
+			variant="bar"
+			accounts={accounts.list}
+			current={account}
+			alerts={opened?.unread.count}
+			{path}
+			onopen={() => (moreOpen = true)}
+		/>
 		{@render children()}
 	</main>
 
@@ -81,7 +101,7 @@
 		class="fixed inset-x-0 bottom-0 z-40 flex border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
 		aria-label="Разделы"
 	>
-		{#each MAIN_NAV as item (item.href)}
+		{#each main as item (item.href)}
 			<a
 				href={item.href}
 				class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] {isActive(path, item.href)
@@ -104,7 +124,7 @@
 		>
 			<Ellipsis class="size-5" aria-hidden="true" />
 			Ещё
-			{#if unread.count > 0}
+			{#if unread > 0}
 				<span class="absolute top-1 right-1/4 size-2 rounded-full bg-red-500" aria-hidden="true"></span>
 			{/if}
 		</button>
@@ -114,11 +134,19 @@
 {#if moreOpen}
 	<Modal title="Ещё" variant="sheet" onclose={() => (moreOpen = false)}>
 		<div class="mb-3 flex items-center justify-between">
-			<ConnectionDot status={live.status} retryIn={live.retryIn} />
+			<ConnectionDot status={opened?.live.status ?? 'idle'} retryIn={opened?.live.retryIn ?? 0} />
 			<ThemeSwitch />
 		</div>
+		<AccountSwitcher
+			variant="list"
+			accounts={accounts.list}
+			current={account}
+			alerts={opened?.unread.count}
+			{path}
+			onpick={() => (moreOpen = false)}
+		/>
 		<nav class="flex flex-col gap-0.5" aria-label="Ещё">
-			{#each MORE_NAV as item (item.href)}{@render link(item, () => (moreOpen = false))}{/each}
+			{#each more as item (item.href)}{@render link(item, () => (moreOpen = false))}{/each}
 			<button
 				type="button"
 				class="flex items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-fg-muted hover:bg-surface-2"

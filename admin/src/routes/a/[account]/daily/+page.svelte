@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { accountApi, live } from '$lib/app.svelte';
+	import { current } from '$lib/app.svelte';
 	import DailyView from '$lib/components/daily/DailyView.svelte';
 	import { DailyStore } from '$lib/daily/store.svelte';
 
 	const MAX_DAYS = 30;
+	const { api, live } = current.get();
 	// «до 14:40» у сегодня — раз в 30 с.
 	let now = $state(new Date());
-	const daily = new DailyStore(accountApi, MAX_DAYS);
+	const daily = new DailyStore(api, MAX_DAYS);
 
 	onMount(() => {
 		const t = setInterval(() => (now = new Date()), 30_000);

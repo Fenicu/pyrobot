@@ -37,6 +37,7 @@ export type DailyOut = S['DailyOut'];
 export type DayOut = S['DayOut'];
 export type KindOut = S['KindOut'];
 export type BalanceOut = S['BalanceOut'];
+export type AccountOut = S['AccountOut'];
 
 /** Наблюдение поля состояния: `{value, at, src}`. */
 export interface Observed<T> {

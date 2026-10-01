@@ -2,6 +2,7 @@
 	import { errorText, type ApiError } from '$lib/api/errors';
 	import type { DayOut } from '$lib/api/types';
 	import { dayShort, staleNote } from '$lib/daily/text';
+	import { screenHref } from '$lib/nav';
 	import { fmtTime, mskDay } from '$lib/util/format';
 	import DayBreakdown from './DayBreakdown.svelte';
 
@@ -17,6 +18,7 @@
 	let { day, ledgerSince, error, now, loadedAt = null }: Props = $props();
 
 	const short = dayShort;
+	const href = screenHref();
 	// «Сегодня» — по текущему времени МСК: после полуночи вчерашний ответ сегодняшним не считается.
 	const today = $derived(mskDay(now));
 	const current = $derived(day !== null && day.day === today ? day : null);
@@ -32,7 +34,7 @@
 		<h2 id="daily-title" class="card-title mb-0">
 			Итоги дня · {short(today)}{current ? ` (до ${fmtTime(loadedAt ?? now)})` : ''}
 		</h2>
-		<a class="text-xs text-accent hover:underline" href="/daily">по дням →</a>
+		<a class="text-xs text-accent hover:underline" href={href('/daily')}>по дням →</a>
 	</div>
 	{#if current}
 		<div class={note ? 'opacity-60' : ''}>

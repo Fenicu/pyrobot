@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { DailyOut, DayOut } from '$lib/api/types';
+import { screenAccountContext } from '$lib/nav';
 import { fixture } from '$lib/test/fixtures';
 import DailyCard from './DailyCard.svelte';
 import DailyView from './DailyView.svelte';
@@ -13,7 +14,10 @@ const NOW = new Date('2026-09-28T11:40:00Z');
 
 describe('карточка «Итоги дня» на главной', () => {
 	it('изменение за день, предметы, разовое, потери — на фикстуре ответа /daily', () => {
-		render(DailyCard, { day: today, ledgerSince: daily.ledger_since, error: null, now: NOW });
+		render(DailyCard, {
+			props: { day: today, ledgerSince: daily.ledger_since, error: null, now: NOW },
+			context: screenAccountContext(3)
+		});
 		const card = screen.getByRole('region', { name: /Итоги дня/ });
 		expect(card).toHaveTextContent('Итоги дня · 28.09 (до 14:40)');
 		const balance = within(card).getByRole('list', { name: 'Изменение за день' });
@@ -37,7 +41,7 @@ describe('карточка «Итоги дня» на главной', () => {
 		const losses = within(card).getByRole('list', { name: 'Потери и траты' });
 		expect(losses).toHaveTextContent('🥷 ограбление −$38, +118 💡');
 		expect(losses).toHaveTextContent('⛏ начало дел ×6 −$180');
-		expect(card.querySelector('a[href="/daily"]')).not.toBeNull();
+		expect(within(card).getByRole('link', { name: 'по дням →' })).toHaveAttribute('href', '/a/3/daily');
 	});
 
 	it('«нет данных» вместо null, уровень, пустые разделы', () => {

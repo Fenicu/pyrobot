@@ -4,15 +4,17 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { session, startApp, stopApp } from '$lib/app.svelte';
+	import { accounts, session, startApp, stopApp } from '$lib/app.svelte';
+	import AccountsPending from '$lib/components/AccountsPending.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import Shell from '$lib/components/Shell.svelte';
 	import Toasts from '$lib/components/Toasts.svelte';
-	import { loginHref, safeNext } from '$lib/nav';
+	import { isLegacy, lastAccount, legacyHref, loginHref, pickAccount, safeNext } from '$lib/nav';
 	import { theme } from '$lib/stores/theme.svelte';
 
 	let { children }: { children: Snippet } = $props();
 	const onLogin = $derived(page.url.pathname === '/login');
+	const legacy = $derived(isLegacy(page.url.pathname));
 
 	onMount(() => {
 		theme.init();
@@ -23,8 +25,8 @@
 		};
 	});
 
-	// Вход открывает поток и счётчики и возвращает на исходную страницу; выход или 401 —
-	// закрывает и ведёт на /login с возвратом. Сбой связи при старте на вход не ведёт.
+	// Вход открывает список аккаунтов и возвращает на исходную страницу; выход или 401 — закрывает
+	// аккаунт и ведёт на /login с возвратом. Сбой связи при старте на вход не ведёт.
 	$effect(() => {
 		if (session.status === 'authenticated') {
 			startApp();
@@ -34,10 +36,20 @@
 			if (!onLogin) void goto(loginHref(page.url), { replaceState: true });
 		}
 	});
+
+	// Старые ссылки (`/journal` и т. п.) — тот же экран последнего аккаунта; страница «не найдено»
+	// не рисуется.
+	$effect(() => {
+		if (session.status !== 'authenticated' || !legacy || accounts.list === null) return;
+		const href = legacyHref(page.url, pickAccount(accounts.list, lastAccount()));
+		if (href !== null) void goto(href, { replaceState: true });
+	});
 </script>
 
 {#if onLogin}
 	{@render children()}
+{:else if session.status === 'authenticated' && legacy}
+	<AccountsPending error={accounts.list === null ? accounts.error : null} onretry={() => void accounts.load()} />
 {:else if session.status === 'authenticated'}
 	<Shell>{@render children()}</Shell>
 {:else if session.offline}

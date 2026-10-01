@@ -4,6 +4,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import type { ActionOut, ScenarioRunDetail } from '$lib/api/types';
 	import { isActionCreated, type LiveEvent, type SseActionCreated } from '$lib/live/sse';
+	import { screenHref } from '$lib/nav';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment, fmtSpan, toDate } from '$lib/util/format';
 	import { ACTION_STATUS, actionCommand, statusTone } from '$lib/util/game';
@@ -21,6 +22,7 @@
 	let run = $state<ScenarioRunDetail | null>(null);
 	let error = $state('');
 	const now = $derived(clock.now);
+	const href = screenHref();
 
 	// Номер чтения: ответ, который обогнало более новое чтение, не применяется.
 	let request = 0;
@@ -115,7 +117,7 @@
 				? ` · вручную: ${run.requested_by}`
 				: ''}
 			{#if run.metro_run_id}
-				· <a class="text-accent underline" href="/metro?run={run.metro_run_id}">забег метро #{run.metro_run_id}</a>
+				· <a class="text-accent underline" href={href(`/metro?run=${run.metro_run_id}`)}>забег метро #{run.metro_run_id}</a>
 			{/if}
 		</p>
 		{#if Object.keys(run.params).length > 0}

@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { accountApi } from '$lib/app.svelte';
+	import { current } from '$lib/app.svelte';
 	import MetricsView from '$lib/components/metrics/MetricsView.svelte';
+
+	const { api } = current.get();
 </script>
 
 <svelte:head><title>Метрики · pyrobot</title></svelte:head>
 
 <h1 class="mb-3 text-lg font-semibold">Метрики</h1>
-<MetricsView api={accountApi} />
+<MetricsView {api} />
