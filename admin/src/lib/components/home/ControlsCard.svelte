@@ -84,7 +84,15 @@
 		<p class="text-sm text-fg-muted">Статус движка ещё не получен.</p>
 	{:else}
 		<div class="flex flex-wrap gap-2">
-			<button type="button" class="btn" disabled={busy || !status.running} onclick={togglePause}>
+			<button
+				type="button"
+				class="btn"
+				title={status.paused
+					? 'Снять паузу: бот снова сам принимает решения'
+					: 'Бот перестаёт решать сам; «Проснуться» при ограблении и ручные команды по умолчанию проходят'}
+				disabled={busy || !status.running}
+				onclick={togglePause}
+			>
 				{#if status.paused}
 					<Play class="size-4" aria-hidden="true" /> Продолжить
 				{:else}
@@ -94,13 +102,24 @@
 			<button
 				type="button"
 				class="btn {status.killed ? '' : 'btn-danger'}"
+				title={status.killed
+					? 'Снять аварийный стоп: отправки в игру снова разрешены'
+					: 'Аварийный стоп: в игру не уходит ничего, даже ручные команды и «Проснуться»'}
 				disabled={busy || !status.running}
 				onclick={toggleKill}
 			>
 				<OctagonX class="size-4" aria-hidden="true" />
 				{status.killed ? 'Снять kill' : 'Kill'}
 			</button>
-			<button type="button" class="btn" disabled={busy} onclick={toggleMode}>
+			<button
+				type="button"
+				class="btn"
+				title={status.mode === 'live'
+					? 'Бот решает, но действия, кроме навигации, в игру не отправляет — только пишет в журнал'
+					: 'Бот начнёт реально отправлять действия в игру'}
+				disabled={busy}
+				onclick={toggleMode}
+			>
 				<Power class="size-4" aria-hidden="true" />
 				{status.mode === 'live' ? 'В dry_run' : 'Включить live'}
 			</button>

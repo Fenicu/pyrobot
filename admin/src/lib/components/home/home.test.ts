@@ -170,6 +170,22 @@ describe('управление', () => {
 		await vi_wait(() => fetch.calls.some((c) => c.method === 'PATCH'));
 	});
 
+	it('у кнопок подсказки при наведении: чем пауза отличается от kill и dry_run', () => {
+		controls('live');
+		expect(screen.getByRole('button', { name: 'Пауза' })).toHaveAttribute(
+			'title',
+			expect.stringContaining('ручные команды по умолчанию проходят')
+		);
+		expect(screen.getByRole('button', { name: 'Kill' })).toHaveAttribute(
+			'title',
+			expect.stringContaining('в игру не уходит ничего')
+		);
+		expect(screen.getByRole('button', { name: 'В dry_run' })).toHaveAttribute(
+			'title',
+			expect.stringContaining('только пишет в журнал')
+		);
+	});
+
 	it('kill — с причиной', async () => {
 		const user = userEvent.setup();
 		const fetch = controls('live');
