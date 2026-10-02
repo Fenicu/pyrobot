@@ -107,7 +107,7 @@ class Obligations(PlannerBase):
         if seen is not None and known is not None and seen.at >= known.at:
             if seen.value is not None:
                 return bool(seen.value == desired)
-        # Защиту профиль не показывает — опора на то, какая цель и на какую битву выставлена.
+        # Цели в профиле нет (старые профили) — опора на выставленную цель и её битву.
         done = self.s.battle_target_set
         if done is None or done.value.target != desired:
             return False

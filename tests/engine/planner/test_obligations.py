@@ -119,6 +119,15 @@ def test_invisible_defense_trusted_by_battle_it_was_set_for() -> None:
     assert act(decision) == ("battle_target", {"target": "📯Pied Piper"})
 
 
+def test_defense_shown_in_profile_is_ready() -> None:
+    battle = msk(13)
+    cfg = only(battle={"target": "🛡Защита"})
+    shown = state(NOON, battle_at=battle, battle_target="🛡Защита")
+    assert "battle_target" not in verdicts(decide(shown, cfg, NOON))
+    attack = state(NOON, battle_at=battle, battle_target="🤖Hooli")
+    assert act(decide(attack, cfg, NOON)) == ("battle_target", {"target": "🛡Защита"})
+
+
 def test_profile_with_other_target_is_reset() -> None:
     decision = decide(state(NOON, battle_target="🤖Hooli"), only(), NOON)
     assert act(decision) == ("battle_target", {"target": "📯Pied Piper"})

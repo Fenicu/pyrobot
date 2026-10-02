@@ -2,6 +2,7 @@ from dataclasses import replace
 
 import pytest
 
+from app.engine.parsing.battle import DEFENSE
 from app.engine.parsing.profile import ProfileCompact, recognize_compact
 from tests.fixtures import game_msg
 
@@ -213,7 +214,7 @@ def test_profile_with_bare_profession() -> None:
         theory=284,
         cunning=186,
         wisdom=222,
-        battle_target=None,
+        battle_target=DEFENSE,
         sleep_in_s=None,
         busy_kind="sleep_bridge",
         busy_left_s=23280,
@@ -227,7 +228,9 @@ def test_profile_with_bare_profession_and_ceo_block() -> None:
         "🎙CEO:\nТы молодец. Ходи в битвы, не забывай про репорты. Приятной игры! "
         "/harvest - /del\n\n"
     )
-    assert _recognized(ceo + _BARE_PROFESSION) == _recognized(_BARE_PROFESSION)
+    p = _recognized(ceo + _BARE_PROFESSION)
+    assert p == _recognized(_BARE_PROFESSION)
+    assert p.battle_target == DEFENSE
 
 
 def test_level_line_formats_give_same_profile() -> None:

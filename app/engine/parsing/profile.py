@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 from app.engine.events import Event
+from app.engine.parsing.battle import DEFENSE
 from app.engine.parsing.common import DURATION, NUM, company_of_mark, dur, num
 from app.engine.types import IncomingMessage
 
@@ -90,6 +91,12 @@ def _busy(tail: str) -> tuple[str | None, int | None]:
     return None, None
 
 
+def _target(tail: str) -> str | None:
+    if target := _TARGET.search(tail):
+        return target["target"]
+    return DEFENSE if DEFENSE in tail.splitlines() else None
+
+
 def recognize_compact(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     # Сообщение CEO игра ставит перед профилем, отделяя пустой строкой.
@@ -101,7 +108,6 @@ def recognize_compact(msg: IncomingMessage) -> list[Event]:
     tail = m["tail"]
     busy_kind, busy_left = _busy(tail)
     sleep_in = _SLEEP_IN.search(tail)
-    target = _TARGET.search(tail)
     tangerines = _TANGERINES.search(m["extra"])
     return [
         ProfileCompact(
@@ -124,7 +130,7 @@ def recognize_compact(msg: IncomingMessage) -> list[Event]:
             theory=int(m["theory"]),
             cunning=int(m["cunning"]),
             wisdom=int(m["wisdom"]),
-            battle_target=target["target"] if target else None,
+            battle_target=_target(tail),
             sleep_in_s=dur(sleep_in["t"]) if sleep_in else None,
             busy_kind=busy_kind,
             busy_left_s=busy_left,
