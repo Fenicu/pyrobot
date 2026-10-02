@@ -182,6 +182,54 @@ def test_profile_without_profession_and_ceo_block() -> None:
     assert _recognized(plain) == _recognized(_NO_PROFESSION)
 
 
+# Профиль с профессией без подпрофессии в скобках (аккаунт 3): «🧵7» вместо «🧵16 (🪡)».
+_BARE_PROFESSION = (
+    "Битва через 4ч. 8 мин.!\n\n☣️[SU]\xa0Lolichanmay 🐀\n🎚54   🧵7\n"
+    "💡1\xa0647\xa0419 из 1\xa0664\xa0167\n💵$3\xa0475 🔋100% /to_eat\n"
+    "📚16\xa0602\xa0\xa0 🔩18\xa0265\xa0\xa0 ⚙️25\xa0438\n🔥66 из 66 (/pr)\n🎒9 из 20 /inv\n"
+    "🍊90 /gifts\n\n🔨\xa0287    🎓\xa0284\n🐿\xa0186    🐢\xa0222\n⭐️⭐️⭐️ /cool\n"
+    "🛡Защита\n🛌Спишь под мостом (6ч. 28 мин.)\nПолный профиль /full"
+)
+
+
+def test_profile_with_bare_profession() -> None:
+    assert _recognized(_BARE_PROFESSION) == ProfileCompact(
+        battle_in_s=14880,
+        level=54,
+        exp=1647419,
+        exp_next=1664167,
+        money=3475,
+        stamina=100,
+        knowledge=16602,
+        raw=18265,
+        details=25438,
+        motivation=66,
+        motivation_max=66,
+        motivation_next_in_s=None,
+        bag=9,
+        bag_cap=20,
+        tangerines=90,
+        practice=287,
+        theory=284,
+        cunning=186,
+        wisdom=222,
+        battle_target=None,
+        sleep_in_s=None,
+        busy_kind="sleep_bridge",
+        busy_left_s=23280,
+        company="bmesa",
+        team_tag="SU",
+    )
+
+
+def test_profile_with_bare_profession_and_ceo_block() -> None:
+    ceo = (
+        "🎙CEO:\nТы молодец. Ходи в битвы, не забывай про репорты. Приятной игры! "
+        "/harvest - /del\n\n"
+    )
+    assert _recognized(ceo + _BARE_PROFESSION) == _recognized(_BARE_PROFESSION)
+
+
 def test_level_line_formats_give_same_profile() -> None:
     own = game_msg("profile", 3624478).text or ""
     old = "🎚71   🧵16 (🪡)\n💡17\xa0496\xa0049 из 18\xa0155\xa0142\n"
