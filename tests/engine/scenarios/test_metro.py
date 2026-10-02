@@ -31,6 +31,7 @@ from app.engine.types import IncomingMessage
 from tests.engine.fakegame import GAME, World, running_world
 from tests.engine.metro.sim import hide_events, tree_maze
 from tests.engine.metro.simgame import RUN, SimGame, enter_with_real_frames
+from tests.engine.parsing.test_metro import EARLY_FINISHED, LOST_FIGHT
 from tests.engine.scenarios.certify import certifies
 from tests.fixtures import game_msg, game_versions
 
@@ -238,6 +239,47 @@ async def test_lost_fight_is_continued_then_unknown_screen_halts(world: World) -
     assert (result.status, result.reason) == ("stopped", "unexpected_screen")
     assert world.game.payloads() == [*expected, "maze_npc_low_accept", "maze_continue"]
     assert notes.sent == [("warn", "metro_halted")]
+
+
+def _without_packs(msg: IncomingMessage) -> IncomingMessage:
+    return replace(msg, inline=tuple(b for b in msg.inline if b.data != "maze_first_aid"))
+
+
+@certifies("metro")
+async def test_lost_fight_without_packs_leaves_early(world: World) -> None:
+    """Поражение без аптечек: «Продолжить», карта с 🔋0% — дальше не пройти: 🚪 → «Выйти»."""
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=_without_packs(game_msg("metro", RUN, 7)))
+    clicks = recorded(7, 47)
+    for data, versions in clicks:
+        world.game.on_click(
+            data, edits=tuple(_without_packs(game_msg("metro", RUN, v)) for v in versions)
+        )
+    stuck = _without_packs(game_msg("metro", RUN, 49))
+    stuck = replace(stuck, text=(stuck.text or "").replace("🔋55%", "🔋0%"))
+    finished = replace(game_msg("metro", RUN, 532), text=EARLY_FINISHED, inline=())
+    world.game.on_click(
+        "maze_npc_low_accept", edit=replace(game_msg("metro", RUN, 48), text=LOST_FIGHT)
+    )
+    world.game.on_click("maze_continue", edit=stuck)
+    world.game.on_click("maze_exit", edit=("metro", RUN2, 390))
+    world.game.on_click("maze_exit_accept", edit=finished)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("done", "finished")
+    assert world.game.payloads() == [
+        *ENTRY,
+        "maze_start",
+        *(data for data, _ in clicks),
+        "maze_npc_low_accept",
+        "maze_continue",
+        "maze_exit",
+        "maze_exit_accept",
+    ]
+    assert notes.sent == []
+    assert result.details is not None
+    assert result.details["metro"]["leave_reason"] == "no_stamina"
+    assert result.details["metro"]["result"] == {"burger": 1}
 
 
 @certifies("metro")

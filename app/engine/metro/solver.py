@@ -22,6 +22,7 @@ from app.engine.parsing.metro import (
     MetroFirstAid,
     MetroLoot,
     MetroMap,
+    MetroNoStamina,
     MetroNpc,
 )
 from app.engine.settings import MetroSection
@@ -88,6 +89,7 @@ _CONTINUE: dict[type[Event], str] = {
     MetroLoot: "loot",
     MetroFight: "fight",
     MetroChestOpened: "chest_opened",
+    MetroNoStamina: "no_stamina",
 }
 # Экраны, которые показываются на клетке, куда пришёл ход.
 _ON_CELL = (MetroLoot, MetroNpc, MetroChest, MetroExit)
@@ -268,6 +270,8 @@ class MetroSolver:
                 return Click("maze_exit_decline", "heal_before_exit")
             return Click("maze_exit_accept", self.leave_reason or "leave")
         if isinstance(screen, MetroEarlyExit):
+            if self._stranded():
+                return Click("maze_exit_accept", "no_stamina")
             # Необратимо: условие проверяется ещё раз по времени подтверждения.
             self._early = self._early_exit_due(now)
             if self._early:
@@ -351,6 +355,10 @@ class MetroSolver:
             return Halt("lost")
         if self._surprise is not None:
             return Halt(self._surprise)
+        if self._stranded():
+            self._leave("no_stamina")
+            self.leave_reason = "no_stamina"
+            return Click("maze_exit", "no_stamina")
         self.update_mode(now)
         # Намерение не залипает: пересчитывается по каждому кадру.
         self._early = self._early_exit_due(now)
@@ -382,6 +390,10 @@ class MetroSolver:
         if towards is None:
             return Halt("no_route_to_exit")
         return Click(f"maze_{towards}", "leave")
+
+    def _stranded(self) -> bool:
+        """🔋0% без аптечек: ходить игра не даёт, остаётся только досрочный выход."""
+        return self.stamina == 0 and not self.packs
 
     def _needs_heal(self) -> bool:
         if not self.packs or self.stamina is None or self.stamina >= FULL:

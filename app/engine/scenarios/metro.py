@@ -23,6 +23,7 @@ from app.engine.parsing.metro import (
     MetroFirstAid,
     MetroLoot,
     MetroMap,
+    MetroNoStamina,
     MetroNpc,
     recognize_metro,
 )
@@ -53,6 +54,7 @@ SCREENS = (
     MetroExit,
     MetroEarlyExit,
     MetroFinished,
+    MetroNoStamina,
 )
 ALERTS = {
     "late_risk": "metro: 85% of the time budget used and the exit is still unknown",

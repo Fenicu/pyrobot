@@ -19,6 +19,7 @@ from app.engine.parsing.metro import (
     MetroFirstAid,
     MetroLoot,
     MetroMap,
+    MetroNoStamina,
     MetroNpc,
     recognize_metro,
 )
@@ -150,7 +151,7 @@ def test_heal_at_threshold_then_accept() -> None:
 
 def test_no_heal_without_packs_or_above_threshold() -> None:
     assert solver().next(at((1, 1), stamina=51), T0) == Click("maze_down", "explore")
-    assert solver().next(at((1, 1), stamina=0, packs=0), T0) == Click("maze_down", "explore")
+    assert solver().next(at((1, 1), stamina=1, packs=0), T0) == Click("maze_down", "explore")
 
 
 def test_arrow_trap_zeroes_stamina_and_next_map_heals() -> None:
@@ -341,6 +342,37 @@ def test_lost_fight_is_continued() -> None:
     assert s.next(MetroFight(enemy="👨", won=False, stamina=0), T0) == Click(
         "maze_continue", "fight_lost"
     )
+
+
+@pytest.mark.parametrize("packs", [0, None])
+def test_zero_stamina_without_packs_leaves_early(packs: int | None) -> None:
+    """После проигранного боя 🔋0% и аптечек нет: ход игра не пустит — 🚪 и «Выйти»."""
+    s = solver()
+    s.next(at((1, 1), packs=packs), T0)
+    s.next(MetroNpc(strength="low"), T0)
+    s.next(MetroFight(enemy="👨", won=False, stamina=0), T0)
+    assert s.next(at((1, 1), "waiting", stamina=0, packs=packs), T0) == Click(
+        "maze_exit", "no_stamina"
+    )
+    assert (s.mode, s.leave_reason) == ("leave", "no_stamina")
+    offer = MetroEarlyExit(found={"money": 3}, half={"money": 2})
+    assert s.next(offer, T0) == Click("maze_exit_accept", "no_stamina")
+    assert s.next(MetroFinished(loot={"money": 2}, stamina=0), T0) == Done("finished")
+
+
+def test_no_stamina_screen_is_continued_then_leaves() -> None:
+    s = solver()
+    s.next(at((1, 1), packs=None), T0)
+    assert s.next(MetroNoStamina(), T0) == Click("maze_continue", "no_stamina")
+    assert s.next(at((1, 1), "waiting", stamina=0, packs=None), T0) == Click(
+        "maze_exit", "no_stamina"
+    )
+
+
+def test_zero_stamina_with_packs_heals() -> None:
+    s = solver(heal_at=0)
+    s.next(at((1, 1), packs=1), T0)
+    assert s.next(at((1, 1), "waiting", stamina=0, packs=1), T0) == Click("maze_first_aid", "heal")
 
 
 def _near_kick(minutes_to_battle: float) -> tuple[MetroSolver, datetime]:

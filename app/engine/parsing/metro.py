@@ -79,6 +79,7 @@ _FIRST_AID = re.compile(
     r"После использования: (?P<after>\d+)%\n\nИспользуешь аптечку\?\Z",
     re.S | re.M,
 )
+_NO_STAMINA = "Твоя 🔋Выносливость на нуле. Ты не можешь двигаться дальше."
 _EXIT = re.compile(
     r"\AТы нашёл выход из метро! [^\n]+\n\nНайдено\n(?P<items>(?:[^\n]+\n)*)\nВыходишь\?\Z"
 )
@@ -201,6 +202,13 @@ class MetroFirstAid(Event):
     packs: int
     stamina: int
     after: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MetroNoStamina(Event):
+    """«Выносливость на нуле»: ход при 🔋0%; «Продолжить» возвращает карту."""
+
+    kind: ClassVar[str] = "metro_no_stamina"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -388,6 +396,8 @@ def recognize_metro(msg: IncomingMessage) -> list[Event]:
         return _chest_opened(text)
     if m := _FIRST_AID.match(text):
         return [MetroFirstAid(packs=int(m["packs"]), stamina=int(m["st"]), after=int(m["after"]))]
+    if text.startswith(_NO_STAMINA) and msg.button("maze_continue"):
+        return [MetroNoStamina()]
     if m := _EXIT.match(text):
         return [MetroExit(found=items(m["items"]))]
     if m := _EARLY_EXIT.match(text):

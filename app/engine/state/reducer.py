@@ -54,6 +54,7 @@ from app.engine.parsing.metro import (
     MetroFirstAid,
     MetroLoot,
     MetroMap,
+    MetroNoStamina,
     MetroNpc,
 )
 from app.engine.parsing.profile import ProfileCompact
@@ -1034,6 +1035,7 @@ for _screen in (
     MetroChest,
     MetroEarlyExit,
     MetroExit,
+    MetroNoStamina,
 ):
     _on(_screen)(_metro_screen)
 

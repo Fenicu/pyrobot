@@ -17,6 +17,7 @@ from app.engine.parsing.metro import (
     MetroFirstAid,
     MetroLoot,
     MetroMap,
+    MetroNoStamina,
     MetroNpc,
     recognize_metro,
 )
@@ -373,3 +374,16 @@ def test_cancelled_move_footer_stays_on_the_cell() -> None:
 def test_finish_after_early_exit() -> None:
     msg = replace(frame(532), text=EARLY_FINISHED, inline=())
     assert recognize_metro(msg) == [MetroFinished(loot={"burger": 1}, stamina=0)]
+
+
+NO_STAMINA = (
+    "Твоя 🔋Выносливость на нуле. Ты не можешь двигаться дальше. "
+    "Используй ❤️аптечку, а если аптечки нет, то тебе остаётся только выйти."
+)
+CONTINUE = (Button("Продолжить", 0, 0, data="maze_continue"),)
+
+
+def test_no_stamina_screen() -> None:
+    msg = replace(frame(49), text=NO_STAMINA, inline=CONTINUE)
+    assert recognize_metro(msg) == [MetroNoStamina()]
+    assert [r.__name__ for r in game_recognizers() if r(msg)] == ["recognize_metro"]

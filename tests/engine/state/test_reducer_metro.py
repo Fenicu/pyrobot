@@ -3,6 +3,7 @@ from typing import Any
 
 from app.engine.state.model import load_state
 from app.engine.state.reducer import StateReducer
+from tests.engine.parsing.test_metro import CONTINUE, NO_STAMINA
 from tests.engine.state.helpers import PARSER, at, feed, value
 from tests.fixtures import game_versions
 
@@ -107,6 +108,16 @@ def test_unknown_run_screen_blocks_resume_until_known_one() -> None:
     assert value(state, "metro_message")["message_id"] == 3624441
     state = _version(reducer, state, 7, 6)
     assert state["metro_message"]["src"] == "screen"
+
+
+def test_no_stamina_screen_is_a_run_screen() -> None:
+    reducer = StateReducer()
+    state = _version(reducer, _before_metro(reducer), 5, 4)
+    stuck = replace(RUN[5], text=NO_STAMINA, inline=CONTINUE, date=at(5), created_at=at(2))
+    state = reducer.apply(state, stuck, PARSER.parse(stuck))
+    assert state["metro_message"]["src"] == "screen"
+    assert value(state, "metro_message")["message_id"] == 3624441
+    assert state["metro_message"]["at"] == "2026-09-26T09:05:00Z"
 
 
 def test_run_keeps_battle_known_at_its_start() -> None:
