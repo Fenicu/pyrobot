@@ -316,3 +316,13 @@ def test_only_wake_click_spends_nothing() -> None:
     assert spends_nothing_callback("rob_awake_1106993")
     for data in ("rob_awake_", "gorbushka_fight", "sleep_Bridge", "t_x_hard_confirm"):
         assert not spends_nothing_callback(data)
+
+
+@pytest.mark.parametrize("text", ["/artr_book", "/artr_fax", "/artr_light"])
+def test_artifact_recollect_screens_are_nav(text: str) -> None:
+    assert classify_text(text) is CommandClass.NAV
+
+
+@pytest.mark.parametrize("text", ["/artr_idea", "/artr_", "/artr_light_now"])
+def test_unknown_artifact_recollect_forbidden(text: str) -> None:
+    assert classify_text(text) is CommandClass.FORBIDDEN

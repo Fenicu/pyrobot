@@ -120,6 +120,10 @@ TEXT_RULES: tuple[Rule, ...] = (
         "/premium",
         "/richness",
         "/artefacts",
+        # Экран пересборки артефакта: условия и кнопка подтверждения — сама кнопка не NAV.
+        "/artr_book",
+        "/artr_fax",
+        "/artr_light",
         "/bag",
         "/pr",
         "/settings",
