@@ -5,7 +5,16 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, SOURCE, TIMER_MARGIN, Step
+from app.engine.gametime import to_msk
+from app.engine.parsing.trips import TRIP_SPAN
+from app.engine.planner.base import (
+    BATTLE_AFTER,
+    BATTLE_BEFORE,
+    READY_SLACK,
+    SOURCE,
+    TIMER_MARGIN,
+    Step,
+)
 from app.engine.planner.daily import DailyTasks
 from app.engine.planner.obligations import (
     DUMP_SPAN,
@@ -24,8 +33,11 @@ from app.engine.state.model import (
     CharacterState,
     Obs,
     PriceState,
+    TripsState,
+    VehicleState,
 )
 from app.engine.state.reducer import LOTTERY_CURRENCIES
+from app.engine.trips import trip_vehicles
 
 Phase = Literal["unknown", "asleep", "busy", "free"]
 # Таймеры-моменты: наступившие во сне к подъёму теряют смысл — битва и выброс из метро пройдут,
@@ -36,6 +48,11 @@ MOMENTS: frozenset[WakeKind] = frozenset({"battle", "metro_kick", "sleep_window"
 NextWhy = Literal["personal", "team", "focus", "best", "artifact"]
 # Во время сбора экран артефактов перечитывается раз в 3 часа: таймер и уровни.
 ARTIFACT_REREAD = timedelta(hours=3)
+# Экран «Транспорт» старше 6 часов перечитывается: новые сезонные виды, цены.
+TRIPS_MAX_AGE = timedelta(hours=6)
+# Итог поездки приходит ровно через 10 минут: следующая ждёт его ещё минуту, иначе он попадёт в
+# окно новой поездки и не применится.
+TRIP_RESULT_WAIT = timedelta(minutes=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,6 +328,7 @@ class _Planner(DailyTasks):
             self.smoothie,
             self.metro,
             self.artifact_refresh,
+            self.trip,
             self.deeds,
         )
 
@@ -528,8 +546,6 @@ class _Planner(DailyTasks):
 
     def doable_deeds(self) -> list[Candidate]:
         """Разрешённые дела с вердиктом `ok`; отказанные сразу уходят в кандидаты."""
-        battle = self.battle_time()
-        deadline: datetime | None = self.value("sleep_deadline")
         have: int = self.value("motivation")
         motivation = have - self.motivation_reserve() - self.metro_reserve()
         money = self.value("money") - self.ticket_reserve() - self.hotel_reserve()
@@ -549,44 +565,175 @@ class _Planner(DailyTasks):
             end = self.now + self.duration(activity, price)
             score = self.score(activity, price)
             params = {"today": self.done_today.get(name, 0)} if activity in focus else {}
-            verdict = None
-            if (
-                battle is not None
-                and self.now < battle + BATTLE_AFTER
-                and end > battle - BATTLE_BEFORE
-            ):
-                verdict = "battle_window"
-                self.wake(battle + BATTLE_AFTER, "battle")
-            elif deadline is not None and end > deadline:
-                verdict = "sleep_deadline"
-            elif self.blocks_factory(end):
-                verdict = "factory_window"
-            elif motivation < price.motivation:
-                # `reserved` — мешает только запас: без него 🔥 хватило бы, прочее пройдено.
-                alone = (
-                    have >= price.motivation
-                    and money >= price.money
-                    and details >= price.details
-                    and (score > 0 or activity in focus)
-                    and not self.gated(name)
-                )
-                verdict = "reserved" if alone else "no_motivation"
-                self.wake(self.value("motivation_next_at"), "motivation")
-            elif money < price.money:
-                verdict = "no_money"
-            elif details < price.details:
-                verdict = "no_details"
-            elif score <= 0 and activity not in focus and not mode:
-                # Важность основных дел задал пользователь, а оценка видит не весь доход: предметы
-                # крафта с добычи в статистику не входят.
-                verdict = "no_value"
-            else:
-                verdict = self.gate(name)
+            verdict = self.window_verdict(end)
+            if verdict is None:
+                if motivation < price.motivation:
+                    # `reserved` — мешает только запас: без него 🔥 хватило бы, прочее пройдено.
+                    alone = (
+                        have >= price.motivation
+                        and money >= price.money
+                        and details >= price.details
+                        and (score > 0 or activity in focus)
+                        and not self.gated(name)
+                    )
+                    verdict = "reserved" if alone else "no_motivation"
+                    self.wake(self.value("motivation_next_at"), "motivation")
+                elif money < price.money:
+                    verdict = "no_money"
+                elif details < price.details:
+                    verdict = "no_details"
+                elif score <= 0 and activity not in focus and not mode:
+                    # Важность основных дел задал пользователь, а оценка видит не весь доход:
+                    # предметы крафта с добычи в статистику не входят.
+                    verdict = "no_value"
+                else:
+                    verdict = self.gate(name)
             if verdict is None:
                 ok.append(Candidate(name, params, score, "ok"))
             else:
                 self.candidates.append(Candidate(name, params, score, verdict))
         return ok
+
+    def window_verdict(self, end: datetime) -> str | None:
+        """Занятие до `end` не помещается в окно: битва, дедлайн сна, запись на фабрику."""
+        battle = self.battle_time()
+        deadline: datetime | None = self.value("sleep_deadline")
+        if (
+            battle is not None
+            and self.now < battle + BATTLE_AFTER
+            and end > battle - BATTLE_BEFORE
+        ):
+            self.wake(battle + BATTLE_AFTER, "battle")
+            return "battle_window"
+        if deadline is not None and end > deadline:
+            return "sleep_deadline"
+        if self.blocks_factory(end):
+            return "factory_window"
+        return None
+
+    # --- поездки
+
+    def trip(self, busy: BusyState | None) -> Decision | None:
+        """Поездка на первом по настройкам виде, который есть на последнем экране «Транспорт»,
+        доступен, не кончился по сезону и готов. Экран перечитывается, если его нет, он старше
+        `TRIPS_MAX_AGE`, готовность вида наступила позже него или цена вида неизвестна."""
+        order = trip_vehicles(self.cfg)
+        if not order or not self.feature_on("trip"):
+            return None
+        seen = self.s.trips
+        if seen is None or seen.src == "doubtful":
+            pick, stale = None, "trips unknown"
+        else:
+            pick, stale = self.trip_pick(order, seen), None
+            renew = seen.at + TRIPS_MAX_AGE
+            if self.now >= renew:
+                stale = "trips old"
+            else:
+                self.wake(renew, "refresh", "trips")
+        if pick is None and stale is None:
+            return None
+        params = {"vehicle": pick[0]} if pick is not None else {}
+        if busy is not None:
+            self.reject("trip", params, "busy")
+            return None
+        if self.metro_inside() is not None:
+            self.reject("trip", params, "in_metro")
+            return None
+        if stale is not None:
+            return self.trips_refresh(stale, params)
+        assert pick is not None and seen is not None
+        key, vehicle = pick
+        last = seen.value.last
+        if last is not None and not last.done:
+            result_by = last.started_at + TRIP_SPAN + TRIP_RESULT_WAIT
+            if self.now < result_by:
+                self.reject("trip", params, "trip_pending")
+                self.wake(result_by, "trip_result")
+                return None
+        assert vehicle.ready_at is not None
+        if vehicle.ready_at > seen.at or vehicle.raw is None:
+            return self.trips_refresh(f"{key} ready", params)
+        deeds = ("motivation", "details") if self.feature_on("deed:") else ()
+        if (field := self.stale_of("raw", "money", "battle_at", *deeds)) is not None:
+            return self.refresh("trip", field)
+        money = self.value("money") - self.ticket_reserve() - self.hotel_reserve()
+        verdict = None
+        if self.value("raw") < vehicle.raw:
+            verdict = "no_raw"
+        elif money < (vehicle.money or 0):
+            verdict = "no_money"
+        else:
+            verdict = self.window_verdict(self.now + TRIP_SPAN)
+        if verdict is None and self.motivation_capped() and self.deed_waits():
+            verdict = "motivation_cap"
+        if verdict is not None:
+            self.reject("trip", params, verdict)
+            return None
+        return self.act("trip", params, f"{key} ready")
+
+    def trip_pick(
+        self, order: Sequence[str], seen: Obs[TripsState]
+    ) -> tuple[str, VehicleState] | None:
+        """Первый готовый вид по порядку; к готовности остальных — таймеры. Готовность позже
+        экрана (старт + кулдаун, отказ, «Через» с округлением вниз) — с минутой запаса."""
+        today = to_msk(self.now).date()
+        pick: tuple[str, VehicleState] | None = None
+        for key in order:
+            vehicle = seen.value.vehicles.get(key)
+            if vehicle is None or not vehicle.available or vehicle.ready_at is None:
+                continue
+            if vehicle.expires_on is not None and vehicle.expires_on < today:
+                continue
+            if vehicle.ready_at > seen.at:
+                ready = vehicle.ready_at + READY_SLACK
+                if not self.due(ready):
+                    self.wake(ready, "trip_ready", key)
+                    continue
+            if pick is None:
+                pick = (key, vehicle)
+        return pick
+
+    def trips_refresh(self, reason: str, params: dict[str, Any]) -> Act | None:
+        """Экран «Транспорт» — не чаще `engine.refresh_min_interval_s`."""
+        self.reject("trip", params, "stale:trips")
+        last = self.last_refresh.get("trips")
+        if last is not None and self.now - last < self.refresh_every:
+            self.reject("trips_refresh", {}, "rate_limited")
+            self.wake(last + self.refresh_every, "refresh", "trips")
+            return None
+        return self.act("trips_refresh", {}, reason)
+
+    def motivation_capped(self) -> bool:
+        """🔥 у максимума или дойдёт до него тиком за время поездки: прирост пропал бы."""
+        top: int | None = self.value("motivation_max")
+        have: int | None = self.value("motivation")
+        if top is None or have is None:
+            return False
+        tick: datetime | None = self.value("motivation_next_at")
+        soon = tick is not None and tick < self.now + TRIP_SPAN
+        return have >= top or (soon and have + 1 >= top)
+
+    def deed_waits(self) -> bool:
+        """Шаг дел сейчас взял бы дело на 🔥. Считается на копии планировщика: её отказы и
+        таймеры — забота самого шага дел."""
+        if not self.feature_on("deed:"):
+            return False
+        probe = _Planner(
+            self.s,
+            self.cfg,
+            self.now,
+            self.certified,
+            self.last_refresh,
+            self.cooldowns,
+            self.last_done,
+            self.metro_durations,
+            self.done_today,
+        )
+        probe.stale = self.stale
+        return any(
+            probe.price(c.scenario.removeprefix("deed:")).motivation > 0
+            for c in probe.doable_deeds()
+        )
 
     def main_deed(self, ok: list[Candidate]) -> tuple[Candidate, str]:
         """Без заданий дня: в сборе — первое выполнимое по тактике, иначе основное по очереди

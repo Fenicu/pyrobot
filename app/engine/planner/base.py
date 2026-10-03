@@ -82,6 +82,8 @@ FEATURE = {
     "daily_refresh": "daily_tasks",
     "daily_pick": "daily_tasks",
     "lottery_buy": "lottery",
+    "trip": "trips",
+    "trips_refresh": "trips",
 }
 # В режиме сбора артефакта 🔥 тратят только его дела: вход в метро и бой Горбушки выключены.
 ARTIFACT_OFF = frozenset({"gorbushka", "metro"})

@@ -8,6 +8,7 @@ import {
 	SCENARIO,
 	VERDICT,
 	WAKE,
+	actDetail,
 	candidateDetail,
 	deedTag,
 	lotteryTickets,
@@ -39,11 +40,26 @@ describe('словари плана', () => {
 			'battle_window', 'sleep_deadline', 'factory_window', 'uncertified', 'cooldown', 'rate_limited',
 			'not_feasible', 'no_hard_offer', 'cant_afford', 'sleep_not_allowed', 'market_closed', 'no_stock',
 			'not_player', 'in_metro', 'metro_unknown_screen', 'reserved', 'no_team', 'company_unknown',
-			'artifact_run'
+			'artifact_run', 'no_raw', 'motivation_cap', 'trip_pending'
 		];
 		expect(verdicts.filter((v) => !(v in VERDICT))).toEqual([]);
 		expect(verdictText('stale:motivation')).toBe('нужно обновить: 🔥');
 		expect(verdictText('stale:woke_at')).toBe('нужно обновить: woke_at');
+		expect(verdictText('stale:trips')).toBe('нужно обновить: транспорт');
+	});
+
+	it('поездки: готовность вида, ожидание итога, обновление экрана транспорта', () => {
+		const ready = { at: plan.now, kind: 'trip_ready' as const, key: 'tram', after_wake: false };
+		expect(timerLine(ready, plan)).toEqual({ icon: '🚦', text: 'Поездка: 🚃 трамвай готов', detail: '' });
+		const unknown = { ...ready, key: '🚁Вертолёт' };
+		expect(timerLine(unknown, plan).text).toBe('Поездка: 🚁Вертолёт готов');
+		const refresh = { at: plan.now, kind: 'refresh' as const, key: 'trips', after_wake: false };
+		expect(timerLine(refresh, plan).text).toBe('Можно снова обновить экран: транспорт');
+		const result = { at: '2026-09-27T16:30:00Z', kind: 'trip_result' as const, key: null, after_wake: false };
+		const pending = { scenario: 'trip', params: { vehicle: 'tram' }, score: null, verdict: 'trip_pending' };
+		const withResult: Outlook = { ...plan, wakeups: [...plan.wakeups, result] };
+		expect(candidateDetail(pending, withResult)).toMatch(/^до /);
+		expect(actDetail('trip', { vehicle: 'bike' }, plan)).toBe('🚲 велосипед');
 	});
 
 	it('отказ из-за запаса 🔥 — под что он держится; у метро — только запас Горбушки', () => {

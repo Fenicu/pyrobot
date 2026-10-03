@@ -22,7 +22,16 @@ from app.engine.state.model import (
 )
 from tests.engine.test_settings import limited_settings
 
-PHASE4 = ("stocks_dump", "factory", "bulls", "tangerine", "smoothie", "metro", "lottery")
+PHASE4 = (
+    "stocks_dump",
+    "factory",
+    "bulls",
+    "tangerine",
+    "smoothie",
+    "metro",
+    "lottery",
+    "trips",
+)
 FOOD = {"hotdog": FoodStockState(count=100, low=50, high=140)}
 LIMITS = StockLimits(min_buy=11, max_sell=80, reserve=100, open_hour=8, close_hour=22)
 QUOTES = {"piper": 10, "hooli": 10, "stark": 31, "umbrl": 100, "wayne": 10, "bmesa": 10}

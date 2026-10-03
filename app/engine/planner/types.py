@@ -73,6 +73,8 @@ WakeKind = Literal[
     "metro_kick",
     "metro_ready",
     "artifact_end",
+    "trip_ready",
+    "trip_result",
 ]
 
 

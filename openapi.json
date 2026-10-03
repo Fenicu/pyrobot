@@ -3867,7 +3867,9 @@
               "lottery_open",
               "metro_kick",
               "metro_ready",
-              "artifact_end"
+              "artifact_end",
+              "trip_ready",
+              "trip_result"
             ],
             "title": "Kind",
             "type": "string"

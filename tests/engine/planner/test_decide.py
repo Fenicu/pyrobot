@@ -30,6 +30,7 @@ QUIET = {
     "metro": False,
     "daily_tasks": False,
     "lottery": False,
+    "trips": False,
 }
 
 

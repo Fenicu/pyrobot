@@ -101,6 +101,7 @@ QUIET = LIVE.model_copy(
                 "metro": False,
                 "daily_tasks": False,
                 "lottery": False,
+                "trips": False,
             }
         ),
         "strategy": LIVE.strategy.model_copy(update={"focus": ()}),
@@ -375,6 +376,17 @@ async def test_daily_refresh_marks_last_refresh_even_on_failure(world: World) ->
     pick = Act("daily_pick", {"task": "convDets_hard"}, "personal convDets")
     await rig.loop._after(pick, ScenarioResult("nothing", "already_chosen"), later, later)
     assert rig.loop._cooldowns["daily_pick"] == later + NOTHING_RETRY
+
+
+async def test_trips_refresh_marks_last_refresh_even_on_failure(world: World) -> None:
+    rig = Rig(world)
+    at = moment()
+    refresh = Act("trips_refresh", {}, "trips unknown")
+    await rig.loop._after(refresh, ScenarioResult("failed", "timeout"), at, at)
+    assert rig.loop._last_refresh == {"trips": at}
+    later = at + timedelta(minutes=3)
+    await rig.loop._after(refresh, ScenarioResult("done", "screen"), later, later)
+    assert rig.loop._last_refresh == {"trips": later}
 
 
 async def test_wrong_tasks_screen_backs_off_and_notifies_once(world: World) -> None:

@@ -88,9 +88,27 @@
    "after_wake": false
   },
   {
+   "at": "2026-09-27T19:31:03Z",
+   "kind": "trip_ready",
+   "key": "car",
+   "after_wake": false
+  },
+  {
    "at": "2026-09-27T21:02:03Z",
    "kind": "daily_reset",
    "key": null,
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-27T22:01:03Z",
+   "kind": "trip_ready",
+   "key": "bike",
+   "after_wake": false
+  },
+  {
+   "at": "2026-09-27T22:29:03Z",
+   "kind": "refresh",
+   "key": "trips",
    "after_wake": false
   },
   {

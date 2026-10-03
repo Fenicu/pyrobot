@@ -560,6 +560,8 @@ class PlannerLoop:
             self._last_refresh[str(act.params["source"])] = started
         elif name == "daily_refresh":
             self._last_refresh["daily"] = started
+        elif name == "trips_refresh":
+            self._last_refresh["trips"] = started
         if result.reason == "paused":
             return
         if name == "artifact_start" and self._artifacts is not None:

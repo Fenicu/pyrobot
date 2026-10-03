@@ -15,7 +15,6 @@ export const IGNORED = new Set([
 	'schema_version',
 	'exp',
 	'exp_next',
-	'motivation_max',
 	'bag',
 	'bag_cap',
 	'tangerines',

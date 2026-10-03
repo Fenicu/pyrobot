@@ -62,7 +62,20 @@ def _snapshot() -> dict[str, Any]:
     data["motivation"] = _seen(5)
     data["sleep_deadline"] = _seen(_iso(NOW + timedelta(hours=8)), "derived")
     data["metro_ready_at"] = _seen(_iso(NOW + timedelta(minutes=50)), "derived")
+    # Транспорт с экрана минуту назад: оба вида на кулдауне — в плане таймеры готовности.
+    data["trips"] = _seen(
+        {
+            "vehicles": {
+                "car": _vehicle("🚕Ааавтомобиль", 8, 20, NOW + timedelta(hours=3)),
+                "bike": _vehicle("🚲Велосипед", 5, 0, NOW + timedelta(hours=5, minutes=30)),
+            }
+        }
+    )
     return data
+
+
+def _vehicle(name: str, raw: int, money: int, ready_at: datetime) -> dict[str, Any]:
+    return {"name": name, "raw": raw, "money": money, "ready_at": _iso(ready_at)}
 
 
 def _loop(wait: tuple[str, datetime] | None = None) -> LoopView:

@@ -33,7 +33,9 @@ export const WAKE: Record<WakeKind, WakeText> = {
 	lottery_open: { icon: '🤑', text: 'Лотерея: купить билеты' },
 	metro_kick: { icon: '🚇', text: 'Метро: игра выкинет перед битвой' },
 	metro_ready: { icon: '🚇', text: 'Метро доступно' },
-	artifact_end: { icon: '👾', text: 'Сбор артефакта кончается' }
+	artifact_end: { icon: '👾', text: 'Сбор артефакта кончается' },
+	trip_ready: { icon: '🚦', text: 'Поездка' },
+	trip_result: { icon: '🚦', text: 'Итог поездки' }
 };
 
 /** Сценарии и псевдо-сценарии кандидатов (`state`, `deeds` — обновление ради занятости и дел). */
@@ -104,7 +106,8 @@ export const SOURCE_TEXT: Record<string, string> = {
 	gifts: 'подарки',
 	gorbushka: 'Горбушку',
 	daily: 'задания',
-	artifacts: 'экран артефактов'
+	artifacts: 'экран артефактов',
+	trips: 'транспорт'
 };
 
 /** Вердикты кандидатов (`Candidate.verdict`); `stale:<поле>` — отдельно. */
@@ -135,7 +138,10 @@ export const VERDICT: Record<string, string> = {
 	reserved: '🔥 в запасе',
 	no_team: 'не в команде',
 	company_unknown: 'своя компания не распознана',
-	artifact_run: 'идёт сбор артефакта'
+	artifact_run: 'идёт сбор артефакта',
+	no_raw: 'нет 🔩',
+	motivation_cap: '🔥 у максимума — сначала дело',
+	trip_pending: 'ждёт итог прошлой поездки'
 };
 
 /** Поля состояния в вердикте `stale:<поле>`. */
@@ -155,7 +161,8 @@ const FIELD_TEXT: Record<string, string> = {
 	food_stock: 'запас еды',
 	company: 'своя компания',
 	team_tag: 'команда',
-	artifact_collect: 'сбор артефакта'
+	artifact_collect: 'сбор артефакта',
+	trips: 'транспорт'
 };
 
 export function verdictText(verdict: string): string {
@@ -216,6 +223,16 @@ function cooldownKey(key: string | null): string {
 	return deedText(key);
 }
 
+/** Виды транспорта по ключам `trips.vehicles`; незнакомый вид — строкой экрана, как есть. */
+const VEHICLE: Record<string, string> = {
+	car: '🚕 автомобиль',
+	tram: '🚃 трамвай',
+	sled: '🛷 санки',
+	bike: '🚲 велосипед',
+	scooter: '🛴 самокат',
+	tractor: '🚜 трактор'
+};
+
 export interface TimerLine {
 	icon: string;
 	text: string;
@@ -246,6 +263,9 @@ export function timerLine(t: PlanTimer, plan: Outlook): TimerLine {
 		case 'lottery_open':
 			text = `${base.text} (${lotteryTickets(plan)})`;
 			break;
+		case 'trip_ready':
+			text = `${base.text}: ${VEHICLE[t.key ?? ''] ?? t.key} готов`;
+			break;
 		case 'battle':
 		case 'stocks_dump':
 		case 'metro_kick':
@@ -274,6 +294,8 @@ export function actDetail(scenario: string, params: Record<string, unknown>, pla
 		}
 		case 'gorbushka':
 			return params.buy === true ? 'купить билет' : '';
+		case 'trip':
+			return typeof params.vehicle === 'string' ? (VEHICLE[params.vehicle] ?? params.vehicle) : '';
 		default:
 			return '';
 	}
@@ -303,6 +325,7 @@ export function candidateDetail(c: PlanCandidate, plan: Outlook): string {
 		timer = find('cooldown', c.scenario === 'refresh' ? `refresh:${String(source)}` : c.scenario);
 	}
 	else if (c.verdict === 'busy') timer = find('busy');
+	else if (c.verdict === 'trip_pending') timer = find('trip_result');
 	const today = typeof c.params.today === 'number' ? `сегодня ${c.params.today}` : '';
 	const wait = timer ? `до ${fmtTime(timer.at)}` : '';
 	const reserve = c.verdict === 'reserved' ? reservedFor(c, plan) : '';

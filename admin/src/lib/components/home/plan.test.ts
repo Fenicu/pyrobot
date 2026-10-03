@@ -41,7 +41,7 @@ describe('«План бота» на фикстуре из бэкенд-тест
 
 		const next = within(block).getByRole('region', { name: 'Дальше по времени' });
 		const timers = within(next).getAllByRole('listitem');
-		expect(timers).toHaveLength(8);
+		expect(timers).toHaveLength(11);
 		expect(timers[0]).toHaveTextContent('19:50');
 		expect(timers[0]).toHaveTextContent('Освободится');
 		expect(timers[0]).toHaveTextContent('через 20 мин');
@@ -49,8 +49,11 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		expect(timers[3]).toHaveTextContent('Метро доступно');
 		expect(timers[4]).toHaveTextContent('22:05');
 		expect(timers[4]).toHaveTextContent('Сон 7 ч под мостом');
-		expect(timers[7]).toHaveTextContent('Слив налички в акции перед битвой');
-		expect(timers[7]).toHaveTextContent('цель 📯Pied Piper');
+		expect(timers[5]).toHaveTextContent('22:31');
+		expect(timers[5]).toHaveTextContent('Поездка: 🚕 автомобиль готов');
+		expect(timers[8]).toHaveTextContent('Можно снова обновить экран: транспорт');
+		expect(timers[10]).toHaveTextContent('Слив налички в акции перед битвой');
+		expect(timers[10]).toHaveTextContent('цель 📯Pied Piper');
 	});
 
 	it('без запаса 🔥 строки «Держит» нет; отказ из-за запаса — под что он', () => {
