@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.engine.parsing.common import COMPANIES
+from app.engine.parsing.trips import VEHICLES
 
 
 class CommandClass(StrEnum):
@@ -104,9 +105,6 @@ TEXT_RULES: tuple[Rule, ...] = (
         "🔩Разрабатывать",
         "⚪️ → 🔵",
         "🔵 → 🔴",
-        "🚲Велик",
-        "🚕Тачка",
-        "🚃Трамвай",
         "🎁 за 10🍊",
     ),
     *_exact(
@@ -271,6 +269,7 @@ TEXT_RULES: tuple[Rule, ...] = (
         "⛏Добывать",
         "/harvest",
         "/decline",
+        *(v.button for v in VEHICLES.values()),
         "/capitalization",
         "/daily_income",
         "/index_pe",
@@ -378,6 +377,7 @@ _FEATURE_TEXT: tuple[tuple[re.Pattern[str], str], ...] = tuple(
             r"|⚙️ → 🔩|/walk|🚶Гулять|🔫Грабить|/eat|🍴Есть)\Z",
             "deeds",
         ),
+        ("(?:" + "|".join(re.escape(v.button) for v in VEHICLES.values()) + r")\Z", "trips"),
         (r"/read_exp\Z", "books"),
         (r"(🌭Хот-дог|🍕Пицца|🍔Бургер|🍌Банан)\Z", "fastfood"),
         (r"(/use_card|/unbox(_\w+)?)\Z", "cards_containers"),

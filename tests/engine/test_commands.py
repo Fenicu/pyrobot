@@ -32,6 +32,8 @@ N, A, R, F, D = (
         ("/topjob", N),
         ("🚇Метро", N),
         ("⏳Задания", N),
+        ("🏢Офис", N),
+        ("🚦Поездки", N),
         ("/t_jobMoney_hard", A),
         ("⛏Добывать", A),
         ("/harvest", A),
@@ -50,7 +52,6 @@ N, A, R, F, D = (
         ("/sells_bmesa_1", R),
         ("⚪️ → 🔵", R),
         ("+🍀🐀", R),
-        ("🚕Тачка", R),
         ("/ucon", R),
         ("/changecompany", F),
         ("/profreset", F),
@@ -263,6 +264,8 @@ def test_spring_smiles_action_and_maze_nothing_nav() -> None:
         ("⚔Битва", None),
         ("/inv", None),
         ("😎Я", None),
+        ("🚦Поездки", None),
+        ("🏢Офис", None),
     ],
 )
 def test_feature_of_text(text: str, feature: str | None) -> None:
@@ -338,3 +341,20 @@ def test_unknown_artifact_buttons_forbidden(data: str) -> None:
 @pytest.mark.parametrize("text", ["/artr_idea", "/artr_", "/artr_light_now"])
 def test_unknown_artifact_recollect_forbidden(text: str) -> None:
     assert classify_text(text) is CommandClass.FORBIDDEN
+
+
+VEHICLE_BUTTONS = ("🚲Велик", "🚕Тачка", "🚃Трамвай", "🛷Санки", "🛴Самокат", "🚜Трактор")
+
+
+@pytest.mark.parametrize("text", VEHICLE_BUTTONS)
+def test_vehicle_buttons_are_trips_actions(text: str) -> None:
+    assert classify_text(text, "bmesa") is A
+    assert feature_of_text(text) == "trips"
+
+
+@pytest.mark.parametrize(
+    "text", ["🚲Велосипед", "🚕Ааавтомобиль", "🚁Вертолёт", "🚲 Велик", "Тачка"]
+)
+def test_other_vehicle_texts_stay_forbidden(text: str) -> None:
+    assert classify_text(text) is F
+    assert feature_of_text(text) is None
