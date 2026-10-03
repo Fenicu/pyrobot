@@ -243,6 +243,34 @@ describe('строка пояснения', () => {
 		expect(text).not.toContain('Основные дела');
 	});
 
+	it('сбор артефакта виден по таймеру окончания — основные дела не называются при любой причине дела', () => {
+		const end = { at: '2026-09-27T17:21:00Z', kind: 'artifact_end' as const, key: null, after_wake: false };
+		const base: Outlook = { ...plan, wakeups: [...plan.wakeups, end] };
+		for (const why of ['personal', 'team'] as const) {
+			const text = explain({ ...base, hints: { ...base.hints, next_deed: { deed: 'deed:walk', why } } }, {}, NOW);
+			expect(text).toContain('Сбор артефакта: вся 🔥 — в его дела. Следующее дело — прогулка');
+			expect(text).not.toMatch(/Основн|по очереди|по счётчикам/);
+		}
+		const none = explain({ ...base, hints: { ...base.hints, next_deed: null } }, {}, NOW);
+		expect(none).toContain('Сбор артефакта: вся 🔥 — в его дела. Доступных дел сейчас нет.');
+		expect(none).not.toMatch(/Основн|по очереди|по счётчикам/);
+	});
+
+	it('сбор виден и по отброшенным делам вне тактики (artifact_run)', () => {
+		const rejected = { scenario: 'deed:job', params: {}, score: null, verdict: 'artifact_run' };
+		const view: Outlook = {
+			...plan,
+			considered: [...plan.considered, rejected],
+			hints: { ...plan.hints, next_deed: null }
+		};
+		expect(explain(view, {}, NOW)).toContain('Сбор артефакта: вся 🔥 — в его дела. Доступных дел сейчас нет.');
+	});
+
+	it('таймер окончания после пробуждения не считается сбором', () => {
+		const later = { at: '2026-09-27T17:21:00Z', kind: 'artifact_end' as const, key: null, after_wake: true };
+		expect(explain({ ...plan, wakeups: [...plan.wakeups, later] }, {}, NOW)).not.toContain('Сбор артефакта');
+	});
+
 	it('основных дел нет — «лучшее по оценке» без повтора «основные недоступны»', () => {
 		const noFocus: Outlook = {
 			...plan,

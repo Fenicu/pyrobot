@@ -171,11 +171,27 @@ const WHY: Record<NonNullable<Outlook['hints']['next_deed']>['why'], string> = {
 	artifact: ', для сбора артефакта'
 };
 
+/** Идёт сбор артефакта: следующее дело — из тактики, либо у планировщика есть таймер окончания
+ * сбора, либо он отбросил дела вне тактики. Приостановленный сбор (таймер есть, основные дела идут)
+ * по плану от идущего не отличить. */
+function collecting(plan: Outlook): boolean {
+	return (
+		plan.hints.next_deed?.why === 'artifact' ||
+		plan.wakeups.some((t) => t.kind === 'artifact_end' && !t.after_wake) ||
+		plan.considered.some((c) => c.verdict === 'artifact_run')
+	);
+}
+
 function focusText(plan: Outlook): string {
 	const focus = plan.focus;
 	const next = plan.hints.next_deed;
 	// Во время сбора основные дела не идут: вся 🔥 — в дела тактики артефакта.
-	if (next?.why === 'artifact') return `Сбор артефакта: вся 🔥 — в его дела. Следующее дело — ${deedText(next.deed)}.`;
+	if (collecting(plan)) {
+		const head = 'Сбор артефакта: вся 🔥 — в его дела.';
+		if (!next) return `${head} Доступных дел сейчас нет.`;
+		const why = next.why === 'artifact' ? '' : WHY[next.why];
+		return `${head} Следующее дело — ${deedText(next.deed)}${why}.`;
+	}
 	let base: string;
 	if (focus.length === 0) base = 'Основных дел нет — дело выбирается по оценке.';
 	else if (focus.length === 1) base = `Основное дело: ${deedText(focus[0]!.deed)} (сегодня ${focus[0]!.today}).`;
