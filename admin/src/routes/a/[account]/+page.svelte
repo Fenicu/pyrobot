@@ -18,8 +18,8 @@
 	let now = $state(new Date());
 	// «План бота» живёт, пока открыта главная: уход — отмена запроса и таймеров.
 	const plan = new PlanStore(api);
-	// «Итоги дня» — только сегодня.
-	const daily = new DailyStore(api, 1);
+	// «Итоги дня»: сегодня и 7 полных суток — по ним темп опыта в «Персонаже».
+	const daily = new DailyStore(api, 8);
 	// «Сбор артефакта» — тоже только пока открыта главная.
 	const artifact = new ArtifactStore(api);
 
@@ -73,7 +73,7 @@
 	{/if}
 	<PlanCard plan={plan.outlook} error={plan.error} state={character.state} {now} />
 	<div class="grid gap-3 md:grid-cols-2">
-		<CharacterCard state={character.state} stale={character.stale} {now} />
+		<CharacterCard state={character.state} stale={character.stale} {now} days={daily.data?.days ?? []} />
 		<TodayCard state={character.state} stale={character.stale} {now} />
 	</div>
 	<ArtifactCard {api} artifact={artifact.data} error={artifact.error} {now} onchange={(out) => artifact.set(out)} />

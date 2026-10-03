@@ -37,6 +37,11 @@ export function fmtMoment(value: string | Date | null | undefined, now = new Dat
 	return mskDay(d) === mskDay(now) ? t : `${dayMonth.format(d)} ${t}`;
 }
 
+/** 05.11 */
+export function fmtDayMonth(value: Date): string {
+	return dayMonth.format(value);
+}
+
 /** Календарный день по МСК: 2026-09-27. */
 export function mskDay(value: Date): string {
 	return dayKey.format(value);

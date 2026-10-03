@@ -1,5 +1,6 @@
 <script lang="ts">
-	import type { PublicState } from '$lib/api/types';
+	import type { DayOut, PublicState } from '$lib/api/types';
+	import { levelForecast, levelForecastText } from '$lib/daily/forecast';
 	import { fmtCompact, fmtNum, fmtRelative } from '$lib/util/format';
 	import { busyText } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
@@ -9,8 +10,10 @@
 		state: PublicState;
 		stale: string[];
 		now: Date;
+		/** Дни «Итогов дня»: по ним считается темп опыта для прогноза уровня. */
+		days?: DayOut[];
 	}
-	let { state, stale, now }: Props = $props();
+	let { state, stale, now, days = [] }: Props = $props();
 
 	const level = $derived(val(state, 'level'));
 	const exp = $derived(val(state, 'exp'));
@@ -18,6 +21,7 @@
 	// Профиль даёт весь опыт и порог следующего уровня, а не начало текущего: доля «опыт / порог»
 	// почти всегда около 100% и ничего не говорит — показывается, сколько осталось.
 	const expLeft = $derived(exp !== null && expNext !== null ? expNext - exp : null);
+	const forecast = $derived(levelForecast(days, expLeft, now));
 	const motivation = $derived(val(state, 'motivation'));
 	const motivationMax = $derived(val(state, 'motivation_max'));
 	const nextAt = $derived(val(state, 'motivation_next_at'));
@@ -33,7 +37,7 @@
 		<Row label="💡 опыт" stale={isStale('exp')}>{fmtCompact(exp)}</Row>
 		{#if expLeft !== null && level !== null}
 			<Row label="до ур. {level + 1}" stale={isStale('exp')}>
-				{expLeft > 0 ? `${fmtNum(expLeft)} 💡` : 'набран — ждёт повышения'}
+				{expLeft > 0 ? `${fmtNum(expLeft)} 💡` : 'набран — ждёт повышения'}{#if forecast}{` · ${levelForecastText(forecast)}`}{/if}
 			</Row>
 		{/if}
 		<Row label="💵 деньги" stale={isStale('money')}>${fmtNum(val(state, 'money'))}</Row>

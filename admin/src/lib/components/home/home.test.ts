@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAccountApi } from '$lib/api/account';
 import { dialogs } from '$lib/stores/confirm.svelte';
-import type { EngineStatus, StateOut } from '$lib/api/types';
+import type { DayOut, EngineStatus, StateOut } from '$lib/api/types';
 import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import ConfirmDialog from '../ConfirmDialog.svelte';
@@ -36,6 +36,50 @@ describe('Главная на снимке с прода', () => {
 		render(CharacterCard, { state: { ...prod.state, exp }, stale: [], now: NOW });
 		const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
 		expect(within(card).getByText('до ур. 72').parentElement).toHaveTextContent('набран — ждёт повышения');
+	});
+
+	describe('прогноз до следующего уровня', () => {
+		const dayOf = (date: string, delta: number | null, partial = false) =>
+			({ day: date, partial, balance: { exp: { delta, covered: delta !== null } } }) as unknown as DayOut;
+		const days = [
+			dayOf('2026-09-28', 12726, true),
+			dayOf('2026-09-27', 15931),
+			dayOf('2026-09-26', 16134),
+			dayOf('2026-09-25', 16136),
+			dayOf('2026-09-24', 15919),
+			dayOf('2026-09-23', 17193),
+			dayOf('2026-09-22', null)
+		];
+
+		it('хвост «≈ N дн. (к ДД.ММ) при темп/сут» у строки до уровня', () => {
+			render(CharacterCard, { state: prod.state, stale: [], now: NOW, days });
+			const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
+			expect(within(card).getByText('до ур. 72').parentElement).toHaveTextContent(
+				'635 040 💡 · ≈ 39 дн. (к 06.11) при 16.3K/сут'
+			);
+			expect(within(card).getByText('💡 опыт').parentElement).not.toHaveTextContent('дн.');
+		});
+
+		it('без дней прогноза нет', () => {
+			render(CharacterCard, { state: prod.state, stale: prod.stale, now: NOW });
+			const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
+			expect(within(card).getByText('до ур. 72').parentElement).not.toHaveTextContent('дн.');
+		});
+
+		it('опыт набран — прогноза нет', () => {
+			const exp = { ...prod.state.exp!, value: 18_200_000 };
+			render(CharacterCard, { state: { ...prod.state, exp }, stale: [], now: NOW, days });
+			const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
+			const row = within(card).getByText('до ур. 72').parentElement;
+			expect(row).toHaveTextContent('набран — ждёт повышения');
+			expect(row).not.toHaveTextContent('дн.');
+		});
+
+		it('пометка устаревания остаётся', () => {
+			render(CharacterCard, { state: prod.state, stale: ['exp'], now: NOW, days });
+			const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
+			expect(within(card).getByText('до ур. 72').parentElement).toHaveTextContent('(устарело)');
+		});
 	});
 
 	it('сегодня', () => {

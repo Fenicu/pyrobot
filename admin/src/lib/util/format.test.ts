@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fmtCompact, fmtMoment, fmtNum, fmtRelative, fmtSpan, fmtTime, mskDayStart } from './format';
+import { fmtCompact, fmtDayMonth, fmtMoment, fmtNum, fmtRelative, fmtSpan, fmtTime, mskDayStart } from './format';
 
 const NOW = new Date('2026-09-27T20:27:51Z');
 
@@ -24,6 +24,11 @@ describe('формат', () => {
 		expect(fmtNum(21946)).toBe('21 946');
 		expect(fmtCompact(17520102)).toBe('17.52M');
 		expect(fmtCompact(47)).toBe('47');
+	});
+
+	it('день и месяц по Москве', () => {
+		expect(fmtDayMonth(new Date('2026-11-05T09:00:00Z'))).toBe('05.11');
+		expect(fmtDayMonth(new Date('2026-10-03T22:00:00Z'))).toBe('04.10');
 	});
 
 	it('начало суток МСК', () => {
