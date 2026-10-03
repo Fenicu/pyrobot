@@ -74,6 +74,12 @@ def required(scenario: str, name: str) -> Param:
             ["🍇🥕🥕🍋", "🍇🥕🥕🍋🍅🍅", "🍇🥕🥕🍋🍌", 5, ""],
         ),
         ("artifact_start", "artifact", ["book", "fax", "light"], ["box", "", None, 1]),
+        (
+            "trip",
+            "vehicle",
+            ["car", "tram", "sled", "bike", "scooter", "tractor"],
+            ["🚲Велик", "bicycle", "Car", "", None, 1],
+        ),
     ],
 )
 def test_required_checks_keep_their_edges(
@@ -112,3 +118,13 @@ def test_patterns_are_portable_and_agree_with_checks() -> None:
         compiled = re.compile(param.pattern)
         for value in values:
             assert bool(compiled.match(value)) == param(value), (scenario, value)
+
+
+def test_trip_scenarios() -> None:
+    assert required("trip", "vehicle").spec() == {
+        "type": "enum",
+        "values": ["bike", "car", "scooter", "sled", "tractor", "tram"],
+    }
+    assert SCENARIOS["trip"].invalid({}) == ["vehicle"]
+    assert SCENARIOS["trips_refresh"].required == {}
+    assert {"trip", "trips_refresh"} <= CERTIFIED

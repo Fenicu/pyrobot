@@ -8,7 +8,8 @@ from typing import Any, Literal, get_args
 from app.engine.parsing.artifacts import RECOLLECTABLE
 from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.parsing.smoothie import INGREDIENTS
-from app.engine.scenarios import artifacts, daily, library, lottery, metro, obligations
+from app.engine.parsing.trips import VEHICLES
+from app.engine.scenarios import artifacts, daily, library, lottery, metro, obligations, trips
 from app.engine.scenarios.library import FOOD_BUTTONS, REFRESH, ScenarioFn
 from app.engine.settings import Target
 
@@ -141,6 +142,8 @@ def _specs() -> dict[str, ScenarioSpec]:
             True,
             required={"artifact": _one_of(RECOLLECTABLE)},
         ),
+        ScenarioSpec("trip", trips.trip, True, required={"vehicle": _one_of(VEHICLES)}),
+        ScenarioSpec("trips_refresh", trips.trips_refresh, True),
     ]
     for item, certified in (
         ("book", True),

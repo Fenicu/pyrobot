@@ -61,6 +61,8 @@ export const SCENARIO: Record<string, string> = {
 	container_medium: '🗳 средний контейнер',
 	artifact_start: '👾 запуск сбора артефакта',
 	artifact: '👾 сбор артефакта',
+	trip: '🚦 поездка',
+	trips_refresh: '🚦 обновление экрана транспорта',
 	'deed:harvest': '⛏ добыча',
 	'deed:job': '💻 работа',
 	'deed:learn': '📚 учёба',
