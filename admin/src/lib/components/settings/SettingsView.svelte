@@ -27,9 +27,12 @@
 	// изменения или известная чужая версия при несохранённых правках.
 	const historyKey = $derived(editor.conflict ?? editor.version ?? 0);
 
-	const section = $derived(editor.sections.find((s) => s.name === active) ?? editor.sections[0] ?? null);
+	// Разделы, где после полей «только чтение» ничего не осталось (запись сбора артефакта), в меню
+	// не попадают.
+	const shown = $derived(editor.sections.filter((s) => editable(s.fields).length > 0));
+	const section = $derived(shown.find((s) => s.name === active) ?? shown[0] ?? null);
 	const title = (s: Section) => settingLabel(s.name, s.title);
-	const firstAdvanced = $derived(editor.sections.find((s) => ADVANCED_SECTIONS.includes(s.name))?.name ?? null);
+	const firstAdvanced = $derived(shown.find((s) => ADVANCED_SECTIONS.includes(s.name))?.name ?? null);
 	const q = $derived(query.trim().toLowerCase());
 	// Поиск — по пути, подписи и описанию поля, а также по подписи и описанию его секции и вложенной
 	// группы: совпадение у группы находит все её поля.
@@ -132,7 +135,7 @@
 					title="Ищет по названию, описанию и пути" bind:value={query} />
 			</label>
 			<ul class="flex gap-1 overflow-x-auto lg:flex-col">
-				{#each editor.sections as s (s.name)}
+				{#each shown as s (s.name)}
 					{@const dirty = editor.changes.some((p) => p[0] === s.name)}
 					{#if s.name === firstAdvanced}
 						<li

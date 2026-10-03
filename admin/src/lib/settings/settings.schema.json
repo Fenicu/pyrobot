@@ -1,5 +1,221 @@
 {
  "$defs": {
+  "ArtifactLottery": {
+   "description": "Лотерея до старта сбора или включённая ботом на сбор: флаг механики и её секция.",
+   "properties": {
+    "enabled": {
+     "title": "Enabled",
+     "type": "boolean"
+    },
+    "lottery": {
+     "$ref": "#/$defs/LotterySection"
+    }
+   },
+   "required": [
+    "enabled",
+    "lottery"
+   ],
+   "title": "ArtifactLottery",
+   "type": "object"
+  },
+  "ArtifactRunSection": {
+   "description": "Текущий сбор артефакта: меняют эндпоинты `/artifact/*` и движок, не PATCH.",
+   "properties": {
+    "artifact": {
+     "anyOf": [
+      {
+       "enum": [
+        "book",
+        "fax",
+        "light"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Artifact"
+    },
+    "deed_hint": {
+     "anyOf": [
+      {
+       "enum": [
+        "walk",
+        "job",
+        "learn"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Deed Hint"
+    },
+    "ends_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Ends At"
+    },
+    "lottery_applied": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ArtifactLottery"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true
+    },
+    "lottery_before": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ArtifactLottery"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true
+    },
+    "requested_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Requested At"
+    },
+    "result_level": {
+     "anyOf": [
+      {
+       "maximum": 100,
+       "minimum": 0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Result Level"
+    },
+    "started_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Started At"
+    },
+    "status": {
+     "default": "idle",
+     "enum": [
+      "idle",
+      "starting",
+      "active",
+      "paused",
+      "cancelled",
+      "finished"
+     ],
+     "readOnly": true,
+     "title": "Status",
+     "type": "string"
+    }
+   },
+   "title": "ArtifactRunSection",
+   "type": "object"
+  },
+  "ArtifactsSection": {
+   "description": "Тактика сбора артефакта: в какие дела бот тратит всю 🔥, порядок — приоритет.",
+   "properties": {
+    "book_high": {
+     "default": [
+      "learn"
+     ],
+     "items": {
+      "const": "learn",
+      "type": "string"
+     },
+     "title": "Book High",
+     "type": "array"
+    },
+    "book_low": {
+     "default": [
+      "walk",
+      "job"
+     ],
+     "items": {
+      "enum": [
+       "walk",
+       "job"
+      ],
+      "type": "string"
+     },
+     "title": "Book Low",
+     "type": "array"
+    },
+    "fax": {
+     "default": [
+      "job"
+     ],
+     "items": {
+      "const": "job",
+      "type": "string"
+     },
+     "title": "Fax",
+     "type": "array"
+    },
+    "light": {
+     "default": [
+      "walk"
+     ],
+     "items": {
+      "const": "walk",
+      "type": "string"
+     },
+     "title": "Light",
+     "type": "array"
+    },
+    "lottery_on_start": {
+     "default": true,
+     "title": "Lottery On Start",
+     "type": "boolean"
+    }
+   },
+   "title": "ArtifactsSection",
+   "type": "object"
+  },
   "BattleSection": {
    "properties": {
     "overrides": {
@@ -820,6 +1036,13 @@
   }
  },
  "properties": {
+  "artifact_run": {
+   "$ref": "#/$defs/ArtifactRunSection",
+   "readOnly": true
+  },
+  "artifacts": {
+   "$ref": "#/$defs/ArtifactsSection"
+  },
   "battle": {
    "$ref": "#/$defs/BattleSection"
   },

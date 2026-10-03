@@ -18,6 +18,7 @@ export const SECTION_ORDER = [
 	'daily',
 	'sleep',
 	'lottery',
+	'artifacts',
 	'battle',
 	'stocks',
 	'metro',

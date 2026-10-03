@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Callable, Iterable, Mapping
+from datetime import datetime
 from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
-# Меняется только своими эндпоинтами движка (kill/unkill, pause/resume): у них latch шлюза,
-# проверка блокировки экземпляра и аудит, а PATCH настроек обошёл бы их.
+# Меняется только своими эндпоинтами движка (kill/unkill, pause/resume, сбор артефакта): у них
+# latch шлюза, проверка блокировки экземпляра и аудит, а PATCH настроек обошёл бы их.
 READ_ONLY: dict[str, Any] = {"readOnly": True}
 # Код настройку не читает: менять можно, но ни на что не влияет — в админке она приглушена.
 UNUSED: dict[str, Any] = {"x-unused": True}
@@ -236,6 +237,52 @@ class LotterySection(BaseModel):
     keep: LotteryKeep = Field(default_factory=LotteryKeep)
 
 
+ArtifactKey = Literal["book", "fax", "light"]
+ArtifactDeed = Literal["walk", "job", "learn"]
+RunStatus = Literal["idle", "starting", "active", "paused", "cancelled", "finished"]
+
+
+class ArtifactsSection(BaseModel):
+    """Тактика сбора артефакта: в какие дела бот тратит всю 🔥, порядок — приоритет."""
+
+    # Страницы Букваря до 17 ур. персонажа падают на Работе и Прогулке, с 18 — на Учёбе.
+    book_low: tuple[Literal["walk", "job"], ...] = ("walk", "job")
+    book_high: tuple[Literal["learn"], ...] = ("learn",)
+    fax: tuple[Literal["job"], ...] = ("job",)
+    light: tuple[Literal["walk"], ...] = ("walk",)
+    lottery_on_start: bool = True
+
+    @field_validator("book_low", "book_high", "fax", "light")
+    @classmethod
+    def _deeds_order(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("at least one deed")
+        if len(set(value)) != len(value):
+            raise ValueError("deeds must not repeat")
+        return value
+
+
+class ArtifactLottery(BaseModel):
+    """Лотерея до старта сбора или включённая ботом на сбор: флаг механики и её секция."""
+
+    enabled: bool
+    lottery: LotterySection
+
+
+class ArtifactRunSection(BaseModel):
+    """Текущий сбор артефакта: меняют эндпоинты `/artifact/*` и движок, не PATCH."""
+
+    artifact: ArtifactKey | None = Field(default=None, json_schema_extra=READ_ONLY)
+    status: RunStatus = Field(default="idle", json_schema_extra=READ_ONLY)
+    requested_at: datetime | None = Field(default=None, json_schema_extra=READ_ONLY)
+    started_at: datetime | None = Field(default=None, json_schema_extra=READ_ONLY)
+    ends_at: datetime | None = Field(default=None, json_schema_extra=READ_ONLY)
+    deed_hint: ArtifactDeed | None = Field(default=None, json_schema_extra=READ_ONLY)
+    lottery_before: ArtifactLottery | None = Field(default=None, json_schema_extra=READ_ONLY)
+    lottery_applied: ArtifactLottery | None = Field(default=None, json_schema_extra=READ_ONLY)
+    result_level: int | None = Field(default=None, ge=0, le=100, json_schema_extra=READ_ONLY)
+
+
 class RetentionSection(BaseModel):
     # Журнал: сообщения (с нераспознанными), действия, запуски сценариев, уведомления.
     messages_days: int = Field(default=90, ge=1, le=3650)
@@ -261,6 +308,10 @@ class Settings(BaseModel):
     metro: MetroSection = Field(default_factory=MetroSection)
     daily: DailySection = Field(default_factory=DailySection)
     lottery: LotterySection = Field(default_factory=LotterySection)
+    artifacts: ArtifactsSection = Field(default_factory=ArtifactsSection)
+    artifact_run: ArtifactRunSection = Field(
+        default_factory=ArtifactRunSection, json_schema_extra=READ_ONLY
+    )
     retention: RetentionSection = Field(default_factory=RetentionSection)
 
 

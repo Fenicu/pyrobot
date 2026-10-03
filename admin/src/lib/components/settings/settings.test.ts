@@ -34,6 +34,23 @@ async function view(
 }
 
 describe('Настройки', () => {
+	it('раздел «Сбор артефакта» — списки дел; запись сбора (только чтение) в меню не попадает', async () => {
+		const user = userEvent.setup();
+		const values = {
+			...settings.values,
+			artifacts: { book_low: ['walk', 'job'], book_high: ['learn'], fax: ['job'], light: ['walk'], lottery_on_start: true }
+		};
+		await view(undefined, () => ({ ...settings, schema: schemaJson, values }));
+		const nav = screen.getByRole('navigation', { name: 'Секции настроек' });
+		expect(nav).toHaveTextContent('Сбор артефакта');
+		expect(nav).not.toHaveTextContent('Текущий сбор артефакта');
+		await user.click(screen.getByRole('button', { name: 'Сбор артефакта' }));
+		const section = screen.getByRole('region', { name: 'Сбор артефакта' });
+		expect(within(section).getByRole('group', { name: '📕 Букварь до 17 ур.' })).toHaveTextContent('walk');
+		expect(within(section).getByRole('switch', { name: 'Лотерея при запуске' })).toBeChecked();
+	});
+
+
 	it('разделы: сначала часто нужные, технические — в «Дополнительно» в конце', async () => {
 		await view();
 		expect(screen.getByRole('region', { name: 'Функции' })).toBeInTheDocument();

@@ -438,3 +438,21 @@ def test_self_chat_fields_only_chat_ids() -> None:
         "chats.tangerine_chat_id",
     ]
     assert self_chat_fields(Settings(chats=ChatsSection(tangerine_reply_to=user)), user) == []
+
+
+def test_artifact_run_is_read_only_section() -> None:
+    with pytest.raises(SettingsPatchError) as err:
+        apply_patch(Settings(), {"artifact_run": {"status": "active"}})
+    assert (err.value.code, err.value.path) == ("read_only", "artifact_run")
+    schema = Settings.model_json_schema()
+    run = schema["$defs"]["ArtifactRunSection"]["properties"]
+    assert schema["properties"]["artifact_run"]["readOnly"] is True
+    assert all(field["readOnly"] for field in run.values())
+
+
+def test_artifact_tactic_patch_applies() -> None:
+    patched = apply_patch(Settings(), {"artifacts": {"book_low": ["job", "walk"]}})
+    assert patched.artifacts.book_low == ("job", "walk")
+    # Старые настройки без новых секций читаются с умолчаниями.
+    old = Settings.model_validate({"engine": {"mode": "live"}})
+    assert old.artifact_run.status == "idle" and old.artifacts.light == ("walk",)
