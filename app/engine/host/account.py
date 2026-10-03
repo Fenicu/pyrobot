@@ -23,6 +23,7 @@ from app.db.models import NotificationRow
 from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
 from app.db.settings_store import DbSettingsStore
+from app.engine.artifact import ArtifactRuns
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade
@@ -272,6 +273,12 @@ class AccountRuntime:
         interrupted = await planner_store.close_running(SystemClock().now())
         if interrupted:
             log.info("marked %d unfinished scenario runs as interrupted", interrupted)
+        artifacts = ArtifactRuns(
+            settings=settings,
+            state=lambda: load_state(pipeline.state),
+            notifier=self.notifier,
+            clock=SystemClock(),
+        )
         self.planner = PlannerLoop(
             gateway=gateway,
             state=lambda: load_state(pipeline.state),
@@ -285,6 +292,7 @@ class AccountRuntime:
             history=journal_history(journal),
             reread=live_reread(transport, pipeline),
             auto=config.planner,
+            artifacts=artifacts,
         )
         game_chat = settings.current.chats.game_chat_id
 
@@ -320,6 +328,7 @@ class AccountRuntime:
             stream=self.stream,
             transport=transport,
             history=lambda: self.history,
+            artifacts=artifacts,
         )
         self.supervisor.start("pipeline", pipeline.run)
         self.supervisor.start("gateway", self.gateway.run)

@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import Any
 
+from app.engine.clock import Clock
+from app.engine.notify import NotifierPort
 from app.engine.parsing.artifacts import COLLECT_SPAN, MAX_LEVEL, RECOLLECTABLE
 from app.engine.settings import (
     ArtifactKey,
@@ -14,9 +19,12 @@ from app.engine.settings import (
     ArtifactsSection,
     LotterySection,
     Settings,
+    SettingsProvider,
 )
 from app.engine.state.model import ArtifactCollect, CharacterState
 
+log = logging.getLogger(__name__)
+ENGINE_BY = "engine"
 BOOK_HIGH_LEVEL = 18
 IN_PROGRESS = frozenset({"starting", "active", "paused"})
 # Лотерея «на максимум»: все билеты до лимита тиража, без запасов — это умолчания секции.
@@ -315,3 +323,164 @@ def artifact_view(settings: Settings, state: CharacterState, now: datetime) -> A
         pace=pace(run, state, now),
         next_start_at=max(ends) if ends else None,
     )
+
+
+class ArtifactRuns:
+    """Сбор артефакта в движке аккаунта: переходы записи через настройки движка и уведомления.
+    Переход — функция над текущими настройками внутри `settings.update`: проверка и запись
+    атомарны относительно других правок (PATCH, kill, пауза)."""
+
+    def __init__(
+        self,
+        *,
+        settings: SettingsProvider,
+        state: Callable[[], CharacterState],
+        notifier: NotifierPort,
+        clock: Clock,
+    ) -> None:
+        self._settings = settings
+        self._state = state
+        self._notifier = notifier
+        self._clock = clock
+        # Внешний сбор, о котором уже сказали: (артефакт, день окончания).
+        self._external: tuple[str, date] | None = None
+
+    def view(self) -> ArtifactView:
+        return artifact_view(self._settings.current, self._state(), self._clock.now())
+
+    async def _apply(self, change: Callable[[Settings], Settings], by: str) -> Settings:
+        new, _ = await self._settings.update(change, changed_by=by)
+        return new
+
+    async def _quiet(self, change: Callable[[Settings], Settings]) -> Settings | None:
+        """Переход движка: запись уже другая (её изменили раньше) — ничего."""
+        try:
+            return await self._apply(change, ENGINE_BY)
+        except ArtifactConflict:
+            return None
+
+    async def start(self, artifact: ArtifactKey, *, lottery_max: bool, by: str) -> None:
+        now, state = self._clock.now(), self._state()
+        await self._apply(
+            lambda s: start(s, state, artifact, lottery_max=lottery_max, now=now), by
+        )
+
+    async def pause(self, *, by: str) -> None:
+        await self._apply(pause, by)
+
+    async def resume(self, *, by: str) -> None:
+        await self._apply(resume, by)
+
+    async def cancel(self, *, by: str) -> None:
+        run = self._settings.current.artifact_run
+        level = artifact_level(self._state(), run.artifact, run.started_at)
+        await self._apply(lambda s: cancel(s, level), by)
+
+    async def adopt(self, *, by: str) -> None:
+        now = self._clock.now()
+        found = game_collect(self._state(), now)
+        await self._apply(lambda s: adopt(s, found, now), by)
+
+    async def started(self, status: str, reason: str, details: Mapping[str, Any] | None) -> None:
+        """Итог сценария `artifact_start`: «Сбор начат!» — сбор идёт; пересобрать нельзя —
+        запуск отменяется. Уже идущий сбор и неясный исход клика решает `tick` по экрану."""
+        data = details or {}
+        artifact = data.get("artifact")
+
+        def ours(change: Callable[[Settings], Settings]) -> Callable[[Settings], Settings]:
+            # Поздний итог запуска другого артефакта (отменён, запрошен новый) — не про эту запись.
+            def checked(s: Settings) -> Settings:
+                if artifact is not None and s.artifact_run.artifact != artifact:
+                    raise ArtifactConflict("other_artifact")
+                return change(s)
+
+            return checked
+
+        if status == "done" and "started_at" in data:
+            at = datetime.fromisoformat(str(data["started_at"]))
+            deed = None if data.get("deed") is None else str(data["deed"])
+            new = await self._quiet(ours(lambda s: activate(s, at, deed)))
+            if new is not None:
+                await self._started(new)
+        elif reason == "not_recollectable" and await self._quiet(ours(fail_start)) is not None:
+            await self._notifier.notify(
+                "warn",
+                "artifact_start_failed",
+                "artifact cannot be recollected now; start cancelled",
+            )
+
+    async def tick(self) -> None:
+        """Окончание по сроку и на 100 уровне, сверка запуска по экрану, внешний сбор."""
+        now, state = self._clock.now(), self._state()
+        run = self._settings.current.artifact_run
+        if run.status in ("active", "paused"):
+            await self._maybe_finish(run, state, now)
+        elif run.status == "starting":
+            await self._settle_start(run, state)
+        else:
+            await self._external_collect(run, state, now)
+
+    async def _maybe_finish(
+        self, run: ArtifactRunSection, state: CharacterState, now: datetime
+    ) -> None:
+        level = artifact_level(state, run.artifact, run.started_at)
+        if run.ends_at is not None and now >= run.ends_at:
+            code = "artifact_finished"
+        elif level is not None and level >= MAX_LEVEL:
+            code = "artifact_completed"
+        else:
+            return
+        if await self._quiet(lambda s: finish(s, level)) is None:
+            return
+        until = run.ends_at.isoformat() if run.ends_at is not None else "?"
+        shown = level if level is not None else "?"
+        text = f"{run.artifact}: level {shown}; next start after {until}"
+        await self._notifier.notify("info", code, text)
+
+    async def _settle_start(self, run: ArtifactRunSection, state: CharacterState) -> None:
+        seen = start_seen(run, state)
+        if seen is None:
+            return
+        if seen.artifact == run.artifact:
+            new = await self._quiet(lambda s: activate_seen(s, seen))
+            if new is not None:
+                await self._started(new)
+            return
+        if await self._quiet(fail_start) is not None:
+            await self._notifier.notify(
+                "warn",
+                "artifact_start_failed",
+                f"game already collects {seen.artifact}; start of {run.artifact} cancelled",
+            )
+
+    async def _external_collect(
+        self, run: ArtifactRunSection, state: CharacterState, now: datetime
+    ) -> None:
+        found = game_collect(state, now)
+        if found is None or not is_external(run, found, now):
+            return
+        key = (found.artifact, found.ends_at.date())
+        if self._external == key:
+            return
+        self._external = key
+        await self._notifier.notify(
+            "info",
+            "artifact_collect_external",
+            f"game collects {found.artifact} until {found.ends_at.isoformat()}; "
+            "use 'adopt' in admin to follow it",
+        )
+
+    async def _started(self, settings: Settings) -> None:
+        run = settings.artifact_run
+        until = run.ends_at.isoformat() if run.ends_at is not None else "?"
+        await self._notifier.notify(
+            "info", "artifact_started", f"{run.artifact} collect started, ends {until}"
+        )
+        level = char_level(self._state())
+        if tactic_mismatch(settings, level):
+            deeds = ", ".join(artifact_deeds(settings.artifacts, run.artifact, level))
+            await self._notifier.notify(
+                "warn",
+                "artifact_tactic_mismatch",
+                f"{run.artifact} parts drop on {run.deed_hint}; tactic deeds: {deeds}",
+            )

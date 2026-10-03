@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
+from app.engine.artifact import ArtifactRuns
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
 from app.engine.gametime import day_start, tasks_day, to_msk
@@ -131,6 +132,7 @@ class PlannerLoop:
         history: History | None = None,
         reread: Reread | None = None,
         auto: bool = True,
+        artifacts: ArtifactRuns | None = None,
     ) -> None:
         self._gateway = gateway
         # auto=False — только ручные запуски из админки, без собственных решений.
@@ -157,6 +159,7 @@ class PlannerLoop:
         self._metro_store = metro_store
         self._history = history
         self._reread = reread
+        self._artifacts = artifacts
         # Длительности прошлых забегов метро (бюджет по p90): из хранилища при первом решении.
         self._metro_durations: list[float] | None = None
         # Запуски отчёта о фабрике (/fb) за день: при смене дня — из хранилища (переживает
@@ -215,11 +218,16 @@ class PlannerLoop:
                 if self._manual:
                     await self.run_manual()
                     continue
-                pause = await self.step() if self._auto else self._max_idle_s
+                pause = await self.step() if self._auto else await self._idle()
                 if pause is not None:
                     await self._pause(pause)
         finally:
             self.running = False
+
+    async def _idle(self) -> float:
+        # Без собственных решений цикл всё равно закрывает сбор артефакта по сроку.
+        await self._artifact_tick()
+        return self._max_idle_s
 
     async def run_manual(self) -> None:
         """Следующий ручной запуск из очереди. Его сбой не роняет цикл планировщика."""
@@ -277,6 +285,7 @@ class PlannerLoop:
 
     async def _step(self) -> float | None:
         now = self._clock.now()
+        await self._artifact_tick()
         if self._ready() is not None:
             self.next_wake = None
             self._waiting = None
@@ -311,6 +320,16 @@ class PlannerLoop:
         # Режим запуска — тот, в котором принято решение.
         await self._execute(decision, decision_id, dry_run=settings.engine.mode == "dry_run")
         return None
+
+    async def _artifact_tick(self) -> None:
+        """Окончание сбора артефакта и сверка его запуска: в игру ничего не шлёт — и до
+        готовности (после старта движка пропущенное окончание закрывается первым шагом)."""
+        if self._artifacts is None:
+            return
+        try:
+            await self._artifacts.tick()
+        except Exception:
+            log.exception("artifact run tick failed")
 
     async def outlook(self) -> PlanView:
         """«План бота»: проход планировщика и состояние цикла."""
@@ -543,6 +562,12 @@ class PlannerLoop:
             self._last_refresh["daily"] = started
         if result.reason == "paused":
             return
+        if name == "artifact_start" and self._artifacts is not None:
+            try:
+                details = {"artifact": act.params.get("artifact"), **(result.details or {})}
+                await self._artifacts.started(result.status, result.reason, details)
+            except Exception:
+                log.exception("artifact start result not applied")
         is_deed = name.startswith("deed:")
         if result.status == "suppressed":
             if result.reason in NOT_HELD:

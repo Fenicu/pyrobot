@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from app.engine.artifact import ArtifactConflict
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade, GameChatWatch, LockLostError, TgNotOnline
@@ -17,6 +18,8 @@ from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
 from app.engine.settings import (
+    EngineSection,
+    Settings,
     SettingsChange,
     SettingsConflict,
     SettingsPatchError,
@@ -285,3 +288,23 @@ async def test_patch_reports_version_it_wrote() -> None:
         {"engine": {"mode": "live"}}, version=0, by="admin", confirm_live=True
     )
     assert (upd.version, settings.version) == (1, 2)
+
+
+async def test_artifact_start_needs_online_tg_and_live_mode() -> None:
+    live = StaticSettings(Settings(engine=EngineSection(mode="live")))
+    planner = _Planner()
+    f = build(settings=live, planner=planner)
+    with pytest.raises(ArtifactConflict) as offline:
+        await f.artifact_start("light", lottery_max=False, by="alice")
+    assert offline.value.code == "tg_not_online"
+    dry = build()
+    await dry.tg.boot()
+    with pytest.raises(ArtifactConflict) as err:
+        await dry.artifact_start("light", lottery_max=False, by="alice")
+    assert err.value.code == "dry_run"
+    await f.tg.boot()
+    await f.artifact_start("light", lottery_max=False, by="alice")
+    assert f.settings.current.artifact_run.status == "starting"
+    assert planner.woken == 1
+    await f.artifact_cancel(by="alice")
+    assert f.settings.current.artifact_run.status == "idle" and planner.woken == 2

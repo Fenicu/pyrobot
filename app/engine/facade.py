@@ -8,20 +8,23 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
+from app.engine.artifact import ArtifactConflict, ArtifactRuns
+from app.engine.clock import SystemClock
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import ActionRequest, ActionResult
 from app.engine.manual import Fingerprint, KeyReused, fingerprint, manual_key
-from app.engine.notify import NotifierPort
+from app.engine.notify import LogNotifier, NotifierPort
 from app.engine.pipeline import Pipeline
 from app.engine.planner.decide import Outlook
 from app.engine.planner.loop import PlanView
 from app.engine.settings import (
+    ArtifactKey,
     Settings,
     SettingsPatch,
     SettingsProvider,
     settings_diff,
 )
-from app.engine.state.model import company_of
+from app.engine.state.model import company_of, load_state
 from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
 from app.engine.transport.base import GAME_CHAT_USERNAME, JoinStatus, Transport
 
@@ -109,6 +112,7 @@ class EngineFacade:
         monotonic: Callable[[], float] = time.monotonic,
         transport: Transport | None = None,
         history: Callable[[], GameChatWatch | None] = _no_watch,
+        artifacts: ArtifactRuns | None = None,
     ) -> None:
         self.settings = settings
         self.gateway = gateway
@@ -129,6 +133,12 @@ class EngineFacade:
         # Сверка истории стартует после фасада (от выхода в онлайн) — поэтому функция.
         self._history = history
         self._outlook: tuple[tuple[int, int, int], float, datetime, Outlook] | None = None
+        self.artifacts = artifacts or ArtifactRuns(
+            settings=settings,
+            state=lambda: load_state(pipeline.state),
+            notifier=notifier or LogNotifier(),
+            clock=SystemClock(),
+        )
 
     def state(self) -> tuple[int, dict[str, Any]]:
         return self.pipeline.version, self.pipeline.state
@@ -229,6 +239,34 @@ class EngineFacade:
             return s.model_copy(update={"engine": engine})
 
         await self.settings.update(change, changed_by=by)
+        self._wake_planner()
+
+    async def artifact_start(self, artifact: ArtifactKey, *, lottery_max: bool, by: str) -> None:
+        """Запрос на сбор: только с Telegram в сети и в live, иначе запуск не уйдёт в игру."""
+        if self.tg.status().state is not TgState.ONLINE:
+            raise ArtifactConflict("tg_not_online")
+        if self.settings.current.engine.mode != "live":
+            raise ArtifactConflict("dry_run")
+        await self.artifacts.start(artifact, lottery_max=lottery_max, by=by)
+        self._wake_planner()
+
+    async def artifact_pause(self, *, by: str) -> None:
+        await self.artifacts.pause(by=by)
+        self._wake_planner()
+
+    async def artifact_resume(self, *, by: str) -> None:
+        await self.artifacts.resume(by=by)
+        self._wake_planner()
+
+    async def artifact_cancel(self, *, by: str) -> None:
+        await self.artifacts.cancel(by=by)
+        self._wake_planner()
+
+    async def artifact_adopt(self, *, by: str) -> None:
+        await self.artifacts.adopt(by=by)
+        self._wake_planner()
+
+    def _wake_planner(self) -> None:
         if self._planner is not None:
             self._planner.wake()
 
