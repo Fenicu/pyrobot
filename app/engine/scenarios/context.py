@@ -114,10 +114,12 @@ class ScenarioContext:
         dry_run: bool = False,
         source: Source = Source.SCENARIO,
         run_id: int | None = None,
+        scenario: str | None = None,
     ) -> None:
         self._gateway = gateway
         # Запуск сценария: его id уходит в каждое действие шага (`actions.scenario_run_id`).
         self.run_id = run_id
+        self.scenario = scenario
         # Режим запуска, зафиксированный на его старте (см. ActionRequest.dry_run).
         self.dry_run = dry_run
         # Ручной запуск из админки шлёт шаги от имени MANUAL: приоритет и правила паузы — ручные.
@@ -258,6 +260,7 @@ class ScenarioContext:
                 simulate=self.simulate,
                 dry_run=self.dry_run,
                 scenario_run_id=self.run_id,
+                scenario=self.scenario,
             )
         )
         step = _STEP_OF.get(result.status, Step.FAILED)

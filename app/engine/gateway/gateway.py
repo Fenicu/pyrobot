@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -60,6 +61,8 @@ STORE_FAILED = "store_failed"
 # Чтение источника пересылки: клиент Telegram сам повторяет запросы (до ~160 с) — шлюз столько
 # не ждёт, не прочитали — не пересылаем.
 SOURCE_READ_TIMEOUT_S = 10.0
+# Клик «👍Стартуем!» экрана пересборки артефакта.
+ARTIFACT_ACCEPT = re.compile(r"artr_(book|fax|light)_accept\Z")
 
 
 class NotSent(Exception):
@@ -407,7 +410,9 @@ class ActionGateway:
             return ActionStatus.REJECTED, cls.value
         if req.chat_id not in self._allowed_chats():
             return ActionStatus.REJECTED, "chat_not_allowed"
-        if cls is CommandClass.RISKY and not (req.source is Source.MANUAL and req.risky_confirmed):
+        if cls is CommandClass.RISKY and not (
+            (req.source is Source.MANUAL and req.risky_confirmed) or self._artifact_start(req)
+        ):
             return ActionStatus.REJECTED, "risky_requires_confirm"
         if self._confirm_stale(req):
             return ActionStatus.REJECTED, "confirm_stale"
@@ -464,6 +469,15 @@ class ActionGateway:
             return False
         current = self._state_version() if self._state_version is not None else None
         return current != req.confirm_version
+
+    def _artifact_start(self, req: ActionRequest) -> bool:
+        """Старт сбора артефакта — только шагом его сценария и только пока запись сбора ждёт
+        запуска этого артефакта: отмена в админке до отправки клика его не пропустит."""
+        if req.kind is not ActionKind.CLICK or req.scenario != "artifact_start":
+            return False
+        m = ARTIFACT_ACCEPT.match(req.data or "")
+        run = self._settings.current.artifact_run
+        return m is not None and run.status == "starting" and run.artifact == m[1]
 
     def _policy_checks(self, req: ActionRequest) -> Blocked | None:
         current = self._settings.current

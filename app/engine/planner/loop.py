@@ -437,6 +437,7 @@ class PlannerLoop:
             reread=self._reread,
             source=Source.MANUAL if manual else Source.SCENARIO,
             run_id=run_id,
+            scenario=act.scenario,
         )
         self.current = act.scenario
         self.current_params = dict(act.params)

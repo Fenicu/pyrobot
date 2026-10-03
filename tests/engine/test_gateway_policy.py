@@ -1,10 +1,13 @@
+import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import replace
 
 import pytest
 
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Expectation, Source
-from app.engine.settings import Settings
+from app.engine.settings import ArtifactRunSection, Settings
 from app.engine.transport.fake import Sent
+from app.engine.types import Button
 from tests.engine.gateway_rig import LIVE, Rig, expect_text, running_rig, send
 from tests.engine.helpers import GAME, make_msg
 
@@ -114,3 +117,69 @@ async def test_run_pinned_to_dry_run_suppressed_in_live(rig: Rig) -> None:
     assert res.status is ActionStatus.SUPPRESSED and res.reason == "dry_run"
     assert (await rig.gw.submit(send("😎Я", dry_run=True))).status is ActionStatus.CONFIRMED
     assert [s.payload for s in rig.transport.sent] == ["😎Я"]
+
+
+async def _artifact_run(rig: Rig, artifact: str | None, status: str) -> None:
+    run = ArtifactRunSection.model_validate({"artifact": artifact, "status": status})
+    await rig.settings.update(
+        lambda s: s.model_copy(update={"artifact_run": run}), changed_by="test"
+    )
+
+
+def _accept(rig: Rig, scenario: str | None = "artifact_start") -> ActionRequest:
+    data = "artr_light_accept"
+    button = (Button("👍Стартуем!", 0, 0, data=data),)
+    rig.latest[(GAME, 77)] = make_msg("Старт сбора артефакта", msg_id=77, buttons=button)
+    return ActionRequest(
+        kind=ActionKind.CLICK,
+        chat_id=GAME,
+        message_id=77,
+        data=data,
+        source=Source.SCENARIO,
+        scenario=scenario,
+        expect=expect_text("Сбор начат!"),
+    )
+
+
+@pytest.mark.parametrize(
+    ("artifact", "status", "scenario", "sent"),
+    [
+        ("light", "starting", "artifact_start", True),
+        ("fax", "starting", "artifact_start", False),
+        ("light", "active", "artifact_start", False),
+        ("light", "starting", None, False),
+        ("light", "starting", "deed:walk", False),
+    ],
+)
+async def test_artifact_accept_only_from_start_scenario(
+    rig: Rig, artifact: str, status: str, scenario: str | None, sent: bool
+) -> None:
+    await _artifact_run(rig, artifact, status)
+    rig.reply_with("Сбор начат!")
+    res = await rig.gw.submit(_accept(rig, scenario))
+    if sent:
+        assert res.status is ActionStatus.CONFIRMED
+        assert [s.payload for s in rig.transport.sent] == ["artr_light_accept"]
+    else:
+        assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+        assert rig.transport.sent == []
+
+
+async def test_artifact_accept_rechecked_before_send(rig: Rig) -> None:
+    # Пока клик ждал очереди, запуск отменили: перед отправкой — снова по текущей записи.
+    await _artifact_run(rig, "light", "starting")
+    lease = await rig.gw.acquire_lease("other")
+    pending = asyncio.create_task(rig.gw.submit(_accept(rig)))
+    await asyncio.sleep(0.02)
+    await _artifact_run(rig, None, "idle")
+    await rig.gw.release_lease(lease)
+    res = await pending
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    assert rig.transport.sent == []
+
+
+async def test_manual_accept_still_needs_confirmation(rig: Rig) -> None:
+    await _artifact_run(rig, "light", "starting")
+    # Ручной клик без токена подтверждения — как любой risky.
+    res = await rig.gw.submit(replace(_accept(rig, None), source=Source.MANUAL))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")

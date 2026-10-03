@@ -323,6 +323,18 @@ def test_artifact_recollect_screens_are_nav(text: str) -> None:
     assert classify_text(text) is CommandClass.NAV
 
 
+@pytest.mark.parametrize("artifact", ["book", "fax", "light"])
+def test_artifact_start_buttons(artifact: str) -> None:
+    assert classify_callback(f"artr_{artifact}_accept") is CommandClass.RISKY
+    assert classify_callback(f"artr_{artifact}_decline") is CommandClass.NAV
+    assert feature_of_callback(f"artr_{artifact}_accept") is None
+
+
+@pytest.mark.parametrize("data", ["artr_box_accept", "artr_light_accept_x", "artr_light"])
+def test_unknown_artifact_buttons_forbidden(data: str) -> None:
+    assert classify_callback(data) is CommandClass.FORBIDDEN
+
+
 @pytest.mark.parametrize("text", ["/artr_idea", "/artr_", "/artr_light_now"])
 def test_unknown_artifact_recollect_forbidden(text: str) -> None:
     assert classify_text(text) is CommandClass.FORBIDDEN

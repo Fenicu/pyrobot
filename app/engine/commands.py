@@ -307,7 +307,9 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"pet_select_accept_",
     ),
     *_re(_D, r"mether_buy_coins\Z", r"maze_buf_coins_", r"spring_(roll_coins|regenerate)"),
-    *_re(_R, r"crew_change_", r"sells_\w+\Z"),
+    # Старт пересборки артефакта обнуляет уровень и 🔥 — без подтверждения проходит только из
+    # сценария `artifact_start`.
+    *_re(_R, r"crew_change_", r"sells_\w+\Z", r"artr_(book|fax|light)_accept\Z"),
     *_re(
         _N,
         r"cancel_inline\Z",
@@ -317,6 +319,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"subprof_select_decline\Z",
         r"maze_nothing\Z",
         r"tasksel_decline\Z",
+        r"artr_(book|fax|light)_decline\Z",
     ),
     *_re(
         _A,

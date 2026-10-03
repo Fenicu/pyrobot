@@ -203,6 +203,18 @@ async def test_scenario_steps_carry_their_run(world: World) -> None:
     assert None not in steps.values()
 
 
+async def test_scenario_steps_carry_scenario_name(world: World) -> None:
+    script_day(world)
+    rig = Rig(world)
+    await rig.steps(9)
+    names = {row.req.text: row.req.scenario for row in world.store.rows.values()}
+    assert (names["/job"], names["/gorbushka"], names["😎Я"]) == (
+        "deed:job",
+        "gorbushka",
+        "refresh",
+    )
+
+
 async def test_manual_run_steps_carry_their_run(world: World) -> None:
     world.game.on_text("/inv", ("items", 3625102))
     rig = Rig(world, auto=False)
