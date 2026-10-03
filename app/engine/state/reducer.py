@@ -18,6 +18,12 @@ from app.engine.parsing.activities import (
     PricesScreen,
     WorkshopScreen,
 )
+from app.engine.parsing.artifacts import (
+    COLLECT_SPAN,
+    ArtifactCollectStarted,
+    ArtifactPartFound,
+    ArtifactsScreen,
+)
 from app.engine.parsing.battle import BattleTargetSet
 from app.engine.parsing.bulls import BullsInvite, BullsJoined, BullsRefused, BullsResult
 from app.engine.parsing.common import Rewards
@@ -93,6 +99,7 @@ from app.engine.state.model import (
     DEED_PRIORS,
     DEFAULT_PRICES,
     ActivityStat,
+    ArtifactCollect,
     BusyState,
     CharacterState,
     ChosenTaskState,
@@ -1200,6 +1207,37 @@ def _ether(p: _Patch, e: EtherScreen) -> None:
 @_on(DeedFinishedInstantly)
 def _instant(p: _Patch, e: DeedFinishedInstantly) -> None:
     p.snap("busy", None)
+
+
+def _artifact_levels(p: _Patch, update: dict[str, int]) -> None:
+    known: Obs[dict[str, int]] | None = p.get("artifacts")
+    levels = {**(known.value if known is not None else {}), **update}
+    p.snap("artifacts", levels, src="derived")
+
+
+@_on(ArtifactsScreen)
+def _artifacts_screen(p: _Patch, e: ArtifactsScreen) -> None:
+    p.snap("artifacts", dict(e.levels))
+    collect = None
+    if e.collecting is not None and e.left_s is not None:
+        collect = ArtifactCollect(
+            artifact=e.collecting, ends_at=p.at + timedelta(seconds=e.left_s)
+        )
+    p.snap("artifact_collect", collect)
+
+
+@_on(ArtifactCollectStarted)
+def _artifact_started(p: _Patch, e: ArtifactCollectStarted) -> None:
+    # «Стартуем!» обнуляет уровень артефакта и 🔥, сбор идёт ровно 10 суток.
+    p.snap("motivation", 0, src="derived")
+    _artifact_levels(p, {e.artifact: 0})
+    collect = ArtifactCollect(artifact=e.artifact, ends_at=p.at + COLLECT_SPAN)
+    p.snap("artifact_collect", collect, src="derived")
+
+
+@_on(ArtifactPartFound)
+def _artifact_part(p: _Patch, e: ArtifactPartFound) -> None:
+    _artifact_levels(p, {e.artifact: e.level})
 
 
 @_on(InfoScreen)

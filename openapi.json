@@ -506,6 +506,26 @@
         "title": "ActivityStat",
         "type": "object"
       },
+      "ArtifactCollect": {
+        "description": "Идущий в игре сбор артефакта: что собирается и когда кончится (время экрана + остаток).",
+        "properties": {
+          "artifact": {
+            "title": "Artifact",
+            "type": "string"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact",
+          "ends_at"
+        ],
+        "title": "ArtifactCollect",
+        "type": "object"
+      },
       "BalanceOut": {
         "description": "Изменение наблюдаемого значения за сутки МСК; `delta = null` — нет данных (нет точки в\nсутках или точки предыдущих суток).",
         "properties": {
@@ -2456,6 +2476,42 @@
         "title": "Observed[TeamTask]",
         "type": "object"
       },
+      "Observed_Union_ArtifactCollect__NoneType__": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactCollect"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[Union[ArtifactCollect, NoneType]]",
+        "type": "object"
+      },
       "Observed_Union_BusyState__NoneType__": {
         "additionalProperties": false,
         "properties": {
@@ -3569,6 +3625,26 @@
             },
             "title": "Activity Stats",
             "type": "object"
+          },
+          "artifact_collect": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_ArtifactCollect__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifacts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_dict_str__int__"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "bag": {
             "anyOf": [

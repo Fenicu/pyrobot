@@ -996,6 +996,19 @@ export interface components {
             raw: number;
         };
         /**
+         * ArtifactCollect
+         * @description Идущий в игре сбор артефакта: что собирается и когда кончится (время экрана + остаток).
+         */
+        ArtifactCollect: {
+            /** Artifact */
+            artifact: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+        };
+        /**
          * BalanceOut
          * @description Изменение наблюдаемого значения за сутки МСК; `delta = null` — нет данных (нет точки в
          *     сутках или точки предыдущих суток).
@@ -1732,6 +1745,20 @@ export interface components {
             src: "screen" | "derived" | "doubtful";
             value: components["schemas"]["TeamTask"];
         };
+        /** Observed[Union[ArtifactCollect, NoneType]] */
+        Observed_Union_ArtifactCollect__NoneType__: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Src
+             * @enum {string}
+             */
+            src: "screen" | "derived" | "doubtful";
+            value: components["schemas"]["ArtifactCollect"] | null;
+        };
         /** Observed[Union[BusyState, NoneType]] */
         Observed_Union_BusyState__NoneType__: {
             /**
@@ -2198,6 +2225,8 @@ export interface components {
             activity_stats?: {
                 [key: string]: components["schemas"]["ActivityStat"];
             };
+            artifact_collect?: components["schemas"]["Observed_Union_ArtifactCollect__NoneType__"] | null;
+            artifacts?: components["schemas"]["Observed_dict_str__int__"] | null;
             bag?: components["schemas"]["Observed_int_"] | null;
             bag_cap?: components["schemas"]["Observed_int_"] | null;
             battle_at?: components["schemas"]["Observed_datetime_"] | null;

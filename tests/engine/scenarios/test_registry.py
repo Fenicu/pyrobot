@@ -48,7 +48,7 @@ def required(scenario: str, name: str) -> Param:
         ("sleep", "hours", [7, 12], [6, 13, True, 7.0, "7", None]),
         ("stocks_dump", "keep", [0, 10_000], [-1, False, 1.5]),
         ("tangerine", "chat", [-1001377961602, 0], [True, "1", 1.0]),
-        ("refresh", "source", ["profile", "gorbushka"], ["bank", "", 1, None]),
+        ("refresh", "source", ["profile", "gorbushka", "artifacts"], ["bank", "", 1, None]),
         (
             "battle_target",
             "target",
@@ -89,7 +89,7 @@ def test_catalog_specs() -> None:
     assert required("tangerine", "reply_to").spec() == {"type": "int"}
     assert required("refresh", "source").spec() == {
         "type": "enum",
-        "values": ["food", "gifts", "gorbushka", "inventory", "profile"],
+        "values": ["artifacts", "food", "gifts", "gorbushka", "inventory", "profile"],
     }
     assert required("daily_pick", "task").spec() == {
         "type": "string",

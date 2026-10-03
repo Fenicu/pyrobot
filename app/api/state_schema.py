@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.engine.state.model import (
     SCHEMA_VERSION,
     ActivityStat,
+    ArtifactCollect,
     BusyState,
     FoodStockState,
     GorbushkaState,
@@ -110,4 +111,6 @@ class PublicState(BaseModel):
     metro_ready_at: Observed[datetime] | None = None
     metro_message: Observed[MetroRunRefOut | None] | None = None
     lottery: Observed[LotteryState] | None = None
+    artifacts: Observed[dict[str, int]] | None = None
+    artifact_collect: Observed[ArtifactCollect | None] | None = None
     activity_stats: dict[str, ActivityStat] = Field(default_factory=dict)

@@ -148,6 +148,13 @@ class LotteryState(_Frozen):
     short: dict[str, int | None] = {}
 
 
+class ArtifactCollect(_Frozen):
+    """Идущий в игре сбор артефакта: что собирается и когда кончится (время экрана + остаток)."""
+
+    artifact: str
+    ends_at: datetime
+
+
 class ActivityStat(_Frozen):
     """Скользящее среднее наград одного дела (без его цены)."""
 
@@ -253,6 +260,10 @@ class CharacterState(_Frozen):
     # Идущий забег метро (None — вышел); момент — последний экран забега.
     metro_message: Obs[MetroRunRef | None] | None = None
     lottery: Obs[LotteryState] | None = None
+    # Уровни своих артефактов (экран 👾Артефакты, строки частей в итогах дел).
+    artifacts: Obs[dict[str, int]] | None = None
+    # Идущий сбор по экрану артефактов; значение None — на экране сбора нет.
+    artifact_collect: Obs[ArtifactCollect | None] | None = None
     activity_stats: dict[str, ActivityStat] = {}
     # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
     # правка итога не начисляет повторно (горизонт хранения — в редьюсере).
@@ -322,6 +333,7 @@ TIMERS = frozenset(
         "metro_ready_at",
         "metro_message",
         "lottery",
+        "artifact_collect",
     }
 )
 # Значения за день заданий: устаревают сменой дня (её проверяет планировщик), а не возрастом.

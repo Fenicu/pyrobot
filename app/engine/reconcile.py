@@ -22,6 +22,7 @@ from app.engine.gateway.types import (
     Verdict,
 )
 from app.engine.notify import NotifierPort
+from app.engine.parsing.artifacts import ArtifactsScreen
 from app.engine.parsing.food import FoodMenu
 from app.engine.parsing.gorbushka import GorbushkaScreen
 from app.engine.parsing.items import GiftsScreen, Inventory
@@ -44,6 +45,9 @@ FOOD = RefreshSource("food", "/to_eat", FoodMenu, ("food_stock",))
 INVENTORY = RefreshSource("inventory", "/inv", Inventory, ("books", "cards"))
 GIFTS = RefreshSource("gifts", "/gifts", GiftsScreen, ("containers_small", "containers_medium"))
 GORBUSHKA = RefreshSource("gorbushka", "/gorbushka", GorbushkaScreen, ("gorbushka",))
+ARTIFACTS = RefreshSource(
+    "artifacts", "/artefacts", ArtifactsScreen, ("artifacts", "artifact_collect")
+)
 _FOOD_COMMANDS = frozenset({"🌭Хот-дог", "🍕Пицца", "🍔Бургер", "🍌Банан", "/eat", "🍴Есть"})
 _INVENTORY_COMMANDS = frozenset({"/read_exp", "/use_card", "/unbox"})
 
