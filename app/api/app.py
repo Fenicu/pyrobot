@@ -7,6 +7,7 @@ from app.api.container import Container
 from app.api.errors import CHAT_IS_SELF, ENGINE_NOT_RUNNING
 from app.api.routes_accounts import account as account_router
 from app.api.routes_accounts import router as accounts_router
+from app.api.routes_artifact import router as artifact_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_commands import catalog_router
 from app.api.routes_commands import router as commands_router
@@ -57,6 +58,7 @@ def create_api(container: Container) -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(engine_router)
     app.include_router(planner_router)
+    app.include_router(artifact_router)
     app.include_router(state_router)
     app.include_router(settings_router)
     app.include_router(journal_router)

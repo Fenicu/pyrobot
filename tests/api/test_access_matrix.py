@@ -29,6 +29,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "/scenarios/{name}/run": {"idempotency_key": "k"},
     "/unrecognized/ack": {"ids": [1]},
     "/notifications/read": {"up_to_id": 1},
+    "/artifact/start": {"artifact": "light"},
 }
 
 
@@ -70,6 +71,8 @@ def test_matrix_covers_spec_table(app: FastAPI) -> None:
         "/notifications/read",
         "/daily",
         "/events",
+        "/artifact",
+        "/artifact/start",
     ):
         assert f"{PREFIX}{tail}" in paths
     # Каталог сценариев общий.

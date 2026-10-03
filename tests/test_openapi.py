@@ -47,6 +47,7 @@ def test_engine_tg_and_state_are_typed() -> None:
         (f"{A}/state", "get"): "StateOut",
         (f"{A}/planner/outlook", "get"): "OutlookOut",
         (f"{A}/daily", "get"): "DailyOut",
+        (f"{A}/artifact", "get"): "ArtifactOut",
     }
     for (path, method), model in typed.items():
         assert _ok_schema(schema, path, method) == {"$ref": f"#/components/schemas/{model}"}
