@@ -449,14 +449,17 @@ class Obligations(PlannerBase):
         return (inside.value, battle) if self.now < battle - GAME_KICK else None
 
     def metro(self, busy: BusyState | None) -> Decision | None:
+        inside = self.metro_inside() if self.cfg.features.metro else None
+        if inside is not None:
+            # К выбросу цикл просыпается и в режиме сбора, где новый вход выключен.
+            self.wake(inside[1] - GAME_KICK, "metro_kick")
         if self.artifact_reject("metro"):
             return None
         if not self.feature_on("metro"):
             return None
-        if (inside := self.metro_inside()) is not None:
+        if inside is not None:
             # Нового входа нет, пока персонаж в метро: забег продолжается или ждёт выброса.
             self.reject("metro", {}, "in_metro")
-            self.wake(inside[1] - GAME_KICK, "metro_kick")
             return None
         if (ready := self.metro_ready()) is not None:
             self.wake(ready, "metro_ready")

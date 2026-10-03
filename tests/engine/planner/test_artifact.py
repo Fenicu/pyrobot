@@ -167,3 +167,31 @@ def test_start_requested_runs_when_character_is_free() -> None:
     assert isinstance(decision, Act) and decision.reason == "artifact_starting"
     busy = awake(busy=BusyState(activity="job", until=m(3)))
     assert verdicts(decide(busy, cfg, NOW, certified=CERTIFIED))["artifact_start"] == "busy"
+
+
+def test_end_wakeup_only_for_active_collect() -> None:
+    fresh = awake(artifact_collect=seen(at=m(-60)))
+    end = Wakeup(END + TIMER_MARGIN, "artifact_end")
+    assert end in outlook(fresh, mode(BASE), NOW).wakeups
+    # Конец приостановленного сбора закроет `ArtifactRuns.tick` на ближайшем шаге цикла.
+    paused = outlook(fresh, mode(BASE, status="paused"), NOW)
+    assert all(t.kind != "artifact_end" for t in paused.wakeups)
+
+
+def test_inside_metro_while_collecting_waits_for_kick() -> None:
+    # Сбор продолжен, пока персонаж в метро, а продолжать забег поздно: входа нет, но цикл
+    # проснётся к выбросу.
+    entered = NOON - timedelta(hours=3)
+    s = metro_state(
+        NOON,
+        metro_message=run_in(NOON - timedelta(minutes=140)),
+        metro_ready_at=Obs(value=entered, at=entered),
+        artifact_collect=seen(at=NOON),
+    )
+    cfg = mode(METRO_ALONE, started=NOON - timedelta(hours=1), ends=NOON + timedelta(days=9))
+    last = {"metro": NOON - timedelta(hours=20)}
+    decision = decide(s, cfg, NOON, last_done=last)
+    assert not isinstance(decision, Act) or decision.scenario != "metro"
+    assert verdicts(decision)["metro"] == "artifact_run"
+    kick = Wakeup(msk(21, 45) + TIMER_MARGIN, "metro_kick")
+    assert kick in outlook(s, cfg, NOON, last_done=last).wakeups

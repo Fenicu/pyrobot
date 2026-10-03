@@ -339,9 +339,9 @@ class _Planner(DailyTasks):
 
     def artifact_refresh(self, busy: BusyState | None) -> Decision | None:
         """Сбор идёт: экран артефактов — после старта и раз в 3 часа; к концу сбора цикл
-        просыпается (его закроет `ArtifactRuns.tick`)."""
+        просыпается (его закроет `ArtifactRuns.tick`; приостановленный — на ближайшем шаге)."""
         run = self.cfg.artifact_run
-        if run.status in ("active", "paused") and run.ends_at is not None:
+        if run.status == "active" and run.ends_at is not None:
             self.wake(run.ends_at, "artifact_end")
         if not self.artifact_mode():
             return None
