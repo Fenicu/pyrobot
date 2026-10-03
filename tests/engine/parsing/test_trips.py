@@ -233,11 +233,18 @@ def test_events_are_json_safe() -> None:
         ((1, 31), date(2019, 12, 5), date(2020, 1, 31)),
         ((5, 9), date(2024, 2, 16), date(2024, 5, 9)),
         ((4, 30), date(2021, 4, 30), date(2021, 4, 30)),
-        ((5, 9), date(2022, 5, 10), date(2022, 5, 9)),
         ((2, 29), date(2023, 2, 1), date(2024, 2, 29)),
+        # Вид на экране не кончился: срок — первая дата не раньше дня экрана.
+        ((5, 9), date(2026, 10, 5), date(2027, 5, 9)),
+        ((5, 9), date(2026, 4, 20), date(2026, 5, 9)),
+        ((5, 9), date(2026, 5, 9), date(2026, 5, 9)),
+        # Запас в сутки на часовой пояс: экран на следующий день после срока.
+        ((5, 9), date(2022, 5, 10), date(2022, 5, 9)),
+        ((1, 31), date(2020, 2, 1), date(2020, 1, 31)),
+        ((5, 9), date(2022, 5, 11), date(2023, 5, 9)),
     ],
 )
-def test_season_end_nearest_to_the_screen(
+def test_season_end_first_date_not_before_the_screen(
     month_day: tuple[int, int], seen: date, expected: date
 ) -> None:
     assert season_end(month_day, seen) == expected

@@ -662,7 +662,7 @@ class _Planner(DailyTasks):
                 return self.trips_refresh(f"{key} price unknown", params)
             if raw < vehicle.raw:
                 self.reject("trip", params, "no_raw")
-            elif money < (vehicle.money or 0):
+            elif vehicle.money and money < vehicle.money:
                 self.reject("trip", params, "no_money")
             else:
                 chosen = key

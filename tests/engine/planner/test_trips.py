@@ -15,10 +15,13 @@ from app.engine.state.model import (
     TripsState,
     VehicleState,
 )
-from app.engine.state.reducer import TRIP_RESULT_GRACE
+from app.engine.state.reducer import TRIP_RESULT_GRACE, StateReducer
+from tests.engine import trip_texts as t
+from tests.engine.artifact_texts import game_text
 from tests.engine.planner.test_artifact import mode, seen
 from tests.engine.planner.test_decide import NOW, act, awake, config, m, r, verdicts, w
 from tests.engine.planner.test_obligations import msk, run_in
+from tests.engine.state.helpers import PARSER
 
 TRIPS = config({"features": {"trips": True}})
 CAR = VehicleState(name="🚕Ааавтомобиль", raw=8, money=20)
@@ -207,6 +210,19 @@ def test_money_only_above_ticket_and_hotel_reserves() -> None:
     assert act(decide(poor, TRIPS, NOW)) == ("trip", {"vehicle": "bike"})
 
 
+def test_negative_money_remainder_blocks_only_paid_vehicles() -> None:
+    # Резерв билета (120💵) больше всех денег: остаток отрицателен.
+    g = GorbushkaState(state="need_ticket")
+    both = transport(car=ready(CAR), bike=ready(BIKE))
+    decision = decide(with_trips(both, money=50, knowledge=0, gorbushka=g), TRIPS, NOW)
+    assert act(decision) == ("trip", {"vehicle": "bike"})
+    assert by_vehicle(decision) == {"car": "no_money", "bike": "chosen"}
+    car = decide(
+        with_trips(transport(car=ready(CAR)), money=50, knowledge=0, gorbushka=g), TRIPS, NOW
+    )
+    assert verdicts(car)["trip"] == "no_money"
+
+
 def test_trip_fits_battle_sleep_and_factory_windows_like_deeds() -> None:
     def at(now: datetime, **over: Any) -> CharacterState:
         return with_trips(transport(at=now, tram=ready(TRAM, now)), at=now, **over)
@@ -303,6 +319,17 @@ def test_refreshes_unknown_doubtful_or_old_transport_screen() -> None:
     view = outlook(with_trips(young), TRIPS, NOW)
     assert trip_names(view.decision) == set()
     assert Wakeup(w(1), "refresh", "trips") in view.wakeups
+
+
+def test_first_message_is_refusal_or_start_then_screen_is_requested() -> None:
+    # Отказ и старт до первого экрана видят один вид: остальных планировщик не знает.
+    for text in (t.REFUSAL_SLED, t.START_CAR):
+        msg = game_text(text, at=NOW, msg_id=1)
+        saved = StateReducer().apply({}, msg, PARSER.parse(msg))
+        obs = Obs[TripsState].model_validate(saved["trips"])
+        decision = decide(with_trips(obs), TRIPS, NOW)
+        assert act(decision) == ("trips_refresh", {})
+        assert verdicts(decision)["trip"] == "stale:trips"
 
 
 def test_ready_time_passed_without_screen_rides_directly() -> None:

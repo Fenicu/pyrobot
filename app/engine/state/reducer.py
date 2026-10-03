@@ -1275,7 +1275,7 @@ def _info_screen(p: _Patch, e: InfoScreen) -> None:
 
 def _trips(p: _Patch) -> tuple[TripsState, Src]:
     known: Obs[TripsState] | None = p.get("trips")
-    return (known.value, known.src) if known is not None else (TripsState(), "screen")
+    return (known.value, known.src) if known is not None else (TripsState(), "doubtful")
 
 
 def _vehicle(state: TripsState, key: str, **update: Any) -> dict[str, VehicleState]:
@@ -1308,7 +1308,7 @@ def _trip_started(p: _Patch, e: TripStarted) -> None:
     p.delta("raw", -e.raw)
     p.delta("money", -e.money)
     p.effect("trip_start", amounts(raw=-e.raw, money=-e.money))
-    state, _ = _trips(p)
+    state, known = _trips(p)
     vehicles = state.vehicles
     if e.vehicle is not None:
         ready = p.at + VEHICLES[e.vehicle].cooldown
@@ -1316,7 +1316,8 @@ def _trip_started(p: _Patch, e: TripStarted) -> None:
             state, e.vehicle, available=True, raw=e.raw, money=e.money, ready_at=ready
         )
     last = TripRef(vehicle=e.vehicle, started_at=p.at)
-    p.snap("trips", TripsState(vehicles=vehicles, last=last), src="derived")
+    src: Src = "doubtful" if known == "doubtful" else "derived"
+    p.snap("trips", TripsState(vehicles=vehicles, last=last), src=src)
 
 
 @_on(TripRefused)

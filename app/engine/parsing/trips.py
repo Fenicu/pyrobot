@@ -79,15 +79,18 @@ def _known(head: str) -> str | None:
 
 
 def season_end(month_day: tuple[int, int], seen: date) -> date:
-    """Сезонный срок «годны до 9 мая» без года — ближайшая к дню экрана такая дата."""
+    """Сезонный срок «годны до 9 мая» без года — первая такая дата не раньше дня экрана (с
+    запасом в сутки на часовой пояс): показанный на экране вид не мог кончиться раньше."""
     month, day = month_day
-    candidates = []
-    for year in (seen.year - 1, seen.year, seen.year + 1):
+    earliest = seen - timedelta(days=1)
+    for year in range(earliest.year, earliest.year + 9):
         try:
-            candidates.append(date(year, month, day))
+            end = date(year, month, day)
         except ValueError:
             continue
-    return min(candidates, key=lambda d: abs(d - seen))
+        if end >= earliest:
+            return end
+    raise ValueError(f"no date for {month}-{day} near {seen}")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

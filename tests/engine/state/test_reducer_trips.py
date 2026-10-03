@@ -117,6 +117,21 @@ def test_refusal_sets_ready_at_of_the_vehicle() -> None:
     }
 
 
+def test_refusal_or_start_without_screen_leaves_transport_doubtful() -> None:
+    for text in (t.REFUSAL_SLED, t.START_CAR):
+        s, _ = apply(StateReducer(), {}, text, 0, 1)
+        assert s["trips"]["src"] == "doubtful"
+    # Экран снимает сомнение; после него отказ и старт источник не портят.
+    r = StateReducer()
+    s, _ = apply(r, {}, t.REFUSAL_SLED, 0, 1)
+    s, _ = apply(r, s, t.SCREEN, 1, 2)
+    assert s["trips"]["src"] == "screen"
+    s, _ = apply(r, s, t.REFUSAL_TRAM, 2, 3)
+    assert s["trips"]["src"] == "screen"
+    s, _ = apply(r, s, t.START_CAR, 3, 4)
+    assert s["trips"]["src"] == "derived"
+
+
 def test_live_bike_trip_result_goes_to_ledger_as_trip() -> None:
     r = StateReducer()
     s = profiled(r)
