@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
+from app.engine.artifact import artifact_deeds, collecting
 from app.engine.planner.types import Act, Candidate, Decision, Reserve, Wait, WakeKind, Wakeup
 from app.engine.settings import Settings
 from app.engine.state.model import (
@@ -56,6 +57,7 @@ SOURCE = {
     **dict.fromkeys(("food_stock", "fastfood_ready_at"), "food"),
     **dict.fromkeys(("containers_small", "containers_medium"), "gifts"),
     "gorbushka": "gorbushka",
+    **dict.fromkeys(("artifacts", "artifact_collect"), "artifacts"),
 }
 FEATURE = {
     "book": "books",
@@ -76,10 +78,13 @@ FEATURE = {
     "tangerine": "tangerine",
     "smoothie": "smoothie",
     "metro": "metro",
+    "metro_resume": "metro",
     "daily_refresh": "daily_tasks",
     "daily_pick": "daily_tasks",
     "lottery_buy": "lottery",
 }
+# В режиме сбора артефакта 🔥 тратят только его дела: вход в метро и бой Горбушки выключены.
+ARTIFACT_OFF = frozenset({"gorbushka", "metro"})
 
 Step = Callable[[BusyState | None], Decision | None]
 
@@ -156,7 +161,36 @@ class PlannerBase:
     def reject(self, scenario: str, params: Mapping[str, Any], verdict: str) -> None:
         self.candidates.append(Candidate(scenario, dict(params), None, verdict))
 
+    def artifact_mode(self) -> bool:
+        """Идёт сбор артефакта: вся 🔥 — в дела его тактики."""
+        return collecting(self.cfg.artifact_run, self.now)
+
+    def artifact_deeds(self) -> tuple[str, ...]:
+        run = self.cfg.artifact_run
+        return artifact_deeds(self.cfg.artifacts, run.artifact, self.value("level"))
+
+    def artifact_blocks(self, scenario: str) -> bool:
+        """Режим сбора выключает траты 🔥 вне дел тактики; еда перед битвой 🔥 не тратит."""
+        if not self.artifact_mode():
+            return False
+        if scenario in ARTIFACT_OFF:
+            return True
+        deed = scenario.removeprefix("deed:")
+        return scenario != deed and deed not in ("", "eat") and deed not in self.artifact_deeds()
+
+    def artifact_reject(self, scenario: str) -> bool:
+        """Механику выключил режим сбора: вердикт `artifact_run`, если без режима она была бы
+        включена."""
+        if not self.artifact_blocks(scenario):
+            return False
+        feature = "deeds" if scenario.startswith("deed:") else FEATURE.get(scenario)
+        if feature is None or getattr(self.cfg.features, feature):
+            self.reject(scenario, {}, "artifact_run")
+        return True
+
     def feature_on(self, scenario: str) -> bool:
+        if self.artifact_blocks(scenario):
+            return False
         feature = "deeds" if scenario.startswith("deed:") else FEATURE.get(scenario)
         return feature is None or bool(getattr(self.cfg.features, feature))
 

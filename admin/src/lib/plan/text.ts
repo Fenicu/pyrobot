@@ -32,7 +32,8 @@ export const WAKE: Record<WakeKind, WakeText> = {
 	tangerine_not_player: { icon: '🍊', text: 'Мандарин: пауза «не играет» кончится' },
 	lottery_open: { icon: '🤑', text: 'Лотерея: купить билеты' },
 	metro_kick: { icon: '🚇', text: 'Метро: игра выкинет перед битвой' },
-	metro_ready: { icon: '🚇', text: 'Метро доступно' }
+	metro_ready: { icon: '🚇', text: 'Метро доступно' },
+	artifact_end: { icon: '👾', text: 'Сбор артефакта кончается' }
 };
 
 /** Сценарии и псевдо-сценарии кандидатов (`state`, `deeds` — обновление ради занятости и дел). */
@@ -58,6 +59,8 @@ export const SCENARIO: Record<string, string> = {
 	prizebox: '🎁 призовая коробка',
 	container_small: '🗳 малый контейнер',
 	container_medium: '🗳 средний контейнер',
+	artifact_start: '👾 запуск сбора артефакта',
+	artifact: '👾 сбор артефакта',
 	'deed:harvest': '⛏ добыча',
 	'deed:job': '💻 работа',
 	'deed:learn': '📚 учёба',
@@ -98,7 +101,8 @@ export const SOURCE_TEXT: Record<string, string> = {
 	food: 'меню еды',
 	gifts: 'подарки',
 	gorbushka: 'Горбушку',
-	daily: 'задания'
+	daily: 'задания',
+	artifacts: 'экран артефактов'
 };
 
 /** Вердикты кандидатов (`Candidate.verdict`); `stale:<поле>` — отдельно. */
@@ -128,7 +132,8 @@ export const VERDICT: Record<string, string> = {
 	metro_unknown_screen: 'незнакомый экран метро',
 	reserved: '🔥 в запасе',
 	no_team: 'не в команде',
-	company_unknown: 'своя компания не распознана'
+	company_unknown: 'своя компания не распознана',
+	artifact_run: 'идёт сбор артефакта'
 };
 
 /** Поля состояния в вердикте `stale:<поле>`. */
@@ -147,7 +152,8 @@ const FIELD_TEXT: Record<string, string> = {
 	gorbushka: 'Горбушка',
 	food_stock: 'запас еды',
 	company: 'своя компания',
-	team_tag: 'команда'
+	team_tag: 'команда',
+	artifact_collect: 'сбор артефакта'
 };
 
 export function verdictText(verdict: string): string {

@@ -236,6 +236,13 @@ describe('строка пояснения', () => {
 		expect(explain(best, {}, NOW)).toContain('Следующее дело — работа, лучшее по оценке: основные сейчас недоступны.');
 	});
 
+	it('сбор артефакта — вместо основных дел', () => {
+		const collect: Outlook = { ...plan, hints: { ...plan.hints, next_deed: { deed: 'deed:walk', why: 'artifact' } } };
+		const text = explain(collect, {}, NOW);
+		expect(text).toContain('Сбор артефакта: вся 🔥 — в его дела. Следующее дело — прогулка.');
+		expect(text).not.toContain('Основные дела');
+	});
+
 	it('основных дел нет — «лучшее по оценке» без повтора «основные недоступны»', () => {
 		const noFocus: Outlook = {
 			...plan,

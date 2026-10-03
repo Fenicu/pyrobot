@@ -167,11 +167,15 @@ const WHY: Record<NonNullable<Outlook['hints']['next_deed']>['why'], string> = {
 	personal: ', для личного задания',
 	team: ', для командного задания',
 	focus: '',
-	best: ', лучшее по оценке'
+	best: ', лучшее по оценке',
+	artifact: ', для сбора артефакта'
 };
 
 function focusText(plan: Outlook): string {
 	const focus = plan.focus;
+	const next = plan.hints.next_deed;
+	// Во время сбора основные дела не идут: вся 🔥 — в дела тактики артефакта.
+	if (next?.why === 'artifact') return `Сбор артефакта: вся 🔥 — в его дела. Следующее дело — ${deedText(next.deed)}.`;
 	let base: string;
 	if (focus.length === 0) base = 'Основных дел нет — дело выбирается по оценке.';
 	else if (focus.length === 1) base = `Основное дело: ${deedText(focus[0]!.deed)} (сегодня ${focus[0]!.today}).`;
@@ -183,7 +187,6 @@ function focusText(plan: Outlook): string {
 	// Следующее — то, что шаг дел выбрал бы среди доступных сейчас (с бэкенда: задания дня, потом
 	// основные по очереди, потом лучшее по оценке); доступных нет — только очередь основных по
 	// счётчикам: меньше запусков сегодня, при равенстве — раньше в списке.
-	const next = plan.hints.next_deed;
 	if (next) {
 		// «Основные сейчас недоступны» повторило бы «Основных дел нет» строкой выше — только когда
 		// основные дела вообще есть (просто сейчас ни одно не проходит).

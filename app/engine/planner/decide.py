@@ -33,7 +33,9 @@ Phase = Literal["unknown", "asleep", "busy", "free"]
 MOMENTS: frozenset[WakeKind] = frozenset({"battle", "metro_kick", "sleep_window"})
 
 
-NextWhy = Literal["personal", "team", "focus", "best"]
+NextWhy = Literal["personal", "team", "focus", "best", "artifact"]
+# Во время сбора экран артефактов перечитывается раз в 3 часа: таймер и уровни.
+ARTIFACT_REREAD = timedelta(hours=3)
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,17 +276,21 @@ class _Planner(DailyTasks):
         picks: tuple[tuple[NextWhy, tuple[Candidate, str] | None], ...] = (
             ("personal", self.personal_deed(ok)),
             ("team", self.team_deed(ok)),
-            ("focus", self.focus_deed(ok)),
         )
         for why, pick in picks:
             if pick is not None:
                 return NextDeed(pick[0].scenario, why)
+        if self.artifact_mode():
+            return NextDeed(ok[0].scenario, "artifact")
+        if (focus := self.focus_deed(ok)) is not None:
+            return NextDeed(focus[0].scenario, "focus")
         return NextDeed(self.best_deed(ok)[0].scenario, "best")
 
     def steps(self) -> tuple[Step, ...]:
         return (
             self.metro_resume,
             self.levelup,
+            self.artifact_start,
             self.bulls,
             self.battle_target,
             self.battle_stamina,
@@ -304,6 +310,7 @@ class _Planner(DailyTasks):
             self.tangerine,
             self.smoothie,
             self.metro,
+            self.artifact_refresh,
             self.deeds,
         )
 
@@ -314,6 +321,38 @@ class _Planner(DailyTasks):
             self.reject("levelup", {}, "busy")
             return None
         return self.act("levelup", {}, "levelup_pending")
+
+    def artifact_start(self, busy: BusyState | None) -> Decision | None:
+        """Запуск сбора, о котором попросил пользователь: только свободным персонажем (не дело, не
+        сон — во сне шаги не решаются, — не метро)."""
+        run = self.cfg.artifact_run
+        if run.status != "starting" or run.artifact is None:
+            return None
+        params = {"artifact": run.artifact}
+        if busy is not None:
+            self.reject("artifact_start", params, "busy")
+            return None
+        if self.metro_inside() is not None:
+            self.reject("artifact_start", params, "in_metro")
+            return None
+        return self.act("artifact_start", params, "artifact_starting")
+
+    def artifact_refresh(self, busy: BusyState | None) -> Decision | None:
+        """Сбор идёт: экран артефактов — после старта и раз в 3 часа; к концу сбора цикл
+        просыпается (его закроет `ArtifactRuns.tick`)."""
+        run = self.cfg.artifact_run
+        if run.status in ("active", "paused") and run.ends_at is not None:
+            self.wake(run.ends_at, "artifact_end")
+        if not self.artifact_mode():
+            return None
+        seen = self.s.artifact_collect
+        since = run.started_at
+        if seen is not None and seen.src != "doubtful" and (since is None or seen.at >= since):
+            due = seen.at + ARTIFACT_REREAD
+            if self.now < due:
+                self.wake(due, "refresh", "artifacts")
+                return None
+        return self.refresh("artifact", "artifact_collect")
 
     def sleep(self, busy: BusyState | None) -> Decision | None:
         if not self.feature_on("sleep"):
@@ -422,6 +461,8 @@ class _Planner(DailyTasks):
 
     def gorbushka(self, busy: BusyState | None) -> Decision | None:
         name = "gorbushka"
+        if self.artifact_reject(name):
+            return None
         if not self.feature_on(name):
             return None
         g = self.gorbushka_state()
@@ -479,12 +520,7 @@ class _Planner(DailyTasks):
         ok = self.doable_deeds()
         if not ok:
             return None
-        chosen, reason = (
-            self.personal_deed(ok)
-            or self.team_deed(ok)
-            or self.focus_deed(ok)
-            or self.best_deed(ok)
-        )
+        chosen, reason = self.personal_deed(ok) or self.team_deed(ok) or self.main_deed(ok)
         for candidate in ok:
             verdict = "chosen" if candidate is chosen else "ok"
             self.candidates.append(replace(candidate, verdict=verdict))
@@ -500,7 +536,14 @@ class _Planner(DailyTasks):
         details: int = self.value("details")
         focus = self.cfg.strategy.focus
         ok: list[Candidate] = []
-        for activity in self.cfg.strategy.deeds:
+        mode = self.artifact_mode()
+        activities: tuple[str, ...] = tuple(self.cfg.strategy.deeds)
+        if mode:
+            for other in activities:
+                if other not in self.artifact_deeds():
+                    self.reject(f"deed:{other}", {}, "artifact_run")
+            activities = self.artifact_deeds()
+        for activity in activities:
             name = f"deed:{activity}"
             price = self.price(activity)
             end = self.now + self.duration(activity, price)
@@ -533,7 +576,7 @@ class _Planner(DailyTasks):
                 verdict = "no_money"
             elif details < price.details:
                 verdict = "no_details"
-            elif score <= 0 and activity not in focus:
+            elif score <= 0 and activity not in focus and not mode:
                 # Важность основных дел задал пользователь, а оценка видит не весь доход: предметы
                 # крафта с добычи в статистику не входят.
                 verdict = "no_value"
@@ -544,6 +587,13 @@ class _Planner(DailyTasks):
             else:
                 self.candidates.append(Candidate(name, params, score, verdict))
         return ok
+
+    def main_deed(self, ok: list[Candidate]) -> tuple[Candidate, str]:
+        """Без заданий дня: в сборе — первое выполнимое по тактике, иначе основное по очереди
+        или лучшее по оценке."""
+        if self.artifact_mode():
+            return ok[0], f"artifact {self.cfg.artifact_run.artifact}"
+        return self.focus_deed(ok) or self.best_deed(ok)
 
     def focus_deed(self, ok: list[Candidate]) -> tuple[Candidate, str] | None:
         """Основные дела делят 🔥 поровну: первым — сделанное сегодня меньше раз, при равенстве —

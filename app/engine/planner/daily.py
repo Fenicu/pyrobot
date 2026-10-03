@@ -92,7 +92,8 @@ class DailyTasks(Obligations):
             return None
         pick = self.pick_personal(personal.offers)
         if pick is None:
-            self.reject("daily_pick", {}, "no_hard_offer")
+            filtered = self.artifact_mode() and any(o.level == HARD for o in personal.offers)
+            self.reject("daily_pick", {}, "artifact_run" if filtered else "no_hard_offer")
             return None
         offer, feasible = pick
         reason = f"personal {offer.type}" + ("" if feasible else " (not feasible)")
@@ -136,6 +137,19 @@ class DailyTasks(Obligations):
         hard = sorted(
             (o for o in offers if o.level == HARD), key=lambda o: rank.get(o.type, len(order))
         )
+        if self.artifact_mode():
+            # В сборе — только задания, которые закрываются делами тактики; Горбушка — никогда.
+            allowed = set(self.artifact_deeds())
+            fits = [
+                o
+                for o in hard
+                if o.type != "robPro" and allowed & set(PERSONAL_DEEDS.get(o.type, ()))
+            ]
+            for offer in hard:
+                if offer not in fits:
+                    task = f"{offer.type}_{offer.level}"
+                    self.reject("daily_pick", {"task": task}, "artifact_run")
+            hard = fits
         if not hard:
             return None
         feasible = [o for o in hard if self.personal_feasible(o.type, o.goal)]
@@ -158,7 +172,8 @@ class DailyTasks(Obligations):
 
     def deed_allowed(self, deed: str) -> bool:
         name = f"deed:{deed}"
-        if deed not in self.cfg.strategy.deeds or not self.feature_on(name):
+        allowed = self.artifact_deeds() if self.artifact_mode() else self.cfg.strategy.deeds
+        if deed not in allowed or not self.feature_on(name):
             return False
         return self.certified is None or name in self.certified
 

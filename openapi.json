@@ -3472,7 +3472,8 @@
               "personal",
               "team",
               "focus",
-              "best"
+              "best",
+              "artifact"
             ],
             "title": "Why",
             "type": "string"
@@ -3559,7 +3560,8 @@
               "tangerine_not_player",
               "lottery_open",
               "metro_kick",
-              "metro_ready"
+              "metro_ready",
+              "artifact_end"
             ],
             "title": "Kind",
             "type": "string"

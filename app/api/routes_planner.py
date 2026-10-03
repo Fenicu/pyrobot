@@ -78,8 +78,9 @@ class PlanNextDeedOut(BaseModel):
     # `deed:<дело>`.
     deed: str
     # personal/team — под личное или командное задание, focus — основное по очереди, best —
-    # лучшее по оценке (основные сейчас недоступны).
-    why: Literal["personal", "team", "focus", "best"]
+    # лучшее по оценке (основные сейчас недоступны), artifact — первое выполнимое по тактике сбора
+    # артефакта.
+    why: Literal["personal", "team", "focus", "best", "artifact"]
 
 
 class PlanReserveOut(BaseModel):

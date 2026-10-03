@@ -2144,7 +2144,7 @@ export interface components {
              * Why
              * @enum {string}
              */
-            why: "personal" | "team" | "focus" | "best";
+            why: "personal" | "team" | "focus" | "best" | "artifact";
         };
         /** PlanReserveOut */
         PlanReserveOut: {
@@ -2176,7 +2176,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "busy" | "cooldown" | "refresh" | "sleep_window" | "sleep_allowed" | "book_ready" | "card_ready" | "fastfood_ready" | "prizebox_ready" | "gorbushka_next" | "gorbushka_comeback" | "motivation" | "battle" | "daily_midnight" | "daily_reset" | "stocks_dump" | "factory_open" | "factory_report" | "tangerine_ready" | "tangerine_not_player" | "lottery_open" | "metro_kick" | "metro_ready";
+            kind: "busy" | "cooldown" | "refresh" | "sleep_window" | "sleep_allowed" | "book_ready" | "card_ready" | "fastfood_ready" | "prizebox_ready" | "gorbushka_next" | "gorbushka_comeback" | "motivation" | "battle" | "daily_midnight" | "daily_reset" | "stocks_dump" | "factory_open" | "factory_report" | "tangerine_ready" | "tangerine_not_player" | "lottery_open" | "metro_kick" | "metro_ready" | "artifact_end";
         };
         /** PriceState */
         PriceState: {

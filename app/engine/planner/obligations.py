@@ -449,6 +449,8 @@ class Obligations(PlannerBase):
         return (inside.value, battle) if self.now < battle - GAME_KICK else None
 
     def metro(self, busy: BusyState | None) -> Decision | None:
+        if self.artifact_reject("metro"):
+            return None
         if not self.feature_on("metro"):
             return None
         if (inside := self.metro_inside()) is not None:
@@ -501,7 +503,7 @@ class Obligations(PlannerBase):
     def metro_resume(self, busy: BusyState | None) -> Decision | None:
         """Персонаж остался в метро (рестарт, остановка сценария): продолжить забег сразу."""
         seen = self.s.metro_message
-        if not self.feature_on("metro") or seen is None:
+        if not self.feature_on("metro_resume") or seen is None:
             return None
         if (inside := self.metro_inside()) is None or self.now - seen.at > METRO_STALE:
             return None
