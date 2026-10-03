@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ApiError } from '$lib/api/errors';
 	import type { EngineStatus, PublicState } from '$lib/api/types';
+	import { artifactIcon } from '$lib/artifact/text';
 	import type { LiveStatus } from '$lib/live/connection.svelte';
 	import { fmtMoment, fmtRelative } from '$lib/util/format';
 	import { busyText, tgStateLabel } from '$lib/util/game';
@@ -18,6 +19,8 @@
 	}
 	let { status, error, live, retryIn = 0, state, now }: Props = $props();
 	const busy = $derived(val(state, 'busy'));
+	const collect = $derived(val(state, 'artifact_collect'));
+	const levels = $derived(val(state, 'artifacts'));
 </script>
 
 <section class="flex flex-wrap items-center gap-1.5" aria-label="Статус">
@@ -54,6 +57,11 @@
 		<Pill tone="bad">{error.kind === 'engine_down' ? 'движок не запущен' : 'статус недоступен'}</Pill>
 	{:else}
 		<Pill>статус…</Pill>
+	{/if}
+	{#if collect && new Date(collect.ends_at) > now}
+		<Pill tone="dec" title="Сбор артефакта до {fmtMoment(collect.ends_at, now)}">
+			{artifactIcon(collect.artifact)} {levels?.[collect.artifact] ?? '?'}/100
+		</Pill>
 	{/if}
 	{#if busy}
 		<Pill title={fmtRelative(busy.until, now)}>{busyText(busy, now)}</Pill>
