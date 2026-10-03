@@ -155,6 +155,35 @@ class ArtifactCollect(_Frozen):
     ends_at: datetime
 
 
+class VehicleState(_Frozen):
+    """Вид транспорта: строка экрана «Транспорт», цена в 🔩 и 💵 (None — неизвестна), доступность
+    (False — заглушка без цены: «ждёт рельса», «Полозья точатся…»), с какого момента можно ехать
+    (None — неизвестно) и последний день сезона («годны до 9 мая»)."""
+
+    name: str
+    available: bool = True
+    raw: int | None = None
+    money: int | None = None
+    ready_at: datetime | None = None
+    expires_on: date | None = None
+
+
+class TripRef(_Frozen):
+    """Последняя начатая поездка: вид (None — незнакомый текст старта), старт и пришёл ли итог."""
+
+    vehicle: str | None
+    started_at: datetime
+    done: bool = False
+
+
+class TripsState(_Frozen):
+    """Транспорт по видам (ключ — `car`, `tram`…, у незнакомого вида — строка экрана) и последняя
+    поездка — по ней узнаётся её итог."""
+
+    vehicles: dict[str, VehicleState] = {}
+    last: TripRef | None = None
+
+
 class ActivityStat(_Frozen):
     """Скользящее среднее наград одного дела (без его цены)."""
 
@@ -264,6 +293,8 @@ class CharacterState(_Frozen):
     artifacts: Obs[dict[str, int]] | None = None
     # Идущий сбор по экрану артефактов; значение None — на экране сбора нет.
     artifact_collect: Obs[ArtifactCollect | None] | None = None
+    # Транспорт с экрана «Транспорт», стартов и отказов поездок.
+    trips: Obs[TripsState] | None = None
     activity_stats: dict[str, ActivityStat] = {}
     # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
     # правка итога не начисляет повторно (горизонт хранения — в редьюсере).
@@ -334,6 +365,7 @@ TIMERS = frozenset(
         "metro_message",
         "lottery",
         "artifact_collect",
+        "trips",
     }
 )
 # Значения за день заданий: устаревают сменой дня (её проверяет планировщик), а не возрастом.

@@ -25,6 +25,7 @@ from app.engine.state.model import (
     StockLimits,
     TargetSet,
     TeamTask,
+    TripsState,
     Upgrades,
 )
 
@@ -113,4 +114,5 @@ class PublicState(BaseModel):
     lottery: Observed[LotteryState] | None = None
     artifacts: Observed[dict[str, int]] | None = None
     artifact_collect: Observed[ArtifactCollect | None] | None = None
+    trips: Observed[TripsState] | None = None
     activity_stats: dict[str, ActivityStat] = Field(default_factory=dict)

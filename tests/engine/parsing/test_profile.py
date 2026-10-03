@@ -4,6 +4,7 @@ import pytest
 
 from app.engine.parsing.battle import DEFENSE
 from app.engine.parsing.profile import ProfileCompact, recognize_compact
+from tests.engine import trip_texts
 from tests.fixtures import game_msg
 
 
@@ -251,3 +252,16 @@ def test_sleep_in_needs_real_duration(sleep_line: str, seconds: int | None) -> N
     p = _recognized(own.replace("🛌 Через 2д. 11ч.", sleep_line))
     assert p.sleep_in_s == seconds
     assert replace(p, sleep_in_s=_profile(3624478).sleep_in_s) == _profile(3624478)
+
+
+@pytest.mark.parametrize(
+    ("line", "left_s"),
+    [(trip_texts.PROFILE_TRAM_LINE, 9 * 60 + 58), (trip_texts.PROFILE_SLED_LINE, 9 * 60 + 11)],
+)
+def test_trip_in_profile_is_busy_trip(line: str, left_s: int) -> None:
+    msg = game_msg("profile", 3623869)
+    assert msg.text is not None
+    text = msg.text.replace("💻Работаешь (41 сек.)", line)
+    [p] = recognize_compact(replace(msg, text=text))
+    assert isinstance(p, ProfileCompact)
+    assert (p.busy_kind, p.busy_left_s) == ("trip", left_s)

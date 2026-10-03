@@ -2753,6 +2753,35 @@
         "title": "Observed[TeamTask]",
         "type": "object"
       },
+      "Observed_TripsState_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/TripsState"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[TripsState]",
+        "type": "object"
+      },
       "Observed_Union_ArtifactCollect__NoneType__": {
         "additionalProperties": false,
         "properties": {
@@ -4516,6 +4545,16 @@
               }
             ]
           },
+          "trips": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_TripsState_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "upgrades": {
             "anyOf": [
               {
@@ -5367,6 +5406,63 @@
         "title": "TgStatusOut",
         "type": "object"
       },
+      "TripRef": {
+        "description": "Последняя начатая поездка: вид (None — незнакомый текст старта), старт и пришёл ли итог.",
+        "properties": {
+          "done": {
+            "default": false,
+            "title": "Done",
+            "type": "boolean"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vehicle"
+          }
+        },
+        "required": [
+          "vehicle",
+          "started_at"
+        ],
+        "title": "TripRef",
+        "type": "object"
+      },
+      "TripsState": {
+        "description": "Транспорт по видам (ключ — `car`, `tram`…, у незнакомого вида — строка экрана) и последняя\nпоездка — по ней узнаётся её итог.",
+        "properties": {
+          "last": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TripRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vehicles": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/VehicleState"
+            },
+            "default": {},
+            "title": "Vehicles",
+            "type": "object"
+          }
+        },
+        "title": "TripsState",
+        "type": "object"
+      },
       "UnreadOut": {
         "description": "Непрочитанные уведомления аккаунта по уровням.",
         "properties": {
@@ -5581,6 +5677,71 @@
           "type"
         ],
         "title": "ValidationIssueOut",
+        "type": "object"
+      },
+      "VehicleState": {
+        "description": "Вид транспорта: строка экрана «Транспорт», цена в 🔩 и 💵 (None — неизвестна), доступность\n(False — заглушка без цены: «ждёт рельса», «Полозья точатся…»), с какого момента можно ехать\n(None — неизвестно) и последний день сезона («годны до 9 мая»).",
+        "properties": {
+          "available": {
+            "default": true,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "expires_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires On"
+          },
+          "money": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Money"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw"
+          },
+          "ready_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready At"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "VehicleState",
         "type": "object"
       },
       "VersionConflict": {

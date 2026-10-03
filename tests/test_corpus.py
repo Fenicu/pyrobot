@@ -21,6 +21,7 @@ from app.engine.parsing.lottery import (
 from app.engine.parsing.screens import LotteryWin
 from app.engine.parsing.smoothie import SmoothieRecipe
 from app.engine.parsing.swinfo import BattleSummary
+from app.engine.parsing.trips import recognize_trips
 from app.engine.settings import ChatsSection
 from tests.fixtures import record_message
 
@@ -185,3 +186,24 @@ def test_every_harvest_item_line_parsed() -> None:
         assert sum(event.rewards.items.values()) == sum(int(x[-1]) for x in lines), rec["id"]
         seen += bool(lines)
     assert seen > 1000
+
+
+@pytest.mark.skipif(not SEARCH.exists(), reason="no search export in ~/pyrobot-research")
+def test_every_trip_message_in_search_parsed() -> None:
+    """Экраны «Транспорт», старты поездок и отказы по кулдауну вида за 2019–2026 — все."""
+    kinds: Counter[str] = Counter()
+    seen: set[object] = set()
+    for path in (*sorted(SEARCH.parent.glob("*.jsonl")), HISTORY):
+        for rec in _records(path):
+            text = str(rec.get("text") or "")
+            if rec.get("out") or rec.get("chat") not in (None, 227859379) or rec["id"] in seen:
+                continue
+            if not text.startswith("Транспорт\n") and "Перед поездкой" not in text:
+                if "\nПриходи, когда" not in text and "\nПодкопи силёнок" not in text:
+                    continue
+            seen.add(rec["id"])
+            events = recognize_trips(record_message(rec))
+            assert len(events) == 1, rec["id"]
+            kinds[events[0].kind] += 1
+    assert kinds["trips_screen"] > 150 and kinds["trip_started"] > 80
+    assert kinds["trip_refused"] >= 10

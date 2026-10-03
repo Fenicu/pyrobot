@@ -27,6 +27,7 @@ from app.engine.parsing import (
     stocks,
     swinfo,
     tangerine,
+    trips,
 )
 from app.engine.parsing.common import first_line
 from app.engine.settings import ChatsSection
@@ -53,10 +54,13 @@ class Parser:
         self,
         recognizers: Sequence[Recognizer],
         *,
+        fallbacks: Sequence[Recognizer] = (),
         chats: Collection[int] | None = None,
         report_unrecognized: Collection[int] = (),
     ) -> None:
         self._recognizers = tuple(recognizers)
+        # Запасные распознаватели — только для сообщений, которые не распознал ни один основной.
+        self._fallbacks = tuple(fallbacks)
         self._chats = frozenset(chats) if chats is not None else None
         self._report = frozenset(report_unrecognized)
 
@@ -65,8 +69,17 @@ class Parser:
             return []
         if self._chats is not None and msg.chat_id not in self._chats:
             return []
+        events = self._run(self._recognizers, msg)
+        if not events:
+            events = self._run(self._fallbacks, msg)
+        if not events and msg.chat_id in self._report:
+            events.append(Unrecognized(first_line=first_line(msg.text)))
+        return events
+
+    @staticmethod
+    def _run(recognizers: Sequence[Recognizer], msg: IncomingMessage) -> list[Event]:
         events: list[Event] = []
-        for recognize in self._recognizers:
+        for recognize in recognizers:
             try:
                 events.extend(recognize(msg))
             except Exception:
@@ -76,8 +89,6 @@ class Parser:
                     msg.chat_id,
                     msg.msg_id,
                 )
-        if not events and msg.chat_id in self._report:
-            events.append(Unrecognized(first_line=first_line(msg.text)))
         return events
 
 
@@ -122,15 +133,22 @@ def game_recognizers() -> tuple[Recognizer, ...]:
         *metro.RECOGNIZERS,
         *lottery.RECOGNIZERS,
         *artifacts.RECOGNIZERS,
+        *trips.RECOGNIZERS,
         *screens.RECOGNIZERS,
     )
 
 
+def game_fallbacks() -> tuple[Recognizer, ...]:
+    return trips.FALLBACKS
+
+
 def default_parser(chats: ChatsSection | None = None) -> MessageParser:
     if chats is None:
-        return Parser(game_recognizers())
+        return Parser(game_recognizers(), fallbacks=game_fallbacks())
     routes: dict[int, list[Route]] = {}
-    game = Parser(game_recognizers(), report_unrecognized=(chats.game_chat_id,))
+    game = Parser(
+        game_recognizers(), fallbacks=game_fallbacks(), report_unrecognized=(chats.game_chat_id,)
+    )
     routes.setdefault(chats.game_chat_id, []).append(Route(game))
     swinfo_route = Route(Parser(swinfo.RECOGNIZERS), sender=chats.swinfo_user_id)
     routes.setdefault(chats.swinfo_chat_id, []).append(swinfo_route)

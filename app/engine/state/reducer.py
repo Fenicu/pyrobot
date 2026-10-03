@@ -93,6 +93,16 @@ from app.engine.parsing.smoothie import (
 from app.engine.parsing.stocks import Dividends, StockBought, StockScreen, StockSold
 from app.engine.parsing.swinfo import BattleSummary, FactoryCall, FactoryResult
 from app.engine.parsing.tangerine import TangerineRefused
+from app.engine.parsing.trips import (
+    TRIP,
+    TRIP_SPAN,
+    VEHICLES,
+    RewardsOnly,
+    TripRefused,
+    TripsScreen,
+    TripStarted,
+    season_end,
+)
 from app.engine.state.ledger import Effect, amounts
 from app.engine.state.model import (
     DAY_SCOPED,
@@ -118,7 +128,10 @@ from app.engine.state.model import (
     TargetSet,
     TaskOfferState,
     TeamTask,
+    TripRef,
+    TripsState,
     Upgrades,
+    VehicleState,
     dump_state,
     load_state,
 )
@@ -143,6 +156,8 @@ _RESULT_KINDS = {"symbol_exchange": "exchange", "tangerine_gift": "tangerine_gif
 # Бой с биржевиками: итог приходит через ~5 мин после присоединения (медиана 292 с).
 BULLS_FIGHT = timedelta(minutes=5)
 FOOD_KINDS = ("hotdog", "pizza", "burger", "banana")
+# Итог поездки приходит ровно через 10 минут после старта; запас — на задержку игры.
+TRIP_RESULT_GRACE = timedelta(minutes=5)
 METRIC_FIELDS = (
     "level",
     "exp",
@@ -392,11 +407,19 @@ def _profile(p: _Patch, e: ProfileCompact) -> None:
     busy = None
     if e.busy_kind is not None and e.busy_left_s is not None:
         busy = BusyState(activity=e.busy_kind, until=p.at + timedelta(seconds=e.busy_left_s))
-    p.snap("busy", busy)
+    # Поездку на 🚲 и 🚕 профиль не показывает: известная поездка держится до своего конца.
+    if busy is not None or not _on_trip(p):
+        p.snap("busy", busy)
     if e.sleep_in_s is not None:
         deadline = p.at + timedelta(seconds=e.sleep_in_s)
         p.snap("sleep_deadline", deadline)
         p.snap("sleep_allowed_at", deadline - AWAKE_LIMIT + SLEEP_COOLDOWN, src="derived")
+
+
+def _on_trip(p: _Patch) -> bool:
+    current: Obs[BusyState | None] | None = p.get("busy")
+    trip = current.value if current is not None else None
+    return trip is not None and trip.activity == TRIP and trip.until > p.at
 
 
 @_on(BattleTargetSet)
@@ -1244,6 +1267,78 @@ def _artifact_part(p: _Patch, e: ArtifactPartFound) -> None:
 def _info_screen(p: _Patch, e: InfoScreen) -> None:
     if e.money is not None:
         p.snap("money", e.money)
+
+
+def _trips(p: _Patch) -> tuple[TripsState, Src]:
+    known: Obs[TripsState] | None = p.get("trips")
+    return (known.value, known.src) if known is not None else (TripsState(), "screen")
+
+
+def _vehicle(state: TripsState, key: str, **update: Any) -> dict[str, VehicleState]:
+    current = state.vehicles.get(key) or VehicleState(name=VEHICLES[key].screen)
+    return {**state.vehicles, key: current.model_copy(update=update)}
+
+
+@_on(TripsScreen)
+def _trips_screen(p: _Patch, e: TripsScreen) -> None:
+    state, _ = _trips(p)
+    day = to_msk(p.at).date()
+    vehicles = {
+        v.key: VehicleState(
+            name=v.name,
+            available=v.available,
+            raw=v.raw,
+            money=v.money,
+            # Без строки «Через» доступный вид готов уже на момент экрана.
+            ready_at=p.later(v.left_s if v.left_s is not None else 0) if v.available else None,
+            expires_on=season_end(v.expires, day) if v.expires is not None else None,
+        )
+        for v in e.vehicles
+    }
+    p.snap("trips", TripsState(vehicles=vehicles, last=state.last))
+
+
+@_on(TripStarted)
+def _trip_started(p: _Patch, e: TripStarted) -> None:
+    p.snap("busy", BusyState(activity=TRIP, until=p.at + timedelta(seconds=e.duration_s)))
+    p.delta("raw", -e.raw)
+    p.delta("money", -e.money)
+    p.effect("trip_start", amounts(raw=-e.raw, money=-e.money))
+    state, _ = _trips(p)
+    vehicles = state.vehicles
+    if e.vehicle is not None:
+        ready = p.at + VEHICLES[e.vehicle].cooldown
+        vehicles = _vehicle(
+            state, e.vehicle, available=True, raw=e.raw, money=e.money, ready_at=ready
+        )
+    last = TripRef(vehicle=e.vehicle, started_at=p.at)
+    p.snap("trips", TripsState(vehicles=vehicles, last=last), src="derived")
+
+
+@_on(TripRefused)
+def _trip_refused(p: _Patch, e: TripRefused) -> None:
+    state, src = _trips(p)
+    vehicles = _vehicle(state, e.vehicle, ready_at=p.later(e.left_s))
+    p.snap("trips", state.model_copy(update={"vehicles": vehicles}), src=src)
+
+
+@_on(RewardsOnly)
+def _rewards_only(p: _Patch, e: RewardsOnly) -> None:
+    """Награда без строки продолжения — итог идущей поездки: пришла не раньше старта и не позже
+    10 минут с запасом, итога у поездки ещё не было. Иначе не применяется."""
+    state, src = _trips(p)
+    last = state.last
+    if last is None or last.done:
+        return
+    if not last.started_at <= p.origin <= last.started_at + TRIP_SPAN + TRIP_RESULT_GRACE:
+        return
+    current: Obs[BusyState | None] | None = p.get("busy")
+    if current is not None and current.value is not None and current.value.activity == TRIP:
+        p.snap("busy", None)
+    p.rewards(e.rewards)
+    p.effect("trip", amounts(e.rewards), e.rewards.items)
+    done = last.model_copy(update={"done": True})
+    p.snap("trips", state.model_copy(update={"last": done}), src=src)
 
 
 class StateReducer:

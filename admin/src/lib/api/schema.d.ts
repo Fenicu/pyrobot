@@ -1946,6 +1946,20 @@ export interface components {
             src: "screen" | "derived" | "doubtful";
             value: components["schemas"]["TeamTask"];
         };
+        /** Observed[TripsState] */
+        Observed_TripsState_: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Src
+             * @enum {string}
+             */
+            src: "screen" | "derived" | "doubtful";
+            value: components["schemas"]["TripsState"];
+        };
         /** Observed[Union[ArtifactCollect, NoneType]] */
         Observed_Union_ArtifactCollect__NoneType__: {
             /**
@@ -2492,6 +2506,7 @@ export interface components {
             tangerines?: components["schemas"]["Observed_int_"] | null;
             team_tag?: components["schemas"]["Observed_Union_str__NoneType__"] | null;
             team_task?: components["schemas"]["Observed_TeamTask_"] | null;
+            trips?: components["schemas"]["Observed_TripsState_"] | null;
             upgrades?: components["schemas"]["Observed_Upgrades_"] | null;
             woke_at?: components["schemas"]["Observed_datetime_"] | null;
         };
@@ -2796,6 +2811,39 @@ export interface components {
             user_id: number | null;
         };
         /**
+         * TripRef
+         * @description Последняя начатая поездка: вид (None — незнакомый текст старта), старт и пришёл ли итог.
+         */
+        TripRef: {
+            /**
+             * Done
+             * @default false
+             */
+            done: boolean;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Vehicle */
+            vehicle: string | null;
+        };
+        /**
+         * TripsState
+         * @description Транспорт по видам (ключ — `car`, `tram`…, у незнакомого вида — строка экрана) и последняя
+         *     поездка — по ней узнаётся её итог.
+         */
+        TripsState: {
+            last?: components["schemas"]["TripRef"] | null;
+            /**
+             * Vehicles
+             * @default {}
+             */
+            vehicles: {
+                [key: string]: components["schemas"]["VehicleState"];
+            };
+        };
+        /**
          * UnreadOut
          * @description Непрочитанные уведомления аккаунта по уровням.
          */
@@ -2872,6 +2920,29 @@ export interface components {
             msg: string;
             /** Type */
             type: string;
+        };
+        /**
+         * VehicleState
+         * @description Вид транспорта: строка экрана «Транспорт», цена в 🔩 и 💵 (None — неизвестна), доступность
+         *     (False — заглушка без цены: «ждёт рельса», «Полозья точатся…»), с какого момента можно ехать
+         *     (None — неизвестно) и последний день сезона («годны до 9 мая»).
+         */
+        VehicleState: {
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Expires On */
+            expires_on?: string | null;
+            /** Money */
+            money?: number | null;
+            /** Name */
+            name: string;
+            /** Raw */
+            raw?: number | null;
+            /** Ready At */
+            ready_at?: string | null;
         };
         /** VersionConflict */
         VersionConflict: {

@@ -59,3 +59,18 @@ def test_outgoing_forward_in_shared_team_and_invite_chat_not_parsed() -> None:
     assert parser.parse(_msg(forwarded, chat=team, outgoing=True)) == []
     # И входящее сообщение с тем же текстом: в этом чате читаются только приглашения.
     assert parser.parse(_msg(forwarded, chat=team)) == []
+
+
+def test_fallback_only_when_nothing_recognized() -> None:
+    def fallback(msg: IncomingMessage) -> list[Event]:
+        return [Unrecognized(first_line="fallback")]
+
+    def flood(msg: IncomingMessage) -> list[Event]:
+        return [AntiFlood()] if msg.text == FLOOD else []
+
+    def broken(msg: IncomingMessage) -> list[Event]:
+        raise ValueError("boom")
+
+    parser = Parser([flood], fallbacks=[broken, fallback])
+    assert parser.parse(_msg(FLOOD)) == [AntiFlood()]
+    assert parser.parse(_msg("другое")) == [Unrecognized(first_line="fallback")]

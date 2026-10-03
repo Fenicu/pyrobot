@@ -7,6 +7,7 @@ from typing import ClassVar
 from app.engine.events import Event
 from app.engine.parsing.battle import DEFENSE
 from app.engine.parsing.common import DURATION, NUM, company_of_mark, dur, num
+from app.engine.parsing.trips import TRIP
 from app.engine.types import IncomingMessage
 
 _HEAD = (
@@ -47,6 +48,8 @@ _ACTS = {
     "⚔Дерёшься": "fight",
     "⚙️Перерабатываешь детали": "dconv",
     "Ожидаешь соперника в 🎯 Дартс": "darts",
+    "🚃В пути на трамвае": TRIP,
+    "🛷Катаешься на санках": TRIP,
 }
 
 

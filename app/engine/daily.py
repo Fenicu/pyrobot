@@ -14,7 +14,14 @@ from app.engine.gametime import tasks_day
 BALANCE_KEYS = ("money", "exp", "knowledge", "details", "raw", "glory")
 LEVEL_KEY = "level"
 # Траты и потери — отдельной строкой; порядок — для показа.
-LOSS_ORDER = ("robbery", "deed_start", "hotel", "lottery_tickets", "gorbushka_ticket")
+LOSS_ORDER = (
+    "robbery",
+    "deed_start",
+    "trip_start",
+    "hotel",
+    "lottery_tickets",
+    "gorbushka_ticket",
+)
 # Разовое (объясняющие события): порядок показа, незнакомые виды — после, по имени.
 INCOME_ORDER = (
     "book",
@@ -25,6 +32,7 @@ INCOME_ORDER = (
     "lottery_win",
     "lottery_skills",
     "metro",
+    "trip",
     "bulls",
     "task",
     "factory",

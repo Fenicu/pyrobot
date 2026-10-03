@@ -12,6 +12,7 @@ export interface KindLabel {
 export const KIND: Record<string, KindLabel> = {
 	deed: { icon: '⛏', label: 'дела' },
 	deed_start: { icon: '⛏', label: 'начало дел' },
+	trip_start: { icon: '🚦', label: 'начало поездок' },
 	hotel: { icon: '🛏', label: 'отель' },
 	lottery_tickets: { icon: '🎟', label: 'билеты лотереи' },
 	gorbushka_ticket: { icon: '🎟', label: 'билет Горбушки' },
@@ -24,6 +25,7 @@ export const KIND: Record<string, KindLabel> = {
 	lottery_win: { icon: '🤑', label: 'выигрыш лотереи' },
 	lottery_skills: { icon: '🤑', label: 'навыки лотереи' },
 	metro: { icon: '🚇', label: 'метро' },
+	trip: { icon: '🚦', label: 'поездки' },
 	bulls: { icon: '🐂', label: 'биржевики' },
 	task: { icon: '👫', label: 'задание' },
 	factory: { icon: '🏭', label: 'фабрика' },
