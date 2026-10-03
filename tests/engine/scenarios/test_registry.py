@@ -73,6 +73,7 @@ def required(scenario: str, name: str) -> Param:
             ["🍇🥕🥕🍋🍅", "🍋🍋🍋🍋🍋"],
             ["🍇🥕🥕🍋", "🍇🥕🥕🍋🍅🍅", "🍇🥕🥕🍋🍌", 5, ""],
         ),
+        ("artifact_start", "artifact", ["book", "fax", "light"], ["box", "", None, 1]),
     ],
 )
 def test_required_checks_keep_their_edges(

@@ -22,6 +22,7 @@ def context(
     simulate: bool = False,
     paused: bool = False,
     notifier: NotifierPort | None = None,
+    scenario: str | None = None,
 ) -> ScenarioContext:
     return ScenarioContext(
         world.gateway,
@@ -30,6 +31,7 @@ def context(
         paused=lambda: paused,
         timeout_s=0.3,
         notifier=notifier,
+        scenario=scenario,
     )
 
 

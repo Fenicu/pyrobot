@@ -5,9 +5,10 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, get_args
 
+from app.engine.parsing.artifacts import RECOLLECTABLE
 from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.parsing.smoothie import INGREDIENTS
-from app.engine.scenarios import daily, library, lottery, metro, obligations
+from app.engine.scenarios import artifacts, daily, library, lottery, metro, obligations
 from app.engine.scenarios.library import FOOD_BUTTONS, REFRESH, ScenarioFn
 from app.engine.settings import Target
 
@@ -134,6 +135,12 @@ def _specs() -> dict[str, ScenarioSpec]:
         ScenarioSpec("daily_pick", daily.daily_pick, True, required={"task": _task}),
         # Параметры необязательные: ручной запуск без них берёт их у планировщика.
         ScenarioSpec("lottery_buy", lottery.lottery_buy, True),
+        ScenarioSpec(
+            "artifact_start",
+            artifacts.artifact_start,
+            True,
+            required={"artifact": _one_of(RECOLLECTABLE)},
+        ),
     ]
     for item, certified in (
         ("book", True),
