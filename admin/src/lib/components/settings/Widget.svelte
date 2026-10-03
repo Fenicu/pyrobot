@@ -8,6 +8,8 @@
 		value: unknown;
 		id: string;
 		label: string;
+		/** Подписи значений списка (код → текст), см. `valueLabels`. */
+		labels?: Record<string, string>;
 		/** Значение, которое ставится при включении пустого (null) поля. */
 		fallback?: unknown;
 		invalid?: boolean;
@@ -15,7 +17,7 @@
 		describedby?: string;
 		onchange: (next: unknown) => void;
 	}
-	let { kind, value, id, label, fallback, invalid = false, describedby, onchange }: Props = $props();
+	let { kind, value, id, label, labels, fallback, invalid = false, describedby, onchange }: Props = $props();
 	let mapKey = $state('');
 	let jsonText = $state('');
 	let jsonError = $state('');
@@ -91,7 +93,7 @@
 {:else if kind.kind === 'string'}
 	<input {id} class="input" aria-label={label} aria-invalid={invalid || undefined} aria-describedby={describedby} value={String(value ?? '')} oninput={(e) => onchange(e.currentTarget.value)} />
 {:else if kind.kind === 'enum_tags'}
-	<TagsInput value={(value as string[]) ?? []} options={kind.options} {label} {describedby} onchange={onchange} />
+	<TagsInput value={(value as string[]) ?? []} options={kind.options} {label} {labels} {describedby} onchange={onchange} />
 {:else if kind.kind === 'string_tags'}
 	<TagsInput value={(value as string[]) ?? []} {label} {describedby} onchange={onchange} />
 {:else if kind.kind === 'max_or_int'}

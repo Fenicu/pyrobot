@@ -31,6 +31,16 @@ describe('словари итогов дня', () => {
 		}
 	});
 
+	it('поездки: итог и начало — свои подписи; итог из бонус-предметов (без сумм) — без «undefined»', () => {
+		expect(kindText('trip')).toBe('🚦 поездки');
+		expect(kindText('trip_start')).toBe('🚦 начало поездок');
+		expect(incomeText({ kind: 'trip', count: 1, amounts: {} })).toBe('🚦 поездки');
+		expect(incomeText({ kind: 'trip', count: 3, amounts: { knowledge: 16 } })).toBe('🚦 поездки ×3 · +16 📚');
+		expect(lossText({ kind: 'trip_start', count: 2, amounts: { raw: -10, money: -20 } })).toBe(
+			'🚦 начало поездок ×2 −$20, −10 🔩'
+		);
+	});
+
 	it('баланс — все ключи ответа, 🏆 — личная слава', () => {
 		expect(BALANCE.map((b) => b.key)).toEqual(Object.keys(today.balance));
 		expect(BALANCE.find((b) => b.key === 'glory')?.title).toBe('личная слава');

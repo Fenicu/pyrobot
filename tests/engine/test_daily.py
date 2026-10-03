@@ -124,6 +124,19 @@ def test_ledger_grouped_by_kind() -> None:
     )
 
 
+def test_ledger_row_without_amounts_counts_as_event() -> None:
+    """Итог поездки из одних бонус-предметов: ряд без сумм — событие в счётчике, суммы пустые."""
+    ledger = [
+        LedgerEntry(TODAY, "trip", {}, {"Флюс": 1}),
+        LedgerEntry(TODAY, "trip", {"knowledge": 16}, {}),
+        LedgerEntry(TODAY, "trip_start", {"raw": -10, "money": -20}, {}),
+    ]
+    [day] = summarize(**one(ledger=ledger))  # type: ignore[arg-type]
+    assert day.income == (KindSum("trip", 2, {"knowledge": 16}),)
+    assert day.losses == (KindSum("trip_start", 1, {"raw": -10, "money": -20}),)
+    assert day.items == {"Флюс": 1}
+
+
 def test_days_today_first_and_partial() -> None:
     since = date(2026, 9, 26)
     out = summarize(**one(days=4, ledger_since=since))  # type: ignore[arg-type]

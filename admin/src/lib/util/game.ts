@@ -117,3 +117,13 @@ export function statusTone(status: string): 'ok' | 'warn' | 'bad' | 'muted' {
 	if (['suppressed', 'stopped', 'interrupted', 'cancelled', 'nothing'].includes(status)) return 'warn';
 	return 'muted';
 }
+
+/** Виды транспорта по ключам `trips.vehicles`; незнакомый вид — строкой экрана, как есть. */
+export const VEHICLE: Record<string, string> = {
+	car: '🚕 автомобиль',
+	tram: '🚃 трамвай',
+	sled: '🛷 санки',
+	bike: '🚲 велосипед',
+	scooter: '🛴 самокат',
+	tractor: '🚜 трактор'
+};

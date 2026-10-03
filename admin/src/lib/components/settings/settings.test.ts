@@ -51,6 +51,29 @@ describe('Настройки', () => {
 	});
 
 
+	it('раздел «Поездки» — виды транспорта по-русски, порядок кнопками, секция после «Сбора артефакта»', async () => {
+		const user = userEvent.setup();
+		const values = {
+			...settings.values,
+			features: { ...(settings.values.features as object), trips: true },
+			trips: { vehicles: ['car', 'bike'] }
+		};
+		const { editor } = await view(undefined, () => ({ ...settings, schema: schemaJson, values }));
+		const nav = screen.getByRole('navigation', { name: 'Секции настроек' });
+		const items = [...nav.querySelectorAll('li')].map((li) => li.textContent?.trim());
+		expect(items.indexOf('Поездки')).toBe(items.indexOf('Сбор артефакта') + 1);
+		await user.click(screen.getByRole('button', { name: 'Поездки' }));
+		const section = screen.getByRole('region', { name: 'Поездки' });
+		const list = within(section).getByRole('group', { name: 'Виды транспорта' });
+		expect(list).toHaveTextContent('🚕 автомобиль');
+		expect(list).toHaveTextContent('🚲 велосипед');
+		expect(list).not.toHaveTextContent('car');
+		await user.selectOptions(within(list).getByRole('combobox'), 'tram');
+		expect(editor.value(['trips', 'vehicles'])).toEqual(['car', 'bike', 'tram']);
+		expect(within(list).getByRole('option', { name: '🛷 санки' })).toBeInTheDocument();
+	});
+
+
 	it('разделы: сначала часто нужные, технические — в «Дополнительно» в конце', async () => {
 		await view();
 		expect(screen.getByRole('region', { name: 'Функции' })).toBeInTheDocument();

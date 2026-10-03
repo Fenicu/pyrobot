@@ -1,7 +1,7 @@
 /** Тексты «Плана бота»: причины таймеров, вердикты кандидатов, сценарии — коды как в движке. */
 import type { Outlook, PlanCandidate, PlanTimer, WakeKind } from '$lib/api/types';
 import { fmtTime } from '$lib/util/format';
-import { CURRENCY, PERSONAL_TASK } from '$lib/util/game';
+import { CURRENCY, PERSONAL_TASK, VEHICLE } from '$lib/util/game';
 
 export interface WakeText {
 	icon: string;
@@ -222,16 +222,6 @@ function cooldownKey(key: string | null): string {
 	if (key.startsWith('refresh:')) return `обновить ${refreshKey(key.slice('refresh:'.length))}`;
 	return deedText(key);
 }
-
-/** Виды транспорта по ключам `trips.vehicles`; незнакомый вид — строкой экрана, как есть. */
-const VEHICLE: Record<string, string> = {
-	car: '🚕 автомобиль',
-	tram: '🚃 трамвай',
-	sled: '🛷 санки',
-	bike: '🚲 велосипед',
-	scooter: '🛴 самокат',
-	tractor: '🚜 трактор'
-};
 
 export interface TimerLine {
 	icon: string;

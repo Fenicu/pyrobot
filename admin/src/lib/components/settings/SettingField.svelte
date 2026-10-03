@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
-	import { settingHelp, settingLabel } from '$lib/settings/labels';
+	import { settingHelp, settingLabel, valueLabels } from '$lib/settings/labels';
 	import { settingPaths } from '$lib/settings/paths.svelte';
 	import { pathKey, type Field } from '$lib/settings/schema';
 	import { fmtValue } from '$lib/settings/value';
@@ -76,6 +76,7 @@
 					{value}
 					{id}
 					{label}
+					labels={valueLabels(key)}
 					{describedby}
 					fallback={editor.defaultValue(field.path)}
 					invalid={!!error}
