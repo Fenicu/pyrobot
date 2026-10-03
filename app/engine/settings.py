@@ -96,6 +96,7 @@ class FeaturesSection(BaseModel):
     robbery_defense: bool = True
     paid_info: bool = False
     seasonal: bool = False
+    trips: bool = True
 
 
 Deed = Literal["harvest", "job", "learn", "dconv", "walk", "confa", "rob"]
@@ -283,6 +284,22 @@ class ArtifactRunSection(BaseModel):
     result_level: int | None = Field(default=None, ge=0, le=100, json_schema_extra=READ_ONLY)
 
 
+TripVehicle = Literal["car", "tram", "sled", "bike", "scooter", "tractor"]
+
+
+class TripsSection(BaseModel):
+    """Поездки: на каких видах транспорта ездить; порядок — приоритет, убранный вид — не ездить."""
+
+    vehicles: tuple[TripVehicle, ...] = ("car", "tram", "sled", "bike", "scooter", "tractor")
+
+    @field_validator("vehicles")
+    @classmethod
+    def _unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("vehicles must not repeat")
+        return value
+
+
 class RetentionSection(BaseModel):
     # Журнал: сообщения (с нераспознанными), действия, запуски сценариев, уведомления.
     messages_days: int = Field(default=90, ge=1, le=3650)
@@ -309,6 +326,7 @@ class Settings(BaseModel):
     daily: DailySection = Field(default_factory=DailySection)
     lottery: LotterySection = Field(default_factory=LotterySection)
     artifacts: ArtifactsSection = Field(default_factory=ArtifactsSection)
+    trips: TripsSection = Field(default_factory=TripsSection)
     artifact_run: ArtifactRunSection = Field(
         default_factory=ArtifactRunSection, json_schema_extra=READ_ONLY
     )

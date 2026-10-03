@@ -584,6 +584,11 @@
      "default": true,
      "title": "Tangerine",
      "type": "boolean"
+    },
+    "trips": {
+     "default": true,
+     "title": "Trips",
+     "type": "boolean"
     }
    },
    "title": "FeaturesSection",
@@ -1033,6 +1038,36 @@
    },
    "title": "TangerineSection",
    "type": "object"
+  },
+  "TripsSection": {
+   "description": "Поездки: на каких видах транспорта ездить; порядок — приоритет, убранный вид — не ездить.",
+   "properties": {
+    "vehicles": {
+     "default": [
+      "car",
+      "tram",
+      "sled",
+      "bike",
+      "scooter",
+      "tractor"
+     ],
+     "items": {
+      "enum": [
+       "car",
+       "tram",
+       "sled",
+       "bike",
+       "scooter",
+       "tractor"
+      ],
+      "type": "string"
+     },
+     "title": "Vehicles",
+     "type": "array"
+    }
+   },
+   "title": "TripsSection",
+   "type": "object"
   }
  },
  "properties": {
@@ -1084,6 +1119,9 @@
   },
   "tangerine": {
    "$ref": "#/$defs/TangerineSection"
+  },
+  "trips": {
+   "$ref": "#/$defs/TripsSection"
   }
  },
  "title": "Settings",
