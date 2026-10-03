@@ -202,3 +202,52 @@ async def test_late_result_of_other_artifact_does_not_activate_new_request() -> 
     await rig.runs.started("nothing", "not_recollectable", {"artifact": "light"})
     assert (rig.run.status, rig.run.artifact) == ("starting", "fax")
     assert rig.notes.codes == []
+
+
+async def finished_light() -> Rig:
+    """Сбор света по «Сбор начат!» в T0 закончился по сроку записи (T0 + 10 суток)."""
+    rig = Rig()
+    await rig.runs.start("light", lottery_max=False, by="alice")
+    await rig.runs.started("done", "started", {"started_at": T0.isoformat(), "deed": "walk"})
+    rig.clock.at = T0 + 10 * DAY
+    await rig.runs.tick()
+    assert rig.run.status == "finished"
+    return rig
+
+
+async def test_own_collect_estimated_later_by_screen_is_not_external() -> None:
+    rig = await finished_light()
+    # Экран считает до часа: «Окончание сборки через 0д. 1ч.» — тот же сбор, не внешний.
+    ends = T0 + 10 * DAY + timedelta(hours=1)
+    rig.state = CharacterState(artifact_collect=collect("light", rig.clock.at, ends))
+    await rig.runs.tick()
+    assert rig.notes.codes == ["artifact_started", "artifact_finished"]
+    assert rig.runs.view().external is False
+
+
+async def test_other_collect_after_finish_is_external() -> None:
+    rig = await finished_light()
+    now = rig.clock.at
+    rig.state = CharacterState(artifact_collect=collect("light", now, now + 10 * DAY))
+    await rig.runs.tick()
+    assert rig.notes.codes[-1] == "artifact_collect_external"
+    assert rig.runs.view().external is True
+    rig.state = CharacterState(artifact_collect=collect("fax", now, now + 3 * DAY))
+    await rig.runs.tick()
+    assert rig.notes.codes.count("artifact_collect_external") == 2
+    assert rig.runs.view().external is True
+
+
+async def test_external_estimate_across_utc_midnight_notified_once() -> None:
+    late = datetime(2026, 10, 6, 23, 30, tzinfo=UTC)
+    rig = Rig(state=CharacterState(artifact_collect=collect("fax", T0, late)))
+    await rig.runs.tick()
+    later = T0 + timedelta(hours=3)
+    rig.clock.at = later
+    rig.state = CharacterState(artifact_collect=collect("fax", later, late + timedelta(hours=1)))
+    await rig.runs.tick()
+    assert rig.notes.codes == ["artifact_collect_external"]
+    # Новый сбор того же артефакта с другим концом — уже другой сбор.
+    rig.state = CharacterState(artifact_collect=collect("fax", later, late + 5 * DAY))
+    await rig.runs.tick()
+    assert rig.notes.codes == ["artifact_collect_external"] * 2

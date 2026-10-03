@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from app.engine.clock import Clock
@@ -30,6 +30,8 @@ IN_PROGRESS = frozenset({"starting", "active", "paused"})
 # Лотерея «на максимум»: все билеты до лимита тиража, без запасов — это умолчания секции.
 MAX_LOTTERY = LotterySection()
 DAY = timedelta(days=1)
+# Экран артефактов показывает конец сбора с точностью до часа: концы ближе — один сбор.
+ENDS_TOLERANCE = timedelta(hours=2)
 
 
 class ArtifactConflict(Exception):
@@ -83,12 +85,18 @@ def game_collect(state: CharacterState, now: datetime) -> ArtifactCollect | None
     return collect if collect is not None and collect.ends_at > now else None
 
 
+def same_end(a: datetime, b: datetime) -> bool:
+    return abs(a - b) <= ENDS_TOLERANCE
+
+
 def is_external(run: ArtifactRunSection, collect: ArtifactCollect, now: datetime) -> bool:
-    """Сбор в игре — не тот, что ведёт запись: другой артефакт или срок записи прошёл."""
+    """Сбор в игре — не тот, что ведёт запись: другой артефакт или срок записи прошёл, а конец
+    по экрану с ним не сходится."""
     if run.status == "starting":
         return False
-    ours = run.artifact == collect.artifact and run.ends_at is not None and run.ends_at > now
-    return not ours
+    if run.artifact != collect.artifact or run.ends_at is None:
+        return True
+    return not (run.ends_at > now or same_end(collect.ends_at, run.ends_at))
 
 
 def start_seen(run: ArtifactRunSection, state: CharacterState) -> ArtifactCollect | None:
@@ -342,8 +350,8 @@ class ArtifactRuns:
         self._state = state
         self._notifier = notifier
         self._clock = clock
-        # Внешний сбор, о котором уже сказали: (артефакт, день окончания).
-        self._external: tuple[str, date] | None = None
+        # Внешний сбор, о котором уже сказали: (артефакт, конец по экрану).
+        self._external: tuple[str, datetime] | None = None
 
     def view(self) -> ArtifactView:
         return artifact_view(self._settings.current, self._state(), self._clock.now())
@@ -459,10 +467,10 @@ class ArtifactRuns:
         found = game_collect(state, now)
         if found is None or not is_external(run, found, now):
             return
-        key = (found.artifact, found.ends_at.date())
-        if self._external == key:
+        told = self._external
+        if told is not None and told[0] == found.artifact and same_end(told[1], found.ends_at):
             return
-        self._external = key
+        self._external = (found.artifact, found.ends_at)
         await self._notifier.notify(
             "info",
             "artifact_collect_external",
