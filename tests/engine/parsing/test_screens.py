@@ -38,7 +38,6 @@ from tests.fixtures import game_msg
         (3624063, InfoScreen(name="network")),
         (3615665, InfoScreen(name="market")),
         (3584848, InfoScreen(name="gifts_shop")),
-        (3568618, InfoScreen(name="artifacts")),
         (3603396, InfoScreen(name="tops")),
         (3585192, InfoScreen(name="viruses")),
         (3623175, InfoScreen(name="office")),

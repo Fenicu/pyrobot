@@ -8,6 +8,7 @@ from typing import Protocol
 from app.engine.events import AntiFlood, Event, Unrecognized
 from app.engine.parsing import (
     activities,
+    artifacts,
     battle,
     bulls,
     crew,
@@ -120,6 +121,7 @@ def game_recognizers() -> tuple[Recognizer, ...]:
         *tangerine.RECOGNIZERS,
         *metro.RECOGNIZERS,
         *lottery.RECOGNIZERS,
+        *artifacts.RECOGNIZERS,
         *screens.RECOGNIZERS,
     )
 

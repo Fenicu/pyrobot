@@ -11,6 +11,8 @@ from app.engine.types import IncomingMessage
 _BUSY = re.compile(r"\A❗️Ты занят другим делом ещё (?P<t>" + DURATION + r")")
 _NO_MONEY = re.compile(r"\AТебе не хватает \$(?P<need>" + NUM + r")[\xa0 ]?💵\. Сначала заработай")
 _LEFT = re.compile(r"(?:Ещё|Осталось|через) (?P<t>" + DURATION + r")")
+# Ответ на /artr_<x> при 100 уровне: «📕 Букварь Стартапера уже максимального уровня. …».
+_ARTIFACT_MAX = re.compile(r"\A\S+ ?[^\n]* уже максимального уровня\.")
 _PREFIXES: tuple[tuple[str, str], ...] = (
     ("no_motivation", "Тебе не хватает Мотивации"),
     ("battle_soon", "Скоро Битва, некогда отвлекаться"),
@@ -54,6 +56,8 @@ def recognize_refusals(msg: IncomingMessage) -> list[Event]:
         return [Busy(left_s=dur(m["t"]))]
     if m := _NO_MONEY.match(text):
         return [Refused(reason="no_money", need=num(m["need"]))]
+    if _ARTIFACT_MAX.match(text):
+        return [Refused(reason="artifact_max")]
     for reason, prefix in _PREFIXES:
         if text.startswith(prefix):
             left = _LEFT.search(text)
