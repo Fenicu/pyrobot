@@ -36,7 +36,7 @@ from app.engine.state.model import (
     TripsState,
     VehicleState,
 )
-from app.engine.state.reducer import LOTTERY_CURRENCIES
+from app.engine.state.reducer import LOTTERY_CURRENCIES, TRIP_RESULT_GRACE
 from app.engine.trips import trip_vehicles
 
 Phase = Literal["unknown", "asleep", "busy", "free"]
@@ -50,9 +50,6 @@ NextWhy = Literal["personal", "team", "focus", "best", "artifact"]
 ARTIFACT_REREAD = timedelta(hours=3)
 # Экран «Транспорт» старше 6 часов перечитывается: новые сезонные виды, цены.
 TRIPS_MAX_AGE = timedelta(hours=6)
-# Итог поездки приходит ровно через 10 минут: следующая ждёт его ещё минуту, иначе он попадёт в
-# окно новой поездки и не применится.
-TRIP_RESULT_WAIT = timedelta(minutes=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -614,25 +611,27 @@ class _Planner(DailyTasks):
     # --- поездки
 
     def trip(self, busy: BusyState | None) -> Decision | None:
-        """Поездка на первом по настройкам виде, который есть на последнем экране «Транспорт»,
-        доступен, не кончился по сезону и готов. Экран перечитывается, если его нет, он старше
-        `TRIPS_MAX_AGE`, готовность вида наступила позже него или цена вида неизвестна."""
+        """Поездка: порядок `trips.vehicles` — приоритет среди готовых видов (есть на последнем
+        экране «Транспорт», доступны, не кончились по сезону), на которые хватает 🔩 и 💵 сверх
+        резервов. Экран перечитывается, если его нет, он старше `TRIPS_MAX_AGE` или цена готового
+        вида неизвестна."""
         order = trip_vehicles(self.cfg)
         if not order or not self.feature_on("trip"):
             return None
         seen = self.s.trips
+        ready: list[tuple[str, VehicleState]] = []
         if seen is None or seen.src == "doubtful":
-            pick, stale = None, "trips unknown"
+            stale: str | None = "trips unknown"
         else:
-            pick, stale = self.trip_pick(order, seen), None
+            ready, stale = self.trip_ready(order, seen), None
             renew = seen.at + TRIPS_MAX_AGE
             if self.now >= renew:
                 stale = "trips old"
             else:
                 self.wake(renew, "refresh", "trips")
-        if pick is None and stale is None:
+        if not ready and stale is None:
             return None
-        params = {"vehicle": pick[0]} if pick is not None else {}
+        params = {"vehicle": ready[0][0]} if ready else {}
         if busy is not None:
             self.reject("trip", params, "busy")
             return None
@@ -641,43 +640,52 @@ class _Planner(DailyTasks):
             return None
         if stale is not None:
             return self.trips_refresh(stale, params)
-        assert pick is not None and seen is not None
-        key, vehicle = pick
+        assert seen is not None
         last = seen.value.last
         if last is not None and not last.done:
-            result_by = last.started_at + TRIP_SPAN + TRIP_RESULT_WAIT
-            if self.now < result_by:
+            # До конца окна, в котором редьюсер примет итог прошлой поездки: после нового старта
+            # опоздавший итог достался бы новой.
+            result_by = last.started_at + TRIP_SPAN + TRIP_RESULT_GRACE
+            if self.now <= result_by:
                 self.reject("trip", params, "trip_pending")
                 self.wake(result_by, "trip_result")
                 return None
-        assert vehicle.ready_at is not None
-        if vehicle.ready_at > seen.at or vehicle.raw is None:
-            return self.trips_refresh(f"{key} ready", params)
         deeds = ("motivation", "details") if self.feature_on("deed:") else ()
         if (field := self.stale_of("raw", "money", "battle_at", *deeds)) is not None:
             return self.refresh("trip", field)
+        raw: int = self.value("raw")
         money = self.value("money") - self.ticket_reserve() - self.hotel_reserve()
-        verdict = None
-        if self.value("raw") < vehicle.raw:
-            verdict = "no_raw"
-        elif money < (vehicle.money or 0):
-            verdict = "no_money"
-        else:
-            verdict = self.window_verdict(self.now + TRIP_SPAN)
+        chosen: str | None = None
+        for key, vehicle in ready:
+            params = {"vehicle": key}
+            if vehicle.raw is None:
+                return self.trips_refresh(f"{key} price unknown", params)
+            if raw < vehicle.raw:
+                self.reject("trip", params, "no_raw")
+            elif money < (vehicle.money or 0):
+                self.reject("trip", params, "no_money")
+            else:
+                chosen = key
+                break
+        if chosen is None:
+            return None
+        params = {"vehicle": chosen}
+        verdict = self.window_verdict(self.now + TRIP_SPAN)
         if verdict is None and self.motivation_capped() and self.deed_waits():
             verdict = "motivation_cap"
         if verdict is not None:
             self.reject("trip", params, verdict)
             return None
-        return self.act("trip", params, f"{key} ready")
+        return self.act("trip", params, f"{chosen} ready")
 
-    def trip_pick(
+    def trip_ready(
         self, order: Sequence[str], seen: Obs[TripsState]
-    ) -> tuple[str, VehicleState] | None:
-        """Первый готовый вид по порядку; к готовности остальных — таймеры. Готовность позже
-        экрана (старт + кулдаун, отказ, «Через» с округлением вниз) — с минутой запаса."""
+    ) -> list[tuple[str, VehicleState]]:
+        """Готовые виды по порядку; к готовности остальных — таймеры. Готовность позже экрана
+        (старт + кулдаун, отказ, «Через» с округлением вниз) — с минутой запаса: на кулдауне
+        сценарий поездки кнопку не нажмёт, а экран сам перечитает."""
         today = to_msk(self.now).date()
-        pick: tuple[str, VehicleState] | None = None
+        ready: list[tuple[str, VehicleState]] = []
         for key in order:
             vehicle = seen.value.vehicles.get(key)
             if vehicle is None or not vehicle.available or vehicle.ready_at is None:
@@ -685,13 +693,12 @@ class _Planner(DailyTasks):
             if vehicle.expires_on is not None and vehicle.expires_on < today:
                 continue
             if vehicle.ready_at > seen.at:
-                ready = vehicle.ready_at + READY_SLACK
-                if not self.due(ready):
-                    self.wake(ready, "trip_ready", key)
+                at = vehicle.ready_at + READY_SLACK
+                if not self.due(at):
+                    self.wake(at, "trip_ready", key)
                     continue
-            if pick is None:
-                pick = (key, vehicle)
-        return pick
+            ready.append((key, vehicle))
+        return ready
 
     def trips_refresh(self, reason: str, params: dict[str, Any]) -> Act | None:
         """Экран «Транспорт» — не чаще `engine.refresh_min_interval_s`."""

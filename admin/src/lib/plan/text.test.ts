@@ -50,9 +50,11 @@ describe('словари плана', () => {
 
 	it('поездки: готовность вида, ожидание итога, обновление экрана транспорта', () => {
 		const ready = { at: plan.now, kind: 'trip_ready' as const, key: 'tram', after_wake: false };
-		expect(timerLine(ready, plan)).toEqual({ icon: '🚦', text: 'Поездка: 🚃 трамвай готов', detail: '' });
+		expect(timerLine(ready, plan)).toEqual({ icon: '🚦', text: 'Можно ехать: 🚃 трамвай', detail: '' });
+		const sled = { ...ready, key: 'sled' };
+		expect(timerLine(sled, plan).text).toBe('Можно ехать: 🛷 санки');
 		const unknown = { ...ready, key: '🚁Вертолёт' };
-		expect(timerLine(unknown, plan).text).toBe('Поездка: 🚁Вертолёт готов');
+		expect(timerLine(unknown, plan).text).toBe('Можно ехать: 🚁Вертолёт');
 		const refresh = { at: plan.now, kind: 'refresh' as const, key: 'trips', after_wake: false };
 		expect(timerLine(refresh, plan).text).toBe('Можно снова обновить экран: транспорт');
 		const result = { at: '2026-09-27T16:30:00Z', kind: 'trip_result' as const, key: null, after_wake: false };

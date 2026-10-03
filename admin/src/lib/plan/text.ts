@@ -34,7 +34,7 @@ export const WAKE: Record<WakeKind, WakeText> = {
 	metro_kick: { icon: '🚇', text: 'Метро: игра выкинет перед битвой' },
 	metro_ready: { icon: '🚇', text: 'Метро доступно' },
 	artifact_end: { icon: '👾', text: 'Сбор артефакта кончается' },
-	trip_ready: { icon: '🚦', text: 'Поездка' },
+	trip_ready: { icon: '🚦', text: 'Можно ехать' },
 	trip_result: { icon: '🚦', text: 'Итог поездки' }
 };
 
@@ -264,7 +264,7 @@ export function timerLine(t: PlanTimer, plan: Outlook): TimerLine {
 			text = `${base.text} (${lotteryTickets(plan)})`;
 			break;
 		case 'trip_ready':
-			text = `${base.text}: ${VEHICLE[t.key ?? ''] ?? t.key} готов`;
+			text = `${base.text}: ${VEHICLE[t.key ?? ''] ?? t.key}`;
 			break;
 		case 'battle':
 		case 'stocks_dump':

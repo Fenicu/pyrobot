@@ -50,7 +50,7 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		expect(timers[4]).toHaveTextContent('22:05');
 		expect(timers[4]).toHaveTextContent('Сон 7 ч под мостом');
 		expect(timers[5]).toHaveTextContent('22:31');
-		expect(timers[5]).toHaveTextContent('Поездка: 🚕 автомобиль готов');
+		expect(timers[5]).toHaveTextContent('Можно ехать: 🚕 автомобиль');
 		expect(timers[8]).toHaveTextContent('Можно снова обновить экран: транспорт');
 		expect(timers[10]).toHaveTextContent('Слив налички в акции перед битвой');
 		expect(timers[10]).toHaveTextContent('цель 📯Pied Piper');
