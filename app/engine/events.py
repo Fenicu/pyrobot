@@ -10,6 +10,8 @@ class Event:
     # Итог (награда, старт дела, трата) применяется к состоянию один раз на сообщение,
     # даже если игра его правит.
     outcome: ClassVar[bool] = False
+    # Распознано условно: если редьюсер не дал эффекта этого вида, сообщение — нераспознанное.
+    claimed_by: ClassVar[str | None] = None
 
     def to_json(self) -> dict[str, Any]:
         return {"kind": self.kind, **asdict(self)}

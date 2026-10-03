@@ -2812,7 +2812,8 @@ export interface components {
         };
         /**
          * TripRef
-         * @description Последняя начатая поездка: вид (None — незнакомый текст старта), старт и пришёл ли итог.
+         * @description Последняя начатая поездка: вид (None — незнакомый текст старта), старт, пришёл ли итог и
+         *     его сообщение (правка того же сообщения — тот же итог).
          */
         TripRef: {
             /**
@@ -2820,6 +2821,8 @@ export interface components {
              * @default false
              */
             done: boolean;
+            /** Result Id */
+            result_id?: number | null;
             /**
              * Started At
              * Format: date-time

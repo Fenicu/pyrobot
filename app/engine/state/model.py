@@ -169,11 +169,13 @@ class VehicleState(_Frozen):
 
 
 class TripRef(_Frozen):
-    """Последняя начатая поездка: вид (None — незнакомый текст старта), старт и пришёл ли итог."""
+    """Последняя начатая поездка: вид (None — незнакомый текст старта), старт, пришёл ли итог и
+    его сообщение (правка того же сообщения — тот же итог)."""
 
     vehicle: str | None
     started_at: datetime
     done: bool = False
+    result_id: int | None = None
 
 
 class TripsState(_Frozen):

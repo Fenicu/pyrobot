@@ -5407,12 +5407,23 @@
         "type": "object"
       },
       "TripRef": {
-        "description": "Последняя начатая поездка: вид (None — незнакомый текст старта), старт и пришёл ли итог.",
+        "description": "Последняя начатая поездка: вид (None — незнакомый текст старта), старт, пришёл ли итог и\nего сообщение (правка того же сообщения — тот же итог).",
         "properties": {
           "done": {
             "default": false,
             "title": "Done",
             "type": "boolean"
+          },
+          "result_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Id"
           },
           "started_at": {
             "format": "date-time",

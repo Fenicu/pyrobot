@@ -127,7 +127,8 @@ def test_live_bike_trip_result_goes_to_ledger_as_trip() -> None:
     # Отказ «занят» держит вид занятости.
     assert busy(s) == BusyState(activity="trip", until=at(1.2) + timedelta(minutes=9, seconds=55))
     s, effects = apply(r, s, t.RESULT_BIKE, 11.1, 5)
-    assert effects == (Effect("trip", {"knowledge": 16}),)
+    key = f"trip:{at(1.1).isoformat()}"
+    assert effects == (Effect("trip", {"knowledge": 16}, key=key),)
     assert value(s, "knowledge") == knowledge + 16
     assert busy(s) is None
     last = trips(s).last
@@ -141,7 +142,8 @@ def test_rewards_only_without_trip_is_not_applied() -> None:
     r = StateReducer()
     s = profiled(r)
     s2, effects = apply(r, s, t.RESULT_TRAM_EXP, 5, 2)
-    assert effects == () and value(s2, "exp") == value(s, "exp")
+    # Не итог поездки — состояние не меняется вовсе (и версия снимка не растёт).
+    assert effects == () and s2 == s
     # Поездка давно кончилась: итог не её.
     s, _ = apply(r, s, t.START_TRAM, 10, 3)
     late = 10 + TRIP_SPAN.total_seconds() / 60 + 30
@@ -157,7 +159,7 @@ def test_result_while_busy_with_a_deed_keeps_the_deed() -> None:
     deed = busy(s)
     assert deed is not None and deed.activity != "trip"
     s, effects = apply(r, s, t.RESULT_TRAM_MONEY, 10, 3)
-    assert effects == (Effect("trip", {"money": 215}),)
+    assert effects == (Effect("trip", {"money": 215}, key=f"trip:{at(0).isoformat()}"),)
     assert busy(s) == deed
 
 
@@ -186,3 +188,47 @@ def test_profile_trip_line_is_trip_busy() -> None:
     profile = replace(msg, text=text, date=at(0), created_at=at(0))
     s = StateReducer().apply({}, profile, PARSER.parse(profile))
     assert busy(s) == BusyState(activity="trip", until=at(0) + timedelta(minutes=9, seconds=58))
+
+
+def test_result_before_any_start_is_not_a_trip() -> None:
+    r = StateReducer()
+    s = profiled(r)
+    s, effects = apply(r, s, t.RESULT_TRAM_EXP, 1, 2)
+    assert effects == ()
+    # Итог раньше старта следующей поездки — тоже не её.
+    s, _ = apply(r, s, t.START_TRAM, 5, 3)
+    msg = replace(game_text(t.RESULT_TRAM_EXP, msg_id=4), date=at(6), created_at=at(4))
+    assert r.reduce(s, msg, PARSER.parse(msg))[1] == ()
+
+
+def test_result_window_ends_15_minutes_after_start() -> None:
+    r = StateReducer()
+    s = profiled(r)
+    s, _ = apply(r, s, t.START_TRAM, 0, 2)
+    _, inside = apply(r, s, t.RESULT_TRAM_EXP, 15, 3)
+    assert inside == (Effect("trip", {"exp": 244}, key=f"trip:{at(0).isoformat()}"),)
+    _, outside = apply(r, s, t.RESULT_TRAM_EXP, 15 + 1 / 60, 3)
+    assert outside == ()
+
+
+def test_bonus_only_result_still_a_trip_in_ledger() -> None:
+    r = StateReducer()
+    s = profiled(r)
+    s, _ = apply(r, s, t.START_CAR, 0, 2)
+    s, effects = apply(r, s, t.RESULT_CAR_BONUS, 10, 3)
+    assert effects == (Effect("trip", {}, key=f"trip:{at(0).isoformat()}"),)
+    assert busy(s) is None
+    last = trips(s).last
+    assert last is not None and last.done
+
+
+def test_edit_of_trip_result_claims_again_without_reapplying() -> None:
+    r = StateReducer()
+    s = profiled(r)
+    s, _ = apply(r, s, t.START_BIKE, 0, 2)
+    s, _ = apply(r, s, t.RESULT_BIKE, 10, 3)
+    knowledge = value(s, "knowledge")
+    edit = replace(game_text(t.RESULT_BIKE, msg_id=3), date=at(11), created_at=at(10), revision=1)
+    s2, effects = r.reduce(s, edit, PARSER.parse(edit))
+    assert effects == (Effect("trip", {"knowledge": 16}, key=f"trip:{at(0).isoformat()}"),)
+    assert value(s2, "knowledge") == knowledge

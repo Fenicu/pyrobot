@@ -234,8 +234,12 @@ class _Patch:
         items: Mapping[str, int] | None = None,
         at: datetime | None = None,
         key: str | None = None,
+        *,
+        empty: bool = False,
     ) -> None:
-        if sums or items:
+        """`empty` — эффект пишется и без сумм: он сам по себе факт (итог поездки с одним
+        бонус-предметом)."""
+        if sums or items or empty:
             self.effects.append(Effect(kind, sums, dict(items or {}), at, key))
 
     def first(self, key: str) -> bool:
@@ -1325,19 +1329,26 @@ def _trip_refused(p: _Patch, e: TripRefused) -> None:
 @_on(RewardsOnly)
 def _rewards_only(p: _Patch, e: RewardsOnly) -> None:
     """Награда без строки продолжения — итог идущей поездки: пришла не раньше старта и не позже
-    10 минут с запасом, итога у поездки ещё не было. Иначе не применяется."""
+    10 минут с запасом, у поездки ещё нет итога или это правка того же сообщения. Эффект `trip`
+    (с постоянным ключом поездки) — на каждую ревизию: по нему конвейер знает, что сообщение
+    распознано; начисляется один раз. Иначе ничего не меняется."""
     state, src = _trips(p)
     last = state.last
-    if last is None or last.done:
+    if last is None:
         return
     if not last.started_at <= p.origin <= last.started_at + TRIP_SPAN + TRIP_RESULT_GRACE:
+        return
+    if last.result_id is not None and last.result_id != p.msg_id:
+        return
+    key = f"trip:{last.started_at.isoformat()}"
+    p.effect("trip", amounts(e.rewards), e.rewards.items, key=key, empty=True)
+    if last.result_id is not None:
         return
     current: Obs[BusyState | None] | None = p.get("busy")
     if current is not None and current.value is not None and current.value.activity == TRIP:
         p.snap("busy", None)
     p.rewards(e.rewards)
-    p.effect("trip", amounts(e.rewards), e.rewards.items)
-    done = last.model_copy(update={"done": True})
+    done = last.model_copy(update={"done": True, "result_id": p.msg_id})
     p.snap("trips", state.model_copy(update={"last": done}), src=src)
 
 

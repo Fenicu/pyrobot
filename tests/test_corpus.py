@@ -21,7 +21,7 @@ from app.engine.parsing.lottery import (
 from app.engine.parsing.screens import LotteryWin
 from app.engine.parsing.smoothie import SmoothieRecipe
 from app.engine.parsing.swinfo import BattleSummary
-from app.engine.parsing.trips import recognize_trips
+from app.engine.parsing.trips import TripsScreen, recognize_trips
 from app.engine.settings import ChatsSection
 from tests.fixtures import record_message
 
@@ -205,5 +205,14 @@ def test_every_trip_message_in_search_parsed() -> None:
             events = recognize_trips(record_message(rec))
             assert len(events) == 1, rec["id"]
             kinds[events[0].kind] += 1
+            if isinstance(screen := events[0], TripsScreen):
+                # Вид со строкой цены — доступен и с ценой; без цены — заглушка.
+                for vehicle in screen.vehicles:
+                    line = next(x for x in text.split("\n") if x.startswith(vehicle.name))
+                    priced = "🔩" in line and "⏰" in line
+                    assert vehicle.available is priced, (rec["id"], vehicle.name)
+                    assert (vehicle.raw is not None) is priced, (rec["id"], vehicle.name)
+                    kinds["priced" if priced else "placeholder"] += 1
     assert kinds["trips_screen"] > 150 and kinds["trip_started"] > 80
     assert kinds["trip_refused"] >= 10
+    assert kinds["priced"] > 500 and kinds["placeholder"] >= 3

@@ -123,6 +123,23 @@ def test_screen_unknown_vehicle_kept_by_name() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "🚲Велосипед - 5🔩, 10 ⏰, 3 🍊",
+        "🚲Велосипед - $5, 10 ⏰",
+        "🚲Велосипед - 5 сырья",
+        "🚲Велосипед - бесплатно, 10 ⏰",
+        "🚲Велосипед\n5🔩, 10 ⏰",
+    ],
+)
+def test_screen_with_unknown_price_format_is_unrecognized(line: str) -> None:
+    # Незнакомый формат цены — не заглушка: иначе вид молча стал бы недоступным навсегда.
+    text = t.SCREEN.replace("🚲Велосипед - 5🔩, 10 ⏰", line)
+    assert recognize_trips(game_text(text)) == []
+    assert [type(e).__name__ for e in parse(text)] == ["Unrecognized"]
+
+
 def test_screen_with_unknown_line_is_not_a_partial_snapshot() -> None:
     assert recognize_trips(game_text(t.SCREEN + "\nчто-то новое")) == []
 

@@ -8,9 +8,10 @@ from datetime import timedelta
 from typing import Any, Protocol
 
 from app.engine.bus import Bus, Delivery
-from app.engine.events import Event
+from app.engine.events import Event, Unrecognized
 from app.engine.fence import LeaseLost
 from app.engine.parsing import MessageParser
+from app.engine.parsing.common import first_line
 from app.engine.state.ledger import Effect
 from app.engine.types import IncomingMessage
 
@@ -34,6 +35,11 @@ class NullReducer:
         self, state: State, msg: IncomingMessage, events: Sequence[Event]
     ) -> tuple[State, Sequence[Effect]]:
         return state, ()
+
+
+def _unclaimed(events: Sequence[Event], effects: Sequence[Effect]) -> bool:
+    wanted = {e.claimed_by for e in events if e.claimed_by is not None}
+    return bool(wanted - {effect.kind for effect in effects})
 
 
 class JournalStore(Protocol):
@@ -143,6 +149,11 @@ class Pipeline:
         effects: Sequence[Effect] = ()
         try:
             new_state, effects = self._reducer.reduce(self._state, msg, events)
+            if _unclaimed(events, effects):
+                # Условное распознавание не подтвердилось: для журнала, ленты нераспознанных,
+                # всплеска и метро сообщение — нераспознанное.
+                events = [*events, Unrecognized(first_line=first_line(msg.text or ""))]
+                new_state, effects = self._reducer.reduce(self._state, msg, events)
         except Exception:
             log.exception("reducer failed on %s/%s", msg.chat_id, msg.msg_id)
             new_state = self._state

@@ -48,7 +48,11 @@ _MONTHS = {name: n for n, name in enumerate(_MONTH_NAMES.split(), start=1)}
 _HEADER = "Транспорт\nОтправляйся в полные приключений поездки.\n\n"
 _UNIT = r"\d+ ?(?:🔩|💵|⏰)"
 _PRICED = re.compile(r"\A(?P<name>\W+\w[^\n]*?) - (?P<cost>" + _UNIT + r"(?:, " + _UNIT + r")*)\Z")
-_PLACEHOLDER = re.compile(r"\A(?P<name>\W+\w[^\n]*?)(?: - [^\n\d][^\n]*)?\Z")
+# Заглушка без цены: «🚃Трамвай - ждёт рельса», «🛷Санки» и строка пояснения. Ни цифр, ни значков
+# цены: незнакомый формат цены — не заглушка, а неразобранный экран.
+_NO_PRICE = r"[^\d\n🔩💵⏰$,]+"
+_PLACEHOLDER = re.compile(r"\A(?P<name>\W+\w+)(?: - " + _NO_PRICE + r")?\Z")
+_PLACEHOLDER_NOTE = re.compile(r"\A[^\d\n🔩💵⏰$]+\Z")
 _COST = re.compile(r"(\d+) ?(🔩|💵)")
 _LEFT = re.compile(r"\AЧерез (?P<t>" + DURATION + r")\Z")
 _EXPIRES = re.compile(r"\Aгод(?:ны|ен|на|но) до (?P<day>\d{1,2}) (?P<month>[а-я]+)\Z")
@@ -132,7 +136,7 @@ class RewardsOnly(Event):
     одно семейство: итог поездки, если она идёт (решает редьюсер), иначе не применяется."""
 
     kind: ClassVar[str] = "rewards_only"
-    outcome: ClassVar[bool] = True
+    claimed_by: ClassVar[str | None] = "trip"
     rewards: Rewards
 
 
@@ -150,8 +154,9 @@ def _vehicle(block: str) -> TripVehicle | None:
             left = dur(m["t"])
         elif (m := _EXPIRES.match(line)) and m["month"] in _MONTHS:
             expires = (_MONTHS[m["month"]], int(m["day"]))
-        elif priced is not None:
-            # У вида с ценой незнакомая строка — экран не разобран целиком.
+        elif priced is not None or not _PLACEHOLDER_NOTE.match(line):
+            # Незнакомая строка у вида с ценой или строка с ценой у заглушки — экран не разобран
+            # целиком.
             return None
     if priced is None:
         return TripVehicle(key=vehicle_key(name), name=name, available=False, left_s=left)
