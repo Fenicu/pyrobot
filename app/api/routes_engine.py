@@ -390,7 +390,8 @@ async def tg_start(
     scope: Annotated[AccountScope, Depends(account_scope)],
     c: Annotated[Container, Depends(container)],
 ) -> TgStatusOut:
-    """Запрос кода входа: не больше `PYROBOT_TG_CODES_PER_HOUR` на хост и 3 в час на аккаунт,
+    """Запрос кода входа: не больше `limits.tg_codes_per_hour` в час на сервер и
+    `limits.tg_codes_per_account_hour` в час на аккаунт (настройки сервера в консоли владельца),
     сверх — 429 `tg_code_rate_limited` с `Retry-After`."""
     return await _guard(
         f.tg.start(body.phone, owner=str(ctx.session_id)), await _app(c, scope.account.id)

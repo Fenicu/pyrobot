@@ -735,7 +735,8 @@ export interface paths {
         put?: never;
         /**
          * Tg Start
-         * @description Запрос кода входа: не больше `PYROBOT_TG_CODES_PER_HOUR` на хост и 3 в час на аккаунт,
+         * @description Запрос кода входа: не больше `limits.tg_codes_per_hour` в час на сервер и
+         *     `limits.tg_codes_per_account_hour` в час на аккаунт (настройки сервера в консоли владельца),
          *     сверх — 429 `tg_code_rate_limited` с `Retry-After`.
          */
         post: operations["tg_start_api_v1_accounts__account_id__tg_login_start_post"];
