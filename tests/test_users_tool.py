@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
@@ -180,6 +181,11 @@ async def test_set_password_audits_and_notifies_accounts(
     assert len(rows) == 2
     assert {r.account_id for r in rows} == {1, 2}
     assert all(r.level == "warn" for r in rows)
+    for r in rows:
+        prefix = "password set via CLI at "
+        assert r.text.startswith(prefix), r.text
+        at = datetime.fromisoformat(r.text.removeprefix(prefix))
+        assert at.utcoffset() == timedelta(0)
 
 
 async def test_promote_audits(clean_db: Database) -> None:

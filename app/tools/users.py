@@ -14,6 +14,7 @@ import asyncio
 import getpass
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from app.api.security import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, hash_password
 from app.config import DbConfig
@@ -50,11 +51,10 @@ async def set_password(db: Database, login: str) -> int:
         target_type="user",
         target_id=user.id,
     )
+    text = f"password set via CLI at {datetime.now(UTC).isoformat()}"
     accounts = await AccountRepo(db).owned(user.id)
     for acc in accounts:
-        await DbNotifier(db, acc.id).notify(
-            "warn", "password_set_by_cli", "Пароль учётной записи изменён через командную строку"
-        )
+        await DbNotifier(db, acc.id).notify("warn", "password_set_by_cli", text)
     print(f"Пароль учётки {login!r} изменён, её сессии закрыты")
     return 0
 
