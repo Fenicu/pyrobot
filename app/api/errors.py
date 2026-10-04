@@ -44,6 +44,15 @@ class ChatIsSelfOut(BaseModel):
     fields: list[str]
 
 
+class OutOfBoundsOut(BaseModel):
+    """Значение настройки движка выходит за границы, заданные настройками сервера."""
+
+    detail: Literal["setting_out_of_bounds"]
+    path: str
+    bound: Literal["min", "max"]
+    limit: float
+
+
 def error(*codes: str) -> dict[str, Any]:
     """Описание ответа `{"detail": "<код>"}` с перечнем возможных кодов."""
     return {"model": ErrorOut, "description": " | ".join(codes)}
@@ -64,6 +73,7 @@ SERVER_FULL = "server_full"
 TOO_MANY_STREAMS = "too_many_streams"
 CONFIRM_NAME_MISMATCH = "confirm_name_mismatch"
 CHAT_IS_SELF = "chat_is_self"
+SETTING_OUT_OF_BOUNDS = "setting_out_of_bounds"
 # Запросов кода входа в Telegram больше лимита хоста или аккаунта (с `Retry-After`).
 TG_CODE_RATE_LIMITED = "tg_code_rate_limited"
 FLOOD_WAIT = "flood_wait"

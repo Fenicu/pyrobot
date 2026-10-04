@@ -9,10 +9,20 @@ from sqlalchemy import func, insert, select
 
 from app.config import AppConfig
 from app.db.accounts import AccountRepo
+from app.db.audit import AuditLog
 from app.db.base import Database
 from app.db.crypto import SecretBox
-from app.db.models import Account, MessageRow, SettingsRow, TgChatMark, TgPeer, TgSession
+from app.db.models import (
+    Account,
+    MessageRow,
+    SettingsHistory,
+    SettingsRow,
+    TgChatMark,
+    TgPeer,
+    TgSession,
+)
 from app.db.notifications import DbNotifier
+from app.db.server_settings import ServerSettingsRepo
 from app.db.settings_store import direct_update
 from app.engine.facade import LockLostError
 from app.engine.fence import Fence, LeaseLost
@@ -20,7 +30,7 @@ from app.engine.host.account import AccountRuntime, RuntimeDeps
 from app.engine.host.codes import CodeLimiter
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
-from app.engine.settings import ChatIsSelf, SettingsPatch
+from app.engine.settings import ChatIsSelf, Settings, SettingsPatch
 from app.engine.tg_auth import TgState
 from app.engine.transport.kurigram import KurigramTransport
 from app.logctx import current_account
@@ -53,6 +63,7 @@ class Engines:
             lag=LoopLagMonitor(),
             codes=CodeLimiter(10),
             box=box,
+            server=ServerSettingsRepo(db, AuditLog(db)),
         )
         # Продление в тестах не идёт: местный срок аренды с запасом на весь тест.
         self.leases = LeaseManager(db, "test-host", ttl_s=300.0)
@@ -418,3 +429,28 @@ async def test_stale_unbound_snapshot_refused_by_binding_in_db(
     assert await _tg_rows(clean_db) == (None, set())
     stored = await kurigram.deps.accounts.get(1)
     assert stored is not None and stored.tg_user_id == 42
+
+
+async def test_start_clamps_out_of_bounds_with_system_history(
+    engines: Engines, clean_db: Database
+) -> None:
+    # settings.engine.min_request_interval_s = 1.0 в базе → после старта 1.6,
+    # settings_history: последняя запись changed_by == "system"; движок запущен
+    async with clean_db.sessions() as s, s.begin():
+        data = Settings().model_dump(mode="json")
+        data["engine"]["min_request_interval_s"] = 1.0
+        s.add(SettingsRow(account_id=1, data=data, version=1))
+    runtime = await engines.start(1)
+    assert runtime.settings.current.engine.min_request_interval_s == 1.6
+    assert runtime.facade is not None
+    async with clean_db.sessions() as s:
+        last_hist = (
+            await s.scalars(
+                select(SettingsHistory)
+                .where(SettingsHistory.account_id == 1)
+                .order_by(SettingsHistory.version.desc())
+            )
+        ).first()
+    assert last_hist is not None
+    assert last_hist.changed_by == "system"
+    assert last_hist.data["engine"]["min_request_interval_s"] == 1.6

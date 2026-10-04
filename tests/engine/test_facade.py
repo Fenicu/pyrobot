@@ -17,6 +17,7 @@ from app.engine.memory import MemoryActionStore, MemoryJournal
 from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
 from app.engine.pipeline import NullReducer, Pipeline
+from app.engine.server_settings import EngineBounds
 from app.engine.settings import (
     EngineSection,
     Settings,
@@ -48,6 +49,7 @@ def build(
     codes: CodeLimiter | None = None,
     transport: FakeTransport | None = None,
     history: GameChatWatch | None = None,
+    bounds: Callable[[], EngineBounds] | None = None,
 ) -> EngineFacade:
     """Фасад на памяти; `snapshot` — снимок состояния, его подхватит `pipeline.load()`. Вход в
     Telegram сверяет свой чат с настройками `settings`."""
@@ -86,6 +88,7 @@ def build(
         monotonic=monotonic,
         transport=transport,
         history=lambda: history,
+        bounds=bounds,
     )
 
 

@@ -1220,6 +1220,13 @@ export interface components {
             /** Delta */
             delta: number | null;
         };
+        /** BoundOut */
+        BoundOut: {
+            /** Max */
+            max?: number | null;
+            /** Min */
+            min?: number | null;
+        };
         /** BusyState */
         BusyState: {
             /** Activity */
@@ -2166,6 +2173,26 @@ export interface components {
             /** Value */
             value: string;
         };
+        /**
+         * OutOfBoundsOut
+         * @description Значение настройки движка выходит за границы, заданные настройками сервера.
+         */
+        OutOfBoundsOut: {
+            /**
+             * Bound
+             * @enum {string}
+             */
+            bound: "min" | "max";
+            /**
+             * Detail
+             * @constant
+             */
+            detail: "setting_out_of_bounds";
+            /** Limit */
+            limit: number;
+            /** Path */
+            path: string;
+        };
         /** OutlookOut */
         OutlookOut: {
             /** Also Ready */
@@ -2644,6 +2671,10 @@ export interface components {
         };
         /** SettingsOut */
         SettingsOut: {
+            /** Bounds */
+            bounds: {
+                [key: string]: components["schemas"]["BoundOut"];
+            };
             /** Defaults */
             defaults: {
                 [key: string]: unknown;
@@ -5202,13 +5233,13 @@ export interface operations {
                     "application/json": components["schemas"]["VersionConflictOut"] | components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description invalid body or changes | chat_is_self: `chats.*` fields equal to the account's Telegram user */
+            /** @description invalid body or changes | chat_is_self: `chats.*` fields equal to the account's Telegram user | setting_out_of_bounds */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValidationErrorOut"] | components["schemas"]["ChatIsSelfOut"];
+                    "application/json": components["schemas"]["ValidationErrorOut"] | components["schemas"]["ChatIsSelfOut"] | components["schemas"]["OutOfBoundsOut"];
                 };
             };
             /** @description engine_starting | engine not running */

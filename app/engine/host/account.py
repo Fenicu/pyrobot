@@ -199,6 +199,16 @@ class AccountRuntime:
         config = self._deps.config
         db = self._deps.db
         await self.settings.load()
+        server = self._deps.server
+        if server is not None:
+            bounds = server.current.engine_bounds
+            clamped = bounds.clamp(self.settings.current)
+            if clamped != self.settings.current:
+                await self.settings.update(
+                    lambda _: bounds.clamp(self.settings.current),
+                    changed_by="system",
+                    expected_version=None,
+                )
         # Настройки, с которыми движок запущен: по ним — фильтр чатов, разбор и сверка истории.
         started = self.settings.current
         actions = PublishingActionStore(
@@ -322,6 +332,8 @@ class AccountRuntime:
         bus.subscribe(self.planner.on_delivery, priority=90)
         bus.subscribe(StreamFeed(self.stream, lambda: pipeline.state).on_delivery, priority=95)
         fence = self.fence
+        server = self._deps.server
+        bounds_fn = (lambda: server.current.engine_bounds) if server is not None else None
         self.facade = EngineFacade(
             settings=self.settings,
             gateway=self.gateway,
@@ -336,6 +348,7 @@ class AccountRuntime:
             transport=transport,
             history=lambda: self.history,
             artifacts=artifacts,
+            bounds=bounds_fn,
         )
         self.supervisor.start("pipeline", pipeline.run)
         self.supervisor.start("gateway", self.gateway.run)

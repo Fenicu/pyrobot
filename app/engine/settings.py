@@ -3,9 +3,12 @@ from __future__ import annotations
 import copy
 from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
-from typing import Annotated, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
+
+if TYPE_CHECKING:
+    from app.engine.server_settings import EngineBounds
 
 # Меняется только своими эндпоинтами движка (kill/unkill, pause/resume, сбор артефакта): у них
 # latch шлюза, проверка блокировки экземпляра и аудит, а PATCH настроек обошёл бы их.
@@ -325,6 +328,14 @@ class SettingsConflict(Exception):
     pass
 
 
+class SettingsOutOfBounds(Exception):
+    def __init__(self, path: str, bound: Literal["min", "max"], limit: float) -> None:
+        super().__init__(f"setting_out_of_bounds: {path} ({bound}={limit})")
+        self.path = path
+        self.bound = bound
+        self.limit = limit
+
+
 class SettingsPatchError(ValueError):
     def __init__(self, code: str, path: str) -> None:
         super().__init__(f"{code}: {path}")
@@ -448,10 +459,12 @@ class SettingsPatch:
         *,
         confirm_live: bool = False,
         self_id: int | None = None,
+        bounds: EngineBounds | None = None,
     ) -> None:
         self.changes = changes
         self.confirm_live = confirm_live
         self.self_id = self_id
+        self.bounds = bounds
         self.before: dict[str, Any] | None = None
 
     def __call__(self, settings: Settings) -> Settings:
@@ -465,6 +478,12 @@ class SettingsPatch:
         if new.engine.mode == "live" and not was_live and not self.confirm_live:
             raise SettingsPatchError("live_requires_confirm", "engine.mode")
         check_self_chat(new, self.self_id)
+        if self.bounds is not None:
+            diff = settings_diff(values, new.model_dump(mode="json"))
+            v = self.bounds.violation(new, diff.keys())
+            if v is not None:
+                b, bound_type, limit = v
+                raise SettingsOutOfBounds(b.path, bound_type, limit)
         self.before = values
         return new
 

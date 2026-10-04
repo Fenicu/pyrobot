@@ -829,6 +829,34 @@
         "title": "BalanceOut",
         "type": "object"
       },
+      "BoundOut": {
+        "properties": {
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          }
+        },
+        "title": "BoundOut",
+        "type": "object"
+      },
       "BusyState": {
         "properties": {
           "activity": {
@@ -3221,6 +3249,40 @@
         "title": "Observed[str]",
         "type": "object"
       },
+      "OutOfBoundsOut": {
+        "description": "Значение настройки движка выходит за границы, заданные настройками сервера.",
+        "properties": {
+          "bound": {
+            "enum": [
+              "min",
+              "max"
+            ],
+            "title": "Bound",
+            "type": "string"
+          },
+          "detail": {
+            "const": "setting_out_of_bounds",
+            "title": "Detail",
+            "type": "string"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "number"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail",
+          "path",
+          "bound",
+          "limit"
+        ],
+        "title": "OutOfBoundsOut",
+        "type": "object"
+      },
       "OutlookOut": {
         "properties": {
           "also_ready": {
@@ -4993,6 +5055,13 @@
       },
       "SettingsOut": {
         "properties": {
+          "bounds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BoundOut"
+            },
+            "title": "Bounds",
+            "type": "object"
+          },
           "defaults": {
             "additionalProperties": true,
             "title": "Defaults",
@@ -5017,7 +5086,8 @@
           "version",
           "values",
           "defaults",
-          "schema"
+          "schema",
+          "bounds"
         ],
         "title": "SettingsOut",
         "type": "object"
@@ -9207,13 +9277,16 @@
                     },
                     {
                       "$ref": "#/components/schemas/ChatIsSelfOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OutOfBoundsOut"
                     }
                   ],
                   "title": "Response 422 Patch Settings Api V1 Accounts  Account Id  Settings Patch"
                 }
               }
             },
-            "description": "invalid body or changes | chat_is_self: `chats.*` fields equal to the account's Telegram user"
+            "description": "invalid body or changes | chat_is_self: `chats.*` fields equal to the account's Telegram user | setting_out_of_bounds"
           },
           "503": {
             "content": {

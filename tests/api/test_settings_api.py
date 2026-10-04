@@ -308,3 +308,60 @@ async def test_patch_self_chat_422(api: Api) -> None:
     run_engine(api.container, build(settings=settings, bound_user_id=None))
     r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=self_user)
     assert r.status_code == 200 and settings.current.chats.swinfo_user_id == 42
+
+
+async def test_patch_out_of_bounds_422_via_engine_and_direct(api: Api) -> None:
+    api.container.server_settings.current.engine_bounds.min_request_interval_s_min = 1.6
+    patch = {"version": 0, "changes": {"engine": {"min_request_interval_s": 1.0}}}
+
+    # 1. Без движка (direct)
+    r_direct = await api.client.patch(f"{A1}/settings", headers=api.headers, json=patch)
+    assert r_direct.status_code == 422
+    assert r_direct.json() == {
+        "detail": "setting_out_of_bounds",
+        "path": "engine.min_request_interval_s",
+        "bound": "min",
+        "limit": 1.6,
+    }
+
+    # 2. С движком (via engine)
+    settings = StaticSettings()
+    run_engine(
+        api.container,
+        build(
+            settings=settings,
+            bounds=lambda: api.container.server_settings.current.engine_bounds,
+        ),
+    )
+    r_engine = await api.client.patch(f"{A1}/settings", headers=api.headers, json=patch)
+    assert r_engine.status_code == 422
+    assert r_engine.json() == {
+        "detail": "setting_out_of_bounds",
+        "path": "engine.min_request_interval_s",
+        "bound": "min",
+        "limit": 1.6,
+    }
+
+
+async def test_get_settings_returns_bounds(api: Api) -> None:
+    api.container.server_settings.current.engine_bounds.min_request_interval_s_min = 1.6
+    api.container.server_settings.current.engine_bounds.action_ttl_s_max = 600.0
+    r = await api.client.get(f"{A1}/settings")
+    assert r.status_code == 200
+    body = r.json()
+    assert "bounds" in body
+    bounds = body["bounds"]
+    assert bounds["engine.min_request_interval_s"] == {"min": 1.6, "max": None}
+    assert bounds["engine.antiflood_pause_s"] == {"min": 10.0, "max": None}
+    assert bounds["engine.antiflood_retry_max"] == {"min": None, "max": 2.0}
+    assert bounds["engine.action_ttl_s"] == {"min": None, "max": 600.0}
+
+
+async def test_bounds_apply_to_owner_too(api: Api) -> None:
+    admin = await api.container.auth.get_user("admin")
+    assert admin is not None and admin.role == "owner"
+    api.container.server_settings.current.engine_bounds.min_request_interval_s_min = 2.0
+    patch = {"version": 0, "changes": {"engine": {"min_request_interval_s": 1.5}}}
+    r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=patch)
+    assert r.status_code == 422
+    assert r.json()["detail"] == "setting_out_of_bounds"

@@ -15,6 +15,7 @@ from app.api.errors import (
     ENGINE_STARTING,
     ChatIsSelfOut,
     ErrorOut,
+    OutOfBoundsOut,
     ValidationErrorOut,
     VersionConflictOut,
     error,
@@ -38,11 +39,17 @@ router = account_router("settings")
 ENGINE_STARTING_RETRY_S = 2
 
 
+class BoundOut(BaseModel):
+    min: float | None = None
+    max: float | None = None
+
+
 class SettingsOut(BaseModel):
     version: int
     values: dict[str, Any]
     defaults: dict[str, Any]
     json_schema: dict[str, Any] = Field(serialization_alias="schema")
+    bounds: dict[str, BoundOut]
 
 
 class SettingsPatchIn(BaseModel):
@@ -75,7 +82,10 @@ def _unprocessable(errors: list[dict[str, Any]]) -> HTTPException:
 
 
 @router.get("/settings", response_model=SettingsOut, responses=AUTH)
-async def get_settings(scope: Annotated[AccountScope, Depends(account_scope)]) -> SettingsOut:
+async def get_settings(
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
+) -> SettingsOut:
     """Настройки движка; без движка — из базы, и те, что текущая сборка не принимает: неверное
     значение видно в `values` и исправляется правкой."""
     f = scope.facade
@@ -83,11 +93,14 @@ async def get_settings(scope: Annotated[AccountScope, Depends(account_scope)]) -
         values, version = f.settings.current.model_dump(mode="json"), f.settings.version
     else:
         values, version = await scope.reads.settings()
+    engine_bounds = c.server_settings.current.engine_bounds
+    bounds_out = {b.path: BoundOut(min=b.min, max=b.max) for b in engine_bounds.bounds()}
     return SettingsOut(
         version=version,
         values=values,
         defaults=Settings().model_dump(mode="json"),
         json_schema=Settings.model_json_schema(),
+        bounds=bounds_out,
     )
 
 
@@ -139,7 +152,11 @@ async def _direct(
     account_id = scope.account.id
 
     async def update() -> SettingsUpdate:
-        patch = SettingsPatch(body.changes, confirm_live=body.confirm_live)
+        patch = SettingsPatch(
+            body.changes,
+            confirm_live=body.confirm_live,
+            bounds=c.server_settings.current.engine_bounds,
+        )
         new, saved = await direct_update(
             c.db, account_id, patch, changed_by=by, expected_version=body.version
         )
@@ -171,9 +188,9 @@ async def _direct(
             "description": f"settings changed since `version` | {ACCOUNT_DELETING}",
         },
         422: {
-            "model": ValidationErrorOut | ChatIsSelfOut,
+            "model": ValidationErrorOut | ChatIsSelfOut | OutOfBoundsOut,
             "description": "invalid body or changes | chat_is_self: `chats.*` fields equal to "
-            "the account's Telegram user",
+            "the account's Telegram user | setting_out_of_bounds",
         },
         503: error(ENGINE_STARTING, ENGINE_NOT_RUNNING),
     },

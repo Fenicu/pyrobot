@@ -21,7 +21,7 @@ from app.api.routes_settings import router as settings_router
 from app.api.routes_state import router as state_router
 from app.db.base import Database
 from app.engine.fence import LeaseLost
-from app.engine.settings import ChatIsSelf
+from app.engine.settings import ChatIsSelf, SettingsOutOfBounds
 
 
 async def _lease_lost(_: Request, __: Exception) -> JSONResponse:
@@ -34,6 +34,19 @@ async def _chat_is_self(_: Request, exc: Exception) -> JSONResponse:
     # Правка настроек привязанного аккаунта с его же чатом (раздел 4.3 спеки): поля — рядом.
     assert isinstance(exc, ChatIsSelf)
     return JSONResponse({"detail": CHAT_IS_SELF, "fields": exc.fields}, status_code=422)
+
+
+async def _out_of_bounds(_: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, SettingsOutOfBounds)
+    return JSONResponse(
+        {
+            "detail": "setting_out_of_bounds",
+            "path": exc.path,
+            "bound": exc.bound,
+            "limit": exc.limit,
+        },
+        status_code=422,
+    )
 
 
 async def _db_ok(db: Database) -> bool:
@@ -52,6 +65,7 @@ def create_api(container: Container) -> FastAPI:
     app.state.container = container
     app.add_exception_handler(LeaseLost, _lease_lost)
     app.add_exception_handler(ChatIsSelf, _chat_is_self)
+    app.add_exception_handler(SettingsOutOfBounds, _out_of_bounds)
     app.include_router(auth_router)
     app.include_router(accounts_router)
     app.include_router(account_router)

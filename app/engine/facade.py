@@ -31,6 +31,7 @@ from app.engine.transport.base import GAME_CHAT_USERNAME, JoinStatus, Transport
 if TYPE_CHECKING:
     from app.engine.planner.loop import PlannerLoop
     from app.engine.reconcile import Reconciler
+    from app.engine.server_settings import EngineBounds
     from app.engine.stream import EventStream
 
 log = logging.getLogger(__name__)
@@ -113,6 +114,7 @@ class EngineFacade:
         transport: Transport | None = None,
         history: Callable[[], GameChatWatch | None] = _no_watch,
         artifacts: ArtifactRuns | None = None,
+        bounds: Callable[[], EngineBounds] | None = None,
     ) -> None:
         self.settings = settings
         self.gateway = gateway
@@ -132,6 +134,7 @@ class EngineFacade:
         self._transport = transport
         # Сверка истории стартует после фасада (от выхода в онлайн) — поэтому функция.
         self._history = history
+        self._bounds = bounds
         self._outlook: tuple[tuple[int, int, int], float, datetime, Outlook] | None = None
         self.artifacts = artifacts or ArtifactRuns(
             settings=settings,
@@ -330,8 +333,12 @@ class EngineFacade:
         """Частичное изменение настроек с оптимистичной блокировкой по `version`.
         Переход в `live` — только с `confirm_live`: из dry_run начинаются реальные траты.
         Поле `chats.*`, равное пользователю Telegram привязанного аккаунта, — `ChatIsSelf`."""
+        bounds = self._bounds() if self._bounds is not None else None
         patch = SettingsPatch(
-            changes, confirm_live=confirm_live, self_id=self.tg.status().bound_user_id
+            changes,
+            confirm_live=confirm_live,
+            self_id=self.tg.status().bound_user_id,
+            bounds=bounds,
         )
         new, saved = await self.settings.update(patch, changed_by=by, expected_version=version)
         old = patch.before
