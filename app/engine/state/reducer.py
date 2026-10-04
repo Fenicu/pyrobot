@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
@@ -114,6 +114,8 @@ from app.engine.state.model import (
     CharacterState,
     ChosenTaskState,
     FoodStockState,
+    GadgetsState,
+    GadgetState,
     GorbushkaState,
     LotteryState,
     MetroRunRef,
@@ -627,6 +629,12 @@ def _inventory(p: _Patch, e: Inventory) -> None:
     p.snap("book_ready_at", p.later(e.books_in_s or 0))
     p.snap("card_ready_at", p.later(e.cards_in_s or 0))
     p.snap("prizebox_ready_at", p.later(e.prizebox_in_s or 0) if e.prizebox else None)
+    p.snap(
+        "gadgets",
+        GadgetsState(
+            items=tuple(GadgetState(**asdict(g)) for g in e.gadgets.items), sets=e.gadgets.sets
+        ),
+    )
 
 
 @_on(BookRead)

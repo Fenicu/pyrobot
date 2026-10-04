@@ -323,7 +323,7 @@ async def test_reconciler_lifts_block_from_restart_obligation(
     ids = itertools.count(5_000_000)
 
     async def respond(rec: Sent) -> None:
-        if rec.payload != "😎Я":
+        if rec.payload != "/compact":
             return
         moment = now()
         msg = replace(
@@ -373,7 +373,7 @@ async def test_planner_refreshes_state_in_dry_run(
     ids = itertools.count(6_000_000)
 
     async def respond(rec: Sent) -> None:
-        if rec.payload != "😎Я":
+        if rec.payload != "/compact":
             return
         moment = now()
         msg = replace(
@@ -395,7 +395,7 @@ async def test_planner_refreshes_state_in_dry_run(
             h = await _login_tg(client)
             # Второй запрос уходит после паузы шлюза между запросами (1.6 с).
             await until(lambda: "/inv" in [s.payload for s in engine.transport.sent], 5.0)
-            assert [s.payload for s in engine.transport.sent][:2] == ["😎Я", "/inv"]
+            assert [s.payload for s in engine.transport.sent][:2] == ["/compact", "/inv"]
             await client.post("/api/v1/accounts/1/engine/pause", headers=h)
             status = (await client.get("/api/v1/accounts/1/engine/status")).json()
             assert status["paused"] is True

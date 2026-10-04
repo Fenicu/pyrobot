@@ -6,6 +6,7 @@
 	import ArtifactCard from '$lib/components/home/ArtifactCard.svelte';
 	import CharacterCard from '$lib/components/home/CharacterCard.svelte';
 	import ControlsCard from '$lib/components/home/ControlsCard.svelte';
+	import GadgetsCard from '$lib/components/home/GadgetsCard.svelte';
 	import PlanCard from '$lib/components/home/PlanCard.svelte';
 	import StatusHeader from '$lib/components/home/StatusHeader.svelte';
 	import TodayCard from '$lib/components/home/TodayCard.svelte';
@@ -73,7 +74,10 @@
 	{/if}
 	<PlanCard plan={plan.outlook} error={plan.error} state={character.state} {now} />
 	<div class="grid gap-3 md:grid-cols-2">
-		<CharacterCard state={character.state} stale={character.stale} {now} days={daily.data?.days ?? []} />
+		<div class="space-y-3">
+			<CharacterCard state={character.state} stale={character.stale} {now} days={daily.data?.days ?? []} />
+			<GadgetsCard state={character.state} stale={character.stale} />
+		</div>
 		<TodayCard state={character.state} stale={character.stale} {now} />
 	</div>
 	<ArtifactCard {api} artifact={artifact.data} error={artifact.error} {now} onchange={(out) => artifact.set(out)} />

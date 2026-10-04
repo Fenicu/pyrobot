@@ -14,6 +14,7 @@ from app.engine.state.model import (
     ArtifactCollect,
     BusyState,
     FoodStockState,
+    GadgetsState,
     GorbushkaState,
     LotteryState,
     PersonalTask,
@@ -115,4 +116,5 @@ class PublicState(BaseModel):
     artifacts: Observed[dict[str, int]] | None = None
     artifact_collect: Observed[ArtifactCollect | None] | None = None
     trips: Observed[TripsState] | None = None
+    gadgets: Observed[GadgetsState] | None = None
     activity_stats: dict[str, ActivityStat] = Field(default_factory=dict)

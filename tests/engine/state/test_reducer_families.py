@@ -175,6 +175,25 @@ def test_inventory_books_cards() -> None:
     assert value(state, "card_ready_at") == "2026-09-26T09:53:00Z"
 
 
+def test_inventory_gadgets_snapshot() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "items", 3625102, 1)
+    gadgets = value(state, "gadgets")
+    assert len(gadgets["items"]) == 10
+    assert gadgets["items"][0] == {
+        "grade": "⚫️",
+        "level": 26,
+        "slot": "🕶",
+        "name": "Хиджаб",
+        "bonuses": {"theory": 85, "wisdom": 55, "practice": 30},
+        "mark": "🧶",
+    }
+    assert gadgets["sets"] == ["⚫️Сет VIP", "🗳Сет Логистик", "🗺Сет Кладоискатель", "🦉Сет Сова"]
+    assert state["gadgets"]["src"] == "screen"
+    state = feed(reducer, state, "items", 3516680, 2)
+    assert value(state, "gadgets") == gadgets
+
+
 def test_inventory_timers_and_missing_cards_line() -> None:
     reducer = StateReducer()
     state = feed(reducer, _profiled(reducer), "items", 3618363, 1)

@@ -25,6 +25,8 @@ const account = (id: number, name: string, over: Partial<AccountOut> = {}): Acco
 	killed: false,
 	last_action_at: null,
 	unread: { warn: 0, error: 0 },
+	company: null,
+	team_tag: null,
 	...over
 });
 
@@ -104,6 +106,16 @@ describe('экран аккаунтов', () => {
 		expect(old.getByText('удаляется')).toBeInTheDocument();
 		expect(old.queryByRole('button')).toBeNull();
 		expect(old.queryByRole('link')).toBeNull();
+	});
+
+	it('имя в списке — титул с компанией и командой; поля ввода и подтверждения работают с сырым именем', async () => {
+		const { user } = await setup([account(1, 'Fenicu', { company: 'bmesa', team_tag: 'SU' })]);
+		expect(screen.getByRole('link', { name: '☣️[SU] Fenicu' })).toHaveAttribute('href', '/a/1');
+		await user.click(screen.getByRole('button', { name: 'Переименовать' }));
+		expect(screen.getByLabelText('Новое имя')).toHaveValue('Fenicu');
+		await user.click(screen.getByRole('button', { name: 'Отмена' }));
+		await user.click(screen.getByRole('button', { name: 'Удалить' }));
+		expect(screen.getByLabelText('Имя аккаунта для подтверждения')).toHaveAttribute('placeholder', 'Fenicu');
 	});
 
 	it('колонки таблицы одни для заголовка и всех строк; у колонки кнопок — заголовок для чтеца', async () => {

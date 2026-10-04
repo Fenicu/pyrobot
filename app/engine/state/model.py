@@ -186,6 +186,26 @@ class TripsState(_Frozen):
     last: TripRef | None = None
 
 
+class GadgetState(_Frozen):
+    """Надетый гаджет с экрана `/inv`: значок редкости и уровень (у неулучшенного их нет), значок
+    слота, название, бонусы по навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка
+    (🧶, 📿, 💎)."""
+
+    grade: str | None = None
+    level: int | None = None
+    slot: str
+    name: str
+    bonuses: dict[str, int] = {}
+    mark: str | None = None
+
+
+class GadgetsState(_Frozen):
+    """Надетые гаджеты в порядке экрана и строки сетов («⚫️Сет VIP»)."""
+
+    items: tuple[GadgetState, ...] = ()
+    sets: tuple[str, ...] = ()
+
+
 class ActivityStat(_Frozen):
     """Скользящее среднее наград одного дела (без его цены)."""
 
@@ -297,6 +317,8 @@ class CharacterState(_Frozen):
     artifact_collect: Obs[ArtifactCollect | None] | None = None
     # Транспорт с экрана «Транспорт», стартов и отказов поездок.
     trips: Obs[TripsState] | None = None
+    # Надетые гаджеты и сеты с экрана `/inv`.
+    gadgets: Obs[GadgetsState] | None = None
     activity_stats: dict[str, ActivityStat] = {}
     # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
     # правка итога не начисляет повторно (горизонт хранения — в редьюсере).

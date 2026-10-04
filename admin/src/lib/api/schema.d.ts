@@ -1078,6 +1078,8 @@ export interface components {
         };
         /** AccountOut */
         AccountOut: {
+            /** Company */
+            company: string | null;
             /** Id */
             id: number;
             /** Killed */
@@ -1100,6 +1102,8 @@ export interface components {
             status: "enabled" | "disabled" | "error" | "deleting";
             /** Status Reason */
             status_reason: string | null;
+            /** Team Tag */
+            team_tag: string | null;
             tg: components["schemas"]["AccountTgOut"];
             unread: components["schemas"]["UnreadOut"];
         };
@@ -1653,6 +1657,47 @@ export interface components {
             /** Low */
             low: number;
         };
+        /**
+         * GadgetState
+         * @description Надетый гаджет с экрана `/inv`: значок редкости и уровень (у неулучшенного их нет), значок
+         *     слота, название, бонусы по навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка
+         *     (🧶, 📿, 💎).
+         */
+        GadgetState: {
+            /**
+             * Bonuses
+             * @default {}
+             */
+            bonuses: {
+                [key: string]: number;
+            };
+            /** Grade */
+            grade?: string | null;
+            /** Level */
+            level?: number | null;
+            /** Mark */
+            mark?: string | null;
+            /** Name */
+            name: string;
+            /** Slot */
+            slot: string;
+        };
+        /**
+         * GadgetsState
+         * @description Надетые гаджеты в порядке экрана и строки сетов («⚫️Сет VIP»).
+         */
+        GadgetsState: {
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["GadgetState"][];
+            /**
+             * Sets
+             * @default []
+             */
+            sets: string[];
+        };
         /** GameChatJoinOut */
         GameChatJoinOut: {
             /** Game Chat Member */
@@ -2018,6 +2063,20 @@ export interface components {
             unread: number;
             /** Unread Alerts */
             unread_alerts: number;
+        };
+        /** Observed[GadgetsState] */
+        Observed_GadgetsState_: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Src
+             * @enum {string}
+             */
+            src: "screen" | "derived" | "doubtful";
+            value: components["schemas"]["GadgetsState"];
         };
         /** Observed[GorbushkaState] */
         Observed_GorbushkaState_: {
@@ -2702,6 +2761,7 @@ export interface components {
             factory_won_at?: components["schemas"]["Observed_datetime_"] | null;
             fastfood_ready_at?: components["schemas"]["Observed_datetime_"] | null;
             food_stock?: components["schemas"]["Observed_dict_str__FoodStockState__"] | null;
+            gadgets?: components["schemas"]["Observed_GadgetsState_"] | null;
             glory?: components["schemas"]["Observed_int_"] | null;
             gorbushka?: components["schemas"]["Observed_GorbushkaState_"] | null;
             knowledge?: components["schemas"]["Observed_int_"] | null;

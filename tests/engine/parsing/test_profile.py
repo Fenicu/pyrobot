@@ -265,3 +265,33 @@ def test_trip_in_profile_is_busy_trip(line: str, left_s: int) -> None:
     [p] = recognize_compact(replace(msg, text=text))
     assert isinstance(p, ProfileCompact)
     assert (p.busy_kind, p.busy_left_s) == ("trip", left_s)
+
+
+# Профессия «Скупщик»: в строке уровня свой значок (💼), а не 🧵 — профиль новых аккаунтов с прода.
+_BUYER = (
+    "🎙CEO:\n"
+    "Ты молодец. Ходи в битвы, не забывай про репорты. Приятной игры! /harvest - /del\n"
+    "\n"
+    "Битва через 8ч. 20 мин.!\n"
+    "\n"
+    "☣️[SU]\xa0Casadei 🐕\n"
+    "🎚71   💼16 (💠)\n"
+    "💡17\xa0432\xa0582 из 18\xa0155\xa0142\n"
+    "💵$228 🌐3 🔋100% /to_eat\n"
+    "📚27\xa0241\xa0\xa0 🔩34\xa0247\xa0\xa0 ⚙️37\xa0881\n"
+    "🔥26 из 26 (/pr)\n"
+    "🎒12 из 24 /inv\n"
+    "🍊67 /gifts\n"
+    "\n"
+    "🔨\xa0442    🎓\xa0442\n"
+    "🐿\xa0315    🐢\xa0316\n"
+    "⭐️⭐️⭐️ /cool\n"
+    "🛌Спишь под мостом (11ч. 40 мин.)\n"
+    "Полный профиль /full\n"
+)
+
+
+def test_profile_with_other_profession_icon() -> None:
+    p = _recognized(_BUYER)
+    assert (p.level, p.exp, p.exp_next, p.money) == (71, 17432582, 18155142, 228)
+    assert (p.busy_kind, p.company, p.team_tag) == ("sleep_bridge", "bmesa", "SU")

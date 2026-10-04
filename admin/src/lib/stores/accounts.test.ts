@@ -14,7 +14,9 @@ const account = (id: number, name: string): AccountOut => ({
 	paused: false,
 	killed: false,
 	last_action_at: null,
-	unread: { warn: 0, error: 0 }
+	unread: { warn: 0, error: 0 },
+	company: null,
+	team_tag: null
 });
 
 let visibility: DocumentVisibilityState = 'visible';

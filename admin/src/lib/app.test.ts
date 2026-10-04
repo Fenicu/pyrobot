@@ -16,7 +16,9 @@ const account = (id: number, status: AccountOut['status'] = 'enabled'): AccountO
 	paused: false,
 	killed: false,
 	last_action_at: null,
-	unread: { warn: 0, error: 0 }
+	unread: { warn: 0, error: 0 },
+	company: null,
+	team_tag: null
 });
 
 const state = { list: [account(1), account(2)], listFails: false };

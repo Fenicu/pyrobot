@@ -131,7 +131,7 @@ async def set_engine(world: World, **update: object) -> None:
 
 def script_day(world: World, profile: Ref = ("profile", 3624478)) -> None:
     game = world.game
-    game.on_text("😎Я", profile)
+    game.on_text("/compact", profile)
     game.on_text("/inv", ("items", 3625102))
     game.on_text("/read_exp", ("items", 3516680))
     game.on_text("/to_eat", ("food", 3624997))
@@ -146,7 +146,7 @@ async def test_from_empty_state_to_first_deed(world: World) -> None:
     rig = Rig(world)
     await rig.steps(9)
     assert world.game.payloads() == [
-        "😎Я",
+        "/compact",
         "/inv",
         "/read_exp",
         "/to_eat",
@@ -209,7 +209,7 @@ async def test_scenario_steps_carry_scenario_name(world: World) -> None:
     rig = Rig(world)
     await rig.steps(9)
     names = {row.req.text: row.req.scenario for row in world.store.rows.values()}
-    assert (names["/job"], names["/gorbushka"], names["😎Я"]) == (
+    assert (names["/job"], names["/gorbushka"], names["/compact"]) == (
         "deed:job",
         "gorbushka",
         "refresh",
@@ -254,7 +254,7 @@ async def test_dry_run_defers_suppressed_and_decides_the_rest(dry_world: World) 
     script_day(dry_world)
     rig = Rig(dry_world)
     await rig.steps(12)
-    assert dry_world.game.payloads() == ["😎Я", "/inv", "/to_eat", "/gifts", "/gorbushka"]
+    assert dry_world.game.payloads() == ["/compact", "/inv", "/to_eat", "/gifts", "/gorbushka"]
     runs = [(r.scenario, r.status) for r in rig.store.runs if r.status == "suppressed"]
     assert runs == [("book", "suppressed"), ("card", "suppressed"), ("deed:job", "suppressed")]
     held = {name for name, until in rig.loop._held.items() if until > rig.clock.now()}
@@ -488,7 +488,7 @@ async def test_lottery_cant_afford_waits_for_growth_not_staleness(lottery_world:
     world.game.clock = clock
     profile = game_msg("profile", 3624478)
     poor = replace(profile, text=(profile.text or "").replace("💵$867", "💵$675"))
-    world.game.on_text("😎Я", poor)
+    world.game.on_text("/compact", poor)
     seen = ("lottery", "money", "knowledge", "raw", "details")
 
     def current() -> CharacterState:
@@ -510,9 +510,9 @@ async def test_lottery_cant_afford_waits_for_growth_not_staleness(lottery_world:
     assert world.game.payloads() == ["/tickets"]
     clock.shift += timedelta(minutes=20)
     await loop.step()
-    assert world.game.payloads() == ["/tickets", "😎Я"]
+    assert world.game.payloads() == ["/tickets", "/compact"]
     await loop.step()
-    assert world.game.payloads() == ["/tickets", "😎Я"]
+    assert world.game.payloads() == ["/tickets", "/compact"]
 
 
 async def test_manual_lottery_without_params_keeps_settings(lottery_world: World) -> None:
@@ -664,7 +664,7 @@ async def test_failed_profile_refresh_does_not_hold_inventory(world: World) -> N
     assert [(r.scenario, r.status) for r in rig.store.runs] == [("refresh", "failed")]
     await world.feed("profile", 3624478)
     await rig.loop.step()
-    assert world.game.payloads() == ["😎Я", "/inv"]
+    assert world.game.payloads() == ["/compact", "/inv"]
     assert set(rig.loop._cooldowns) == {"refresh:profile"}
 
 
@@ -681,7 +681,7 @@ async def test_cooldown_survives_run_journal_failure(world: World) -> None:
 
 
 async def test_pause_between_steps_is_not_failure(world: World) -> None:
-    world.game.on_text("😎Я", ("profile", 3624478))
+    world.game.on_text("/compact", ("profile", 3624478))
     world.game.on_text("/to_eat", ("food", 3521844))
     await world.feed("profile", 3624478)
     await world.feed("items", 3625102)
@@ -779,7 +779,7 @@ async def test_last_done_loaded_from_store_and_updated(world: World) -> None:
     earlier = rig.clock.now() - timedelta(hours=2)
     run = await rig.store.run_started(1, "tangerine", {}, earlier)
     await rig.store.run_finished(run, "done", "no_error", earlier)
-    world.game.on_text("😎Я", ("profile", 3624478))
+    world.game.on_text("/compact", ("profile", 3624478))
     await rig.loop.step()
     assert [(r.scenario, r.status) for r in rig.store.runs][-1] == ("refresh", "done")
     assert rig.loop._last_done is not None
@@ -1005,7 +1005,7 @@ async def test_loop_without_auto_runs_only_manual(world: World) -> None:
         assert world.game.payloads() == []
         await rig.loop.request("refresh", {"source": "profile"}, key="r1", by="admin")
         await until(lambda: rig.store.runs[0].status == "done")
-        assert world.game.payloads() == ["😎Я"] and rig.store.decisions == []
+        assert world.game.payloads() == ["/compact"] and rig.store.decisions == []
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
@@ -1089,7 +1089,7 @@ class BeginFails(MemoryPlannerStore):
 
 
 async def _next_manual_done(rig: Rig, key: str) -> None:
-    rig.world.game.on_text("😎Я", ("profile", 3624478))
+    rig.world.game.on_text("/compact", ("profile", 3624478))
     run_id, _ = await rig.loop.request("refresh", {"source": "profile"}, key=key, by="admin")
     await until(lambda: rig.store.runs[run_id - 1].status == "done")
 

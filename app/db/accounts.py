@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Literal, cast
 
 from pydantic import ValidationError
-from sqlalchemy import ScalarSelect, delete, func, select, text, update
+from sqlalchemy import ScalarSelect, and_, case, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +29,7 @@ from app.db.models import (
     User,
 )
 from app.engine.settings import EngineSection, Settings
+from app.engine.state.model import SCHEMA_VERSION
 from app.engine.tg_auth import TgUserTaken
 
 AccountStatus = Literal["enabled", "disabled", "error", "deleting"]
@@ -72,13 +73,16 @@ class AccountInfo:
 @dataclass(frozen=True)
 class AccountOverview:
     """Аккаунт в списке учётки: режим, пауза и kill из настроек в базе, последнее действие и
-    непрочитанные уведомления `warn` и `error`."""
+    непрочитанные уведомления `warn` и `error`; компания и тег команды — из последнего снимка
+    состояния (None — снимка нет или поле не наблюдалось)."""
 
     account: AccountInfo
     engine: EngineSection
     last_action_at: datetime | None
     unread_warn: int
     unread_error: int
+    company: str | None
+    team_tag: str | None
 
 
 def _info(row: Account) -> AccountInfo:
@@ -139,6 +143,23 @@ def _unread(level: str) -> ScalarSelect[int]:
     )
 
 
+def _seen_str(field: str) -> ColumnElement[str | None]:
+    """Строка `state[field].value` снимка; NULL — другая версия схемы, поля нет или не строка."""
+    version = StateSnapshot.state["schema_version"]
+    value = StateSnapshot.state[field]["value"]
+    return case(
+        (
+            and_(
+                func.jsonb_typeof(version) == "number",
+                version.astext == str(SCHEMA_VERSION),
+                func.jsonb_typeof(value) == "string",
+            ),
+            value.astext,
+        ),
+        else_=None,
+    )
+
+
 def _violated(exc: IntegrityError) -> str | None:
     """Имя нарушенного ограничения или индекса (у asyncpg — на исходном исключении)."""
     return getattr(exc.orig.__cause__, "constraint_name", None) if exc.orig else None
@@ -186,16 +207,33 @@ class AccountRepo:
             .scalar_subquery()
         )
         stmt = (
-            select(Account, SettingsRow.data, last_action, _unread("warn"), _unread("error"))
+            select(
+                Account,
+                SettingsRow.data,
+                last_action,
+                _unread("warn"),
+                _unread("error"),
+                _seen_str("company"),
+                _seen_str("team_tag"),
+            )
             .outerjoin(SettingsRow, SettingsRow.account_id == Account.id)
+            .outerjoin(StateSnapshot, StateSnapshot.account_id == Account.id)
             .where(Account.owner_id == owner_id)
             .order_by(Account.id)
         )
         async with self._db.sessions() as session:
             rows = (await session.execute(stmt)).all()
         return [
-            AccountOverview(_info(row), engine_section(data), last, int(warn), int(error))
-            for row, data, last, warn, error in rows
+            AccountOverview(
+                account=_info(row),
+                engine=engine_section(data),
+                last_action_at=last,
+                unread_warn=int(warn),
+                unread_error=int(error),
+                company=company,
+                team_tag=team_tag,
+            )
+            for row, data, last, warn, error, company, team_tag in rows
         ]
 
     async def has_tg_session(self, account_id: int) -> bool:

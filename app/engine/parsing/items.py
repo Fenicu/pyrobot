@@ -1,16 +1,27 @@
 from __future__ import annotations
 
+import itertools
 import re
 from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 from app.engine.events import Event
-from app.engine.parsing.common import DURATION, NUM, Rewards, dur, num, parse_rewards
+from app.engine.parsing.common import DURATION, NUM, SKILLS, Rewards, dur, num, parse_rewards
 from app.engine.types import IncomingMessage
 
 _INVENTORY = "Гаджеты при тебе: (снять)"
 _BOOKS = re.compile(r"^📒Книга опыта: (?P<n>\d+)(?: \((?P<t>" + DURATION + r")\))?", re.M)
 _CARDS = re.compile(r"^💳Подарочная карта: (?P<n>\d+)(?: \((?P<t>" + DURATION + r")\))?", re.M)
+_VS16 = "\ufe0f"
+_SET = re.compile(r"^\S+?Сет ")
+# Строка надетого гаджета: «⚫️26 🕶Хиджаб (+85🎓, 🧶) /unwear_h18»; значок слота слитно с названием,
+# у неулучшенного гаджета редкости и уровня нет: «👔Жилетка LoRat (+63🐢, +23🎓) /unwear_t501».
+_GADGET = re.compile(
+    r"^(?:(?P<grade>[^\d\s]+)(?P<level>\d+)[ \xa0])?(?P<slot>[^\w\s]\ufe0f?)(?P<name>.+?)"
+    r" \((?P<stats>[^()]*)\) /unwear_\w+$"
+)
+_BONUS = re.compile(r"^\+(?P<n>\d+)(?P<icon>\S+)$")
+_SKILL_BY_ICON = {name[0]: code for name, code in SKILLS.items()}
 _PRIZEBOX = re.compile(
     r"^🎁[\xa0 ]?Призовая коробка /unbox(?: \((?P<t>" + DURATION + r")\))?$", re.M
 )
@@ -36,6 +47,28 @@ _MONEY_AFTER = re.compile(r"Стало: \$(?P<money>" + NUM + r")")
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class Gadget:
+    """Надетый гаджет: значок редкости и уровень (у неулучшенного их нет), значок слота, название,
+    бонусы по навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка в конце скобок
+    (🧶, 📿, 💎)."""
+
+    grade: str | None
+    level: int | None
+    slot: str
+    name: str
+    bonuses: dict[str, int]
+    mark: str | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Gadgets:
+    """Надетые гаджеты в порядке экрана и строки сетов как есть («⚫️Сет VIP»)."""
+
+    items: tuple[Gadget, ...] = ()
+    sets: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Inventory(Event):
     kind: ClassVar[str] = "inventory"
     books: int
@@ -46,6 +79,7 @@ class Inventory(Event):
     prizebox_in_s: int | None
     bag: int
     bag_cap: int
+    gadgets: Gadgets = field(default_factory=Gadgets)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -99,6 +133,44 @@ def _count(m: re.Match[str] | None) -> tuple[int, int | None]:
     return int(m["n"]), dur(m["t"]) if m["t"] else None
 
 
+def _gadget(line: str) -> Gadget | None:
+    m = _GADGET.match(line)
+    if m is None:
+        return None
+    bonuses: dict[str, int] = {}
+    mark: str | None = None
+    for part in m["stats"].split(", "):
+        bonus = _BONUS.match(part)
+        if bonus is None:
+            mark = part or None
+            continue
+        code = _SKILL_BY_ICON.get(bonus["icon"].replace(_VS16, ""))
+        if code is None:
+            return None
+        bonuses[code] = int(bonus["n"])
+    return Gadget(
+        grade=m["grade"],
+        level=int(m["level"]) if m["level"] else None,
+        slot=m["slot"],
+        name=m["name"],
+        bonuses=bonuses,
+        mark=mark,
+    )
+
+
+def _gadgets(text: str) -> Gadgets:
+    """Блок «Гаджеты при тебе»: строки гаджетов до пустой, затем строки сетов до первой строки не
+    сета; блок рюкзака не читается. Нераспознанная строка гаджета пропускается."""
+    lines = text.split("\n")[1:]
+    worn = list(itertools.takewhile(str.strip, lines))
+    rest = lines[len(worn) + 1 :]
+    sets = itertools.takewhile(_SET.match, rest)
+    items = (_gadget(line) for line in worn)
+    return Gadgets(
+        items=tuple(g for g in items if g is not None), sets=tuple(s.strip() for s in sets)
+    )
+
+
 def _inventory(text: str) -> list[Event]:
     # Строк 📒 и 💳 при нуле нет: целостность экрана определяют заголовок и «Занято N из M».
     slots = _SLOTS.search(text)
@@ -117,6 +189,7 @@ def _inventory(text: str) -> list[Event]:
             prizebox_in_s=dur(box["t"]) if box and box["t"] else None,
             bag=int(slots["used"]),
             bag_cap=int(slots["cap"]),
+            gadgets=_gadgets(text),
         )
     ]
 

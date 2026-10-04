@@ -8,12 +8,26 @@ from app.engine.parsing.items import (
     BookRead,
     CardUsed,
     ContainerOpened,
+    Gadget,
+    Gadgets,
     GiftsScreen,
     Inventory,
     PrizeboxOpened,
     recognize_items,
 )
+from tests.engine.inv_texts import INV_HISTORY, INV_PROD_1, INV_PROD_4, INV_PROD_5, INV_PROD_6
 from tests.fixtures import game_msg
+
+
+def _inventory(text: str) -> Inventory:
+    msg = replace(game_msg("items", 3625102), text=text)
+    [inventory] = recognize_items(msg)
+    assert isinstance(inventory, Inventory)
+    return inventory
+
+
+# Во всех четырёх экранах ниже надет один и тот же набор: он совпадает с прод-образцом 1.
+WORN = _inventory(INV_PROD_1).gadgets
 
 
 @pytest.mark.parametrize(
@@ -30,6 +44,7 @@ from tests.fixtures import game_msg
                 prizebox_in_s=None,
                 bag=10,
                 bag_cap=24,
+                gadgets=WORN,
             ),
         ),
         (
@@ -43,6 +58,7 @@ from tests.fixtures import game_msg
                 prizebox_in_s=60480,
                 bag=11,
                 bag_cap=24,
+                gadgets=WORN,
             ),
         ),
         (
@@ -56,6 +72,7 @@ from tests.fixtures import game_msg
                 prizebox_in_s=54360,
                 bag=11,
                 bag_cap=24,
+                gadgets=WORN,
             ),
         ),
         (
@@ -69,6 +86,7 @@ from tests.fixtures import game_msg
                 prizebox_in_s=15660,
                 bag=11,
                 bag_cap=24,
+                gadgets=WORN,
             ),
         ),
         (3516680, BookRead(exp=457, next_in_s=3000)),
@@ -139,3 +157,146 @@ def test_inventory_without_slots_line_gives_nothing() -> None:
     assert msg.text is not None
     broken = replace(msg, text=msg.text.replace("Занято 11 из 24", "…"))
     assert recognize_items(broken) == []
+
+
+def test_gadgets_prod_1_field_by_field() -> None:
+    gadgets = _inventory(INV_PROD_1).gadgets
+    assert len(gadgets.items) == 10
+    assert gadgets.items[0] == Gadget(
+        grade="⚫️",
+        level=26,
+        slot="🕶",
+        name="Хиджаб",
+        bonuses={"theory": 85, "wisdom": 55, "practice": 30},
+        mark="🧶",
+    )
+    assert gadgets.items[7] == Gadget(
+        grade="⚫️",
+        level=25,
+        slot="⌚️",
+        name="SM-art",
+        bonuses={"theory": 100, "practice": 51},
+        mark="💎",
+    )
+    slots = [g.slot for g in gadgets.items]
+    assert slots == ["🕶", "👞", "👖", "👕", "📱", "💻", "💍", "⌚️", "🪫", "👔"]
+    assert gadgets.sets == ("⚫️Сет VIP", "🗳Сет Логистик", "🗺Сет Кладоискатель", "🦉Сет Сова")
+
+
+def test_gadgets_prod_4_without_mark_and_with_spaced_name() -> None:
+    gadgets = _inventory(INV_PROD_4).gadgets
+    assert len(gadgets.items) == 8
+    assert gadgets.items[5] == Gadget(
+        grade="🔴",
+        level=18,
+        slot="💻",
+        name="MAC-адрес ноута",
+        bonuses={"theory": 31, "cunning": 31},
+        mark=None,
+    )
+    assert all(g.mark is None for g in gadgets.items)
+    assert gadgets.sets == ("🔴Сет Уникальный", "🌞Сет Летний")
+
+
+def test_gadgets_prod_5_and_6() -> None:
+    five = _inventory(INV_PROD_5).gadgets
+    assert [g.name for g in five.items][:3] == ["PA’ltishCo", "Хулитопы", "SM-art"]
+    assert five.sets == ("⚫️Сет VIP", "🗳Сет Логистик", "🗺Сет Кладоискатель")
+    six = _inventory(INV_PROD_6).gadgets
+    assert len(six.items) == 8
+    assert six.items[6] == Gadget(
+        grade="⚫️",
+        level=25,
+        slot="👔",
+        name="Жилетка LoRat",
+        bonuses={"wisdom": 110, "theory": 40},
+        mark=None,
+    )
+    assert six.sets == ("⚫️Сет VIP", "🐷Сет Свинтус")
+
+
+def test_gadgets_history_sample_and_backpack_not_parsed() -> None:
+    inventory = _inventory(INV_HISTORY)
+    assert len(inventory.gadgets.items) == 10
+    assert inventory.gadgets.items[2].slot == "👖"
+    assert all("LoRat" not in g.name for g in inventory.gadgets.items[:9])
+    assert (inventory.books, inventory.cards, inventory.bag, inventory.bag_cap) == (
+        872,
+        14,
+        11,
+        24,
+    )
+
+
+def test_gadgets_separator_may_be_plain_space() -> None:
+    assert "🔴18\xa0" in INV_PROD_4
+    text = INV_PROD_4.replace("🔴18\xa0", "🔴18 ")
+    assert _inventory(text).gadgets == _inventory(INV_PROD_4).gadgets
+
+
+def test_gadgets_none_worn_and_no_sets() -> None:
+    text = "Гаджеты при тебе: (снять)\n\nБонусы - /bonuses\n\n" + INV_PROD_4.split("\n\n", 2)[2]
+    inventory = _inventory(text)
+    assert inventory.gadgets == Gadgets()
+    assert (inventory.books, inventory.bag_cap) == (131, 20)
+
+
+def test_broken_gadget_line_is_skipped_inventory_still_parsed() -> None:
+    text = INV_PROD_4.replace(
+        "🔴18\xa0💍Bat Ring (+31🔨, +31🐢) /unwear_r12", "🔴?? мусор /unwear_r12"
+    )
+    inventory = _inventory(text)
+    assert len(inventory.gadgets.items) == 7
+    assert "Bat Ring" not in [g.name for g in inventory.gadgets.items]
+    assert inventory.gadgets.sets == ("🔴Сет Уникальный", "🌞Сет Летний")
+    assert (inventory.books, inventory.cards, inventory.bag, inventory.bag_cap) == (
+        131,
+        40,
+        12,
+        20,
+    )
+
+
+_TAIL = "Занято 0 из 20\n"
+
+
+def test_sets_stop_at_first_non_set_line_without_bonuses_line() -> None:
+    text = (
+        "Гаджеты при тебе: (снять)\n⚫️25\xa0👔Жилетка LoRat (+110🐢, +40🎓) /unwear_t501\n\n"
+        "⚫️Сет VIP\n🌞Сет Летний\nТвои ресурсы - 1 шт.\nПосмотреть - /bag\n\n" + _TAIL
+    )
+    assert _inventory(text).gadgets.sets == ("⚫️Сет VIP", "🌞Сет Летний")
+
+
+def test_sets_none_when_next_line_is_foreign() -> None:
+    text = (
+        "Гаджеты при тебе: (снять)\n⚫️25\xa0👔Жилетка LoRat (+110🐢, +40🎓) /unwear_t501\n\n"
+        "Твои ресурсы - 1 шт.\nПосмотреть - /bag\n\n" + _TAIL
+    )
+    assert _inventory(text).gadgets.sets == ()
+
+
+def test_empty_screen_without_bonuses_line_has_no_items_and_sets() -> None:
+    text = "Гаджеты при тебе: (снять)\n\nТвои ресурсы - 1 шт.\nПосмотреть - /bag\n\n" + _TAIL
+    assert _inventory(text).gadgets == Gadgets()
+
+
+def test_worn_gadget_without_grade_and_level() -> None:
+    text = (
+        "Гаджеты при тебе: (снять)\n👔Жилетка LoRat (+63🐢, +23🎓) /unwear_t501\n"
+        "💍Простое кольцо (+10🔨, +10🐢) /unwear_r10\n\nБонусы - /bonuses\n\n" + _TAIL
+    )
+    first, second = _inventory(text).gadgets.items
+    assert first == Gadget(
+        grade=None,
+        level=None,
+        slot="👔",
+        name="Жилетка LoRat",
+        bonuses={"wisdom": 63, "theory": 23},
+    )
+    assert (second.grade, second.level, second.slot, second.name) == (
+        None,
+        None,
+        "💍",
+        "Простое кольцо",
+    )

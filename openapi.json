@@ -31,6 +31,17 @@
       },
       "AccountOut": {
         "properties": {
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -88,6 +99,17 @@
             ],
             "title": "Status Reason"
           },
+          "team_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Tag"
+          },
           "tg": {
             "$ref": "#/components/schemas/AccountTgOut"
           },
@@ -105,7 +127,9 @@
           "paused",
           "killed",
           "last_action_at",
-          "unread"
+          "unread",
+          "company",
+          "team_tag"
         ],
         "title": "AccountOut",
         "type": "object"
@@ -1690,6 +1714,89 @@
         "title": "FoodStockState",
         "type": "object"
       },
+      "GadgetState": {
+        "description": "Надетый гаджет с экрана `/inv`: значок редкости и уровень (у неулучшенного их нет), значок\nслота, название, бонусы по навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка\n(🧶, 📿, 💎).",
+        "properties": {
+          "bonuses": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Bonuses",
+            "type": "object"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "mark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mark"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "name"
+        ],
+        "title": "GadgetState",
+        "type": "object"
+      },
+      "GadgetsState": {
+        "description": "Надетые гаджеты в порядке экрана и строки сетов («⚫️Сет VIP»).",
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GadgetState"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "sets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sets",
+            "type": "array"
+          }
+        },
+        "title": "GadgetsState",
+        "type": "object"
+      },
       "GameChatJoinOut": {
         "properties": {
           "game_chat_member": {
@@ -2703,6 +2810,35 @@
           "next_before"
         ],
         "title": "NotificationsPage",
+        "type": "object"
+      },
+      "Observed_GadgetsState_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/GadgetsState"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[GadgetsState]",
         "type": "object"
       },
       "Observed_GorbushkaState_": {
@@ -4496,6 +4632,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Observed_dict_str__FoodStockState__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gadgets": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_GadgetsState_"
               },
               {
                 "type": "null"

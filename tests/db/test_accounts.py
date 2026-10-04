@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -15,8 +16,9 @@ from app.db.accounts import (
     TgUserTaken,
 )
 from app.db.base import Database
-from app.db.models import Account, SettingsRow, User
+from app.db.models import Account, SettingsRow, StateSnapshot, User
 from app.engine.settings import Settings
+from app.engine.state.model import SCHEMA_VERSION, CharacterState, Obs, dump_state
 
 pytestmark = pytest.mark.db
 
@@ -300,3 +302,62 @@ async def test_create_checks_in_spec_order(
     # Превышен только CapacityReached (total_max=10 позволяет) -> CapacityReached
     with pytest.raises(CapacityReached):
         await repo.create(user_id, "Второй", max_accounts=5, total_max=10, capacity=2)
+
+
+async def _snapshot(db: Database, account_id: int, state: dict[str, Any]) -> None:
+    async with db.sessions() as session, session.begin():
+        session.add(StateSnapshot(account_id=account_id, version=1, state=state))
+
+
+def _seen(value: str | None) -> Obs[str | None]:
+    return Obs(value=value, at=datetime(2026, 10, 1, tzinfo=UTC))
+
+
+async def test_overview_company_and_team_tag_from_snapshot(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    first = await repo.create(user_id, "Первый", capacity=20)
+    second = await repo.create(user_id, "Второй", capacity=20)
+    third = await repo.create(user_id, "Третий", capacity=20)
+    await _snapshot(
+        clean_db,
+        first.id,
+        dump_state(CharacterState(company=_seen("umbrl"), team_tag=_seen("SU"))),
+    )
+    await _snapshot(clean_db, second.id, dump_state(CharacterState(company=_seen("piper"))))
+    by_id = {o.account.id: o for o in await repo.overview(user_id)}
+    assert (by_id[first.id].company, by_id[first.id].team_tag) == ("umbrl", "SU")
+    assert (by_id[second.id].company, by_id[second.id].team_tag) == ("piper", None)
+    assert (by_id[third.id].company, by_id[third.id].team_tag) == (None, None)
+
+
+async def test_overview_unreadable_snapshot_gives_none(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    acc = await repo.create(user_id, "Второй", capacity=20)
+    await _snapshot(
+        clean_db,
+        acc.id,
+        {"schema_version": SCHEMA_VERSION, "company": {"value": 5}, "team_tag": "SU"},
+    )
+    (only,) = await repo.overview(user_id)
+    assert (only.company, only.team_tag) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"company": {"value": "piper"}, "team_tag": {"value": "SU"}},
+        {"schema_version": SCHEMA_VERSION + 1, "company": {"value": "piper"}},
+        {"schema_version": str(SCHEMA_VERSION), "company": {"value": "piper"}},
+        {"schema_version": SCHEMA_VERSION, "company": {"value": None}, "team_tag": {}},
+        {"schema_version": SCHEMA_VERSION, "company": [], "team_tag": None},
+    ],
+)
+async def test_overview_foreign_snapshot_shapes_give_none(
+    repo: AccountRepo, clean_db: Database, user_id: int, state: dict[str, Any]
+) -> None:
+    acc = await repo.create(user_id, "Второй", capacity=20)
+    await _snapshot(clean_db, acc.id, state)
+    (only,) = await repo.overview(user_id)
+    assert (only.company, only.team_tag) == (None, None)

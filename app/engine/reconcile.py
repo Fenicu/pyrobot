@@ -40,7 +40,7 @@ class RefreshSource:
     fields: tuple[str, ...]
 
 
-PROFILE = RefreshSource("profile", "😎Я", ProfileCompact, ("money", "motivation", "stamina"))
+PROFILE = RefreshSource("profile", "/compact", ProfileCompact, ("money", "motivation", "stamina"))
 FOOD = RefreshSource("food", "/to_eat", FoodMenu, ("food_stock",))
 INVENTORY = RefreshSource("inventory", "/inv", Inventory, ("books", "cards"))
 GIFTS = RefreshSource("gifts", "/gifts", GiftsScreen, ("containers_small", "containers_medium"))

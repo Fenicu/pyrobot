@@ -227,7 +227,7 @@ async def test_free_item_refused(world: World, item: str, fixture: int, reason: 
 
 
 REFRESHES = {
-    "profile": ("😎Я", ("profile", 3624478)),
+    "profile": ("/compact", ("profile", 3624478)),
     "inventory": ("/inv", ("items", 3625102)),
     "food": ("/to_eat", ("food", 3624997)),
     "gifts": ("/gifts", ("items", 3623585)),
@@ -245,8 +245,67 @@ async def test_refresh(world: World, source: str) -> None:
 
 
 async def test_refresh_is_sent_in_dry_run_and_simulation(world: World) -> None:
-    world.game.on_text("😎Я", ("profile", 3624478))
+    world.game.on_text("/compact", ("profile", 3624478))
     ctx = context(world, simulate=True)
     result = await run_scenario(refresh, ctx, CharacterState(), {"source": "profile"})
     assert result.status == "done"
+    assert world.state.money is not None
+
+
+# Полный профиль (настройка персонажа в игре, у новых аккаунтов по умолчанию): «😎Я» отвечает им,
+# а разбирается только компактный — его даёт `/compact` при любой настройке.
+FULL_PROFILE = (
+    "🎙CEO сообщает:\n"
+    "Ты молодец. Ходи в битвы, не забывай про репорты. Приятной игры! /harvest - /del\n"
+    "\n"
+    "До следующей Битвы осталось 8ч. 44 мин.!\n"
+    "\n"
+    "[SU]\xa0Casadei (☣️Black Mesa) 🐕\n"
+    "🎚Уровень: 71\n"
+    "💡Опыт: 17\xa0432\xa0572 из 18\xa0155\xa0142\n"
+    "💼Скупщик 16 (💠)\n"
+    "💵Деньги: $220\n"
+    "🌐Swcoin: 3\n"
+    "📚Знания: 27\xa0241\n"
+    "🔩Сырьё: 34\xa0247\n"
+    "⚙️Детали: 37\xa0880\n"
+    "📈Акции: 14\xa0272 (/stock)\n"
+    "🔥Мотивация: 26 из 26 (/pr)\n"
+    "🎒Рюкзак: 12 из 24 (/inventory)\n"
+    "🍊67 (/gifts)\n"
+    "\n"
+    "Навыки\n"
+    "🔨Практика: 39+230+173 (442)\n"
+    "🎓Теория: 39+230+173 (442)\n"
+    "🐿Хитрость: 37+159+119 (315)\n"
+    "🐢Мудрость: 38+159+119 (316)\n"
+    "🔋Выносливость: 100% /to_eat\n"
+    "💪Крутизна: ⭐️⭐️⭐️ /cool\n"
+    "\n"
+    "Гаджеты\n"
+    "⚫️25\xa0PA’ltishCo (+137🐢, +51🎓, 📿)\n"
+    "⚫️25\xa0Хулитопы (+84🔨, +54🐿, +30🎓, 🧶)\n"
+    "⚫️25\xa0SM-art (+100🎓, +51🔨, 💎)\n"
+    "⚫️25\xa0RedRing (+88🔨, +88🐢, 💎)\n"
+    "⚫️25\xa0M-Zhilетka (+137🐿, +51🔨, 📿)\n"
+    "⚫️25\xa0iBlackM (+100🔨, +51🎓, 💎)\n"
+    "⚫️25\xa0WeBook (+88🎓, +88🐿, 💎)\n"
+    "⚫️25\xa0Хиджаб (+84🎓, +54🐢, +30🔨, 🧶)\n"
+    "\n"
+    "🛌Сон через какое-то время\n"
+    "\n"
+    "Занятие\n"
+    " Ничем не занят\n"
+    "\n"
+    "Компактный профиль /compact\n"
+    "Бонусы /bonuses\n"
+    "Настройки /settings"
+)
+
+
+async def test_refresh_profile_of_character_with_full_profile(world: World) -> None:
+    world.game.on_text("😎Я", replace(game_msg("profile", 3624478), text=FULL_PROFILE))
+    world.game.on_text("/compact", ("profile", 3624478))
+    result = await run_scenario(refresh, context(world), CharacterState(), {"source": "profile"})
+    assert (result.status, world.game.payloads()) == ("done", ["/compact"])
     assert world.state.money is not None

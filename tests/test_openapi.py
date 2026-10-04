@@ -77,6 +77,26 @@ def test_state_schema_is_public_model() -> None:
     }
 
 
+def test_state_schema_has_gadgets() -> None:
+    schemas = _schemas()
+    public = schemas["PublicState"]
+    assert public["properties"]["gadgets"]["anyOf"] == [
+        {"$ref": "#/components/schemas/Observed_GadgetsState_"},
+        {"type": "null"},
+    ]
+    gadgets = schemas["GadgetsState"]["properties"]
+    assert gadgets["items"]["items"] == {"$ref": "#/components/schemas/GadgetState"}
+    assert gadgets["sets"]["items"] == {"type": "string"}
+    assert set(schemas["GadgetState"]["properties"]) == {
+        "grade",
+        "level",
+        "slot",
+        "name",
+        "bonuses",
+        "mark",
+    }
+
+
 def _error_ref(schema: dict[str, Any], path: str, method: str, code: str) -> Any:
     response = schema["paths"][path][method]["responses"][code]
     return response["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[1]
