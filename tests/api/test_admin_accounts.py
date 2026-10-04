@@ -272,6 +272,29 @@ async def test_block_requires_reason_and_notifies_account(api: Api) -> None:
         assert notif.text == "account unblocked by owner"
 
 
+@pytest.mark.parametrize("blocked", [True, False])
+async def test_block_unblock_account_purged_midway_returns_404(
+    api: Api, monkeypatch: pytest.MonkeyPatch, blocked: bool
+) -> None:
+    bob_id = await make_user(api.container, "bob", role="user")
+    acc = await api.container.accounts.create(bob_id, "BobPurged")
+
+    async def gone(*_args: object) -> None:
+        raise KeyError(acc.id)
+
+    monkeypatch.setattr(api.container.accounts, "block", gone)
+    monkeypatch.setattr(api.container.accounts, "unblock", gone)
+
+    body = {"blocked": True, "reason": "Спам"} if blocked else {"blocked": False}
+    r = await api.client.patch(
+        f"/api/v1/admin/accounts/{acc.id}",
+        json=body,
+        headers=api.headers,
+    )
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] == "account not found"
+
+
 async def test_user_cannot_enable_blocked_account(api: Api) -> None:
     bob_id = await make_user(api.container, "bob", role="user")
     acc = await api.container.accounts.create(bob_id, "BobBlocked")

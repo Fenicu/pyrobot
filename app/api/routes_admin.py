@@ -263,7 +263,10 @@ async def patch_account(
 
     if body.blocked:
         assert body.reason is not None
-        await c.accounts.block(account_id, body.reason.strip())
+        try:
+            await c.accounts.block(account_id, body.reason.strip())
+        except KeyError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, ACCOUNT_NOT_FOUND) from exc
         if c.audit is not None:
             await c.audit.write(
                 Actor.of(ctx),
@@ -273,7 +276,10 @@ async def patch_account(
                 details={"reason": body.reason.strip()},
             )
     else:
-        await c.accounts.unblock(account_id)
+        try:
+            await c.accounts.unblock(account_id)
+        except KeyError as exc:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, ACCOUNT_NOT_FOUND) from exc
         if c.audit is not None:
             await c.audit.write(
                 Actor.of(ctx),

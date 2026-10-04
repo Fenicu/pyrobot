@@ -37,13 +37,6 @@ ALLOWED = {
     "messages_1h",
     "actions_1h",
     "rows",
-    # Ключи rows
-    "messages",
-    "actions",
-    "decisions",
-    "metrics",
-    "ledger",
-    "notifications",
     # Стандартные поля ошибок FastAPI / Pydantic
     "detail",
     "loc",
@@ -61,6 +54,7 @@ FORBIDDEN = {
     "settings",
     "metro",
     "commands",
+    "metrics",
 }
 
 
