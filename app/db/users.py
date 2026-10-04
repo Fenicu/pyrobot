@@ -153,3 +153,68 @@ class UserRepo:
                 )
             )
             return int(count or 0)
+
+    async def mark_deleting(self, user_id: int) -> list[int]:
+        """Помечает пользователя на удаление или сразу удаляет, если аккаунтов нет."""
+        async with self._db.sessions() as session, session.begin():
+            active_owners = list(
+                await session.scalars(
+                    select(User)
+                    .where(
+                        User.role == "owner",
+                        User.disabled_at.is_(None),
+                        User.deleting_at.is_(None),
+                    )
+                    .order_by(User.id)
+                    .with_for_update()
+                )
+            )
+            row = await session.get(User, user_id, with_for_update=True)
+            if row is None:
+                raise KeyError(user_id)
+
+            if row.role == "owner" and row.disabled_at is None and row.deleting_at is None:
+                if len(active_owners) <= 1:
+                    raise LastOwner("cannot delete the last active owner")
+            elif row.role == "owner" and len(active_owners) == 0:
+                raise LastOwner("cannot delete owner when no active owners remain")
+
+            now = func.now()
+            if row.disabled_at is None:
+                row.disabled_at = now
+            row.deleting_at = now
+            await session.execute(delete(AuthSession).where(AuthSession.admin_user_id == user_id))
+
+            await session.execute(
+                update(Account)
+                .where(Account.owner_id == user_id, Account.status != "deleting")
+                .values(
+                    status="deleting",
+                    updated_at=now,
+                )
+            )
+
+            account_ids = list(
+                await session.scalars(
+                    select(Account.id).where(Account.owner_id == user_id).order_by(Account.id)
+                )
+            )
+            if not account_ids:
+                await session.execute(delete(User).where(User.id == user_id))
+                return []
+            return list(account_ids)
+
+    async def finish_deleting(self, user_id: int) -> bool:
+        """Удаляет строку пользователя, если он помечен на удаление и не осталось аккаунтов."""
+        async with self._db.sessions() as session, session.begin():
+            has_accounts = select(1).where(Account.owner_id == user_id).exists()
+            deleted = await session.scalar(
+                delete(User)
+                .where(
+                    User.id == user_id,
+                    User.deleting_at.is_not(None),
+                    ~has_accounts,
+                )
+                .returning(User.id)
+            )
+            return deleted is not None

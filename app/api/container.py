@@ -19,6 +19,7 @@ from app.engine.clock import Clock, SystemClock
 
 if TYPE_CHECKING:
     from app.api.scope import EngineRegistry
+    from app.db.admin_reads import AdminReads
     from app.db.audit import AuditLog
     from app.db.invites import InviteRepo
     from app.db.notifications import ServerNotifier
@@ -42,6 +43,7 @@ class Container:
     recovery_codes: RecoveryCodes
     audit: AuditLog | None = None
     server_notifier: ServerNotifier | None = None
+    admin_reads: AdminReads = field(default=None)  # type: ignore[assignment]
     confirm: ConfirmTokens = field(default_factory=ConfirmTokens)
     sse_slots: SseSlots = field(default_factory=SseSlots)
     # Сколько запрос ручной команды ждёт итога шлюза, прежде чем ответить 202 pending.
@@ -65,6 +67,10 @@ class Container:
             from app.db.recovery import RecoveryRequests
 
             self.recovery_requests = RecoveryRequests(self.db, self.recovery_key)
+        if self.admin_reads is None:
+            from app.db.admin_reads import AdminReads
+
+            self.admin_reads = AdminReads(self.db)
 
     def spawn(self, coro: Coroutine[Any, Any, Any]) -> None:
         async def _runner() -> None:

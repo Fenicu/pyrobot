@@ -25,6 +25,7 @@ from app.db.models import (
     TgPeer,
     TgSession,
     UnrecognizedRow,
+    User,
 )
 from app.engine.fence import Fence
 from app.engine.host import host as host_module
@@ -240,6 +241,33 @@ async def test_purge_in_batches_only_deleting_account(clean_db: Database) -> Non
     assert await repo.get(two) is None
     # Повтор после конца ничего не делает.
     await repo.purge(two, batch=2)
+
+
+async def test_purge_deletes_user_after_last_account(clean_db: Database) -> None:
+    repo = AccountRepo(clean_db)
+    async with clean_db.sessions() as s, s.begin():
+        owner = User(login="owner", password_hash="h", role="owner")
+        u = User(login="del_user", password_hash="h", role="user", deleting_at=now())
+        s.add_all([owner, u])
+        await s.flush()
+        uid = u.id
+        acc1 = Account(owner_id=uid, name="A1", status="deleting")
+        acc2 = Account(owner_id=uid, name="A2", status="deleting")
+        s.add_all([acc1, acc2])
+        await s.flush()
+        a1_id, a2_id = acc1.id, acc2.id
+
+    # Purge acc1: acc2 still remains, so user row must remain
+    await repo.purge(a1_id)
+    assert await repo.get(a1_id) is None
+    async with clean_db.sessions() as s:
+        assert await s.get(User, uid) is not None
+
+    # Purge acc2 (last account of deleting user): user row must be deleted
+    await repo.purge(a2_id)
+    assert await repo.get(a2_id) is None
+    async with clean_db.sessions() as s:
+        assert await s.get(User, uid) is None
 
 
 async def test_cleanup_offline_logout_for_stopped_account_with_session(

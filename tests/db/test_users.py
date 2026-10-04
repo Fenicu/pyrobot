@@ -269,3 +269,100 @@ async def test_concurrent_disable_of_two_owners_leaves_one(clean_db: Database) -
     assert len(successes) == 1
     assert len(errors) == 1
     assert await users.owners_active() == 1
+
+
+async def test_mark_deleting_without_accounts_removes_user_immediately(clean_db: Database) -> None:
+    users = UserRepo(clean_db)
+    async with clean_db.sessions() as s, s.begin():
+        owner = User(login="owner", password_hash="h", role="owner")
+        user = User(login="user_no_acc", password_hash="h", role="user")
+        s.add_all([owner, user])
+        await s.flush()
+        uid = user.id
+
+    ids = await users.mark_deleting(uid)
+    assert ids == []
+    assert await users.get(uid) is None
+
+
+async def test_mark_deleting_with_accounts_marks_accounts_deleting(clean_db: Database) -> None:
+    users = UserRepo(clean_db)
+    accounts = AccountRepo(clean_db)
+    async with clean_db.sessions() as s, s.begin():
+        owner = User(login="owner", password_hash="h", role="owner")
+        user = User(login="user_with_acc", password_hash="h", role="user")
+        s.add_all([owner, user])
+        await s.flush()
+        uid = user.id
+        exp = datetime.now(UTC)
+        s.add(AuthSession(token_hash="th1", csrf_token="c1", admin_user_id=uid, expires_at=exp))
+        acc1 = Account(owner_id=uid, name="Acc1", status="enabled")
+        acc2 = Account(owner_id=uid, name="Acc2", status="disabled")
+        acc3 = Account(owner_id=uid, name="Acc3", status="deleting")
+        s.add_all([acc1, acc2, acc3])
+        await s.flush()
+        id1, id2, id3 = acc1.id, acc2.id, acc3.id
+
+    ids = await users.mark_deleting(uid)
+    assert sorted(ids) == sorted([id1, id2, id3])
+
+    u = await users.get(uid)
+    assert u is not None
+    assert u.disabled_at is not None
+    assert u.deleting_at is not None
+    assert not u.active
+
+    # Sessions cleared
+    async with clean_db.sessions() as s:
+        stmt = select(AuthSession).where(AuthSession.admin_user_id == uid)
+        assert len(list(await s.scalars(stmt))) == 0
+
+    # All accounts are now deleting
+    for aid in (id1, id2, id3):
+        acc = await accounts.get(aid)
+        assert acc is not None and acc.status == "deleting"
+
+
+async def test_mark_deleting_last_owner_raises(clean_db: Database) -> None:
+    users = UserRepo(clean_db)
+    async with clean_db.sessions() as s, s.begin():
+        owner = User(login="sole_owner", password_hash="h", role="owner")
+        s.add(owner)
+        await s.flush()
+        oid = owner.id
+
+    with pytest.raises(LastOwner):
+        await users.mark_deleting(oid)
+
+
+async def test_finish_deleting(clean_db: Database) -> None:
+    users = UserRepo(clean_db)
+    async with clean_db.sessions() as s, s.begin():
+        owner = User(login="owner", password_hash="h", role="owner")
+        user = User(
+            login="deleting_user",
+            password_hash="h",
+            role="user",
+            deleting_at=datetime.now(UTC),
+        )
+        s.add_all([owner, user])
+        await s.flush()
+        uid = user.id
+        acc = Account(owner_id=uid, name="Acc", status="deleting")
+        s.add(acc)
+        await s.flush()
+        acc_id = acc.id
+
+    # Has account -> finish_deleting returns False
+    assert await users.finish_deleting(uid) is False
+    assert await users.get(uid) is not None
+
+    # Remove account
+    async with clean_db.sessions() as s, s.begin():
+        row = await s.get(Account, acc_id)
+        if row:
+            await s.delete(row)
+
+    # Now finish_deleting removes user
+    assert await users.finish_deleting(uid) is True
+    assert await users.get(uid) is None

@@ -314,6 +314,7 @@ class AccountRepo:
             return
         if account.status != "deleting":
             raise ValueError(f"account {account_id} is not deleting")
+        owner_id = account.owner_id
         for model in _PURGED:
             deleted = batch
             while deleted >= batch:
@@ -322,6 +323,15 @@ class AccountRepo:
             await session.execute(
                 delete(Account).where(Account.id == account_id, Account.status == "deleting")
             )
+            if owner_id is not None:
+                has_accounts = select(1).where(Account.owner_id == owner_id).exists()
+                await session.execute(
+                    delete(User).where(
+                        User.id == owner_id,
+                        User.deleting_at.is_not(None),
+                        ~has_accounts,
+                    )
+                )
 
     async def _delete_rows(self, model: Any, account_id: int, batch: int) -> int:
         """Пачка строк аккаунта; сколько удалено. Без пачек (0) — у таблиц, чей ключ включает

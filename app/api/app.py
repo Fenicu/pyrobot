@@ -7,6 +7,7 @@ from app.api.container import Container
 from app.api.errors import CHAT_IS_SELF, ENGINE_NOT_RUNNING
 from app.api.routes_accounts import account as account_router
 from app.api.routes_accounts import router as accounts_router
+from app.api.routes_admin import router as admin_router
 from app.api.routes_artifact import router as artifact_router
 from app.api.routes_auth import router as auth_router
 from app.api.routes_commands import catalog_router
@@ -69,6 +70,7 @@ def create_api(container: Container) -> FastAPI:
     app.add_exception_handler(SettingsOutOfBounds, _out_of_bounds)
     app.include_router(auth_router)
     app.include_router(invites_router)
+    app.include_router(admin_router)
     app.include_router(accounts_router)
     app.include_router(account_router)
     app.include_router(catalog_router)
