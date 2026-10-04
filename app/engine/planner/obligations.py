@@ -20,7 +20,13 @@ from app.engine.planner.base import (
     battle_hour,
 )
 from app.engine.planner.types import Decision, Reserve
-from app.engine.state.model import BusyState, LotteryState, MetroRunRef, StockLimits
+from app.engine.state.model import (
+    BusyState,
+    CharacterState,
+    LotteryState,
+    MetroRunRef,
+    StockLimits,
+)
 from app.engine.state.reducer import LOTTERY_CURRENCIES
 
 # Деньги на отель дела не тратят за столько до начала сна.
@@ -45,6 +51,27 @@ METRO_SAFETY = 1.5
 # Забег, прерванный рестартом, продолжается, если последний его экран свежий и игра ещё не
 # выкинула персонажа.
 METRO_STALE = timedelta(hours=2)
+
+
+def metro_inside(s: CharacterState, now: datetime) -> tuple[MetroRunRef, datetime] | None:
+    """Забег, в котором персонаж ещё может быть, и его битва (известная на входе, к началу
+    часа): игра выкидывает из метро за 15 минут до неё."""
+    inside = s.metro_message
+    if inside is None or inside.value is None or inside.value.battle_at is None:
+        return None
+    known = inside.value.battle_at
+    battle = battle_hour(known.value, known.at)
+    return (inside.value, battle) if now < battle - GAME_KICK else None
+
+
+def metro_live(s: CharacterState, now: datetime) -> MetroRunRef | None:
+    """Забег, который можно продолжить: персонаж в метро, последний экран забега распознан и
+    свежий."""
+    seen = s.metro_message
+    inside = metro_inside(s, now)
+    if inside is None or seen is None or seen.src == "doubtful" or now - seen.at > METRO_STALE:
+        return None
+    return inside[0]
 
 
 def p90(values: Sequence[float]) -> float:
@@ -439,14 +466,7 @@ class Obligations(PlannerBase):
         return tuple(sorted(held, key=lambda r: (r.at, r.kind)))
 
     def metro_inside(self) -> tuple[MetroRunRef, datetime] | None:
-        """Забег, в котором персонаж ещё может быть, и его битва (известная на входе, к началу
-        часа): игра выкидывает из метро за 15 минут до неё."""
-        inside = self.s.metro_message
-        if inside is None or inside.value is None or inside.value.battle_at is None:
-            return None
-        known = inside.value.battle_at
-        battle = battle_hour(known.value, known.at)
-        return (inside.value, battle) if self.now < battle - GAME_KICK else None
+        return metro_inside(self.s, self.now)
 
     def metro(self, busy: BusyState | None) -> Decision | None:
         inside = self.metro_inside() if self.cfg.features.metro else None

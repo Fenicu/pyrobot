@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from app.engine.bus import Delivery
@@ -27,9 +27,17 @@ from app.engine.parsing.food import FoodMenu
 from app.engine.parsing.gorbushka import GorbushkaScreen
 from app.engine.parsing.items import GiftsScreen, Inventory
 from app.engine.parsing.profile import ProfileCompact
+from app.engine.planner.obligations import metro_live
 from app.engine.settings import SettingsProvider
+from app.engine.state.model import MetroRunRef, load_state
+from app.engine.types import IncomingMessage
 
 log = logging.getLogger(__name__)
+
+Reread = Callable[[int, int], Awaitable[IncomingMessage | None]]
+# В метро игра на текст не отвечает: сверка ждёт конца забега, но не дольше этого.
+METRO_WAIT = timedelta(hours=1)
+METRO_REREAD = timedelta(minutes=5)
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +99,9 @@ class Reconciler:
         max_backoff_s: float = 1800.0,
         timeout_s: float = 30.0,
         stuck_after: int = 3,
+        reread: Reread | None = None,
+        metro_wait_s: float = METRO_WAIT.total_seconds(),
+        metro_reread_s: float = METRO_REREAD.total_seconds(),
     ) -> None:
         self._gateway = gateway
         self._store = store
@@ -104,6 +115,12 @@ class Reconciler:
         self._max_backoff_s = max_backoff_s
         self._timeout_s = timeout_s
         self._stuck_after = stuck_after
+        self._reread = reread
+        self._metro_wait = timedelta(seconds=metro_wait_s)
+        self._metro_reread = timedelta(seconds=metro_reread_s)
+        # Начало ожидания конца забега и последнее перечитывание его сообщения.
+        self._metro_since: datetime | None = None
+        self._metro_read_at: datetime | None = None
         # Сообщённые шлюзом неопределённые действия: страховка на случай, когда их
         # итоговый статус не записался в БД.
         self._noted: list[Obligation] = []
@@ -136,7 +153,12 @@ class Reconciler:
     async def run(self) -> None:
         failures = 0
         while True:
+            if self._gateway.spending_blocked != RECONCILE_REASON:
+                self._metro_since = self._metro_read_at = None
             if self._gateway.spending_blocked != RECONCILE_REASON or not self._ready():
+                await self._pause(self._poll_s)
+                continue
+            if await self._wait_metro():
                 await self._pause(self._poll_s)
                 continue
             obligations = await self.pending()
@@ -199,6 +221,32 @@ class Reconciler:
             return None
         log.warning("reconcile %s: %s %s", source.name, result.status.value, result.reason)
         return False
+
+    async def _wait_metro(self) -> bool:
+        """Персонаж в идущем забеге: /compact игра не ответит, сверка ждёт его конца (итог
+        забега обновит отметку). Сообщение забега перечитывается — конец, пропущенный
+        конвейером, тоже снимает ожидание; после METRO_WAIT — обычная сверка с её неудачами."""
+        now = self._clock.now()
+        run = self._metro_run(now)
+        if run is None:
+            self._metro_since = self._metro_read_at = None
+            return False
+        if self._metro_since is None:
+            self._metro_since = now
+        if now - self._metro_since >= self._metro_wait:
+            return False
+        read = self._metro_read_at
+        if self._reread is not None and (read is None or now - read >= self._metro_reread):
+            self._metro_read_at = now
+            try:
+                await self._reread(self._game, run.message_id)
+            except Exception:
+                log.warning("metro message %d not reread", run.message_id)
+            return self._metro_run(self._clock.now()) is not None
+        return True
+
+    def _metro_run(self, now: datetime) -> MetroRunRef | None:
+        return metro_live(load_state(dict(self._state())), now)
 
     def _fresh(self, source: RefreshSource, requested_at: datetime) -> bool:
         # Событие получено, но состояние должно его учесть: редьюсер мог упасть.

@@ -140,3 +140,16 @@ async def test_stop_cancels_planner_before_closing_gateway(runtime: AccountRunti
 async def test_planner_not_ready_while_pipeline_unhealthy(runtime: AccountRuntime) -> None:
     runtime.pipeline = SimpleNamespace(healthy=False)  # type: ignore[assignment]
     assert runtime._planner_ready() == "pipeline_unhealthy"
+
+
+async def test_planner_not_ready_reason_offline_before_spending_block(
+    runtime: AccountRuntime,
+) -> None:
+    # «spending_blocked» цикл понимает как «можно продолжить забег метро»: отдаётся последней.
+    runtime.pipeline = SimpleNamespace(healthy=True)  # type: ignore[assignment]
+    runtime.gateway = SimpleNamespace(  # type: ignore[assignment]
+        kill_reason=None, spending_blocked="reconcile_required"
+    )
+    cannot = runtime._can_send()
+    assert cannot is not None
+    assert runtime._planner_ready() == cannot

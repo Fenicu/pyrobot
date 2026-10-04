@@ -3,6 +3,7 @@ import itertools
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
 from datetime import timedelta
+from typing import Any
 
 import pytest
 
@@ -34,8 +35,11 @@ from app.engine.reconcile import (
 from app.engine.settings import ChatsSection, Settings, StaticSettings
 from app.engine.state.reducer import StateReducer
 from app.engine.transport.fake import Sent
+from app.engine.types import IncomingMessage
 from tests.engine.gateway_rig import LIVE, Rig, send
 from tests.engine.helpers import GAME, now, until
+from tests.engine.metro.simgame import RUN
+from tests.engine.scenarios.test_metro import STUCK_FINISHED_TEXT, STUCK_MAP_GOING_LEFT
 from tests.fixtures import game_msg
 
 PARSER = default_parser(ChatsSection())
@@ -63,6 +67,7 @@ class World:
         apply_state: bool = True,
         answer: bool = True,
         ready: Callable[[], bool] = lambda: True,
+        **reconciler: Any,
     ) -> None:
         self.rig = Rig()
         self.bus = Bus()
@@ -92,6 +97,7 @@ class World:
             poll_s=0.01,
             max_backoff_s=0.08,
             timeout_s=0.1,
+            **reconciler,
         )
         self.rig.gw.on_uncertain = self.reconciler.note
 
@@ -316,3 +322,136 @@ async def test_not_ready_waits() -> None:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
         await w.rig.stop()
+
+
+METRO_MSG = 325707
+REVISIONS = itertools.count(1_791_142_461)
+
+
+def _metro_frame(text: str, *, minutes_ago: float = 0.0) -> IncomingMessage:
+    moment = now() - timedelta(minutes=minutes_ago)
+    return replace(
+        game_msg("metro", RUN, 6),
+        msg_id=METRO_MSG,
+        kind="edit",
+        revision=next(REVISIONS),
+        text=text,
+        date=moment,
+        created_at=moment,
+        received_at=moment,
+    )
+
+
+async def _in_metro(w: World, frame: IncomingMessage) -> None:
+    # Битва из профиля (через 11 ч) — забег, из которого игра ещё не выкинула.
+    moment = now()
+    profile = replace(
+        game_msg("profile", 3624478),
+        msg_id=next(w.ids),
+        date=moment,
+        created_at=moment,
+        received_at=moment,
+    )
+    await w.pipeline.process(profile)
+    await w.pipeline.process(frame)
+    assert w.pipeline.state["metro_message"]["value"]["message_id"] == METRO_MSG
+
+
+async def _running(w: World) -> asyncio.Task[None]:
+    w.rig.start()
+    return asyncio.create_task(w.reconciler.run())
+
+
+async def _stop(w: World, task: asyncio.Task[None]) -> None:
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    await w.rig.stop()
+
+
+async def test_reconcile_waits_for_live_metro_run_to_finish() -> None:
+    w = World()
+    await _in_metro(w, _metro_frame(STUCK_MAP_GOING_LEFT))
+    task = await _running(w)
+    try:
+        await _uncertain(w, "/harvest")
+        await asyncio.sleep(0.1)
+        # В метро игра на текст не отвечает: /compact не шлётся, неудачи не копятся.
+        assert w.sent() == ["/harvest"]
+        assert "reconcile_stuck" not in w.notes.codes
+        await w.pipeline.process(_metro_frame(STUCK_FINISHED_TEXT))
+        await until(lambda: w.rig.gw.spending_blocked is None)
+        assert w.sent() == ["/harvest", "/compact"]
+    finally:
+        await _stop(w, task)
+
+
+async def test_reconcile_metro_wait_is_bounded() -> None:
+    w = World(answer=False, metro_wait_s=0.15)
+    await _in_metro(w, _metro_frame(STUCK_MAP_GOING_LEFT))
+    task = await _running(w)
+    try:
+        await _uncertain(w, "/harvest")
+        await asyncio.sleep(0.05)
+        assert w.sent() == ["/harvest"]
+        await until(lambda: "reconcile_stuck" in w.notes.codes, timeout=2.0)
+        assert "/compact" in w.sent()
+        assert w.rig.gw.spending_blocked == RECONCILE_REASON
+    finally:
+        await _stop(w, task)
+
+
+@pytest.mark.parametrize("last_screen", ["stale", "doubtful"])
+async def test_reconcile_does_not_wait_for_dead_metro_mark(last_screen: str) -> None:
+    w = World()
+    if last_screen == "stale":
+        await _in_metro(w, _metro_frame(STUCK_MAP_GOING_LEFT, minutes_ago=180))
+    else:
+        await _in_metro(w, _metro_frame(STUCK_MAP_GOING_LEFT))
+        await w.pipeline.process(_metro_frame("Ты что-то нажал, и что-то произошло."))
+        assert w.pipeline.state["metro_message"]["src"] == "doubtful"
+    task = await _running(w)
+    try:
+        await _uncertain(w, "/harvest")
+        await until(lambda: w.rig.gw.spending_blocked is None)
+        assert w.sent() == ["/harvest", "/compact"]
+    finally:
+        await _stop(w, task)
+
+
+async def test_reconcile_rereads_metro_message_and_sees_run_over() -> None:
+    reads: list[tuple[int, int]] = []
+
+    async def reread(chat_id: int, msg_id: int) -> IncomingMessage | None:
+        # Итог забега есть в Telegram, но его правка до конвейера не дошла.
+        reads.append((chat_id, msg_id))
+        finished = _metro_frame(STUCK_FINISHED_TEXT)
+        await w.pipeline.process(finished)
+        return finished
+
+    w = World(reread=reread)
+    await _in_metro(w, _metro_frame(STUCK_MAP_GOING_LEFT))
+    task = await _running(w)
+    try:
+        await _uncertain(w, "/harvest")
+        await until(lambda: w.rig.gw.spending_blocked is None)
+        assert reads == [(GAME, METRO_MSG)]
+        assert w.sent() == ["/harvest", "/compact"]
+    finally:
+        await _stop(w, task)
+
+
+async def test_reconcile_metro_wait_restarts_with_new_block() -> None:
+    w = World(answer=False, metro_wait_s=0.3)
+    await _in_metro(w, _metro_frame(STUCK_MAP_GOING_LEFT))
+    task = await _running(w)
+    try:
+        await _uncertain(w, "/harvest")
+        await asyncio.sleep(0.2)
+        await w.reconciler.override()
+        await asyncio.sleep(0.2)
+        # Новый блок в том же забеге: ожидание отсчитывается заново, /compact не шлётся.
+        await _uncertain(w, "/job")
+        await asyncio.sleep(0.15)
+        assert w.sent() == ["/harvest", "/job"]
+    finally:
+        await _stop(w, task)

@@ -801,6 +801,33 @@ def decide(
     return planner.decide()
 
 
+def resume_metro(
+    state: CharacterState,
+    settings: Settings,
+    now: datetime,
+    *,
+    certified: frozenset[str] | None = None,
+    cooldowns: Mapping[str, datetime] | None = None,
+    last_done: Mapping[str, datetime] | None = None,
+    metro_durations: Sequence[float] = (),
+) -> Act | None:
+    """Только продолжение забега метро — решение под блоком трат до сверки: ходы метро ничего
+    не тратят, а сверка ждёт конца забега."""
+    planner = _Planner(
+        state,
+        settings,
+        now,
+        certified,
+        {},
+        cooldowns or {},
+        last_done or {},
+        metro_durations,
+        None,
+    )
+    decision = planner.metro_resume(None)
+    return decision if isinstance(decision, Act) else None
+
+
 def outlook(
     state: CharacterState,
     settings: Settings,

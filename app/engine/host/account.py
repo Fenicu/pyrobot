@@ -283,6 +283,7 @@ class AccountRuntime:
             ),
             game_chat_id=settings.current.chats.game_chat_id,
             poll_s=self.reconcile_poll_s,
+            reread=live_reread(transport, pipeline),
         )
         gateway.on_uncertain = reconciler.note
         planner_store = PublishingPlannerStore(
@@ -485,11 +486,14 @@ class AccountRuntime:
         gateway = self.gateway
         if engine.killed or (gateway is not None and gateway.kill_reason is not None):
             return "killed"
-        if gateway is not None and gateway.spending_blocked is not None:
-            return "spending_blocked"
         if self.pipeline is not None and not self.pipeline.healthy:
             return "pipeline_unhealthy"
-        return self._can_send()
+        if (cannot := self._can_send()) is not None:
+            return cannot
+        # Последней: под блоком трат цикл ещё может продолжить забег метро.
+        if gateway is not None and gateway.spending_blocked is not None:
+            return "spending_blocked"
+        return None
 
     async def _make_transport(self, pipeline: Pipeline) -> tuple[Transport, TgAuthBackend]:
         config = self._deps.config

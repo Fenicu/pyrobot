@@ -12,11 +12,11 @@ from app.engine.artifact import ArtifactRuns
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
 from app.engine.gametime import day_start, tasks_day, to_msk
-from app.engine.gateway.gateway import ActionGateway
+from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.gateway.types import Source
 from app.engine.metro.store import METRO_HISTORY, MetroRunStore
 from app.engine.notify import NotifierPort
-from app.engine.planner.decide import Outlook, decide, lottery_params, outlook
+from app.engine.planner.decide import Outlook, decide, lottery_params, outlook, resume_metro
 from app.engine.planner.obligations import LOTTERY_OPEN
 from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Act, Wait
@@ -286,9 +286,11 @@ class PlannerLoop:
     async def _step(self) -> float | None:
         now = self._clock.now()
         await self._artifact_tick()
-        if self._ready() is not None:
+        if (ready := self._ready()) is not None:
             self.next_wake = None
             self._waiting = None
+            if ready == "spending_blocked" and await self._resume_metro(now):
+                return None
             return self._poll_s
         settings = self._settings.current
         if self._last_done is None:
@@ -320,6 +322,30 @@ class PlannerLoop:
         # Режим запуска — тот, в котором принято решение.
         await self._execute(decision, decision_id, dry_run=settings.engine.mode == "dry_run")
         return None
+
+    async def _resume_metro(self, now: datetime) -> bool:
+        """Под блоком трат до сверки — только продолжение забега метро: сверка ждёт его конца."""
+        if self._gateway.spending_blocked != RECONCILE_REASON:
+            return False
+        settings = self._settings.current
+        if self._last_done is None:
+            self._last_done = await self._store.last_done()
+        if self._metro_durations is None:
+            self._metro_durations = await self._load_metro_durations()
+        act = resume_metro(
+            self._observed(),
+            settings,
+            now,
+            certified=CERTIFIED if settings.engine.mode == "live" else None,
+            cooldowns=self._blocked(),
+            last_done=self._last_done,
+            metro_durations=self._metro_durations,
+        )
+        if act is None:
+            return False
+        decision_id = await self._store.record(now, act)
+        await self._execute(act, decision_id, dry_run=settings.engine.mode == "dry_run")
+        return True
 
     async def _artifact_tick(self) -> None:
         """Окончание сбора артефакта и сверка его запуска: в игру ничего не шлёт — и до

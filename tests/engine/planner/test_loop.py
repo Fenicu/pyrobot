@@ -9,6 +9,7 @@ import pytest
 
 import app.engine.planner.loop as loop_module
 from app.engine.bus import Delivery
+from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.types import Source
 from app.engine.metro.store import MemoryMetroRunStore
 from app.engine.notify import Level
@@ -31,7 +32,14 @@ from app.engine.settings import Settings
 from app.engine.state.model import CharacterState
 from tests.engine.fakegame import LIVE, Ref, World, running_world
 from tests.engine.helpers import until
-from tests.engine.planner.test_obligations import only, state
+from tests.engine.planner.test_obligations import (
+    METRO_ALONE,
+    metro_state,
+    only,
+    run_in,
+    state,
+)
+from tests.engine.planner.test_obligations import NOON as OBLIGATIONS_NOON
 from tests.fixtures import game_msg
 
 
@@ -1121,3 +1129,42 @@ async def test_manual_run_failed_when_begin_not_stored(world: World) -> None:
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.parametrize(
+    ("block", "inside", "resumed"),
+    [
+        (RECONCILE_REASON, True, True),
+        (RECONCILE_REASON, False, False),
+        ("manual", True, False),
+    ],
+)
+async def test_metro_run_resumed_under_reconcile_block(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    block: str,
+    inside: bool,
+    resumed: bool,
+) -> None:
+    # Ходы метро ничего не тратят: забег, застигнутый блоком трат, доводится до конца — иначе
+    # сверка ждала бы его конца, а продолжить его было бы некому.
+    seen: list[dict[str, Any]] = []
+
+    async def fake_metro(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        seen.append(dict(params))
+        return ScenarioResult("done", "finished")
+
+    monkeypatch.setitem(loop_module.SCENARIOS, "metro", ScenarioSpec("metro", fake_metro, True))
+    await world.settings.update(
+        lambda s: s.model_copy(update={"features": METRO_ALONE.features}), changed_by="test"
+    )
+    now = OBLIGATIONS_NOON
+    run = run_in(now - timedelta(minutes=3)) if inside else None
+    observed = metro_state(now, metro_message=run, metro_ready_at=now + timedelta(days=1))
+    world.gateway.block_spending(block)
+    rig = Rig(world, ready="spending_blocked")
+    rig.loop._state = lambda: observed
+    rig.loop._clock = FixedClock(now)
+    await rig.loop.step()
+    assert [p.get("resume") for p in seen] == ([run_in(now).value.message_id] if resumed else [])
+    assert [r.scenario for r in rig.store.runs] == (["metro"] if resumed else [])
