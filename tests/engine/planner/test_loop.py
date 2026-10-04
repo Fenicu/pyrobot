@@ -339,17 +339,21 @@ async def test_failure_series_backs_off_until_done(world: World) -> None:
 async def test_blind_team_pick_notifies_once_chosen(world: World) -> None:
     rig = Rig(world)
     at = moment()
+    # Как у планировщика при экране robPro, labRaw, labKnows: вслепую взят первый по экрану,
+    # отклонённые идут по экрану, выбранный дописан последним.
     others = (
+        Candidate("team_pick", {"task": "labRaw_hard"}, None, "team labRaw ?🔥"),
         Candidate("team_pick", {"task": "labKnows_hard"}, None, "team labKnows ?🔥"),
-        Candidate("team_pick", {"task": "labRaw_hard"}, None, "chosen"),
+        Candidate("team_pick", {"task": "robPro_hard"}, None, "chosen"),
     )
-    blind = Act("team_pick", {"task": "labRaw_hard"}, "team labRaw ?🔥", others)
+    blind = Act("team_pick", {"task": "robPro_hard"}, "team robPro ?🔥", others)
     await rig.loop._after(blind, ScenarioResult("nothing", "offer_gone"), at, at)
     assert rig.notes.codes == []
     await rig.loop._after(blind, ScenarioResult("done", "task_chosen"), at, at)
     assert rig.notes.codes == ["team_pick_unknown"]
     assert rig.notes.texts == [
-        "no income known for hard team offers labKnows_hard, labRaw_hard; picked labRaw_hard"
+        "no income known for hard team offers robPro_hard, labRaw_hard, labKnows_hard;"
+        " picked robPro_hard"
     ]
     known = Act("team_pick", {"task": "convDets_hard"}, "team convDets 72🔥")
     await rig.loop._after(known, ScenarioResult("done", "task_chosen"), at, at)

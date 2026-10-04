@@ -655,12 +655,14 @@ class PlannerLoop:
 
 
 def _blind_team_pick(act: Act) -> str:
-    offers = sorted(
+    """Варианты в порядке экрана: вслепую взят первый, отклонённые записаны по экрану."""
+    picked = str(act.params["task"])
+    offers = [picked] + [
         str(c.params["task"])
         for c in act.candidates
-        if c.scenario == "team_pick" and "task" in c.params
-    )
-    return f"no income known for hard team offers {', '.join(offers)}; picked {act.params['task']}"
+        if c.scenario == "team_pick" and c.verdict != "chosen" and "task" in c.params
+    ]
+    return f"no income known for hard team offers {', '.join(offers)}; picked {picked}"
 
 
 def _lottery_short(result: ScenarioResult) -> tuple[int, dict[str, int]] | None:
