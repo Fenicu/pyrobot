@@ -62,6 +62,10 @@ _REFUSAL = re.compile(
 )
 # Последний блок сообщения — «Ты получил:» с наградой; сюжет может содержать пустые строки.
 _REWARDS_ONLY = re.compile(r"\A\S.*\n\nТы получил:\n[^\n]+(?:\n[^\n]+)*\Z", re.S)
+# Итоги поездки без награды — только сюжет, целиком.
+_NO_REWARD = frozenset(
+    {"Долго катался по городу в поисках приключений. Увы, сегодня не твой день."}
+)
 
 
 def vehicle_key(name: str) -> str:
@@ -135,8 +139,9 @@ class TripRefused(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RewardsOnly(Event):
-    """«<сюжет>», пустая строка, «Ты получил:» и награда — сообщение, которое не распознало ни
-    одно семейство: итог поездки, если она идёт (решает редьюсер), иначе не применяется."""
+    """«<сюжет>», пустая строка, «Ты получил:» и награда (или известный сюжет без награды) —
+    сообщение, которое не распознало ни одно семейство: итог поездки, если она идёт (решает
+    редьюсер), иначе не применяется."""
 
     kind: ClassVar[str] = "rewards_only"
     claimed_by: ClassVar[str | None] = "trip"
@@ -211,6 +216,8 @@ def recognize_trips(msg: IncomingMessage) -> list[Event]:
 
 def recognize_rewards_only(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
+    if text in _NO_REWARD:
+        return [RewardsOnly(rewards=Rewards())]
     return [RewardsOnly(rewards=parse_rewards(text))] if _REWARDS_ONLY.match(text) else []
 
 

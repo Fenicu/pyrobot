@@ -237,6 +237,17 @@ def test_bonus_only_result_still_a_trip_in_ledger() -> None:
     assert last is not None and last.done
 
 
+def test_result_without_reward_ends_the_trip() -> None:
+    r = StateReducer()
+    s = profiled(r)
+    s, _ = apply(r, s, t.START_TRAM, 0, 2)
+    s, effects = apply(r, s, t.RESULT_NOTHING, 10, 3)
+    assert effects == (Effect("trip", {}, key=f"trip:{at(0).isoformat()}"),)
+    assert busy(s) is None
+    last = trips(s).last
+    assert last is not None and last.done and last.result_id == 3
+
+
 def test_edit_of_trip_result_claims_again_without_reapplying() -> None:
     r = StateReducer()
     s = profiled(r)

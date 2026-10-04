@@ -203,6 +203,12 @@ def test_result_is_rewards_only(text: str, rewards: Rewards) -> None:
     assert parse(text) == [RewardsOnly(rewards=rewards)]
 
 
+def test_result_without_reward_is_rewards_only_with_nothing() -> None:
+    assert parse(t.RESULT_NOTHING) == [RewardsOnly(rewards=Rewards())]
+    # Только целиком: продолжение после фразы — уже не итог поездки.
+    assert recognize_rewards_only(game_text(t.RESULT_NOTHING + "\n\n/job")) == []
+
+
 def test_rewards_only_is_a_fallback_after_every_family() -> None:
     # Итог дела с той же формой, но со строкой продолжения — итог дела, не «только награда».
     deed = (
