@@ -96,6 +96,7 @@ class FeaturesSection(BaseModel):
     arena: bool = Field(default=False, json_schema_extra=UNUSED)
     pet_feast: bool = False
     daily_tasks: bool = True
+    team_pick: bool = True
     robbery_defense: bool = True
     paid_info: bool = False
     seasonal: bool = False

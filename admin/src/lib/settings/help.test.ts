@@ -26,7 +26,7 @@ function schemaPaths(): { groups: string[]; leaves: string[] } {
 describe('описания настроек', () => {
 	const { groups, leaves } = schemaPaths();
 
-	it('схема: 19 секций и групп, 103 листа', () => {
+	it('схема: 19 секций и групп, 104 листа', () => {
 		expect(groups).toHaveLength(19);
 		expect(groups).toContain('lottery.tickets');
 		expect(groups).toContain('lottery.keep');
@@ -34,7 +34,8 @@ describe('описания настроек', () => {
 		expect(groups).toContain('artifacts');
 		expect(groups).toContain('artifact_run');
 		expect(groups).toContain('trips');
-		expect(leaves).toHaveLength(103);
+		expect(leaves).toContain('features.team_pick');
+		expect(leaves).toHaveLength(104);
 	});
 
 	it('словарь совпадает с путями схемы в обе стороны', () => {

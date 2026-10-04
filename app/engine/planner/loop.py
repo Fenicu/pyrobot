@@ -16,6 +16,7 @@ from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import Source
 from app.engine.metro.store import METRO_HISTORY, MetroRunStore
 from app.engine.notify import NotifierPort
+from app.engine.planner.daily import UNKNOWN_FIRE
 from app.engine.planner.decide import Outlook, decide, lottery_params, outlook
 from app.engine.planner.obligations import LOTTERY_OPEN
 from app.engine.planner.store import DecisionRecord, PlannerStore
@@ -587,6 +588,8 @@ class PlannerLoop:
             # Запуск относится к дню своего начала: вчерашний сегодняшний счётчик не меняет.
             if is_deed and today is not None and tasks_day(started) == today[0]:
                 today[1][name] = today[1].get(name, 0) + 1
+            if name == "team_pick" and act.reason.endswith(UNKNOWN_FIRE):
+                await self._notifier.notify("warn", "team_pick_unknown", _blind_team_pick(act))
             return
         if name == "tangerine" and result.status == "refused" and result.reason == "not_player":
             await self._notifier.notify(
@@ -623,6 +626,15 @@ class PlannerLoop:
             await self._notifier.notify(
                 "warn", "scenario_failed", f"{key}: {result.status} {result.reason}"
             )
+
+
+def _blind_team_pick(act: Act) -> str:
+    offers = sorted(
+        str(c.params["task"])
+        for c in act.candidates
+        if c.scenario == "team_pick" and "task" in c.params
+    )
+    return f"no income known for hard team offers {', '.join(offers)}; picked {act.params['task']}"
 
 
 def _lottery_short(result: ScenarioResult) -> tuple[int, dict[str, int]] | None:
