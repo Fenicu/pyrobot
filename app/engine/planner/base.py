@@ -81,6 +81,7 @@ FEATURE = {
     "metro_resume": "metro",
     "daily_refresh": "daily_tasks",
     "daily_pick": "daily_tasks",
+    "team_pick": "team_pick",
     "lottery_buy": "lottery",
     "trip": "trips",
     "trips_refresh": "trips",

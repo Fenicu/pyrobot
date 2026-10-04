@@ -71,22 +71,26 @@ class RefusalState(_Frozen):
     need: int | None = None
 
 
+class TaskOfferState(_Frozen):
+    type: str
+    level: str
+    goal: int
+    trophies: int
+
+
 class TeamTask(_Frozen):
+    """Командное задание: `none` — глава ещё не выбрал, `offers` — персонаж сам глава и видит
+    варианты, иначе выбранное (`current` — прогресс)."""
+
     current: int
     goal: int
     resource: str
     # День заданий (00:00 MSK). Снимки прошлых версий дня не знают — такое значение планировщик
     # считает неизвестным.
     day: date | None = None
-    status: Literal["none", "active", "done"] = "active"
+    status: Literal["none", "offers", "active", "done"] = "active"
     activities: tuple[str, ...] = ()
-
-
-class TaskOfferState(_Frozen):
-    type: str
-    level: str
-    goal: int
-    trophies: int
+    offers: tuple[TaskOfferState, ...] = ()
 
 
 class ChosenTaskState(_Frozen):

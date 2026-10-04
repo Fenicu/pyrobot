@@ -18,6 +18,7 @@ from app.engine.state.model import (
     GorbushkaState,
     Obs,
     PersonalTask,
+    PriceState,
     TaskOfferState,
     TeamTask,
 )
@@ -661,3 +662,158 @@ def test_teamless_character_has_no_daily_tasks() -> None:
     # Тег в профиле или команда ещё неизвестна — как раньше.
     assert picked(decide(awake(team_tag="SU"), DAILY, NOW))[0] == "daily_refresh"
     assert picked(decide(tasks(chosen("jobMoney"), team_tag="SU"), DAILY, NOW))[0] == "deed:job"
+
+
+TEAM_TROPHIES = {"easy": 300, "medium": 600, "hard": 900}
+
+
+def team_offers(*variants: str | tuple[str, int, int]) -> TeamTask:
+    """Командные варианты главы: `тип_сложность` (цель — как на живом экране главы) или
+    (`тип_сложность`, цель, 🏆)."""
+    live = {"materials": 120, "convDets": 720, "walkMoney": 480}
+    out = []
+    for v in variants:
+        task, goal, trophies = v if isinstance(v, tuple) else (v, 0, 0)
+        kind, level = task.split("_")
+        out.append(
+            TaskOfferState(
+                type=kind,
+                level=level,
+                goal=goal or live.get(kind, 300),
+                trophies=trophies or TEAM_TROPHIES[level],
+            )
+        )
+    return TeamTask(current=0, goal=0, resource="", day=TODAY, status="offers", offers=tuple(out))
+
+
+# Живой экран главы 05.10: hard — переработка 720⚙️ и прогулка $480.
+LEADER = team_offers(
+    ("materials_easy", 40, 300),
+    ("convDets_medium", 480, 600),
+    ("materials_medium", 80, 600),
+    "convDets_hard",
+    "walkMoney_hard",
+)
+
+
+def team_verdicts(decision: Decision) -> dict[str, str]:
+    return {
+        str(c.params.get("task")): c.verdict
+        for c in decision.candidates
+        if c.scenario == "team_pick" and c.verdict != "chosen"
+    }
+
+
+def test_leader_picks_team_task_with_least_bare_motivation_before_personal() -> None:
+    # Переработка: 720 / 10⚙️ за запуск = 72 запуска по 1🔥; прогулка: $480 / $2.6 = 185 по 1🔥.
+    decision = decide(tasks(offers("convDets_hard", "jobMoney_hard"), LEADER), DAILY, NOW)
+    assert picked(decision) == ("team_pick", {"task": "convDets_hard"}, "team convDets 72🔥")
+    assert team_verdicts(decision) == {"walkMoney_hard": "team walkMoney 185🔥"}
+
+
+def test_team_motivation_uses_own_stats_and_prices() -> None:
+    # Своя прогулка — $8 за запуск: 60 запусков дешевле 72 переработок.
+    walker = tasks(offers("jobMoney_hard"), LEADER).model_copy(
+        update={"activity_stats": {"walk": ActivityStat(money=8)}}
+    )
+    assert picked(decide(walker, DAILY, NOW))[1:] == (
+        {"task": "walkMoney_hard"},
+        "team walkMoney 60🔥",
+    )
+    # Переработка по цене экрана: 20⚙️ за запуск, но 2🔥 — 36 × 2 = 72, как у прогулки по $6.7.
+    dconv = Obs(value=PriceState(motivation=2, money=5, details=20, minutes=6), at=NOW)
+    priced = tasks(offers("jobMoney_hard"), LEADER).model_copy(update={"prices": {"dconv": dconv}})
+    assert picked(decide(priced, DAILY, NOW))[2] == "team convDets 72🔥"
+
+
+def test_materials_take_the_cheaper_of_job_and_walk() -> None:
+    # 120🔩: работа по 0.8 — 150 запусков, прогулка по 0.7 — 172; своя прогулка по 2 — 60.
+    leader = team_offers("materials_hard", ("walkMoney_hard", 480, 900))
+    decision = decide(tasks(offers("jobMoney_hard"), leader), DAILY, NOW)
+    assert picked(decision)[1:] == ({"task": "materials_hard"}, "team materials 150🔥")
+    walker = tasks(offers("jobMoney_hard"), leader).model_copy(
+        update={"activity_stats": {"walk": ActivityStat(raw=2)}}
+    )
+    assert picked(decide(walker, DAILY, NOW))[2] == "team materials 60🔥"
+
+
+def test_team_pick_ignores_money_motivation_deeds_and_deadline() -> None:
+    # Только мотивация: ни ⚙️, ни 🔥, ни разрешённых дел, ни времени до полуночи не нужно.
+    own = Settings.model_validate(
+        {
+            "features": {**DAILY.features.model_dump(), "sleep": False},
+            "strategy": {"deeds": ["harvest"]},
+        }
+    )
+    late = datetime(2026, 9, 26, 23, 0, tzinfo=MSK)
+    state = tasks(offers("jobMoney_hard"), LEADER, at=late, details=0, money=0, motivation=0)
+    decision = decide(state, own, late, certified=CERTIFIED - {"deed:dconv", "deed:walk"})
+    assert picked(decision)[:2] == ("team_pick", {"task": "convDets_hard"})
+
+
+def test_team_tie_goes_to_more_trophies_then_screen_order() -> None:
+    # $480 и 720⚙️ при одинаковых 72🔥: прогулка по $6.67 — 72 запуска.
+    tie = {"activity_stats": {"walk": ActivityStat(money=6.67)}}
+    first = tasks(offers("jobMoney_hard"), LEADER).model_copy(update=tie)
+    assert picked(decide(first, DAILY, NOW))[1] == {"task": "convDets_hard"}
+    more = team_offers("convDets_hard", ("walkMoney_hard", 480, 1200))
+    richer = tasks(offers("jobMoney_hard"), more).model_copy(update=tie)
+    assert picked(decide(richer, DAILY, NOW))[1] == {"task": "walkMoney_hard"}
+
+
+def test_without_hard_team_offer_personal_is_picked() -> None:
+    easy = team_offers("convDets_easy", "materials_medium")
+    decision = decide(tasks(offers("convDets_hard"), easy), DAILY, NOW)
+    assert picked(decision)[:2] == ("daily_pick", {"task": "convDets_hard"})
+    assert verdicts(decision)["team_pick"] == "no_hard_team_offer"
+
+
+def test_unknown_team_types_are_skipped_when_others_are_known() -> None:
+    # Гаджеты в лабораториях делами не закрываются, Продаваны — бои Горбушки, а не 🔥.
+    leader = team_offers("labRaw_hard", "robPro_hard", "walkMoney_hard")
+    decision = decide(tasks(offers("jobMoney_hard"), leader), DAILY, NOW)
+    assert picked(decision)[1:] == ({"task": "walkMoney_hard"}, "team walkMoney 185🔥")
+    assert team_verdicts(decision) == {
+        "labRaw_hard": "team labRaw ?🔥",
+        "robPro_hard": "team robPro ?🔥",
+    }
+
+
+def test_all_hard_unknown_takes_first_on_screen() -> None:
+    leader = team_offers("materials_easy", "labRaw_hard", "labKnows_hard")
+    decision = decide(tasks(offers("jobMoney_hard"), leader), DAILY, NOW)
+    assert picked(decision) == ("team_pick", {"task": "labRaw_hard"}, "team labRaw ?🔥")
+    assert team_verdicts(decision) == {"labKnows_hard": "team labKnows ?🔥"}
+
+
+def test_team_offer_without_goal_is_unknown() -> None:
+    blank = TaskOfferState(type="convDets", level="hard", goal=0, trophies=900)
+    leader = LEADER.model_copy(update={"offers": (blank, LEADER.offers[-1])})
+    decision = decide(tasks(offers("jobMoney_hard"), leader), DAILY, NOW)
+    assert picked(decision)[1] == {"task": "walkMoney_hard"}
+
+
+def test_team_pick_feature_off_or_cooldown_leaves_personal() -> None:
+    off = Settings.model_validate(
+        {"features": {**DAILY.features.model_dump(), "team_pick": False}}
+    )
+    state = tasks(offers("convDets_hard"), LEADER)
+    decision = decide(state, off, NOW)
+    assert picked(decision)[:2] == ("daily_pick", {"task": "convDets_hard"})
+    assert "team_pick" not in verdicts(decision)
+    cooled = decide(state, DAILY, NOW, cooldowns={"team_pick": m(20)})
+    assert picked(cooled)[0] == "daily_pick"
+    assert verdicts(cooled)["team_pick"] == "cooldown"
+    # Командное уже выбрано — выбирать нечего.
+    chosen_team = decide(tasks(offers("convDets_hard"), team("dconv")), DAILY, NOW)
+    assert picked(chosen_team)[0] == "daily_pick"
+    assert "team_pick" not in verdicts(chosen_team)
+
+
+def test_leader_offers_not_picked_are_reread_every_half_hour() -> None:
+    # Глава может выбрать командное с телефона.
+    off = Settings.model_validate(
+        {"features": {**DAILY.features.model_dump(), "team_pick": False}}
+    )
+    old = tasks(chosen("robPro"), team_task=Obs(value=LEADER, at=m(-31)))
+    assert picked(decide(old, off, NOW)) == ("daily_refresh", {}, "team not chosen")

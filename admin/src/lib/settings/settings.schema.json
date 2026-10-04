@@ -585,6 +585,11 @@
      "title": "Tangerine",
      "type": "boolean"
     },
+    "team_pick": {
+     "default": true,
+     "title": "Team Pick",
+     "type": "boolean"
+    },
     "trips": {
      "default": true,
      "title": "Trips",

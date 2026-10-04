@@ -3466,7 +3466,11 @@ export interface components {
             /** Type */
             type: string;
         };
-        /** TeamTask */
+        /**
+         * TeamTask
+         * @description Командное задание: `none` — глава ещё не выбрал, `offers` — персонаж сам глава и видит
+         *     варианты, иначе выбранное (`current` — прогресс).
+         */
         TeamTask: {
             /**
              * Activities
@@ -3479,6 +3483,11 @@ export interface components {
             day?: string | null;
             /** Goal */
             goal: number;
+            /**
+             * Offers
+             * @default []
+             */
+            offers: components["schemas"]["TaskOfferState"][];
             /** Resource */
             resource: string;
             /**
@@ -3486,7 +3495,7 @@ export interface components {
              * @default active
              * @enum {string}
              */
-            status: "none" | "active" | "done";
+            status: "none" | "offers" | "active" | "done";
         };
         /** TgAppOut */
         TgAppOut: {

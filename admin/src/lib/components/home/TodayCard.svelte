@@ -71,6 +71,8 @@
 			<span class="text-fg-faint">нет данных за сегодня</span>
 		{:else if team.status === 'none'}
 			нет задания
+		{:else if team.status === 'offers'}
+			не выбрано · вариантов {team.offers?.length ?? 0}
 		{:else if team.status === 'done'}
 			{fmtNum(team.current)}/{fmtNum(team.goal)} <Pill tone="ok">✓</Pill>
 		{:else}

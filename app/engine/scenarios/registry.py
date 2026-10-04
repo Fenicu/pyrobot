@@ -134,6 +134,7 @@ def _specs() -> dict[str, ScenarioSpec]:
         ScenarioSpec("metro", metro.metro, True),
         ScenarioSpec("daily_refresh", daily.daily_refresh, True),
         ScenarioSpec("daily_pick", daily.daily_pick, True, required={"task": _task}),
+        ScenarioSpec("team_pick", daily.team_pick, True, required={"task": _task}),
         # Параметры необязательные: ручной запуск без них берёт их у планировщика.
         ScenarioSpec("lottery_buy", lottery.lottery_buy, True),
         ScenarioSpec(

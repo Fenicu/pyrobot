@@ -43,28 +43,44 @@ async def daily_pick(
 ) -> ScenarioResult:
     """Выбор личного задания `task` (например, `convDets_hard`). Начинается с чтения экрана,
     поэтому повтор после рестарта или неизвестного исхода безопасен — `already_chosen`."""
-    task = str(params["task"])
+    return await _pick(ctx, str(params["task"]), team=False)
+
+
+async def team_pick(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:
+    """Выбор командного задания `task` главой команды: `/ts_<task>` и `ts_<task>_confirm`. Чужая
+    команда между ними сбивает подтверждение — игра молча игнорирует клик."""
+    return await _pick(ctx, str(params["task"]), team=True)
+
+
+async def _pick(ctx: ScenarioContext, task: str, *, team: bool) -> ScenarioResult:
+    prefix = "ts" if team else "t"
     async with ctx.lease("daily_tasks"):
         opened = await _open(ctx)
         if isinstance(opened, ScenarioResult):
             return opened
         screen, day = opened
-        if screen.chosen is not None:
+        if (screen.team if team else screen.chosen) is not None:
             return ScenarioResult("nothing", "already_chosen")
-        if not any(offer.command == f"/t_{task}" for offer in screen.offers):
+        offers = screen.team_offers if team else screen.offers
+        if not any(offer.command == f"/{prefix}_{task}" for offer in offers):
             return ScenarioResult("nothing", "offer_gone")
         confirm = expect_events(
-            TaskConfirm, accept=lambda e: isinstance(e, TaskConfirm) and e.task == task
+            TaskConfirm,
+            accept=lambda e: isinstance(e, TaskConfirm) and e.task == task and e.team == team,
         )
         if _day_changed(ctx, day):
             return ScenarioResult("nothing", "day_changed")
-        asked = await ctx.send(f"/t_{task}", confirm)
+        asked = await ctx.send(f"/{prefix}_{task}", confirm)
         if asked.step is not Step.OK or asked.delivery is None:
             return wrong_screen(asked)
         if _day_changed(ctx, day):
             return ScenarioResult("nothing", "day_changed")
         # Кнопка привязана к сообщению подтверждения, а не к экрану.
         chosen = await ctx.click(
-            asked.delivery.msg.msg_id, f"t_{task}_confirm", expect_events(TaskChosen)
+            asked.delivery.msg.msg_id,
+            f"{prefix}_{task}_confirm",
+            expect_events(
+                TaskChosen, accept=lambda e: isinstance(e, TaskChosen) and e.team == team
+            ),
         )
         return finish(chosen)

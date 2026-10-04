@@ -38,6 +38,12 @@ GORBUSHKA_DAILY = 4
 # прогресса приходят только в итогах дел по его условию.
 TEAM_REREAD = timedelta(minutes=30)
 HARD = "hard"
+# 🔥 командного варианта, доход дел которого неизвестен: причина `team <тип> ?🔥`.
+UNKNOWN_FIRE = "?🔥"
+
+
+def team_reason(kind: str, fire: int | None) -> str:
+    return f"team {kind} " + (UNKNOWN_FIRE if fire is None else f"{fire}🔥")
 
 
 class DailyTasks(Obligations):
@@ -88,6 +94,10 @@ class DailyTasks(Obligations):
         # Перечитать не дал лимит — выбор личного задания от этого не откладывается.
         if reread is not None and (act := self.daily_refresh(reread)) is not None:
             return act
+        # Командное (выбирает только глава) — раньше личного.
+        if team.status == "offers" and self.feature_on("team_pick"):
+            if (act := self.pick_team(team.offers)) is not None:
+                return act
         if personal.status != "offers":
             return None
         pick = self.pick_personal(personal.offers)
@@ -110,7 +120,7 @@ class DailyTasks(Obligations):
         seen = self.s.team_task
         if seen is None or self.now - seen.at < TEAM_REREAD:
             return None
-        if team.status == "none":
+        if team.status in ("none", "offers"):
             return "team not chosen"
         if team.status == "active" and team.current < team.goal:
             return "team progress stale"
@@ -160,6 +170,44 @@ class DailyTasks(Obligations):
                 self.reject("daily_pick", {"task": f"{offer.type}_{offer.level}"}, verdict)
         return pick, bool(feasible)
 
+    def pick_team(self, offers: tuple[TaskOfferState, ...]) -> Decision | None:
+        """Командный вариант главы: только hard, с наименьшей «голой» мотивацией — будто всё
+        делает один глава, без кулдаунов, срока, денег, разрешённых дел и выносливости; при
+        равенстве — больше 🏆, затем порядок на экране. Ни у одного hard доход неизвестен —
+        первый hard по порядку экрана (причина `?🔥`, цикл уведомит)."""
+        hard = [o for o in offers if o.level == HARD]
+        if not hard:
+            self.reject("team_pick", {}, "no_hard_team_offer")
+            return None
+        fire = [self.team_motivation(o.type, o.goal) for o in hard]
+        known = [i for i, f in enumerate(fire) if f is not None]
+        best = min(known, key=lambda i: (fire[i], -hard[i].trophies, i)) if known else 0
+        for i, offer in enumerate(hard):
+            if i != best:
+                task = f"{offer.type}_{offer.level}"
+                self.reject("team_pick", {"task": task}, team_reason(offer.type, fire[i]))
+        pick = hard[best]
+        params = {"task": f"{pick.type}_{pick.level}"}
+        return self.act("team_pick", params, team_reason(pick.type, fire[best]))
+
+    def team_motivation(self, kind: str, goal: int) -> int | None:
+        """🔥 на командное задание силами одного главы: `ceil(цель / доход) × 🔥 за запуск` по
+        самому дешёвому делу типа; None — доход ни одного дела неизвестен."""
+        costs = [
+            math.ceil(goal / income) * self.price(deed).motivation
+            for deed in PERSONAL_DEEDS.get(kind, ())
+            if goal > 0 and (income := self.task_income(kind, deed)) > 0
+        ]
+        return min(costs) if costs else None
+
+    def task_income(self, kind: str, deed: str) -> float:
+        """Доход задания за запуск дела: метрика итога (`activity_stats`, иначе
+        `DEED_PRIORS`); у переработки — выложенные ⚙️ из цены. 0 — неизвестен."""
+        if kind == "convDets":
+            return self.price(deed).details or DCONV_DETAILS
+        stat = self.s.activity_stats.get(deed) or DEED_PRIORS.get(deed) or ActivityStat()
+        return float(getattr(stat, TASK_METRIC[kind])) if kind in TASK_METRIC else 0.0
+
     def personal_feasible(self, kind: str, goal: int) -> bool:
         if kind == "robPro":
             # ⚙️ за победу — среднее по боям персонажа (с ⚫️VIP-сетом больше), до них — 12.
@@ -181,11 +229,7 @@ class DailyTasks(Obligations):
         """Грубая оценка «успеет ли до 24:00»: 🔥 с приростом, время без сна и окна битвы, $
         сверх резервов и ⚙️ на переработку."""
         price = self.price(deed)
-        stat = self.s.activity_stats.get(deed) or DEED_PRIORS.get(deed) or ActivityStat()
-        if kind == "convDets":
-            income: float = price.details or DCONV_DETAILS
-        else:
-            income = getattr(stat, TASK_METRIC[kind]) if kind in TASK_METRIC else 0.0
+        income = self.task_income(kind, deed)
         if income <= 0:
             return False
         runs = math.ceil(goal / income)

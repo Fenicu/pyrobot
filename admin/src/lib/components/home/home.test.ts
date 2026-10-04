@@ -93,6 +93,16 @@ describe('Главная на снимке с прода', () => {
 		expect(card).toHaveTextContent('бои закончены · снова 28.09 13:10');
 	});
 
+	it('сегодня: командное глава ещё не выбрал из своих вариантов', () => {
+		const seen = prod.state.team_task!;
+		const offer = { type: 'convDets', level: 'hard', goal: 720, trophies: 900 };
+		const value = { ...seen.value, status: 'offers' as const, current: 0, goal: 0, resource: '', offers: [offer, offer] };
+		render(TodayCard, { state: { ...prod.state, team_task: { ...seen, value } }, stale: [], now: NOW });
+		const card = screen.getByRole('region', { name: 'Сегодня' });
+		expect(card).toHaveTextContent('Командное не выбрано · вариантов 2');
+		expect(screen.queryByRole('progressbar', { name: 'Командное задание' })).toBeNull();
+	});
+
 	it('кончившееся дело по часам страницы — «уже свободен» в карточке и в шапке', () => {
 		// Сон в отеле до 05:05 MSK; часы страницы — 10 минут спустя.
 		const later = new Date('2026-09-28T02:15:09Z');

@@ -6318,6 +6318,7 @@
         "type": "object"
       },
       "TeamTask": {
+        "description": "Командное задание: `none` — глава ещё не выбрал, `offers` — персонаж сам глава и видит\nварианты, иначе выбранное (`current` — прогресс).",
         "properties": {
           "activities": {
             "default": [],
@@ -6347,6 +6348,14 @@
             "title": "Goal",
             "type": "integer"
           },
+          "offers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TaskOfferState"
+            },
+            "title": "Offers",
+            "type": "array"
+          },
           "resource": {
             "title": "Resource",
             "type": "string"
@@ -6355,6 +6364,7 @@
             "default": "active",
             "enum": [
               "none",
+              "offers",
               "active",
               "done"
             ],

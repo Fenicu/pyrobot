@@ -8,6 +8,8 @@ from app.engine.parsing.common import Rewards
 from app.engine.parsing.daily import DailyTasksScreen
 from app.engine.state.model import load_state, stale_fields
 from app.engine.state.reducer import StateReducer
+from tests.engine import daily_texts as d
+from tests.engine.artifact_texts import game_text
 from tests.engine.state.helpers import PARSER, at, feed, fixture_at, value
 
 # T0 — 12:00 MSK 26.09; полночь по Москве — через 12 часов.
@@ -50,6 +52,7 @@ def test_offers_screen_without_team() -> None:
         "day": "2026-09-26",
         "status": "none",
         "activities": [],
+        "offers": [],
     }
 
 
@@ -184,6 +187,7 @@ def test_team_line_without_known_task_creates_active_without_activities() -> Non
         "day": "2026-09-26",
         "status": "active",
         "activities": [],
+        "offers": [],
     }
     # Прогресс по другому ресурсу — другое задание: дела неизвестны.
     screen = feed(reducer, {}, "daily", 9100009, 1)
@@ -288,3 +292,80 @@ def test_same_second_screen_does_not_undo_team_done() -> None:
     assert (_team(same)["status"], _team(same)["current"]) == ("done", 390)
     later = feed(reducer, state, "daily", 9100004, 2)
     assert _team(later)["status"] == "active"
+
+
+def feed_text(
+    reducer: StateReducer, state: dict[str, Any], text: str, minutes: float, **kw: Any
+) -> dict[str, Any]:
+    msg = game_text(text, at=at(minutes), **kw)
+    return reducer.apply(state, msg, PARSER.parse(msg))
+
+
+def test_leader_screen_keeps_team_offers() -> None:
+    state = feed_text(StateReducer(), {}, d.LEADER_OFFERS, 1)
+    assert _personal(state)["status"] == "offers" and len(_personal(state)["offers"]) == 5
+    team = _team(state)
+    assert (team["day"], team["status"], team["current"], team["goal"]) == (
+        "2026-09-26",
+        "offers",
+        0,
+        0,
+    )
+    assert [(o["type"], o["level"], o["goal"], o["trophies"]) for o in team["offers"]] == [
+        ("materials", "easy", 40, 300),
+        ("convDets", "medium", 480, 600),
+        ("materials", "medium", 80, 600),
+        ("convDets", "hard", 720, 900),
+        ("walkMoney", "hard", 480, 900),
+    ]
+
+
+def test_team_chosen_edit_makes_team_active() -> None:
+    reducer = StateReducer()
+    state = feed_text(reducer, {}, d.LEADER_OFFERS, 1)
+    state = feed_text(reducer, state, d.TEAM_CONFIRM, 2, buttons=d.TEAM_CONFIRM_BUTTONS)
+    assert _team(state)["status"] == "offers"
+    state = feed_text(reducer, state, d.TEAM_CHOSEN, 3)
+    assert state["team_task"]["src"] == "screen"
+    assert _team(state) == {
+        "current": 0,
+        "goal": 720,
+        "resource": "⚙️",
+        "day": "2026-09-26",
+        "status": "active",
+        "activities": ["dconv"],
+        "offers": [],
+    }
+    # Личное задание правка командного не трогает.
+    assert _personal(state)["status"] == "offers"
+    # Экран вариантов той же секунды, доставленный позже, выбор не откатывает.
+    same = feed_text(reducer, state, d.LEADER_OFFERS, 3)
+    assert _team(same)["status"] == "active"
+    after = feed_text(reducer, state, d.AFTER_CHOICE, 4)
+    assert (_team(after)["status"], _team(after)["activities"]) == ("active", ["dconv"])
+
+
+def test_team_chosen_with_unknown_deeds_is_derived() -> None:
+    # Дела по условию неизвестны: план перечитает экран, чтобы узнать их из подсказки.
+    text = d.TEAM_CHOSEN.replace(
+        "Переработать всей командой 720⚙️деталей в сырьё в Мастерской.",
+        "Вложить всей командой в лабораториях в разработку любого гаджета 300🔩сырья.",
+    )
+    state = feed_text(StateReducer(), {}, text, 1)
+    assert state["team_task"]["src"] == "derived"
+    assert (_team(state)["status"], _team(state)["activities"]) == ("active", [])
+
+
+def test_team_line_while_leader_offers_starts_chosen_task() -> None:
+    # Глава выбрал командное сам (с телефона): строка прогресса — уже выбранное задание.
+    reducer = StateReducer()
+    state = feed_text(reducer, {}, d.LEADER_OFFERS, 1)
+    state = feed(reducer, state, "activities", 3625689, 5)
+    assert state["team_task"]["src"] == "derived"
+    team = _team(state)
+    assert (team["status"], team["current"], team["goal"], team["offers"]) == (
+        "active",
+        18,
+        120,
+        [],
+    )

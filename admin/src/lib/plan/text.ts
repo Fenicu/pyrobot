@@ -55,6 +55,7 @@ export const SCENARIO: Record<string, string> = {
 	metro: '🚇 метро',
 	daily_refresh: '📋 перечитать задания',
 	daily_pick: '📋 выбрать личное задание',
+	team_pick: '📋 выбрать командное задание',
 	lottery_buy: '🤑 билеты лотереи',
 	book: '📒 книга',
 	card: '💳 подарочная карта',
@@ -128,6 +129,7 @@ export const VERDICT: Record<string, string> = {
 	rate_limited: 'рано перечитывать',
 	not_feasible: 'не успеть до 24:00',
 	no_hard_offer: 'нет hard-задания',
+	no_hard_team_offer: 'нет командного hard-задания',
 	cant_afford: 'не по карману',
 	sleep_not_allowed: 'спать пока нельзя',
 	market_closed: 'биржа закрыта',
@@ -165,10 +167,19 @@ const FIELD_TEXT: Record<string, string> = {
 	trips: 'транспорт'
 };
 
+/** Отклонённый командный вариант главы: `team <тип> <N>🔥` или `team <тип> ?🔥`. */
+const TEAM_OFFER = /^team (\S+) (\d+|\?)🔥$/;
+
 export function verdictText(verdict: string): string {
 	if (verdict.startsWith('stale:')) {
 		const field = verdict.slice('stale:'.length);
 		return `нужно обновить: ${FIELD_TEXT[field] ?? field}`;
+	}
+	const team = TEAM_OFFER.exec(verdict);
+	if (team) {
+		const [, type = '', fire] = team;
+		const kind = PERSONAL_TASK[type] ?? type;
+		return fire === '?' ? `${kind} — доход неизвестен` : `${kind} — ${fire}🔥`;
 	}
 	return VERDICT[verdict] ?? verdict;
 }
@@ -178,6 +189,7 @@ export type Tone = 'ok' | 'warn' | 'muted';
 export function verdictTone(verdict: string): Tone {
 	if (verdict === 'chosen') return 'ok';
 	if (verdict === 'ok' || verdict.startsWith('stale:') || verdict === 'cooldown' || verdict === 'reserved') return 'muted';
+	if (TEAM_OFFER.test(verdict)) return 'muted';
 	return 'warn';
 }
 
@@ -278,7 +290,8 @@ export function actDetail(scenario: string, params: Record<string, unknown>, pla
 			return lotteryTickets(plan);
 		case 'sleep':
 			return `${plan.hints.sleep_hours} ч${sleepPlace(plan)}`;
-		case 'daily_pick': {
+		case 'daily_pick':
+		case 'team_pick': {
 			const kind = typeof params.task === 'string' ? params.task.replace(/_\w+$/, '') : '';
 			return PERSONAL_TASK[kind] ?? kind;
 		}

@@ -160,6 +160,17 @@
   }
  },
  {
+  "name": "team_pick",
+  "certified": true,
+  "params": {},
+  "required": {
+   "task": {
+    "type": "string",
+    "pattern": "^[A-Za-z]+_(?:easy|medium|hard)$"
+   }
+  }
+ },
+ {
   "name": "lottery_buy",
   "certified": true,
   "params": {},

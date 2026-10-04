@@ -30,12 +30,15 @@ def test_uncertified_scenarios_are_not_claimed() -> None:
     assert _certified_by_tests() <= CERTIFIED
 
 
-def test_daily_pick_needs_task_name() -> None:
-    spec = SCENARIOS["daily_pick"]
+@pytest.mark.parametrize("name", ["daily_pick", "team_pick"])
+def test_task_pick_needs_task_name(name: str) -> None:
+    spec = SCENARIOS[name]
     assert spec.invalid({"task": "convDets_hard"}) == []
     assert spec.invalid({}) == ["task"]
     assert spec.invalid({"task": "convDets"}) == ["task"]
     assert spec.invalid({"task": "/t_convDets_hard"}) == ["task"]
+    assert spec.invalid({"task": "/ts_convDets_hard"}) == ["task"]
+    assert name in CERTIFIED
 
 
 def required(scenario: str, name: str) -> Param:

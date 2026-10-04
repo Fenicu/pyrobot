@@ -40,7 +40,7 @@ describe('словари плана', () => {
 			'battle_window', 'sleep_deadline', 'factory_window', 'uncertified', 'cooldown', 'rate_limited',
 			'not_feasible', 'no_hard_offer', 'cant_afford', 'sleep_not_allowed', 'market_closed', 'no_stock',
 			'not_player', 'in_metro', 'metro_unknown_screen', 'reserved', 'no_team', 'company_unknown',
-			'artifact_run', 'no_raw', 'motivation_cap', 'trip_pending'
+			'artifact_run', 'no_raw', 'motivation_cap', 'trip_pending', 'no_hard_team_offer'
 		];
 		expect(verdicts.filter((v) => !(v in VERDICT))).toEqual([]);
 		expect(verdictText('stale:motivation')).toBe('нужно обновить: 🔥');
@@ -64,7 +64,18 @@ describe('словари плана', () => {
 		expect(actDetail('trip', { vehicle: 'bike' }, plan)).toBe('🚲 велосипед');
 	});
 
-	it('отказ из-за запаса 🔥 — под что он держится; у метро — только запас Горбушки', () => {
+	it('выбор командного задания: подпись и вид задания', () => {
+		expect(scenarioText('team_pick')).toBe('📋 выбрать командное задание');
+		expect(actDetail('team_pick', { task: 'convDets_hard' }, plan)).toBe('переработка ⚙️');
+		expect(actDetail('team_pick', { task: 'labRaw_hard' }, plan)).toBe('labRaw');
+		// Отклонённые командные варианты — с их «голой» 🔥, это не ошибка.
+		expect(verdictText('team walkMoney 185🔥')).toBe('прогулка 💵 — 185🔥');
+		expect(verdictText('team labRaw ?🔥')).toBe('labRaw — доход неизвестен');
+		expect(verdictTone('team walkMoney 185🔥')).toBe('muted');
+		expect(verdictText('no_hard_team_offer')).toBe('нет командного hard-задания');
+	});
+
+		it('отказ из-за запаса 🔥 — под что он держится; у метро — только запас Горбушки', () => {
 		expect(verdictText('reserved')).toBe('🔥 в запасе');
 		expect(verdictTone('reserved')).toBe('muted');
 		const deed = { scenario: 'deed:harvest', params: {}, score: 0.5, verdict: 'reserved' };

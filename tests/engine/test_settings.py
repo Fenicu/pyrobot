@@ -52,6 +52,7 @@ def test_strategy_defaults_follow_spec() -> None:
     assert s.strategy.deeds == ("harvest", "job", "learn", "dconv", "walk")
     assert s.features.books and s.features.gorbushka and s.features.lottery
     assert not s.features.casino and not s.features.pet_feast and s.features.daily_tasks
+    assert s.features.team_pick
     assert s.food.order == ("hotdog", "pizza", "burger") and s.food.banana_reserve == 50
     assert (s.sleep.duration_h, s.sleep.hotel_if_cash_after_reserve_ge) == (7, None)
     assert s.levelup.policy == "balanced" and not s.engine.paused

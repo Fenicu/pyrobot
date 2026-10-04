@@ -25,7 +25,7 @@ from app.engine.planner.loop import (
     PlannerLoop,
 )
 from app.engine.planner.store import MemoryPlannerStore
-from app.engine.planner.types import Act, Decision, Wait
+from app.engine.planner.types import Act, Candidate, Decision, Wait
 from app.engine.scenarios.library import ScenarioResult
 from app.engine.scenarios.registry import ScenarioSpec
 from app.engine.settings import Settings
@@ -57,9 +57,11 @@ class ShiftClock:
 class Notes:
     def __init__(self) -> None:
         self.codes: list[str] = []
+        self.texts: list[str] = []
 
     async def notify(self, level: Level, code: str, text: str) -> None:
         self.codes.append(code)
+        self.texts.append(text)
 
 
 class Rig:
@@ -332,6 +334,26 @@ async def test_failure_series_backs_off_until_done(world: World) -> None:
     for _ in range(60):
         await rig.loop._after(act, failed, at, at)
     assert rig.loop._cooldowns["gorbushka"] - at == MAX_RETRY
+
+
+async def test_blind_team_pick_notifies_once_chosen(world: World) -> None:
+    rig = Rig(world)
+    at = moment()
+    others = (
+        Candidate("team_pick", {"task": "labKnows_hard"}, None, "team labKnows ?🔥"),
+        Candidate("team_pick", {"task": "labRaw_hard"}, None, "chosen"),
+    )
+    blind = Act("team_pick", {"task": "labRaw_hard"}, "team labRaw ?🔥", others)
+    await rig.loop._after(blind, ScenarioResult("nothing", "offer_gone"), at, at)
+    assert rig.notes.codes == []
+    await rig.loop._after(blind, ScenarioResult("done", "task_chosen"), at, at)
+    assert rig.notes.codes == ["team_pick_unknown"]
+    assert rig.notes.texts == [
+        "no income known for hard team offers labKnows_hard, labRaw_hard; picked labRaw_hard"
+    ]
+    known = Act("team_pick", {"task": "convDets_hard"}, "team convDets 72🔥")
+    await rig.loop._after(known, ScenarioResult("done", "task_chosen"), at, at)
+    assert rig.notes.codes == ["team_pick_unknown"]
 
 
 async def test_refusal_cooldowns(world: World) -> None:
