@@ -41,6 +41,23 @@ describe('плашка «аккаунт не в общем чате игры»',
 		expect(screen.getByRole('button', JOIN)).toBeEnabled();
 	});
 
+	it('на телефоне: колонка, текст и кнопка на всю ширину; с sm — ряд', () => {
+		banner(false);
+		const section = screen.getByRole('status');
+		expect(section).toHaveClass('flex-col', 'sm:flex-row');
+		expect(section).not.toHaveClass('flex-wrap');
+		const text = screen.getByText(/Аккаунт не состоит/);
+		expect(text).toHaveClass('w-full');
+		expect(text).not.toHaveClass('flex-1');
+		expect(screen.getByRole('button', JOIN)).toHaveClass('w-full', 'sm:w-auto', 'sm:shrink-0');
+	});
+
+	it('заявка отправлена и ошибка — на всю ширину', async () => {
+		const { user } = banner(false, () => json({ detail: 'join_declined' }, 502));
+		await user.click(screen.getByRole('button', JOIN));
+		expect(await screen.findByRole('alert')).toHaveClass('w-full');
+	});
+
 	it('вступил: POST на путь аккаунта, плашка скрыта, статус перечитывается; новый статус решает заново', async () => {
 		const { fetch, onchange, user, view } = banner(false);
 		await user.click(screen.getByRole('button', JOIN));
