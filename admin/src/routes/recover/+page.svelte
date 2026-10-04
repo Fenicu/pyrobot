@@ -2,16 +2,22 @@
 	import { goto } from '$app/navigation';
 	import { ApiFailure } from '$lib/api/errors';
 	import { recoverFinish, recoverStart } from '$lib/api/public';
-	import { session as defaultSession, stopApp as defaultStopApp } from '$lib/app.svelte';
+	import { session as defaultSession, startApp as defaultStartApp, stopApp as defaultStopApp } from '$lib/app.svelte';
 	import type { Session } from '$lib/stores/session.svelte';
 
 	interface Props {
 		session?: Session;
 		stopApp?: () => void;
+		startApp?: () => void;
 		fetchImpl?: typeof fetch;
 	}
 
-	let { session = defaultSession, stopApp = defaultStopApp, fetchImpl }: Props = $props();
+	let {
+		session = defaultSession,
+		stopApp = defaultStopApp,
+		startApp = defaultStartApp,
+		fetchImpl
+	}: Props = $props();
 
 	let step = $state<1 | 2>(1);
 	let kind = $state<'tg' | 'recovery'>('tg');
@@ -70,6 +76,7 @@
 			);
 			stopApp();
 			session.adopt(me);
+			startApp();
 			await goto('/');
 		} catch (err) {
 			error = err instanceof ApiFailure ? err.message : String(err);

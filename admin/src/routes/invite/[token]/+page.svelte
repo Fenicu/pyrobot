@@ -4,17 +4,25 @@
 	import { page } from '$app/state';
 	import { ApiFailure } from '$lib/api/errors';
 	import { acceptInvite, peekInvite } from '$lib/api/public';
-	import { session as defaultSession } from '$lib/app.svelte';
+	import { session as defaultSession, startApp as defaultStartApp, stopApp as defaultStopApp } from '$lib/app.svelte';
 	import RecoveryCodes from '$lib/components/auth/RecoveryCodes.svelte';
 	import type { Session } from '$lib/stores/session.svelte';
 
 	interface Props {
 		token?: string;
 		session?: Session;
+		stopApp?: () => void;
+		startApp?: () => void;
 		fetchImpl?: typeof fetch;
 	}
 
-	let { token: propToken, session = defaultSession, fetchImpl }: Props = $props();
+	let {
+		token: propToken,
+		session = defaultSession,
+		stopApp = defaultStopApp,
+		startApp = defaultStartApp,
+		fetchImpl
+	}: Props = $props();
 	const token = $derived(propToken ?? page.params.token);
 
 	let status = $state<'loading' | 'form' | 'codes' | 'error'>('loading');
@@ -72,7 +80,9 @@
 		formError = '';
 		try {
 			const res = await acceptInvite(token, login.trim(), password, fetchImpl);
+			stopApp();
 			session.adopt({ login: res.login, csrf_token: res.csrf_token, role: res.role });
+			startApp();
 			codes = res.recovery_codes;
 			status = 'codes';
 		} catch (err) {

@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
 import { createApi } from '$lib/api/client';
+import { stopApp as defaultStopApp } from '$lib/app.svelte';
+import { AccountsStore } from '$lib/stores/accounts.svelte';
 import { Session } from '$lib/stores/session.svelte';
 import { json, mockFetch } from '$lib/test/fetch';
 import InvitePage from '../../../routes/invite/[token]/+page.svelte';
@@ -15,6 +17,7 @@ vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}) }));
 
 afterEach(() => {
 	cleanup();
+	defaultStopApp();
 	vi.mocked(goto).mockClear();
 });
 
@@ -256,6 +259,236 @@ describe('аутентификация и восстановление', () => {
 		await vi.waitFor(() => expect(stopApp).toHaveBeenCalledTimes(1));
 		expect(session.status).toBe('authenticated');
 		expect(session.login).toBe('alice');
+	});
+
+	it('восстановление: для вошедшего пользователя перезапрашивает список аккаунтов (stopApp -> adopt -> startApp)', async () => {
+		const user = userEvent.setup();
+		const session = new Session();
+		session.adopt({ login: 'old-user', csrf_token: 'csrf-old', role: 'user' });
+
+		const fetch = mockFetch((c) => {
+			if (c.url === '/api/v1/auth/recover/start') return json({}, 202);
+			if (c.url === '/api/v1/auth/recover/finish') {
+				return json({ login: 'alice', csrf_token: 'csrf-alice', role: 'user' }, 200);
+			}
+			if (c.url === '/api/v1/accounts') {
+				return json([{ id: session.login === 'alice' ? 2 : 1, name: `acc-${session.login}` }]);
+			}
+			return json({}, 404);
+		});
+
+		const accounts = new AccountsStore(createApi(session.hooks, fetch));
+		accounts.start();
+		await vi.waitFor(() => expect(accounts.list).toEqual([{ id: 1, name: 'acc-old-user' }]));
+
+		let stoppedBeforeAdopt = false;
+		let startedAfterAdopt = false;
+		const calls: string[] = [];
+		const stopApp = vi.fn(() => {
+			stoppedBeforeAdopt = session.login === 'old-user';
+			calls.push('stop');
+			accounts.stop();
+		});
+		const startApp = vi.fn(() => {
+			startedAfterAdopt = session.login === 'alice';
+			calls.push('start');
+			accounts.start();
+		});
+
+		render(RecoverPage, { session, stopApp, startApp, fetchImpl: fetch });
+
+		await user.type(screen.getByLabelText('Логин'), 'alice');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+
+		await screen.findByRole('button', { name: 'Код восстановления' });
+		await user.click(screen.getByRole('button', { name: 'Код восстановления' }));
+
+		await user.type(screen.getByLabelText('Код восстановления'), '412-K7QM2-XH9TD');
+		await user.type(screen.getByLabelText('Новый пароль (не короче 12)'), 'newpassword123');
+		await user.type(screen.getByLabelText('Новый пароль ещё раз'), 'newpassword123');
+
+		await user.click(screen.getByRole('button', { name: 'Сменить пароль и войти' }));
+
+		await vi.waitFor(() => expect(goto).toHaveBeenCalledWith('/'));
+		expect(calls).toEqual(['stop', 'start']);
+		expect(stoppedBeforeAdopt).toBe(true);
+		expect(startedAfterAdopt).toBe(true);
+		expect(session.status).toBe('authenticated');
+		expect(session.login).toBe('alice');
+		await vi.waitFor(() => expect(accounts.list).toEqual([{ id: 2, name: 'acc-alice' }]));
+		const accountCalls = fetch.calls.filter((c) => c.url === '/api/v1/accounts');
+		expect(accountCalls.length).toBe(2);
+	});
+
+	it('приглашение: для вошедшего пользователя перезапрашивает список аккаунтов (stopApp -> adopt -> startApp)', async () => {
+		const user = userEvent.setup();
+		const session = new Session();
+		session.adopt({ login: 'old-user', csrf_token: 'csrf-old', role: 'user' });
+
+		const fetch = mockFetch((c) => {
+			if (c.url === '/api/v1/invites/valid-token') {
+				return json({ expires_at: '2026-10-10T00:00:00Z' });
+			}
+			if (c.url === '/api/v1/invites/valid-token/accept') {
+				return json(
+					{
+						login: 'bob',
+						csrf_token: 'csrf-bob',
+						role: 'user',
+						recovery_codes: ['412-K7QM2-XH9TD']
+					},
+					201
+				);
+			}
+			if (c.url === '/api/v1/accounts') {
+				return json([{ id: session.login === 'bob' ? 2 : 1, name: `acc-${session.login}` }]);
+			}
+			return json({}, 404);
+		});
+
+		const accounts = new AccountsStore(createApi(session.hooks, fetch));
+		accounts.start();
+		await vi.waitFor(() => expect(accounts.list).toEqual([{ id: 1, name: 'acc-old-user' }]));
+
+		let stoppedBeforeAdopt = false;
+		let startedAfterAdopt = false;
+		const calls: string[] = [];
+		const stopApp = vi.fn(() => {
+			stoppedBeforeAdopt = session.login === 'old-user';
+			calls.push('stop');
+			accounts.stop();
+		});
+		const startApp = vi.fn(() => {
+			startedAfterAdopt = session.login === 'bob';
+			calls.push('start');
+			accounts.start();
+		});
+
+		render(InvitePage, { token: 'valid-token', session, stopApp, startApp, fetchImpl: fetch });
+		await screen.findByLabelText('Логин');
+
+		await user.type(screen.getByLabelText('Логин'), 'bob');
+		await user.type(screen.getByLabelText('Пароль (не короче 12)'), 'password12345');
+		await user.type(screen.getByLabelText('Пароль ещё раз'), 'password12345');
+
+		await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }));
+
+		expect(await screen.findByText('412-K7QM2-XH9TD')).toBeInTheDocument();
+		expect(calls).toEqual(['stop', 'start']);
+		expect(stoppedBeforeAdopt).toBe(true);
+		expect(startedAfterAdopt).toBe(true);
+		expect(session.status).toBe('authenticated');
+		expect(session.login).toBe('bob');
+		await vi.waitFor(() => expect(accounts.list).toEqual([{ id: 2, name: 'acc-bob' }]));
+		const accountCalls = fetch.calls.filter((c) => c.url === '/api/v1/accounts');
+		expect(accountCalls.length).toBe(2);
+	});
+
+	it('восстановление: для анонимного пользователя запускает опрос аккаунтов после успешного входа', async () => {
+		const user = userEvent.setup();
+		const session = new Session();
+
+		const fetch = mockFetch((c) => {
+			if (c.url === '/api/v1/auth/recover/start') return json({}, 202);
+			if (c.url === '/api/v1/auth/recover/finish') {
+				return json({ login: 'alice', csrf_token: 'csrf-alice', role: 'user' }, 200);
+			}
+			if (c.url === '/api/v1/accounts') {
+				return json([{ id: 1, name: `acc-${session.login}` }]);
+			}
+			return json({}, 404);
+		});
+
+		const accounts = new AccountsStore(createApi(session.hooks, fetch));
+		expect(accounts.list).toBeNull();
+
+		const calls: string[] = [];
+		const stopApp = vi.fn(() => {
+			calls.push('stop');
+			accounts.stop();
+		});
+		const startApp = vi.fn(() => {
+			calls.push('start');
+			accounts.start();
+		});
+
+		render(RecoverPage, { session, stopApp, startApp, fetchImpl: fetch });
+
+		await user.type(screen.getByLabelText('Логин'), 'alice');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+
+		await screen.findByRole('button', { name: 'Код восстановления' });
+		await user.click(screen.getByRole('button', { name: 'Код восстановления' }));
+
+		await user.type(screen.getByLabelText('Код восстановления'), '412-K7QM2-XH9TD');
+		await user.type(screen.getByLabelText('Новый пароль (не короче 12)'), 'newpassword123');
+		await user.type(screen.getByLabelText('Новый пароль ещё раз'), 'newpassword123');
+
+		await user.click(screen.getByRole('button', { name: 'Сменить пароль и войти' }));
+
+		await vi.waitFor(() => expect(goto).toHaveBeenCalledWith('/'));
+		expect(calls).toEqual(['stop', 'start']);
+		expect(session.status).toBe('authenticated');
+		expect(session.login).toBe('alice');
+		await vi.waitFor(() => expect(accounts.list).toEqual([{ id: 1, name: 'acc-alice' }]));
+		const accountCalls = fetch.calls.filter((c) => c.url === '/api/v1/accounts');
+		expect(accountCalls.length).toBe(1);
+	});
+
+	it('приглашение: для анонимного пользователя запускает опрос аккаунтов после регистрации', async () => {
+		const user = userEvent.setup();
+		const session = new Session();
+
+		const fetch = mockFetch((c) => {
+			if (c.url === '/api/v1/invites/valid-token') {
+				return json({ expires_at: '2026-10-10T00:00:00Z' });
+			}
+			if (c.url === '/api/v1/invites/valid-token/accept') {
+				return json(
+					{
+						login: 'alice',
+						csrf_token: 'csrf-alice',
+						role: 'user',
+						recovery_codes: ['412-K7QM2-XH9TD']
+					},
+					201
+				);
+			}
+			if (c.url === '/api/v1/accounts') {
+				return json([{ id: 1, name: `acc-${session.login}` }]);
+			}
+			return json({}, 404);
+		});
+
+		const accounts = new AccountsStore(createApi(session.hooks, fetch));
+		expect(accounts.list).toBeNull();
+
+		const calls: string[] = [];
+		const stopApp = vi.fn(() => {
+			calls.push('stop');
+			accounts.stop();
+		});
+		const startApp = vi.fn(() => {
+			calls.push('start');
+			accounts.start();
+		});
+
+		render(InvitePage, { token: 'valid-token', session, stopApp, startApp, fetchImpl: fetch });
+		await screen.findByLabelText('Логин');
+
+		await user.type(screen.getByLabelText('Логин'), 'alice');
+		await user.type(screen.getByLabelText('Пароль (не короче 12)'), 'password12345');
+		await user.type(screen.getByLabelText('Пароль ещё раз'), 'password12345');
+
+		await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }));
+
+		expect(await screen.findByText('412-K7QM2-XH9TD')).toBeInTheDocument();
+		expect(calls).toEqual(['stop', 'start']);
+		expect(session.status).toBe('authenticated');
+		expect(session.login).toBe('alice');
+		await vi.waitFor(() => expect(accounts.list).toEqual([{ id: 1, name: 'acc-alice' }]));
+		const accountCalls = fetch.calls.filter((c) => c.url === '/api/v1/accounts');
+		expect(accountCalls.length).toBe(1);
 	});
 });
 
