@@ -132,6 +132,12 @@ class RecoveryRequests:
             await session.execute(stmt)
         return code
 
+    async def miss(self, code: str) -> bool:
+        """Проверка для неизвестной или неактивной учётки — та же работа, что у `check` без
+        действующего запроса (HMAC и выборка строки); всегда False. Учётки с `id` 0 нет."""
+        await self.check(0, code)
+        return False
+
     async def check(self, user_id: int, code: str) -> bool:
         expected_hash = self._hash_code(code)
         now = datetime.now(UTC)

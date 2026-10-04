@@ -1,17 +1,20 @@
+import asyncio
 import logging
 import re
+from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from app.api import security
 from app.api.app import create_api
 from app.api.container import Container
 from app.api.deps import COOKIE
 from app.db.models import AuditRow, User
 from app.db.notifications import DbNotifier
 from app.engine.transport.fake import FakeTransport
-from tests.api.conftest import Api, run_engine
+from tests.api.conftest import Api, make_user, run_engine
 from tests.engine.test_facade import build
 
 pytestmark = pytest.mark.db
@@ -181,20 +184,23 @@ async def test_finish_needs_exactly_one_code(api: Api) -> None:
 
 
 async def test_ten_bad_recovery_codes_lock_login_for_hour(api: Api) -> None:
+    # Каждая попытка — с нового IP: лимитер по IP не срабатывает, остаётся лимит логина.
+    app = create_api(api.container)
     bad_code = "1-WRONG-00000"
-    for _ in range(10):
-        resp = await api.client.post(
-            "/api/v1/auth/recover/finish",
-            json={"login": "admin", "recovery_code": bad_code, "password": "new_password_1234"},
-        )
+    body = {"login": "admin", "recovery_code": bad_code, "password": "new_password_1234"}
+
+    async def attempt(i: int) -> Any:
+        transport = ASGITransport(app=app, client=(f"10.0.0.{i}", 4000))
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.post("/api/v1/auth/recover/finish", json=body)
+
+    for i in range(10):
+        resp = await attempt(i)
         assert resp.status_code == 403
         assert resp.json()["detail"] == "invalid_code"
 
     # 11-я попытка блокируется на час
-    resp11 = await api.client.post(
-        "/api/v1/auth/recover/finish",
-        json={"login": "admin", "recovery_code": bad_code, "password": "new_password_1234"},
-    )
+    resp11 = await attempt(10)
     assert resp11.status_code == 429
     assert int(resp11.headers.get("Retry-After", 0)) > 0
 
@@ -227,3 +233,119 @@ async def test_start_survives_disabled_offline_and_failing_accounts(
         await api.container.drain()
 
     assert "tg transport crash" in caplog.text or "background task failed" in caplog.text
+
+
+class _CountingHasher:
+    """argon2 процесса со счётчиком проверок."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self.verifies = 0
+
+    def verify(self, password_hash: str, password: str) -> bool:
+        self.verifies += 1
+        return bool(self._inner.verify(password_hash, password))
+
+    def hash(self, password: str) -> str:
+        return str(self._inner.hash(password))
+
+
+@pytest.fixture
+async def hasher(monkeypatch: pytest.MonkeyPatch) -> _CountingHasher:
+    await security.dummy_hash()
+    counting = _CountingHasher(security._hasher)
+    monkeypatch.setattr(security, "_hasher", counting)
+    return counting
+
+
+@pytest.mark.parametrize("kind", ["code", "recovery_code"])
+async def test_finish_failures_across_logins_reach_ip_limit(api: Api, kind: str) -> None:
+    # Перебор с одного IP по разным логинам (есть такой, нет такого, отключённый) упирается в
+    # лимитер по IP, а не обходит его.
+    bob = await make_user(api.container, "bob")
+    await api.container.users.disable(bob, None)
+    secret = "12345678" if kind == "code" else "1-WRONG-00000"
+    logins = ["admin", "nobody1", "bob", "nobody2", "nobody3", "nobody4"]
+    for login_ in logins:
+        r = await api.client.post(
+            "/api/v1/auth/recover/finish",
+            json={"login": login_, kind: secret, "password": "new_password_1234"},
+        )
+        assert (r.status_code, r.json()) == (403, {"detail": "invalid_code"}), login_
+    r = await api.client.post(
+        "/api/v1/auth/recover/finish",
+        json={"login": "nobody5", kind: secret, "password": "new_password_1234"},
+    )
+    assert r.status_code == 429
+    assert int(r.headers["Retry-After"]) > 0
+
+
+@pytest.mark.parametrize("login_", ["admin", "nobody", "bob"])
+async def test_finish_recovery_code_one_argon2_check_for_any_login(
+    api: Api, hasher: _CountingHasher, login_: str
+) -> None:
+    bob = await make_user(api.container, "bob")
+    await api.container.users.disable(bob, None)
+    for code in ("1-WRONG-00000", "not-a-code"):
+        before = hasher.verifies
+        r = await api.client.post(
+            "/api/v1/auth/recover/finish",
+            json={"login": login_, "recovery_code": code, "password": "new_password_1234"},
+        )
+        assert (r.status_code, r.json()) == (403, {"detail": "invalid_code"})
+        assert hasher.verifies - before == 1, code
+
+
+@pytest.mark.parametrize("login_", ["nobody", "bob"])
+async def test_finish_telegram_code_unknown_login_checks_like_known(
+    api: Api, hasher: _CountingHasher, monkeypatch: pytest.MonkeyPatch, login_: str
+) -> None:
+    bob = await make_user(api.container, "bob")
+    await api.container.users.disable(bob, None)
+    requests = api.container.recovery_requests
+    checked: list[int] = []
+    real_check = requests.check
+
+    async def check(user_id: int, code: str) -> bool:
+        checked.append(user_id)
+        return await real_check(user_id, code)
+
+    monkeypatch.setattr(requests, "check", check)
+    r = await api.client.post(
+        "/api/v1/auth/recover/finish",
+        json={"login": login_, "code": "12345678", "password": "new_password_1234"},
+    )
+    assert (r.status_code, r.json()) == (403, {"detail": "invalid_code"})
+    # Как у существующей учётки: выборка запроса и HMAC, без argon2.
+    assert len(checked) == 1 and checked[0] != bob
+    assert hasher.verifies == 0
+
+
+@pytest.mark.parametrize("login_", ["admin", "nobody"])
+async def test_start_answers_before_any_lookup(
+    api: Api, monkeypatch: pytest.MonkeyPatch, login_: str
+) -> None:
+    t1 = FakeTransport()
+    f1 = build(authorized=True, transport=t1)
+    await f1.tg.boot()
+    run_engine(api.container, f1, 1)
+    gate = asyncio.Event()
+    looked_up: list[str] = []
+    real_get_user = api.container.auth.get_user
+
+    async def get_user(login: str) -> Any:
+        looked_up.append(login)
+        await gate.wait()
+        return await real_get_user(login)
+
+    monkeypatch.setattr(api.container.auth, "get_user", get_user)
+    # Ответ не ждёт ни поиска учётки, ни записи запроса, ни отправки: время ответа не выдаёт,
+    # есть ли такой логин.
+    r = await asyncio.wait_for(
+        api.client.post("/api/v1/auth/recover/start", json={"login": login_}), 5.0
+    )
+    assert r.status_code == 202
+    gate.set()
+    await api.container.drain()
+    assert looked_up == [login_]
+    assert len(t1.saved) == (1 if login_ == "admin" else 0)

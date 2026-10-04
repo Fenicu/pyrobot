@@ -1,5 +1,8 @@
+import asyncio
+import logging
+from collections.abc import Coroutine
 from datetime import UTC, datetime
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
@@ -34,6 +37,8 @@ from app.db.notifications import DbNotifier
 from app.db.users import Role
 from app.engine.facade import EngineFacade
 from app.engine.tg_auth import TgState
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -222,33 +227,45 @@ async def recover_start(
             headers={"Retry-After": str(int(wait) + 1)},
         )
 
-    user = await c.auth.get_user(body.login)
-    if user is not None and user.active:
-        code = await c.recovery_requests.start(user.id)
-        msg_text = (
-            f"Код восстановления пароля pyrobot: {code}\n"
-            "Действует 10 минут. Если код запрашивали не вы — ничего не делайте."
-        )
-        accounts = await c.accounts.list_for_user(user.id)
-        for acc in accounts:
-            if acc.status != "enabled":
-                continue
-            engine = c.engines.get(acc.id)
-            if engine is None:
-                continue
-            facade = (
-                engine if isinstance(engine, EngineFacade) else getattr(engine, "facade", None)
-            )
-            if not isinstance(facade, EngineFacade):
-                continue
-            try:
-                is_online = facade.tg.status().state is TgState.ONLINE
-            except Exception:
-                continue
-            if is_online:
-                c.spawn(facade.send_saved(msg_text))
-
+    # Поиск учётки, запрос и отправка — в фоне: ответ одинаков и по времени, есть такой логин
+    # или нет.
+    c.spawn(_send_recovery_code(c, body.login))
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+async def _send_recovery_code(c: Container, login: str) -> None:
+    """Код в «Избранное» всех аккаунтов учётки, онлайн в Telegram; нет такой активной учётки —
+    ничего."""
+    user = await c.auth.get_user(login)
+    if user is None or not user.active:
+        return
+    code = await c.recovery_requests.start(user.id)
+    msg_text = (
+        f"Код восстановления пароля pyrobot: {code}\n"
+        "Действует 10 минут. Если код запрашивали не вы — ничего не делайте."
+    )
+    sends: dict[int, Coroutine[Any, Any, Any]] = {}
+    for acc in await c.accounts.list_for_user(user.id):
+        if acc.status != "enabled":
+            continue
+        engine = c.engines.get(acc.id)
+        if engine is None:
+            continue
+        facade = engine if isinstance(engine, EngineFacade) else getattr(engine, "facade", None)
+        if not isinstance(facade, EngineFacade):
+            continue
+        try:
+            is_online = facade.tg.status().state is TgState.ONLINE
+        except Exception:
+            continue
+        if is_online:
+            sends[acc.id] = facade.send_saved(msg_text)
+    results = await asyncio.gather(*sends.values(), return_exceptions=True)
+    for account_id, result in zip(sends, results, strict=True):
+        if isinstance(result, Exception):
+            log.error(
+                "recovery code not sent to account %d: %r", account_id, result, exc_info=result
+            )
 
 
 @router.post(
@@ -289,9 +306,15 @@ async def recover_finish(
 
         user = await c.auth.get_user(body.login)
         if user is None or not user.active:
-            await dummy_hash()
+            # Та же работа, что у существующей учётки с неверным кодом: время ответа не выдаёт
+            # логин.
             if has_code:
-                c.limiter.failure(ip_key)
+                assert body.code is not None
+                await c.recovery_requests.miss(body.code)
+            else:
+                assert body.recovery_code is not None
+                await verify_password(await dummy_hash(), body.recovery_code)
+            c.limiter.failure(ip_key)
             if has_recovery_code:
                 c.recovery_code_limiter.hit(body.login)
             raise HTTPException(status.HTTP_403_FORBIDDEN, INVALID_CODE)
@@ -306,8 +329,7 @@ async def recover_finish(
             method = "recovery_code"
 
         if not valid:
-            if has_code:
-                c.limiter.failure(ip_key)
+            c.limiter.failure(ip_key)
             if has_recovery_code:
                 c.recovery_code_limiter.hit(body.login)
             raise HTTPException(status.HTTP_403_FORBIDDEN, INVALID_CODE)
