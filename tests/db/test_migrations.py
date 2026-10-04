@@ -474,22 +474,23 @@ async def test_0015_audit_log_and_nullable_notifications() -> None:
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
 
 
-async def test_0016_moves_retention_of_account_1() -> None:
+async def test_0016_takes_max_retention_over_accounts() -> None:
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
     await asyncio.to_thread(command.upgrade, _cfg(), "0015")
-    # до 0016: settings аккаунта 1 — retention.messages_days 120, аккаунта 2 — 30
+    # до 0016: у аккаунта 1 сроки короче, чем у аккаунта 2; аккаунт 3 без строки settings
     await _exec(
         "INSERT INTO settings (account_id, version, data, updated_at) "
         "VALUES (1, 1, "
-        '\'{"retention": {"messages_days": 120, "decisions_days": 40}}\'::jsonb, now()) '
+        '\'{"retention": {"messages_days": 90, "decisions_days": 40, '
+        '"metrics_days": 30}}\'::jsonb, now()) '
         "ON CONFLICT (account_id) DO UPDATE SET data = EXCLUDED.data"
     )
-    await _exec("INSERT INTO accounts (id, name) VALUES (2, 'acc2')")
+    await _exec("INSERT INTO accounts (id, name) VALUES (2, 'acc2'), (3, 'acc3')")
     await _exec(
         "INSERT INTO settings (account_id, version, data, updated_at) "
-        'VALUES (2, 1, \'{"retention": {"messages_days": 30}}\'::jsonb, now())'
+        "VALUES (2, 1, "
+        '\'{"retention": {"messages_days": 365, "metrics_days": 200}}\'::jsonb, now())'
     )
-    # upgrade 0016:
     await asyncio.to_thread(command.upgrade, _cfg(), "0016")
     tables = await _tables()
     assert "server_settings" in tables
@@ -498,24 +499,28 @@ async def test_0016_moves_retention_of_account_1() -> None:
     assert len(rows) == 1
     s_id, s_ver, s_data = rows[0]
     assert s_id == 1 and s_ver == 1
-    assert s_data["retention"]["messages_days"] == 120
-    assert s_data["retention"]["decisions_days"] == 40
-    assert s_data["retention"]["audit_days"] == 365
+    # по каждому полю максимум по аккаунтам; поле, которого нет у аккаунта, считается умолчанием
+    assert s_data["retention"] == {
+        "messages_days": 365,
+        "decisions_days": 40,
+        "metrics_days": 365,
+        "ledger_days": 31,
+        "audit_days": 365,
+    }
     assert "invites" in s_data and "limits" in s_data and "engine_bounds" in s_data
 
-    # "retention" нет ни в одной строке settings
     set_rows = await _exec("SELECT account_id, data FROM settings ORDER BY account_id")
     for _acc_id, data in set_rows:
         assert "retention" not in data
 
-    # downgrade 0015:
     await asyncio.to_thread(command.downgrade, _cfg(), "0015")
     tables_down = await _tables()
     assert "server_settings" not in tables_down
     down_rows = await _exec("SELECT account_id, data FROM settings ORDER BY account_id")
+    assert [acc_id for acc_id, _ in down_rows] == [1, 2]
     for _acc_id, data in down_rows:
-        assert "retention" in data
-        assert data["retention"]["messages_days"] == 120
+        assert data["retention"]["messages_days"] == 365
+        assert data["retention"]["decisions_days"] == 40
         assert "audit_days" not in data["retention"]
 
     await asyncio.to_thread(command.downgrade, _cfg(), "base")

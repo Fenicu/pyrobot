@@ -44,6 +44,34 @@ _DEFAULT_SERVER_SETTINGS = {
 }
 
 
+def _max_retention(bind: sa.Connection) -> dict[str, int]:
+    """По каждому полю — максимум по всем аккаунтам: обновление не сокращает ничей срок хранения.
+
+    У аккаунта без строки settings или без поля действует умолчание.
+    """
+    defaults = _DEFAULT_SERVER_SETTINGS["retention"]
+    found: dict[str, list[int]] = {key: [] for key in defaults if key != "audit_days"}
+    rows = bind.execute(
+        sa.text(
+            "SELECT s.data->'retention' FROM accounts a "
+            "LEFT JOIN settings s ON s.account_id = a.id"
+        )
+    ).scalars()
+    for raw in rows:
+        retention = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(retention, dict):
+            retention = {}
+        for key, values in found.items():
+            value = retention.get(key)
+            ok = isinstance(value, int) and not isinstance(value, bool)
+            values.append(value if ok else defaults[key])
+    result = dict(defaults)
+    for key, values in found.items():
+        if values:
+            result[key] = max(values)
+    return result
+
+
 def upgrade() -> None:
     table = op.create_table(
         "server_settings",
@@ -59,22 +87,12 @@ def upgrade() -> None:
         sa.CheckConstraint("id = 1", name="ck_server_settings_single_row"),
     )
 
-    bind = op.get_bind()
-    row = bind.execute(
-        sa.text("SELECT data->'retention' FROM settings WHERE account_id = 1")
-    ).scalar()
-
     server_data = {
-        "retention": dict(_DEFAULT_SERVER_SETTINGS["retention"]),
+        "retention": _max_retention(op.get_bind()),
         "invites": dict(_DEFAULT_SERVER_SETTINGS["invites"]),
         "limits": dict(_DEFAULT_SERVER_SETTINGS["limits"]),
         "engine_bounds": dict(_DEFAULT_SERVER_SETTINGS["engine_bounds"]),
     }
-    if row is not None:
-        retention_dict = row if isinstance(row, dict) else json.loads(row)
-        if isinstance(retention_dict, dict):
-            server_data["retention"].update(retention_dict)
-            server_data["retention"]["audit_days"] = 365
 
     op.bulk_insert(
         table,
