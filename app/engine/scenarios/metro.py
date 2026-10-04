@@ -407,9 +407,20 @@ async def _recover_stuck(
         stages.append(stage)
         return frame
 
+    async def decline() -> IncomingMessage | ScenarioResult | None:
+        """«Остаться» на показанном экране досрочного выхода."""
+        await ctx.safe_point()
+        got = await answer(await press("maze_exit_decline"))
+        if got is None or isinstance(got, ScenarioResult):
+            return got
+        if _in_run(metro_screen(got)):
+            return recovered(got, "exit_decline")
+        return await unknown(metro_screen(got))
+
     async def late() -> IncomingMessage | ScenarioResult | None:
-        """Правка, пришедшая после срока ступени: кадр забега — успех, незнакомый экран —
-        остановка; новое «Идёшь …» — зависание продолжается на нём."""
+        """Правка, пришедшая после срока ступени: кадр забега — успех, экран досрочного
+        выхода после двери — «Остаться», незнакомый экран — остановка; новое «Идёшь …» —
+        зависание продолжается на нём."""
         nonlocal shown
         latest = ctx.latest(message)
         if latest is None or _same(latest, shown):
@@ -417,9 +428,13 @@ async def _recover_stuck(
         if _moving(latest):
             shown = latest
             return None
-        if _in_run(metro_screen(latest)):
+        screen = metro_screen(latest)
+        if _in_run(screen):
             return recovered(latest, tried[-1] if tried else "late_answer")
-        return await unknown(metro_screen(latest))
+        if isinstance(screen, MetroEarlyExit) and tried[-1:] == ["exit_decline"]:
+            shown = latest
+            return await decline()
+        return await unknown(screen)
 
     if (back := _back_move(current)) is not None:
         tried.append("back_step")
@@ -443,14 +458,8 @@ async def _recover_stuck(
         if not isinstance(metro_screen(got), MetroEarlyExit):
             return await unknown(metro_screen(got))
         shown = got
-        await ctx.safe_point()
-        got = await answer(await press("maze_exit_decline"))
-        if isinstance(got, ScenarioResult):
+        if (got := await decline()) is not None:
             return got
-        if got is not None:
-            if _in_run(metro_screen(got)):
-                return recovered(got, "exit_decline")
-            return await unknown(metro_screen(got))
 
     await ctx.safe_point()
     if (got := await late()) is not None:

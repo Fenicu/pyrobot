@@ -1119,6 +1119,59 @@ async def test_stuck_step_late_answer_before_step3_recovers_exit_decline(
 
 
 @certifies("metro")
+async def test_stuck_step_late_early_exit_on_step2_declines(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    world.game.on_click("maze_exit")
+    world.game.on_click("maze_exit_decline", edit=("metro", RUN, 7))
+    swapped = False
+
+    def paused() -> bool:
+        nonlocal swapped
+        sent = len(world.game.sent)
+        # Дверь ступени 2 без ответа в срок, экран досрочного выхода пришёл перед ступенью 3.
+        if sent == len(ENTRY) + 4 and not swapped:
+            [message] = [
+                i for i, m in world.game.messages.items() if m.text == STUCK_MAP_GOING_LEFT
+            ]
+            now = datetime.now(UTC)
+            late = replace(
+                game_msg("metro", RUN, 6),
+                text=STUCK_EARLY_EXIT_TEXT,
+                inline=EARLY_EXIT_BUTTONS,
+                msg_id=message,
+                kind="edit",
+                revision=10_000,
+                date=now,
+                received_at=now,
+            )
+            world.pipeline._remember(late)
+            swapped = True
+            return False
+        return sent >= len(ENTRY) + 5
+
+    notes = Notes()
+    result = await run(world, _context(world, paused, notes))
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_left",
+        "maze_right",
+        "maze_exit",
+        "maze_exit_decline",
+    ]
+    assert notes.sent == []
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["exit_decline"]
+
+
+@certifies("metro")
 async def test_stuck_step_door_failure_on_step3_halts(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
