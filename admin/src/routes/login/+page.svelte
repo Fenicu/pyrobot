@@ -43,6 +43,9 @@
 				maxlength="1024"
 			/>
 		</label>
+		<div class="flex items-center justify-end">
+			<a href="/recover" class="text-xs text-fg-muted hover:text-fg">Забыли пароль?</a>
+		</div>
 		{#if error}
 			<p class="ext-text text-sm text-bad-fg" role="alert">{error}</p>
 		{/if}

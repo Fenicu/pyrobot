@@ -2,6 +2,7 @@ import createClient from 'openapi-fetch';
 import { API_ORIGIN, type SessionHooks } from '$lib/api/client';
 import { normalizeError, type ApiError } from '$lib/api/errors';
 import type { paths } from '$lib/api/schema';
+import type { MeOut } from '$lib/api/types';
 import { FIRST_DELAY_MS, MAX_DELAY_MS } from '$lib/live/connection.svelte';
 
 export type SessionStatus = 'unknown' | 'authenticated' | 'anonymous';
@@ -20,6 +21,7 @@ const REAL_TIMERS: Timers = {
  * после перезагрузки берётся из `GET /auth/me`. */
 export class Session {
 	login = $state<string | null>(null);
+	role = $state<'owner' | 'user' | null>(null);
 	status = $state<SessionStatus>('unknown');
 	/** Старт: `/auth/me` не ответил (сеть, 5xx) — сессия неизвестна, идёт повтор. */
 	offline = $state(false);
@@ -62,7 +64,7 @@ export class Session {
 		try {
 			const { data, response } = await this.#client.GET('/api/v1/auth/me');
 			if (data) {
-				this.#set(data.login, data.csrf_token);
+				this.#set(data.login, data.csrf_token, data.role ?? null);
 				return 'ok';
 			}
 			if (response.status === 401) {
@@ -126,7 +128,7 @@ export class Session {
 				body: { login, password }
 			});
 			if (data) {
-				this.#set(data.login, data.csrf_token);
+				this.#set(data.login, data.csrf_token, data.role ?? null);
 				return null;
 			}
 			return normalizeError(response.status, error, response.headers);
@@ -157,6 +159,11 @@ export class Session {
 		return error;
 	}
 
+	/** Принять данные сессии (после регистрации по приглашению или восстановления пароля). */
+	adopt(me: MeOut): void {
+		this.#set(me.login, me.csrf_token, me.role);
+	}
+
 	/** 401 от любого запроса: токен забыт, дальше — вход. */
 	expire(): void {
 		const was = this.status;
@@ -167,13 +174,15 @@ export class Session {
 	clear(): void {
 		this.#csrf = null;
 		this.login = null;
+		this.role = null;
 		this.status = 'anonymous';
 		this.stop();
 	}
 
-	#set(login: string, csrf: string): void {
+	#set(login: string, csrf: string, role: 'owner' | 'user' | null = null): void {
 		this.login = login;
 		this.#csrf = csrf;
+		this.role = role;
 		this.status = 'authenticated';
 		this.stop();
 	}

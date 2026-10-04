@@ -32,10 +32,19 @@ describe('сессия', () => {
 		);
 		const s = new Session(fetch);
 		expect(await s.load()).toBe('ok');
-		expect([s.status, s.login, s.csrf]).toEqual(['authenticated', 'admin', 'c1']);
+		expect([s.status, s.login, s.csrf, s.role]).toEqual(['authenticated', 'admin', 'c1', null]);
 		authed = false;
 		expect(await s.load()).toBe('unauthorized');
-		expect([s.status, s.login, s.csrf]).toEqual(['anonymous', null, null]);
+		expect([s.status, s.login, s.csrf, s.role]).toEqual(['anonymous', null, null, null]);
+	});
+
+	it('adopt устанавливает логин, CSRF и роль', () => {
+		const s = new Session();
+		expect([s.status, s.role]).toEqual(['unknown', null]);
+		s.adopt({ login: 'alice', csrf_token: 'c-adopt', role: 'user' });
+		expect([s.status, s.login, s.csrf, s.role]).toEqual(['authenticated', 'alice', 'c-adopt', 'user']);
+		s.clear();
+		expect([s.status, s.login, s.csrf, s.role]).toEqual(['anonymous', null, null, null]);
 	});
 
 	it('выход считается выполненным только при 204 или 401', async () => {

@@ -3,6 +3,7 @@ import {
 	accountHref,
 	homeHref,
 	isActive,
+	isPublic,
 	lastAccount,
 	legacyHref,
 	loginHref,
@@ -49,6 +50,23 @@ describe('возврат после входа', () => {
 		]) {
 			expect(safeNext(bad), String(bad)).toBe('/');
 		}
+	});
+
+	it('публичные пути: вход, восстановление, приглашение', () => {
+		expect(isPublic('/login')).toBe(true);
+		expect(isPublic('/recover')).toBe(true);
+		expect(isPublic('/invite/token123')).toBe(true);
+		expect(isPublic('/invite/32-byte-token_abc-def')).toBe(true);
+
+		expect(isPublic('/')).toBe(false);
+		expect(isPublic('/accounts')).toBe(false);
+		expect(isPublic('/password')).toBe(false);
+		expect(isPublic('/invite')).toBe(false);
+		expect(isPublic('/invite/')).toBe(false);
+		expect(isPublic('/recover/step')).toBe(false);
+
+		const item = moreNav(null).find((i) => i.href === '/password');
+		expect(item?.label).toBe('Пароль и коды');
 	});
 });
 

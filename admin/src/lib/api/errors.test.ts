@@ -104,4 +104,27 @@ describe('normalizeError', () => {
 		expect(normalizeError(500, 'oops')).toEqual({ kind: 'http', status: 500, code: '' });
 		expect(errorText(normalizeError(500, null))).toBe('Ошибка 500');
 	});
+
+	it('новые коды ошибок дают русский текст', () => {
+		const cases: [number, string, string][] = [
+			[404, 'invite_not_found', 'Приглашение не найдено'],
+			[410, 'invite_gone', 'Приглашение уже использовано, отозвано или истекло'],
+			[409, 'login_taken', 'Логин уже занят'],
+			[403, 'invalid_code', 'Неверный код'],
+			[403, 'invalid_password', 'Неверный пароль'],
+			[409, 'limit_reached', 'Достигнут лимит аккаунтов'],
+			[409, 'server_full', 'На сервере нет свободных мест для аккаунтов'],
+			[403, 'blocked_by_owner', 'Аккаунт заблокирован владельцем'],
+			[422, 'setting_out_of_bounds', 'Значение настройки выходит за границы'],
+			[409, 'tg_logged_in', 'Вход в Telegram уже выполнен'],
+			[409, 'last_owner', 'Нельзя изменить или удалить последнего владельца'],
+			[422, 'confirm_login_mismatch', 'Логин для подтверждения введён неверно'],
+			[422, 'reason_required', 'Укажите причину блокировки'],
+			[429, 'too_many_streams', 'Слишком много активных подключений']
+		];
+		for (const [status, code, text] of cases) {
+			const err = normalizeError(status, { detail: code });
+			expect(errorText(err), code).toBe(text);
+		}
+	});
 });

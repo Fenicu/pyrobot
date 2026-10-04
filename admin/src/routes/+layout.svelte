@@ -8,11 +8,12 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import Shell from '$lib/components/Shell.svelte';
 	import Toasts from '$lib/components/Toasts.svelte';
-	import { isLegacy, lastAccount, legacyHref, loginHref, pickAccount, safeNext } from '$lib/nav';
+	import { isLegacy, isPublic, lastAccount, legacyHref, loginHref, pickAccount, safeNext } from '$lib/nav';
 	import { theme } from '$lib/stores/theme.svelte';
 
 	let { children }: { children: Snippet } = $props();
 	const onLogin = $derived(page.url.pathname === '/login');
+	const publicPage = $derived(isPublic(page.url.pathname));
 	const legacy = $derived(isLegacy(page.url.pathname));
 
 	onMount(() => {
@@ -32,7 +33,7 @@
 			if (onLogin) void goto(safeNext(page.url.searchParams.get('next')), { replaceState: true });
 		} else if (session.status === 'anonymous') {
 			stopApp();
-			if (!onLogin) void goto(loginHref(page.url), { replaceState: true });
+			if (!publicPage) void goto(loginHref(page.url), { replaceState: true });
 		}
 	});
 
@@ -45,7 +46,7 @@
 	});
 </script>
 
-{#if onLogin}
+{#if publicPage}
 	{@render children()}
 {:else if session.status === 'authenticated' && legacy}
 	{@render children()}

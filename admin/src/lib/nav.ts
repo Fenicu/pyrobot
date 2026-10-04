@@ -50,7 +50,7 @@ export function moreNav(id: number | null): NavItem[] {
 	return [
 		...account,
 		{ href: '/accounts', label: 'Аккаунты', icon: Users },
-		{ href: '/password', label: 'Смена пароля', icon: KeyRound }
+		{ href: '/password', label: 'Пароль и коды', icon: KeyRound }
 	];
 }
 
@@ -121,6 +121,13 @@ const LEGACY = new Set([
 
 export function isLegacy(pathname: string): boolean {
 	return LEGACY.has(pathname);
+}
+
+const INVITE_PATH = /^\/invite\/[^/]+$/;
+
+/** Публичные страницы (без входа): вход, восстановление пароля, регистрация по приглашению. */
+export function isPublic(pathname: string): boolean {
+	return pathname === '/login' || pathname === '/recover' || INVITE_PATH.test(pathname);
 }
 
 /** Старая ссылка — тот же экран аккаунта `id` с теми же query и якорем; аккаунтов нет — их список;

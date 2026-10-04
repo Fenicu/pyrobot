@@ -103,7 +103,21 @@ const CODE_TEXT: Record<string, string> = {
 	deeds_disabled: 'Дела выключены в «Функциях» — сбор не потратит 🔥. Включите дела и запустите снова',
 	no_run: 'Сбора нет — нечего ставить на паузу, продолжать или отменять',
 	not_collecting: 'В игре сбор не идёт',
-	not_external: 'Этот сбор уже ведёт бот'
+	not_external: 'Этот сбор уже ведёт бот',
+	invite_not_found: 'Приглашение не найдено',
+	invite_gone: 'Приглашение уже использовано, отозвано или истекло',
+	login_taken: 'Логин уже занят',
+	invalid_code: 'Неверный код',
+	invalid_password: 'Неверный пароль',
+	limit_reached: 'Достигнут лимит аккаунтов',
+	server_full: 'На сервере нет свободных мест для аккаунтов',
+	blocked_by_owner: 'Аккаунт заблокирован владельцем',
+	setting_out_of_bounds: 'Значение настройки выходит за границы',
+	tg_logged_in: 'Вход в Telegram уже выполнен',
+	last_owner: 'Нельзя изменить или удалить последнего владельца',
+	confirm_login_mismatch: 'Логин для подтверждения введён неверно',
+	reason_required: 'Укажите причину блокировки',
+	too_many_streams: 'Слишком много активных подключений'
 };
 
 /** Ожидание для человека: секунды до минуты, дальше — минуты вверх. */
@@ -129,6 +143,8 @@ export function errorText(err: ApiError): string {
 				const text = 'Слишком много запросов кода входа';
 				return err.retryAfter !== null ? `${text} — следующий через ${waitText(err.retryAfter)}` : text;
 			}
+			const known = CODE_TEXT[err.code];
+			if (known !== undefined) return known;
 			return err.retryAfter !== null
 				? `Слишком часто — подождите ${err.retryAfter} с`
 				: 'Слишком часто — подождите';

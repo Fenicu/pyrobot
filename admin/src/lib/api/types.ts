@@ -40,6 +40,14 @@ export type BalanceOut = S['BalanceOut'];
 export type AccountOut = S['AccountOut'];
 export type ArtifactOut = S['ArtifactOut'];
 export type GadgetsState = S['GadgetsState'];
+export type InvitePeekOut = S['InvitePeekOut'];
+export type InviteAcceptIn = S['InviteAcceptIn'];
+export type InviteAcceptOut = S['InviteAcceptOut'];
+export type RecoverStartIn = S['RecoverStartIn'];
+export type RecoverFinishIn = S['RecoverFinishIn'];
+export type RecoveryCodesIn = S['RecoveryCodesIn'];
+export type RecoveryCodesOut = S['RecoveryCodesOut'];
+export type MeOut = S['MeOut'];
 
 /** Наблюдение поля состояния: `{value, at, src}`. */
 export interface Observed<T> {
