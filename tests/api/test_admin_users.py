@@ -368,3 +368,50 @@ async def test_patch_and_delete_user_not_found_404(api: Api) -> None:
     )
     assert del_resp.status_code == 404
     assert del_resp.json()["detail"] == "user_not_found"
+
+
+@pytest.mark.parametrize("op", ["set_limit", "disable", "enable", "mark_deleting"])
+async def test_user_purged_midway_returns_404(
+    api: Api, monkeypatch: pytest.MonkeyPatch, op: str
+) -> None:
+    # Учётку удалила чистка последнего аккаунта между users.get и операцией.
+    user_id = await make_user(api.container, "gone", role="user")
+
+    async def gone(*_args: object) -> None:
+        raise KeyError(user_id)
+
+    monkeypatch.setattr(api.container.users, op, gone)
+    if op == "mark_deleting":
+        r = await api.client.request(
+            "DELETE",
+            f"/api/v1/admin/users/{user_id}",
+            headers=api.headers,
+            json={"confirm_login": "gone"},
+        )
+    else:
+        body: dict[str, Any] = {
+            "set_limit": {"max_accounts": 7},
+            "disable": {"disabled": True},
+            "enable": {"disabled": False},
+        }[op]
+        r = await api.client.patch(
+            f"/api/v1/admin/users/{user_id}", headers=api.headers, json=body
+        )
+    assert (r.status_code, r.json()) == (404, {"detail": "user_not_found"}), r.text
+
+
+async def test_out_of_range_ids_are_422(api: Api) -> None:
+    big = 2**63
+    int4 = 2**31
+    for method, path, body in (
+        ("GET", f"/api/v1/admin/audit?before={big}", None),
+        ("POST", "/api/v1/admin/notifications/read", {"up_to_id": big}),
+        ("PATCH", f"/api/v1/admin/users/{int4}", {"max_accounts": 3}),
+        ("DELETE", f"/api/v1/admin/users/{int4}", {"confirm_login": "x"}),
+        ("PATCH", f"/api/v1/admin/accounts/{int4}", {"blocked": False}),
+        ("POST", f"/api/v1/admin/accounts/{int4}/restart", None),
+        ("DELETE", f"/api/v1/admin/accounts/{int4}", {"confirm_name": "x"}),
+        ("DELETE", f"/api/v1/admin/invites/{int4}", None),
+    ):
+        r = await api.client.request(method, path, headers=api.headers, json=body)
+        assert r.status_code == 422, (method, path, r.status_code, r.text)

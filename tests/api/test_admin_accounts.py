@@ -295,6 +295,52 @@ async def test_block_unblock_account_purged_midway_returns_404(
     assert r.json()["detail"] == "account not found"
 
 
+async def test_repeated_block_and_unblock_write_nothing(api: Api) -> None:
+    bob_id = await make_user(api.container, "bob", role="user")
+    acc = await api.container.accounts.create(bob_id, "BobTwice")
+
+    async def counts() -> tuple[int, int]:
+        async with api.db.sessions() as s:
+            audit = len(
+                list(await s.scalars(select(AuditRow.id).where(AuditRow.target_id == acc.id)))
+            )
+            notes = len(
+                list(
+                    await s.scalars(
+                        select(NotificationRow.id).where(NotificationRow.account_id == acc.id)
+                    )
+                )
+            )
+        return audit, notes
+
+    url = f"/api/v1/admin/accounts/{acc.id}"
+    base = await counts()
+    # Разблокировка незаблокированного: ни аудита, ни уведомления.
+    r = await api.client.patch(url, json={"blocked": False}, headers=api.headers)
+    assert r.status_code == 200 and r.json()["blocked"] is False
+    assert await counts() == base
+
+    r = await api.client.patch(url, json={"blocked": True, "reason": "Спам"}, headers=api.headers)
+    assert r.status_code == 200
+    blocked = await counts()
+    assert blocked == (base[0] + 1, base[1] + 1)
+    # Повторная блокировка возвращает текущее состояние, причина прежняя.
+    r = await api.client.patch(
+        url, json={"blocked": True, "reason": "Другая"}, headers=api.headers
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["blocked"] is True and r.json()["blocked_reason"] == "Спам"
+    assert await counts() == blocked
+
+    r = await api.client.patch(url, json={"blocked": False}, headers=api.headers)
+    assert r.status_code == 200
+    unblocked = await counts()
+    assert unblocked == (blocked[0] + 1, blocked[1] + 1)
+    r = await api.client.patch(url, json={"blocked": False}, headers=api.headers)
+    assert r.status_code == 200 and r.json()["blocked"] is False
+    assert await counts() == unblocked
+
+
 async def test_user_cannot_enable_blocked_account(api: Api) -> None:
     bob_id = await make_user(api.container, "bob", role="user")
     acc = await api.container.accounts.create(bob_id, "BobBlocked")

@@ -209,8 +209,12 @@ async def test_start_survives_disabled_offline_and_failing_accounts(
     api: Api, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Review Focus 3:
-    # Аккаунт 1: выключен (disabled)
+    # Аккаунт 1: выключен (disabled), движок онлайн — код туда не уходит
     user = await _get_user(api.container, "admin")
+    t1 = FakeTransport()
+    f1 = build(authorized=True, transport=t1)
+    await f1.tg.boot()
+    run_engine(api.container, f1, 1)
     await api.container.accounts.set_status(1, "disabled", "testing")
 
     # Аккаунт 2: офлайн (Telegram unauthorized / not online)
@@ -227,12 +231,77 @@ async def test_start_survives_disabled_offline_and_failing_accounts(
     await f3.tg.boot()
     run_engine(api.container, f3, acc3.id)
 
+    # Аккаунт 4: онлайн, код доходит
+    acc4 = await api.container.accounts.create(user.id, "account-ok", capacity=10)
+    t4 = FakeTransport()
+    f4 = build(authorized=True, transport=t4)
+    await f4.tg.boot()
+    run_engine(api.container, f4, acc4.id)
+
+    unknown = await api.client.post("/api/v1/auth/recover/start", json={"login": "nobody"})
+    await api.container.drain()
+    with caplog.at_level(logging.DEBUG):
+        resp = await api.client.post("/api/v1/auth/recover/start", json={"login": "admin"})
+        await api.container.drain()
+
+    assert (resp.status_code, resp.content) == (unknown.status_code, unknown.content)
+    assert resp.status_code == 202
+    assert t1.saved == []
+    assert len(t4.saved) == 1
+    match = re.search(r"pyrobot: (\S+)", t4.saved[0])
+    assert match is not None
+    assert match.group(1) not in caplog.text
+    assert f"recovery code not sent to account {acc3.id}" in caplog.text
+    assert "tg transport crash" in caplog.text
+    assert "background task failed" not in caplog.text
+
+
+async def test_start_logs_cancelled_send(api: Api, caplog: pytest.LogCaptureFixture) -> None:
+    t1 = FakeTransport()
+    t1.fail_with = [asyncio.CancelledError()]
+    f1 = build(authorized=True, transport=t1)
+    await f1.tg.boot()
+    run_engine(api.container, f1, 1)
     with caplog.at_level(logging.ERROR):
         resp = await api.client.post("/api/v1/auth/recover/start", json={"login": "admin"})
         assert resp.status_code == 202
         await api.container.drain()
+    assert "recovery code not sent to account 1" in caplog.text
 
-    assert "tg transport crash" in caplog.text or "background task failed" in caplog.text
+
+async def test_start_creates_no_send_before_all_accounts_checked(
+    api: Api, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Сбой на втором аккаунте не оставляет несыгранной корутины отправки в первый: отправки
+    # создаются только после обхода всех аккаунтов.
+    user = await _get_user(api.container, "admin")
+    f1 = build(authorized=True, transport=FakeTransport())
+    await f1.tg.boot()
+    run_engine(api.container, f1, 1)
+    acc2 = await api.container.accounts.create(user.id, "account-broken", capacity=10)
+    created: list[str] = []
+
+    def send_saved(text: str) -> Any:
+        created.append(text)
+        done = asyncio.get_running_loop().create_future()
+        done.set_result(None)
+        return done
+
+    monkeypatch.setattr(f1, "send_saved", send_saved)
+    real_get = api.container.engines.get
+
+    def get(account_id: int) -> Any:
+        if account_id == acc2.id:
+            raise RuntimeError("registry broken")
+        return real_get(account_id)
+
+    monkeypatch.setattr(api.container.engines, "get", get)
+    with caplog.at_level(logging.ERROR):
+        resp = await api.client.post("/api/v1/auth/recover/start", json={"login": "admin"})
+        assert resp.status_code == 202
+        await api.container.drain()
+    assert "registry broken" in caplog.text
+    assert created == []
 
 
 class _CountingHasher:

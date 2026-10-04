@@ -4,7 +4,7 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, Field, ValidationError
 
 from app.api.container import Container
@@ -45,6 +45,14 @@ router = APIRouter(
     dependencies=[Depends(require_owner)],
     responses={404: error("not found")},
 )
+
+# Границы ключей в базе: `users`/`accounts`/`invites.id` — int4, `audit_log`/`notifications.id` —
+# int8. Значение за ними база отвергла бы (500), здесь это 422.
+_INT4_MAX = 2**31 - 1
+_INT8_MAX = 2**63 - 1
+UserId = Annotated[int, Path(le=_INT4_MAX)]
+AccountId = Annotated[int, Path(le=_INT4_MAX)]
+InviteId = Annotated[int, Path(le=_INT4_MAX)]
 
 
 class AdminUserOut(BaseModel):
@@ -89,7 +97,7 @@ async def list_users(
     },
 )
 async def patch_user(
-    user_id: int,
+    user_id: UserId,
     body: AdminUserPatchIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],
@@ -102,7 +110,10 @@ async def patch_user(
     if body.max_accounts is not None:
         old_limit = user.max_accounts
         if body.max_accounts != old_limit:
-            await c.users.set_limit(user_id, body.max_accounts)
+            try:
+                await c.users.set_limit(user_id, body.max_accounts)
+            except KeyError as exc:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, USER_NOT_FOUND) from exc
             if c.audit is not None:
                 await c.audit.write(
                     Actor.of(ctx),
@@ -118,6 +129,8 @@ async def patch_user(
                 await c.users.disable(user_id, body.reason)
             except LastOwner as exc:
                 raise HTTPException(status.HTTP_409_CONFLICT, LAST_OWNER) from exc
+            except KeyError as exc:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, USER_NOT_FOUND) from exc
             if c.audit is not None:
                 details = {"reason": body.reason} if body.reason is not None else {}
                 await c.audit.write(
@@ -129,7 +142,10 @@ async def patch_user(
                 )
             c.engines.poke()
         else:
-            await c.users.enable(user_id)
+            try:
+                await c.users.enable(user_id)
+            except KeyError as exc:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, USER_NOT_FOUND) from exc
             if c.audit is not None:
                 await c.audit.write(
                     Actor.of(ctx),
@@ -157,7 +173,7 @@ async def patch_user(
     },
 )
 async def delete_user(
-    user_id: int,
+    user_id: UserId,
     body: AdminUserDeleteIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],
@@ -173,6 +189,8 @@ async def delete_user(
         await c.users.mark_deleting(user_id)
     except LastOwner as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, LAST_OWNER) from exc
+    except KeyError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, USER_NOT_FOUND) from exc
 
     if c.audit is not None:
         await c.audit.write(
@@ -255,12 +273,13 @@ async def list_accounts(
     },
 )
 async def patch_account(
-    account_id: int,
+    account_id: AccountId,
     body: AdminAccountPatchIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],
 ) -> AdminAccountOut:
-    """Блокировка с обязательной причиной или разблокировка аккаунта."""
+    """Блокировка с обязательной причиной или разблокировка аккаунта. Если `blocked` уже такой,
+    ничего не пишется (ни аудита, ни уведомления, причина прежняя) — ответ с текущим состоянием."""
     if body.blocked and (not body.reason or not body.reason.strip()):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, REASON_REQUIRED)
 
@@ -271,10 +290,10 @@ async def patch_account(
     if body.blocked:
         assert body.reason is not None
         try:
-            await c.accounts.block(account_id, body.reason.strip())
+            changed = await c.accounts.block(account_id, body.reason.strip())
         except KeyError as exc:
             raise HTTPException(status.HTTP_404_NOT_FOUND, ACCOUNT_NOT_FOUND) from exc
-        if c.audit is not None:
+        if changed and c.audit is not None:
             await c.audit.write(
                 Actor.of(ctx),
                 "account_blocked",
@@ -284,10 +303,10 @@ async def patch_account(
             )
     else:
         try:
-            await c.accounts.unblock(account_id)
+            changed = await c.accounts.unblock(account_id)
         except KeyError as exc:
             raise HTTPException(status.HTTP_404_NOT_FOUND, ACCOUNT_NOT_FOUND) from exc
-        if c.audit is not None:
+        if changed and c.audit is not None:
             await c.audit.write(
                 Actor.of(ctx),
                 "account_unblocked",
@@ -295,7 +314,8 @@ async def patch_account(
                 target_id=account_id,
                 details={},
             )
-    c.engines.poke()
+    if changed:
+        c.engines.poke()
 
     now = datetime.now(UTC)
     row = await c.admin_reads.account(account_id, now)
@@ -316,7 +336,7 @@ async def patch_account(
     },
 )
 async def restart_account(
-    account_id: int,
+    account_id: AccountId,
     _: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],
 ) -> Response:
@@ -348,7 +368,7 @@ async def restart_account(
     },
 )
 async def delete_account(
-    account_id: int,
+    account_id: AccountId,
     body: AdminAccountDeleteIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],
@@ -448,7 +468,7 @@ async def create_invite(
     responses={**CSRF, 404: error(INVITE_NOT_FOUND), 410: error(INVITE_GONE)},
 )
 async def revoke_invite(
-    invite_id: int,
+    invite_id: InviteId,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     c: Annotated[Container, Depends(container)],
 ) -> Response:
@@ -550,7 +570,7 @@ class AdminAuditPageOut(BaseModel):
 async def list_audit(
     c: Annotated[Container, Depends(container)],
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    before: Annotated[int | None, Query(ge=1)] = None,
+    before: Annotated[int | None, Query(ge=1, le=_INT8_MAX)] = None,
 ) -> AdminAuditPageOut:
     assert c.audit is not None
     items, next_before = await c.audit.page(limit=limit, before=before)
@@ -570,7 +590,7 @@ class AdminNotificationOut(BaseModel):
 
 
 class AdminNotificationReadIn(BaseModel):
-    up_to_id: int = Field(ge=1)
+    up_to_id: int = Field(ge=1, le=_INT8_MAX)
 
 
 @router.get("/notifications", response_model=list[AdminNotificationOut], responses=AUTH)

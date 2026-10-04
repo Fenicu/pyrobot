@@ -973,6 +973,7 @@
       "AdminNotificationReadIn": {
         "properties": {
           "up_to_id": {
+            "maximum": 9.223372036854776e+18,
             "minimum": 1.0,
             "title": "Up To Id",
             "type": "integer"
@@ -11670,6 +11671,7 @@
             "name": "account_id",
             "required": true,
             "schema": {
+              "maximum": 2147483647,
               "title": "Account Id",
               "type": "integer"
             }
@@ -11762,7 +11764,7 @@
         ]
       },
       "patch": {
-        "description": "Блокировка с обязательной причиной или разблокировка аккаунта.",
+        "description": "Блокировка с обязательной причиной или разблокировка аккаунта. Если `blocked` уже такой,\nничего не пишется (ни аудита, ни уведомления, причина прежняя) — ответ с текущим состоянием.",
         "operationId": "patch_account_api_v1_admin_accounts__account_id__patch",
         "parameters": [
           {
@@ -11770,6 +11772,7 @@
             "name": "account_id",
             "required": true,
             "schema": {
+              "maximum": 2147483647,
               "title": "Account Id",
               "type": "integer"
             }
@@ -11869,6 +11872,7 @@
             "name": "account_id",
             "required": true,
             "schema": {
+              "maximum": 2147483647,
               "title": "Account Id",
               "type": "integer"
             }
@@ -11984,6 +11988,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "maximum": 9223372036854775807,
                   "minimum": 1,
                   "type": "integer"
                 },
@@ -12186,6 +12191,7 @@
             "name": "invite_id",
             "required": true,
             "schema": {
+              "maximum": 2147483647,
               "title": "Invite Id",
               "type": "integer"
             }
@@ -12613,6 +12619,7 @@
             "name": "user_id",
             "required": true,
             "schema": {
+              "maximum": 2147483647,
               "title": "User Id",
               "type": "integer"
             }
@@ -12713,6 +12720,7 @@
             "name": "user_id",
             "required": true,
             "schema": {
+              "maximum": 2147483647,
               "title": "User Id",
               "type": "integer"
             }

@@ -1,8 +1,7 @@
 import asyncio
 import logging
-from collections.abc import Coroutine
 from datetime import UTC, datetime
-from typing import Annotated, Any, cast
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
@@ -244,7 +243,9 @@ async def _send_recovery_code(c: Container, login: str) -> None:
         f"Код восстановления пароля pyrobot: {code}\n"
         "Действует 10 минут. Если код запрашивали не вы — ничего не делайте."
     )
-    sends: dict[int, Coroutine[Any, Any, Any]] = {}
+    # Сначала только фасады: корутины отправки создаются в gather, иначе сбой на следующем
+    # аккаунте оставил бы уже созданные несыгранными.
+    targets: dict[int, EngineFacade] = {}
     for acc in await c.accounts.list_for_user(user.id):
         if acc.status != "enabled":
             continue
@@ -259,10 +260,13 @@ async def _send_recovery_code(c: Container, login: str) -> None:
         except Exception:
             continue
         if is_online:
-            sends[acc.id] = facade.send_saved(msg_text)
-    results = await asyncio.gather(*sends.values(), return_exceptions=True)
-    for account_id, result in zip(sends, results, strict=True):
-        if isinstance(result, Exception):
+            targets[acc.id] = facade
+    results = await asyncio.gather(
+        *(f.send_saved(msg_text) for f in targets.values()), return_exceptions=True
+    )
+    for account_id, result in zip(targets, results, strict=True):
+        # CancelledError — не Exception, но отправка в этот аккаунт тоже не состоялась.
+        if isinstance(result, BaseException):
             log.error(
                 "recovery code not sent to account %d: %r", account_id, result, exc_info=result
             )

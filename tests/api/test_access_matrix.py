@@ -135,6 +135,19 @@ async def test_foreign_account_is_404_for_every_path(api: Api, role: str) -> Non
                 template,
             )
 
+            # 3. аккаунта нет вовсе
+            resp_missing = await api.client.request(
+                method, f"/api/v1/accounts/999{path}", headers=api.headers, json=body
+            )
+            assert (resp_missing.status_code, resp_missing.json()) == (
+                404,
+                {"detail": "account not found"},
+            ), (
+                "admin on missing account",
+                method,
+                template,
+            )
+
 
 async def test_host_status_is_404_for_user(api: Api) -> None:
     await make_user(api.container, "bob", role="user")

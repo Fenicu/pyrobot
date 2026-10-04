@@ -852,7 +852,8 @@ export interface paths {
         head?: never;
         /**
          * Patch Account
-         * @description Блокировка с обязательной причиной или разблокировка аккаунта.
+         * @description Блокировка с обязательной причиной или разблокировка аккаунта. Если `blocked` уже такой,
+         *     ничего не пишется (ни аудита, ни уведомления, причина прежняя) — ответ с текущим состоянием.
          */
         patch: operations["patch_account_api_v1_admin_accounts__account_id__patch"];
         trace?: never;

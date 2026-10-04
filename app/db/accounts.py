@@ -458,15 +458,18 @@ class AccountRepo:
                 raise NameTaken(name) from exc
             raise
 
-    async def block(self, account_id: int, reason: str) -> None:
+    async def block(self, account_id: int, reason: str) -> bool:
         """Блокировка аккаунта владельцем сервера: выставляет blocked и blocked_reason,
-        переводит в disabled/blocked_by_owner (кроме deleting) и создаёт уведомление warn."""
+        переводит в disabled/blocked_by_owner (кроме deleting) и создаёт уведомление warn.
+        Уже заблокирован — ничего не меняет и возвращает False."""
         async with self._db.sessions() as session, session.begin():
             row = await session.scalar(
                 select(Account).where(Account.id == account_id).with_for_update()
             )
             if row is None:
                 raise KeyError(account_id)
+            if row.blocked:
+                return False
             row.blocked = True
             row.blocked_reason = reason
             if row.status != "deleting":
@@ -481,16 +484,20 @@ class AccountRepo:
                     text=reason,
                 )
             )
+            return True
 
-    async def unblock(self, account_id: int) -> None:
+    async def unblock(self, account_id: int) -> bool:
         """Разблокировка аккаунта владельцем сервера: снимает blocked/blocked_reason,
-        статус не меняет, создаёт уведомление info."""
+        статус не меняет, создаёт уведомление info. Не заблокирован — ничего не меняет и
+        возвращает False."""
         async with self._db.sessions() as session, session.begin():
             row = await session.scalar(
                 select(Account).where(Account.id == account_id).with_for_update()
             )
             if row is None:
                 raise KeyError(account_id)
+            if not row.blocked:
+                return False
             row.blocked = False
             row.blocked_reason = None
             row.updated_at = func.now()
@@ -502,6 +509,7 @@ class AccountRepo:
                     text="account unblocked by owner",
                 )
             )
+            return True
 
     async def set_status(self, account_id: int, status: AccountStatus, reason: str | None) -> None:
         """У удаляемого аккаунта (`deleting`) статус не меняется: чистка должна дойти до конца."""
