@@ -111,15 +111,6 @@ class AuthRepo:
         async with self._db.sessions() as session, session.begin():
             await session.execute(delete(AuthSession).where(AuthSession.id == session_id))
 
-    async def revoke_all(self, user_id: int) -> int:
-        async with self._db.sessions() as session, session.begin():
-            deleted = await session.scalars(
-                delete(AuthSession)
-                .where(AuthSession.admin_user_id == user_id)
-                .returning(AuthSession.id)
-            )
-            return len(list(deleted))
-
     async def change_password(self, user_id: int, new_hash: str) -> None:
         async with self._db.sessions() as session, session.begin():
             await session.execute(

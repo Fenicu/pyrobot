@@ -2,7 +2,7 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.accounts import AccountRepo
 from app.db.base import Database
@@ -12,14 +12,11 @@ from app.db.users import LastOwner, UserInfo, UserRepo
 pytestmark = pytest.mark.db
 
 
-async def test_get_by_login_and_all(clean_db: Database) -> None:
+async def test_get_and_by_login(clean_db: Database) -> None:
     users = UserRepo(clean_db)
     async with clean_db.sessions() as s, s.begin():
         s.add(User(login="owner1", password_hash="h1", role="owner", max_accounts=10))
         s.add(User(login="user1", password_hash="h2", role="user", max_accounts=2))
-
-    all_users = await users.all()
-    assert [u.login for u in all_users] == ["owner1", "user1"]
 
     o1 = await users.by_login("owner1")
     assert o1 is not None and o1.role == "owner" and o1.max_accounts == 10
@@ -118,18 +115,6 @@ async def test_touch_login(clean_db: Database) -> None:
     assert (await users.get(uid)).last_login_at is None  # type: ignore[union-attr]
     await users.touch_login(uid)
     assert (await users.get(uid)).last_login_at is not None  # type: ignore[union-attr]
-
-
-async def test_owners_active(clean_db: Database) -> None:
-    users = UserRepo(clean_db)
-    assert await users.owners_active() == 0
-
-    async with clean_db.sessions() as s, s.begin():
-        s.add(User(login="o1", password_hash="h", role="owner"))
-        s.add(User(login="o2", password_hash="h", role="owner", disabled_at=datetime.now(UTC)))
-        s.add(User(login="u1", password_hash="h", role="user"))
-
-    assert await users.owners_active() == 1
 
 
 async def test_disable_closes_sessions_and_disables_accounts(clean_db: Database) -> None:
@@ -268,7 +253,13 @@ async def test_concurrent_disable_of_two_owners_leaves_one(clean_db: Database) -
     errors = [r for r in res if isinstance(r, LastOwner)]
     assert len(successes) == 1
     assert len(errors) == 1
-    assert await users.owners_active() == 1
+    async with clean_db.sessions() as s:
+        active = await s.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.role == "owner", User.disabled_at.is_(None))
+        )
+    assert active == 1
 
 
 async def test_mark_deleting_without_accounts_removes_user_immediately(clean_db: Database) -> None:
@@ -333,36 +324,3 @@ async def test_mark_deleting_last_owner_raises(clean_db: Database) -> None:
 
     with pytest.raises(LastOwner):
         await users.mark_deleting(oid)
-
-
-async def test_finish_deleting(clean_db: Database) -> None:
-    users = UserRepo(clean_db)
-    async with clean_db.sessions() as s, s.begin():
-        owner = User(login="owner", password_hash="h", role="owner")
-        user = User(
-            login="deleting_user",
-            password_hash="h",
-            role="user",
-            deleting_at=datetime.now(UTC),
-        )
-        s.add_all([owner, user])
-        await s.flush()
-        uid = user.id
-        acc = Account(owner_id=uid, name="Acc", status="deleting")
-        s.add(acc)
-        await s.flush()
-        acc_id = acc.id
-
-    # Has account -> finish_deleting returns False
-    assert await users.finish_deleting(uid) is False
-    assert await users.get(uid) is not None
-
-    # Remove account
-    async with clean_db.sessions() as s, s.begin():
-        row = await s.get(Account, acc_id)
-        if row:
-            await s.delete(row)
-
-    # Now finish_deleting removes user
-    assert await users.finish_deleting(uid) is True
-    assert await users.get(uid) is None

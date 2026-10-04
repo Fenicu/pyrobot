@@ -66,11 +66,6 @@ class UserRepo:
             row = await session.scalar(select(User).where(User.login == login))
             return _to_info(row) if row is not None else None
 
-    async def all(self) -> list[UserInfo]:
-        async with self._db.sessions() as session:
-            rows = await session.scalars(select(User).order_by(User.id))
-            return [_to_info(r) for r in rows]
-
     async def promote(self, login: str) -> UserInfo:
         async with self._db.sessions() as session, session.begin():
             row = await session.scalar(select(User).where(User.login == login).with_for_update())
@@ -141,19 +136,6 @@ class UserRepo:
                 update(User).where(User.id == user_id).values(last_login_at=func.now())
             )
 
-    async def owners_active(self) -> int:
-        async with self._db.sessions() as session:
-            count = await session.scalar(
-                select(func.count())
-                .select_from(User)
-                .where(
-                    User.role == "owner",
-                    User.disabled_at.is_(None),
-                    User.deleting_at.is_(None),
-                )
-            )
-            return int(count or 0)
-
     async def mark_deleting(self, user_id: int) -> list[int]:
         """Помечает пользователя на удаление или сразу удаляет, если аккаунтов нет."""
         async with self._db.sessions() as session, session.begin():
@@ -203,18 +185,3 @@ class UserRepo:
                 await session.execute(delete(User).where(User.id == user_id))
                 return []
             return list(account_ids)
-
-    async def finish_deleting(self, user_id: int) -> bool:
-        """Удаляет строку пользователя, если он помечен на удаление и не осталось аккаунтов."""
-        async with self._db.sessions() as session, session.begin():
-            has_accounts = select(1).where(Account.owner_id == user_id).exists()
-            deleted = await session.scalar(
-                delete(User)
-                .where(
-                    User.id == user_id,
-                    User.deleting_at.is_not(None),
-                    ~has_accounts,
-                )
-                .returning(User.id)
-            )
-            return deleted is not None
