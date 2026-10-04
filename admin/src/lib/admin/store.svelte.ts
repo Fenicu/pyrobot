@@ -19,6 +19,64 @@ import type {
 	AdminUserPatchIn
 } from '$lib/api/types';
 
+export const ADMIN_FIELD_LABELS: Record<string, string> = {
+	// Server settings: retention
+	messages_days: 'Хранение сообщений',
+	decisions_days: 'Хранение решений',
+	metrics_days: 'Хранение метрик',
+	ledger_days: 'Хранение прихода (ledger)',
+	audit_days: 'Хранение журнала действий',
+	// Server settings: invites
+	default_ttl_h: 'Срок приглашений по умолчанию',
+	default_max_accounts: 'Лимит аккаунтов по умолчанию',
+	// Server settings: limits
+	max_accounts_total: 'Максимум аккаунтов на сервере',
+	sse_per_user: 'SSE-подключений на пользователя',
+	tg_codes_per_hour: 'Кодов Telegram в час на хост',
+	tg_codes_per_account_hour: 'Кодов Telegram в час на аккаунт',
+	// Server settings: engine bounds
+	min_request_interval_s_min: 'Мин. интервал между запросами',
+	antiflood_pause_s_min: 'Мин. пауза антифлуда',
+	antiflood_retry_max_max: 'Макс. число повторов антифлуда',
+	action_ttl_s_max: 'Макс. срок действия',
+	// Invites / accounts / users fields
+	max_accounts: 'Лимит аккаунтов',
+	ttl_h: 'Срок приглашения',
+	note: 'Пометка',
+	reason: 'Причина',
+	confirm_login: 'Логин для подтверждения',
+	confirm_name: 'Имя аккаунта для подтверждения'
+};
+
+export function translatePydanticMessage(msg: string, type?: string): string {
+	if (/valid integer/i.test(msg) || type === 'int_parsing' || type === 'int_from_number') {
+		return 'целое число';
+	}
+	if (/valid number/i.test(msg) || type === 'float_parsing') {
+		return 'число';
+	}
+	const ge = msg.match(/greater than or equal to\s*([0-9.]+)/i);
+	if (ge) return `не меньше ${ge[1]}`;
+	const le = msg.match(/less than or equal to\s*([0-9.]+)/i);
+	if (le) return `не больше ${le[1]}`;
+	const gt = msg.match(/greater than\s*([0-9.]+)/i);
+	if (gt) return `больше ${gt[1]}`;
+	const lt = msg.match(/less than\s*([0-9.]+)/i);
+	if (lt) return `меньше ${lt[1]}`;
+	if (/field required/i.test(msg) || type === 'missing') {
+		return 'обязательное поле';
+	}
+	if (type === 'string_too_long' || /at most/i.test(msg)) {
+		const m = msg.match(/at most\s*(\d+)/i);
+		return m ? `не больше ${m[1]} символов` : 'слишком длинное значение';
+	}
+	if (type === 'string_too_short' || /at least/i.test(msg)) {
+		const m = msg.match(/at least\s*(\d+)/i);
+		return m ? `не меньше ${m[1]} символов` : 'слишком короткое значение';
+	}
+	return msg;
+}
+
 export function formatAdminError(e: unknown): string {
 	if (e instanceof ApiFailure) {
 		const err = e.error;
@@ -27,13 +85,16 @@ export function formatAdminError(e: unknown): string {
 		}
 		if (err.kind === 'validation') {
 			for (const issue of err.issues) {
-				const field = issue.loc.at(-1);
-				if (field === 'max_accounts') return 'Лимит аккаунтов должен быть от 1 до 1000';
-				if (field === 'ttl_h') return 'Срок приглашения должен быть от 1 до 720 часов';
-				if (field === 'note') return 'Пометка не должна превышать 128 символов';
-				if (field === 'reason') return 'Причина не должна превышать 256 символов';
-				if (field === 'confirm_login') return 'Логин для подтверждения введён неверно';
-				if (field === 'confirm_name') return 'Имя аккаунта для подтверждения введено неверно';
+				const field = String(issue.loc.at(-1));
+				if (field === 'confirm_login' && !issue.msg.includes('greater') && !issue.msg.includes('valid')) {
+					return 'Логин для подтверждения введён неверно';
+				}
+				if (field === 'confirm_name' && !issue.msg.includes('greater') && !issue.msg.includes('valid')) {
+					return 'Имя аккаунта для подтверждения введено неверно';
+				}
+				const label = ADMIN_FIELD_LABELS[field] ?? field;
+				const translated = translatePydanticMessage(issue.msg, issue.type);
+				return `${label}: ${translated}`;
 			}
 		}
 		return errorText(err);
@@ -227,7 +288,7 @@ export class AdminStore {
 					body
 				})
 			);
-			if (this.invites) {
+			if (this.invites && created?.invite) {
 				this.invites = [created.invite, ...this.invites];
 			}
 			return created;

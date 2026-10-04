@@ -12,7 +12,8 @@ import type {
 	AdminUserOut
 } from '$lib/api/types';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
-import { AdminStore } from '$lib/admin/store.svelte';
+import { ApiFailure } from '$lib/api/errors';
+import { AdminStore, formatAdminError } from '$lib/admin/store.svelte';
 import AdminView from './AdminView.svelte';
 import UsersTab from './UsersTab.svelte';
 import AccountsTab from './AccountsTab.svelte';
@@ -103,9 +104,9 @@ afterEach(() => {
 });
 
 describe('Консоль владельца', () => {
-	it('404 от консоли — текст для не-владельца', async () => {
+	it('404 от консоли — store.forbidden для владельца', async () => {
 		const fetch = mockFetch((c) => {
-			if (c.url.startsWith('/api/v1/admin/')) {
+			if (c.url.startsWith('/api/v1/admin/users')) {
 				return json({ detail: 'not found' }, 404);
 			}
 			return json({}, 200);
@@ -113,11 +114,22 @@ describe('Консоль владельца', () => {
 		const api = createApi(hooks, fetch);
 		const store = new AdminStore(api);
 
-		// Render with role 'user'
-		render(AdminView, { store, role: 'user', initialTab: 'users' });
+		render(AdminView, { store, role: 'owner', initialTab: 'users' });
 		expect(await screen.findByText('Раздел только для владельца сервера')).toBeInTheDocument();
+		expect(store.forbidden).toBe(true);
 		const link = screen.getByRole('link', { name: /главную/i });
 		expect(link).toHaveAttribute('href', '/');
+	});
+
+	it('не-владелец не делает ни одного запроса к /admin/*', async () => {
+		const fetch = mockFetch(() => json({}, 200));
+		const api = createApi(hooks, fetch);
+		const store = new AdminStore(api);
+
+		render(AdminView, { store, role: 'user', initialTab: 'users' });
+		expect(await screen.findByText('Раздел только для владельца сервера')).toBeInTheDocument();
+		const adminCalls = fetch.calls.filter((c) => c.url.startsWith('/api/v1/admin/'));
+		expect(adminCalls).toHaveLength(0);
 	});
 
 	it('удаление учётки требует точного логина', async () => {
@@ -165,7 +177,95 @@ describe('Консоль владельца', () => {
 			const deleteCall = fetch.calls.find((c) => c.method === 'DELETE');
 			expect(deleteCall).toBeDefined();
 			expect(deleteCall?.url).toBe('/api/v1/admin/users/2');
+			expect(deleteCall?.headers.get('x-csrf-token')).toBe('csrf-test-token');
 			expect(JSON.parse(deleteCall?.body ?? '{}')).toEqual({ confirm_login: 'alice' });
+		});
+	});
+
+	it('отключение учётки: проверка тела PATCH и X-CSRF-Token', async () => {
+		const usersList = [
+			testUser(1, 'owner_user', { role: 'owner' }),
+			testUser(2, 'bob', { role: 'user' })
+		];
+		const fetch = mockFetch((c) => {
+			if (c.method === 'GET' && c.url === '/api/v1/admin/users') {
+				return json(usersList);
+			}
+			if (c.method === 'PATCH' && c.url === '/api/v1/admin/users/2') {
+				return json(testUser(2, 'bob', { disabled: true, disabled_reason: 'Спам' }));
+			}
+			return json({}, 200);
+		});
+		const api = createApi(hooks, fetch);
+		const store = new AdminStore(api);
+		await store.loadUsers();
+
+		const user = userEvent.setup();
+		render(UsersTab, { store });
+
+		expect(await screen.findByText('bob')).toBeInTheDocument();
+		const bobRow = screen.getByTestId('user-row-2');
+		const disableBtn = within(bobRow).getByRole('button', { name: /отключить/i });
+		await user.click(disableBtn);
+
+		const dialog = screen.getByRole('dialog');
+		const reasonInput = within(dialog).getByLabelText(/причина/i);
+		await user.type(reasonInput, 'Спам');
+
+		const confirmBtn = within(dialog).getByRole('button', { name: /отключить/i });
+		await user.click(confirmBtn);
+
+		await waitFor(() => {
+			const patchCall = fetch.calls.find((c) => c.method === 'PATCH' && c.url === '/api/v1/admin/users/2');
+			expect(patchCall).toBeDefined();
+			expect(patchCall?.headers.get('x-csrf-token')).toBe('csrf-test-token');
+			expect(JSON.parse(patchCall?.body ?? '{}')).toEqual({ disabled: true, reason: 'Спам' });
+		});
+	});
+
+	it('удаление аккаунта по точному имени', async () => {
+		const accountsList = [testAccount(1, 'acc-one')];
+		const fetch = mockFetch((c) => {
+			if (c.method === 'GET' && c.url === '/api/v1/admin/accounts') {
+				return json(accountsList);
+			}
+			if (c.method === 'DELETE' && c.url === '/api/v1/admin/accounts/1') {
+				return new Response(null, { status: 202 });
+			}
+			return json({}, 200);
+		});
+		const api = createApi(hooks, fetch);
+		const store = new AdminStore(api);
+		await store.loadAccounts();
+
+		const user = userEvent.setup();
+		render(AccountsTab, { store });
+
+		expect(await screen.findByText('acc-one')).toBeInTheDocument();
+		const accRow = screen.getByTestId('account-row-1');
+		const deleteBtn = within(accRow).getByRole('button', { name: /удалить/i });
+		await user.click(deleteBtn);
+
+		const dialog = screen.getByRole('dialog');
+		const confirmBtn = within(dialog).getByRole('button', { name: /удалить навсегда/i });
+		const input = within(dialog).getByPlaceholderText('acc-one');
+
+		expect(confirmBtn).toBeDisabled();
+
+		await user.type(input, 'acc-two');
+		expect(confirmBtn).toBeDisabled();
+
+		await user.clear(input);
+		await user.type(input, 'acc-one');
+		expect(confirmBtn).toBeEnabled();
+
+		await user.click(confirmBtn);
+
+		await waitFor(() => {
+			const deleteCall = fetch.calls.find((c) => c.method === 'DELETE' && c.url === '/api/v1/admin/accounts/1');
+			expect(deleteCall).toBeDefined();
+			expect(deleteCall?.headers.get('x-csrf-token')).toBe('csrf-test-token');
+			expect(JSON.parse(deleteCall?.body ?? '{}')).toEqual({ confirm_name: 'acc-one' });
 		});
 	});
 
@@ -220,7 +320,7 @@ describe('Консоль владельца', () => {
 		});
 	});
 
-	it('ссылка приглашения показывается один раз', async () => {
+	it('создание приглашения: проверка тела POST, полного URL ссылки и X-CSRF-Token', async () => {
 		const invitesList: AdminInviteOut[] = [];
 		const fetch = mockFetch((c) => {
 			if (c.method === 'GET' && c.url === '/api/v1/admin/invites') {
@@ -245,15 +345,29 @@ describe('Консоль владельца', () => {
 		render(InvitesTab, { store });
 
 		const maxAccInput = screen.getByLabelText(/лимит аккаунтов/i);
+		const ttlInput = screen.getByLabelText(/срок в часах/i);
 		const noteInput = screen.getByLabelText(/пометка/i);
 		const createBtn = screen.getByRole('button', { name: /создать приглашение/i });
 
 		await user.type(maxAccInput, '3');
+		await user.type(ttlInput, '48');
 		await user.type(noteInput, 'Друг');
 		await user.click(createBtn);
 
-		// The created token link must appear with copy button
-		const tokenLink = await screen.findByText(new RegExp('/invite/secret_token_123'));
+		await waitFor(() => {
+			const postCall = fetch.calls.find((c) => c.method === 'POST' && c.url === '/api/v1/admin/invites');
+			expect(postCall).toBeDefined();
+			expect(postCall?.headers.get('x-csrf-token')).toBe('csrf-test-token');
+			expect(JSON.parse(postCall?.body ?? '{}')).toEqual({
+				max_accounts: 3,
+				ttl_h: 48,
+				note: 'Друг'
+			});
+		});
+
+		// The created token link must appear with full URL (location.origin + path)
+		const expectedUrl = `${location.origin}/invite/secret_token_123`;
+		const tokenLink = await screen.findByDisplayValue(expectedUrl);
 		expect(tokenLink).toBeInTheDocument();
 		const copyBtn = screen.getByRole('button', { name: /скопировать/i });
 		expect(copyBtn).toBeInTheDocument();
@@ -263,9 +377,69 @@ describe('Консоль владельца', () => {
 		await user.click(dismissBtn);
 
 		// Token link should disappear
-		expect(screen.queryByText(new RegExp('/invite/secret_token_123'))).toBeNull();
-		// In the list of invites, only the note/id/limit is shown, token is NOT shown
+		expect(screen.queryByDisplayValue(expectedUrl)).toBeNull();
+		// In the list of invites, note is shown
 		expect(screen.getByText('Друг')).toBeInTheDocument();
+	});
+
+	it('создание приглашения: дробный лимит (2.5) отклоняется клиентом', async () => {
+		const fetch = mockFetch(() => json([], 200));
+		const api = createApi(hooks, fetch);
+		const store = new AdminStore(api);
+		await store.loadInvites();
+
+		const user = userEvent.setup();
+		render(InvitesTab, { store });
+
+		const maxAccInput = screen.getByLabelText(/лимит аккаунтов/i);
+		const createBtn = screen.getByRole('button', { name: /создать приглашение/i });
+
+		await user.type(maxAccInput, '2.5');
+		await user.click(createBtn);
+
+		expect(await screen.findByText('Лимит аккаунтов должен быть целым числом от 1 до 1000')).toBeInTheDocument();
+		expect(fetch.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+	});
+
+	it('настройки сервера: успешный PATCH с version, changes и X-CSRF-Token', async () => {
+		const settings = testServerSettings({ version: 1 });
+		const fetch = mockFetch((c) => {
+			if (c.method === 'GET' && c.url === '/api/v1/admin/server-settings') {
+				return json(settings);
+			}
+			if (c.method === 'PATCH' && c.url === '/api/v1/admin/server-settings') {
+				return json({
+					version: 2,
+					values: { ...settings.values, retention: { ...(settings.values as Record<string, any>).retention, messages_days: 100 } },
+					changed: ['retention.messages_days']
+				});
+			}
+			return json({}, 200);
+		});
+		const api = createApi(hooks, fetch);
+		const store = new AdminStore(api);
+		await store.loadServerSettings();
+
+		const user = userEvent.setup();
+		render(ServerTab, { store });
+
+		const msgInput = await screen.findByDisplayValue('90');
+		await user.clear(msgInput);
+		await user.type(msgInput, '100');
+
+		const saveBtn = screen.getByRole('button', { name: /сохранить настройки/i });
+		await user.click(saveBtn);
+
+		await waitFor(() => {
+			const patchCall = fetch.calls.find((c) => c.method === 'PATCH' && c.url === '/api/v1/admin/server-settings');
+			expect(patchCall).toBeDefined();
+			expect(patchCall?.headers.get('x-csrf-token')).toBe('csrf-test-token');
+			const body = JSON.parse(patchCall?.body ?? '{}');
+			expect(body.version).toBe(1);
+			expect(body.changes?.retention?.messages_days).toBe(100);
+		});
+
+		expect(await screen.findByText('Версия: 2')).toBeInTheDocument();
 	});
 
 	it('настройки сервера: конфликт версии — перечитать', async () => {
@@ -290,8 +464,18 @@ describe('Консоль владельца', () => {
 		const saveBtn = screen.getByRole('button', { name: /сохранить/i });
 		await user.click(saveBtn);
 
-		// Conflict message must appear
+		await waitFor(() => {
+			const patchCall = fetch.calls.find((c) => c.method === 'PATCH' && c.url === '/api/v1/admin/server-settings');
+			expect(patchCall).toBeDefined();
+			expect(patchCall?.headers.get('x-csrf-token')).toBe('csrf-test-token');
+			const body = JSON.parse(patchCall?.body ?? '{}');
+			expect(body.version).toBe(1);
+			expect(body.changes).toBeDefined();
+		});
+
+		// Conflict message must appear with version 2
 		expect(await screen.findByText(/настройки изменились, перечитать/i)).toBeInTheDocument();
+		expect(screen.getByText(/\(версия на сервере: 2\)/i)).toBeInTheDocument();
 		const reloadBtn = screen.getByRole('button', { name: /перечитать/i });
 
 		// Update server version to 2 for subsequent load
@@ -302,6 +486,81 @@ describe('Консоль владельца', () => {
 			const getCalls = fetch.calls.filter((c) => c.method === 'GET' && c.url === '/api/v1/admin/server-settings');
 			expect(getCalls.length).toBeGreaterThanOrEqual(2);
 		});
+
+		// After reload, conflict banner disappears and version is updated
+		expect(screen.queryByText(/настройки изменились, перечитать/i)).toBeNull();
+		expect(screen.getByText('Версия: 2')).toBeInTheDocument();
+	});
+
+	it('настройки сервера: валидация берет границы из schema (messages_days minimum: 10)', async () => {
+		const settingsWithSchema = testServerSettings({
+			schema: {
+				$defs: {
+					RetentionPolicy: {
+						properties: {
+							messages_days: {
+								type: 'integer',
+								minimum: 10,
+								maximum: 3650
+							}
+						}
+					}
+				}
+			}
+		});
+		const fetch = mockFetch((c) => {
+			if (c.method === 'GET' && c.url === '/api/v1/admin/server-settings') {
+				return json(settingsWithSchema);
+			}
+			return json({}, 200);
+		});
+		const api = createApi(hooks, fetch);
+		const store = new AdminStore(api);
+		await store.loadServerSettings();
+
+		const user = userEvent.setup();
+		render(ServerTab, { store });
+
+		const msgInput = await screen.findByDisplayValue('90');
+		await user.clear(msgInput);
+		await user.type(msgInput, '5');
+
+		const saveBtn = screen.getByRole('button', { name: /сохранить настройки/i });
+		await user.click(saveBtn);
+
+		expect(await screen.findByRole('alert')).toHaveTextContent(/10/);
+		expect(fetch.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
+	});
+
+	it('настройки сервера: пустые и дробные значения отклоняются на клиенте', async () => {
+		const settings = testServerSettings();
+		const fetch = mockFetch((c) => {
+			if (c.method === 'GET' && c.url === '/api/v1/admin/server-settings') {
+				return json(settings);
+			}
+			return json({}, 200);
+		});
+		const api = createApi(hooks, fetch);
+		const store = new AdminStore(api);
+		await store.loadServerSettings();
+
+		const user = userEvent.setup();
+		render(ServerTab, { store });
+
+		const msgInput = await screen.findByDisplayValue('90');
+		const saveBtn = screen.getByRole('button', { name: /сохранить настройки/i });
+
+		// 1. Cleared input (empty / null)
+		await user.clear(msgInput);
+		await user.click(saveBtn);
+		expect(await screen.findByRole('alert')).toHaveTextContent(/Хранение сообщений/i);
+		expect(fetch.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
+
+		// 2. Fractional value (1.5 in integer field)
+		await user.type(msgInput, '1.5');
+		await user.click(saveBtn);
+		expect(await screen.findByRole('alert')).toHaveTextContent(/целым/i);
+		expect(fetch.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
 	});
 
 	it('изменение лимита аккаунтов пользователя', async () => {
@@ -338,6 +597,31 @@ describe('Консоль владельца', () => {
 			expect(patchCall).toBeDefined();
 			expect(JSON.parse(patchCall?.body ?? '{}')).toEqual({ max_accounts: 10 });
 		});
+	});
+
+	it('пользователи: дробный лимит учётки (2.5) отклоняется клиентом', async () => {
+		const usersList = [testUser(1, 'alice', { max_accounts: 5 })];
+		const fetch = mockFetch(() => json(usersList, 200));
+		const api = createApi(hooks, fetch);
+		const store = new AdminStore(api);
+		await store.loadUsers();
+
+		const user = userEvent.setup();
+		render(UsersTab, { store });
+
+		const editBtn = screen.getByRole('button', { name: /лимит/i });
+		await user.click(editBtn);
+
+		const dialog = screen.getByRole('dialog');
+		const input = within(dialog).getByLabelText(/максимум аккаунтов/i);
+		await user.clear(input);
+		await user.type(input, '2.5');
+
+		const saveBtn = within(dialog).getByRole('button', { name: /сохранить/i });
+		await user.click(saveBtn);
+
+		expect(await within(dialog).findByText('Лимит должен быть целым числом от 1 до 1000')).toBeInTheDocument();
+		expect(fetch.calls.filter((c) => c.method === 'PATCH')).toHaveLength(0);
 	});
 
 	it('ошибка last_owner при отключении последнего владельца показывается по-русски', async () => {
@@ -433,6 +717,37 @@ describe('Консоль владельца', () => {
 			const delCall = fetch.calls.find((c) => c.method === 'DELETE');
 			expect(delCall).toBeDefined();
 			expect(delCall?.url).toBe('/api/v1/admin/invites/1');
+			expect(delCall?.headers.get('x-csrf-token')).toBe('csrf-test-token');
+		});
+	});
+
+	it('отзыв приглашения с 410 invite_gone: показ русского текста и повторный запрос списка', async () => {
+		const invitesList = [testInvite(1, 'token1', { note: 'Коллега' })];
+		let getCallsCount = 0;
+		const fetch = mockFetch((c) => {
+			if (c.method === 'GET' && c.url === '/api/v1/admin/invites') {
+				getCallsCount++;
+				return json(invitesList);
+			}
+			if (c.method === 'DELETE' && c.url === '/api/v1/admin/invites/1') {
+				return json({ detail: 'invite_gone' }, 410);
+			}
+			return json({}, 200);
+		});
+		const api = createApi(hooks, fetch);
+		const store = new AdminStore(api);
+		await store.loadInvites();
+		expect(getCallsCount).toBe(1);
+
+		const user = userEvent.setup();
+		render(InvitesTab, { store });
+
+		const revokeBtn = screen.getByRole('button', { name: /отозвать/i });
+		await user.click(revokeBtn);
+
+		await waitFor(() => {
+			// Reload of invites must be triggered after 410 so stale invite disappears
+			expect(getCallsCount).toBeGreaterThanOrEqual(2);
 		});
 	});
 
@@ -528,6 +843,60 @@ describe('Консоль владельца', () => {
 			expect(readCall).toBeDefined();
 			expect(JSON.parse(readCall?.body ?? '{}')).toEqual({ up_to_id: 1 });
 		});
+	});
+
+	it('русские тексты ошибок 422 в formatAdminError', () => {
+		const fail1 = new ApiFailure({
+			kind: 'validation',
+			status: 422,
+			issues: [
+				{
+					loc: ['body', 'changes', 'retention', 'messages_days'],
+					msg: 'Input should be a valid integer, unable to parse string as an integer',
+					type: 'int_parsing'
+				}
+			]
+		});
+		expect(formatAdminError(fail1)).toBe('Хранение сообщений: целое число');
+
+		const fail2 = new ApiFailure({
+			kind: 'validation',
+			status: 422,
+			issues: [
+				{
+					loc: ['body', 'changes', 'retention', 'ledger_days'],
+					msg: 'Input should be greater than or equal to 31',
+					type: 'greater_than_equal'
+				}
+			]
+		});
+		expect(formatAdminError(fail2)).toBe('Хранение прихода (ledger): не меньше 31');
+
+		const fail3 = new ApiFailure({
+			kind: 'validation',
+			status: 422,
+			issues: [
+				{
+					loc: ['body', 'changes', 'engine_bounds', 'action_ttl_s_max'],
+					msg: 'Input should be greater than 0',
+					type: 'greater_than'
+				}
+			]
+		});
+		expect(formatAdminError(fail3)).toBe('Макс. срок действия: больше 0');
+
+		const fail4 = new ApiFailure({
+			kind: 'validation',
+			status: 422,
+			issues: [
+				{
+					loc: ['body', 'changes', 'limits', 'max_accounts_total'],
+					msg: 'Input should be less than or equal to 10000',
+					type: 'less_than_equal'
+				}
+			]
+		});
+		expect(formatAdminError(fail4)).toBe('Максимум аккаунтов на сервере: не больше 10000');
 	});
 
 	it('переключение вкладок в AdminView', async () => {

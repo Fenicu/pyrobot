@@ -31,7 +31,7 @@
 	});
 
 	const origin = typeof location !== 'undefined' ? location.origin : '';
-	const inviteUrl = $derived(createdResult ? `${origin}/invite/${createdResult.token}` : '');
+	const inviteUrl = $derived(createdResult ? `${origin}${createdResult.path}` : '');
 
 	async function createInvite(e: SubmitEvent) {
 		e.preventDefault();
@@ -46,14 +46,14 @@
 		const numTtl = rawTtl !== '' && !Number.isNaN(Number(rawTtl)) ? Number(rawTtl) : null;
 		const strNote = rawNote !== '' ? rawNote : null;
 
-		if (numMax !== null && (numMax < 1 || numMax > 1000)) {
-			createError = 'Лимит аккаунтов должен быть от 1 до 1000';
+		if (numMax !== null && (!Number.isInteger(numMax) || numMax < 1 || numMax > 1000)) {
+			createError = 'Лимит аккаунтов должен быть целым числом от 1 до 1000';
 			actionBusy = false;
 			return;
 		}
 
-		if (numTtl !== null && (numTtl < 1 || numTtl > 720)) {
-			createError = 'Срок приглашения должен быть от 1 до 720 часов';
+		if (numTtl !== null && (!Number.isInteger(numTtl) || numTtl < 1 || numTtl > 720)) {
+			createError = 'Срок приглашения должен быть целым числом от 1 до 720 часов';
 			actionBusy = false;
 			return;
 		}
@@ -94,6 +94,7 @@
 			toasts.show('Приглашение отозвано', 'ok');
 		} catch (err: unknown) {
 			toasts.show(err instanceof Error ? err.message : String(err), 'error');
+			await store.loadInvites();
 		} finally {
 			actionBusy = false;
 		}

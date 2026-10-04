@@ -10,57 +10,212 @@
 	let { store }: Props = $props();
 
 	// Retention
-	let messagesDays = $state<number>(90);
-	let decisionsDays = $state<number>(30);
-	let metricsDays = $state<number>(365);
-	let ledgerDays = $state<number>(31);
-	let auditDays = $state<number>(365);
+	let messagesDays = $state<number | null>(90);
+	let decisionsDays = $state<number | null>(30);
+	let metricsDays = $state<number | null>(365);
+	let ledgerDays = $state<number | null>(31);
+	let auditDays = $state<number | null>(365);
 
 	// Invites
-	let defaultTtlH = $state<number>(72);
-	let defaultMaxAccounts = $state<number>(1);
+	let defaultTtlH = $state<number | null>(72);
+	let defaultMaxAccounts = $state<number | null>(1);
 
 	// Limits
-	let maxAccountsTotal = $state<number>(50);
-	let ssePerUser = $state<number>(5);
-	let tgCodesPerHour = $state<number>(10);
-	let tgCodesPerAccountHour = $state<number>(3);
+	let maxAccountsTotal = $state<number | null>(50);
+	let ssePerUser = $state<number | null>(5);
+	let tgCodesPerHour = $state<number | null>(10);
+	let tgCodesPerAccountHour = $state<number | null>(3);
 
 	// Engine bounds
-	let minRequestIntervalSMin = $state<number>(1.6);
-	let antifloodPauseSMin = $state<number>(10.0);
-	let antifloodRetryMaxMax = $state<number>(2);
-	let actionTtlSMax = $state<number>(600.0);
+	let minRequestIntervalSMin = $state<number | null>(1.6);
+	let antifloodPauseSMin = $state<number | null>(10.0);
+	let antifloodRetryMaxMax = $state<number | null>(2);
+	let actionTtlSMax = $state<number | null>(600.0);
 
 	let saveBusy = $state(false);
 	let validationError = $state('');
+
+	interface SchemaFieldDef {
+		type?: string;
+		minimum?: number;
+		maximum?: number;
+		exclusiveMinimum?: number | boolean;
+		exclusiveMaximum?: number | boolean;
+	}
+
+	function findSchemaProperty(schema: any, section: string, field: string): SchemaFieldDef | undefined {
+		if (!schema || typeof schema !== 'object') return undefined;
+
+		if (schema.properties?.[field]) {
+			return schema.properties[field];
+		}
+		if (schema.properties?.[section]?.properties?.[field]) {
+			return schema.properties[section].properties[field];
+		}
+		const defs = schema.$defs ?? schema.definitions;
+		if (defs && typeof defs === 'object') {
+			for (const def of Object.values(defs)) {
+				if (def && typeof def === 'object' && (def as any).properties?.[field]) {
+					return (def as any).properties[field];
+				}
+			}
+		}
+		return undefined;
+	}
+
+	interface FieldSpec {
+		section: string;
+		field: string;
+		label: string;
+		type: 'integer' | 'number';
+		min?: number;
+		max?: number;
+		exclusiveMin?: boolean;
+		unit?: string;
+	}
+
+	const DEFAULT_SPECS: Record<
+		string,
+		{ label: string; type: 'integer' | 'number'; min?: number; max?: number; exclusiveMin?: boolean; unit?: string }
+	> = {
+		messages_days: { label: 'Хранение сообщений', type: 'integer', min: 1, max: 3650, unit: 'дней' },
+		decisions_days: { label: 'Хранение решений', type: 'integer', min: 1, max: 3650, unit: 'дней' },
+		metrics_days: { label: 'Хранение метрик', type: 'integer', min: 1, max: 3650, unit: 'дней' },
+		ledger_days: { label: 'Хранение прихода (ledger)', type: 'integer', min: 31, max: 3650, unit: 'дней' },
+		audit_days: { label: 'Хранение журнала действий', type: 'integer', min: 1, max: 3650, unit: 'дней' },
+
+		default_ttl_h: { label: 'Срок приглашений по умолчанию', type: 'integer', min: 1, max: 720, unit: 'часов' },
+		default_max_accounts: { label: 'Лимит аккаунтов по умолчанию', type: 'integer', min: 1, max: 1000 },
+
+		max_accounts_total: { label: 'Максимум аккаунтов на сервере', type: 'integer', min: 1, max: 10000 },
+		sse_per_user: { label: 'SSE-подключений на пользователя', type: 'integer', min: 1, max: 100 },
+		tg_codes_per_hour: { label: 'Кодов Telegram в час на хост', type: 'integer', min: 1 },
+		tg_codes_per_account_hour: { label: 'Кодов Telegram в час на аккаунт', type: 'integer', min: 1 },
+
+		min_request_interval_s_min: { label: 'Мин. интервал между запросами', type: 'number', min: 0, max: 60, unit: 'с' },
+		antiflood_pause_s_min: { label: 'Мин. пауза антифлуда', type: 'number', min: 0, max: 600, unit: 'с' },
+		antiflood_retry_max_max: { label: 'Макс. число повторов антифлуда', type: 'integer', min: 0 },
+		action_ttl_s_max: { label: 'Макс. срок действия', type: 'number', min: 0, exclusiveMin: true, max: 3600, unit: 'с' }
+	};
+
+	function getFieldSpec(section: string, field: string): FieldSpec {
+		const fallback = DEFAULT_SPECS[field] ?? {
+			label: field,
+			type: 'number' as const,
+			min: undefined,
+			max: undefined,
+			exclusiveMin: false,
+			unit: undefined
+		};
+		const schema = store.serverSettings?.schema;
+		const prop = findSchemaProperty(schema, section, field);
+
+		let type = fallback.type;
+		if (prop?.type === 'integer' || prop?.type === 'number') {
+			type = prop.type;
+		}
+
+		let min = fallback.min;
+		let exclusiveMin = fallback.exclusiveMin ?? false;
+		if (prop?.minimum !== undefined) {
+			min = prop.minimum;
+			exclusiveMin = false;
+		}
+		if (prop?.exclusiveMinimum !== undefined) {
+			if (typeof prop.exclusiveMinimum === 'number') {
+				min = prop.exclusiveMinimum;
+				exclusiveMin = true;
+			} else if (prop.exclusiveMinimum === true && prop.minimum !== undefined) {
+				min = prop.minimum;
+				exclusiveMin = true;
+			}
+		}
+
+		let max = fallback.max;
+		if (prop?.maximum !== undefined) {
+			max = prop.maximum;
+		}
+		if (prop?.exclusiveMaximum !== undefined && typeof prop.exclusiveMaximum === 'number') {
+			max = prop.exclusiveMaximum;
+		}
+
+		return {
+			section,
+			field,
+			label: fallback.label,
+			type,
+			min,
+			max,
+			exclusiveMin,
+			unit: fallback.unit
+		};
+	}
+
+	function validateValue(val: unknown, spec: FieldSpec): string | null {
+		if (val === null || val === undefined || val === '' || Number.isNaN(val)) {
+			return `Поле «${spec.label}» не должно быть пустым`;
+		}
+
+		const num = Number(val);
+		if (Number.isNaN(num)) {
+			return `Поле «${spec.label}» должно быть числом`;
+		}
+
+		if (spec.type === 'integer' && !Number.isInteger(num)) {
+			return `Поле «${spec.label}» должно быть целым числом`;
+		}
+
+		const unit = spec.unit ? ` ${spec.unit}` : '';
+
+		if (spec.min !== undefined) {
+			const violated = spec.exclusiveMin ? num <= spec.min : num < spec.min;
+			if (violated) {
+				if (spec.max !== undefined) {
+					const minVal = spec.exclusiveMin ? (spec.min === 0 ? 0.1 : spec.min) : spec.min;
+					return `${spec.label} должно быть от ${minVal} до ${spec.max}${unit}`;
+				}
+				const op = spec.exclusiveMin ? '> ' : 'не меньше ';
+				return `${spec.label} должно быть ${op}${spec.min}${unit}`;
+			}
+		}
+
+		if (spec.max !== undefined && num > spec.max) {
+			if (spec.min !== undefined) {
+				const minVal = spec.exclusiveMin ? (spec.min === 0 ? 0.1 : spec.min) : spec.min;
+				return `${spec.label} должно быть от ${minVal} до ${spec.max}${unit}`;
+			}
+			return `${spec.label} должно быть не больше ${spec.max}${unit}`;
+		}
+
+		return null;
+	}
 
 	function syncFromStore() {
 		const v = store.serverSettings?.values as Record<string, Record<string, unknown>> | undefined;
 		if (!v) return;
 
 		const ret = v.retention ?? {};
-		messagesDays = Number(ret.messages_days ?? 90);
-		decisionsDays = Number(ret.decisions_days ?? 30);
-		metricsDays = Number(ret.metrics_days ?? 365);
-		ledgerDays = Number(ret.ledger_days ?? 31);
-		auditDays = Number(ret.audit_days ?? 365);
+		messagesDays = ret.messages_days !== undefined ? Number(ret.messages_days) : 90;
+		decisionsDays = ret.decisions_days !== undefined ? Number(ret.decisions_days) : 30;
+		metricsDays = ret.metrics_days !== undefined ? Number(ret.metrics_days) : 365;
+		ledgerDays = ret.ledger_days !== undefined ? Number(ret.ledger_days) : 31;
+		auditDays = ret.audit_days !== undefined ? Number(ret.audit_days) : 365;
 
 		const inv = v.invites ?? {};
-		defaultTtlH = Number(inv.default_ttl_h ?? 72);
-		defaultMaxAccounts = Number(inv.default_max_accounts ?? 1);
+		defaultTtlH = inv.default_ttl_h !== undefined ? Number(inv.default_ttl_h) : 72;
+		defaultMaxAccounts = inv.default_max_accounts !== undefined ? Number(inv.default_max_accounts) : 1;
 
 		const lim = v.limits ?? {};
-		maxAccountsTotal = Number(lim.max_accounts_total ?? 50);
-		ssePerUser = Number(lim.sse_per_user ?? 5);
-		tgCodesPerHour = Number(lim.tg_codes_per_hour ?? 10);
-		tgCodesPerAccountHour = Number(lim.tg_codes_per_account_hour ?? 3);
+		maxAccountsTotal = lim.max_accounts_total !== undefined ? Number(lim.max_accounts_total) : 50;
+		ssePerUser = lim.sse_per_user !== undefined ? Number(lim.sse_per_user) : 5;
+		tgCodesPerHour = lim.tg_codes_per_hour !== undefined ? Number(lim.tg_codes_per_hour) : 10;
+		tgCodesPerAccountHour = lim.tg_codes_per_account_hour !== undefined ? Number(lim.tg_codes_per_account_hour) : 3;
 
 		const eb = v.engine_bounds ?? {};
-		minRequestIntervalSMin = Number(eb.min_request_interval_s_min ?? 1.6);
-		antifloodPauseSMin = Number(eb.antiflood_pause_s_min ?? 10.0);
-		antifloodRetryMaxMax = Number(eb.antiflood_retry_max_max ?? 2);
-		actionTtlSMax = Number(eb.action_ttl_s_max ?? 600.0);
+		minRequestIntervalSMin = eb.min_request_interval_s_min !== undefined ? Number(eb.min_request_interval_s_min) : 1.6;
+		antifloodPauseSMin = eb.antiflood_pause_s_min !== undefined ? Number(eb.antiflood_pause_s_min) : 10.0;
+		antifloodRetryMaxMax = eb.antiflood_retry_max_max !== undefined ? Number(eb.antiflood_retry_max_max) : 2;
+		actionTtlSMax = eb.action_ttl_s_max !== undefined ? Number(eb.action_ttl_s_max) : 600.0;
 	}
 
 	$effect(() => {
@@ -86,94 +241,56 @@
 
 		validationError = '';
 
-		// Validate bounds
-		if (messagesDays < 1 || messagesDays > 3650) {
-			validationError = 'Хранение сообщений должно быть от 1 до 3650 дней';
-			return;
-		}
-		if (decisionsDays < 1 || decisionsDays > 3650) {
-			validationError = 'Хранение решений должно быть от 1 до 3650 дней';
-			return;
-		}
-		if (metricsDays < 1 || metricsDays > 3650) {
-			validationError = 'Хранение метрик должно быть от 1 до 3650 дней';
-			return;
-		}
-		if (ledgerDays < 31 || ledgerDays > 3650) {
-			validationError = 'Хранение прихода (ledger) должно быть от 31 до 3650 дней';
-			return;
-		}
-		if (auditDays < 1 || auditDays > 3650) {
-			validationError = 'Хранение журнала действий должно быть от 1 до 3650 дней';
-			return;
-		}
+		const fieldsToValidate: [unknown, string, string][] = [
+			[messagesDays, 'retention', 'messages_days'],
+			[decisionsDays, 'retention', 'decisions_days'],
+			[metricsDays, 'retention', 'metrics_days'],
+			[ledgerDays, 'retention', 'ledger_days'],
+			[auditDays, 'retention', 'audit_days'],
+			[defaultTtlH, 'invites', 'default_ttl_h'],
+			[defaultMaxAccounts, 'invites', 'default_max_accounts'],
+			[maxAccountsTotal, 'limits', 'max_accounts_total'],
+			[ssePerUser, 'limits', 'sse_per_user'],
+			[tgCodesPerHour, 'limits', 'tg_codes_per_hour'],
+			[tgCodesPerAccountHour, 'limits', 'tg_codes_per_account_hour'],
+			[minRequestIntervalSMin, 'engine_bounds', 'min_request_interval_s_min'],
+			[antifloodPauseSMin, 'engine_bounds', 'antiflood_pause_s_min'],
+			[antifloodRetryMaxMax, 'engine_bounds', 'antiflood_retry_max_max'],
+			[actionTtlSMax, 'engine_bounds', 'action_ttl_s_max']
+		];
 
-		if (defaultTtlH < 1 || defaultTtlH > 720) {
-			validationError = 'Срок приглашений по умолчанию должен быть от 1 до 720 часов';
-			return;
-		}
-		if (defaultMaxAccounts < 1 || defaultMaxAccounts > 1000) {
-			validationError = 'Лимит аккаунтов по умолчанию должен быть от 1 до 1000';
-			return;
-		}
-
-		if (maxAccountsTotal < 1 || maxAccountsTotal > 10000) {
-			validationError = 'Максимум аккаунтов на сервере должен быть от 1 до 10000';
-			return;
-		}
-		if (ssePerUser < 1 || ssePerUser > 100) {
-			validationError = 'SSE-подключений на пользователя должно быть от 1 до 100';
-			return;
-		}
-		if (tgCodesPerHour < 1) {
-			validationError = 'Кодов Telegram в час на хост должно быть не меньше 1';
-			return;
-		}
-		if (tgCodesPerAccountHour < 1) {
-			validationError = 'Кодов Telegram в час на аккаунт должно быть не меньше 1';
-			return;
-		}
-
-		if (minRequestIntervalSMin < 0 || minRequestIntervalSMin > 60) {
-			validationError = 'Мин. интервал между запросами должен быть от 0 до 60 с';
-			return;
-		}
-		if (antifloodPauseSMin < 0 || antifloodPauseSMin > 600) {
-			validationError = 'Мин. пауза антифлуда должна быть от 0 до 600 с';
-			return;
-		}
-		if (antifloodRetryMaxMax < 0) {
-			validationError = 'Макс. число повторов антифлуда должно быть >= 0';
-			return;
-		}
-		if (actionTtlSMax <= 0 || actionTtlSMax > 3600) {
-			validationError = 'Макс. срок действия должен быть от 0.1 до 3600 с';
-			return;
+		for (const [val, section, field] of fieldsToValidate) {
+			const spec = getFieldSpec(section, field);
+			const err = validateValue(val, spec);
+			if (err) {
+				validationError = err;
+				return;
+			}
 		}
 
 		const changes = {
 			retention: {
-				messages_days: messagesDays,
-				decisions_days: decisionsDays,
-				metrics_days: metricsDays,
-				ledger_days: ledgerDays,
-				audit_days: auditDays
+				messages_days: Number(messagesDays),
+				decisions_days: Number(decisionsDays),
+				metrics_days: Number(metricsDays),
+				ledger_days: Number(ledgerDays),
+				audit_days: Number(auditDays)
 			},
 			invites: {
-				default_ttl_h: defaultTtlH,
-				default_max_accounts: defaultMaxAccounts
+				default_ttl_h: Number(defaultTtlH),
+				default_max_accounts: Number(defaultMaxAccounts)
 			},
 			limits: {
-				max_accounts_total: maxAccountsTotal,
-				sse_per_user: ssePerUser,
-				tg_codes_per_hour: tgCodesPerHour,
-				tg_codes_per_account_hour: tgCodesPerAccountHour
+				max_accounts_total: Number(maxAccountsTotal),
+				sse_per_user: Number(ssePerUser),
+				tg_codes_per_hour: Number(tgCodesPerHour),
+				tg_codes_per_account_hour: Number(tgCodesPerAccountHour)
 			},
 			engine_bounds: {
-				min_request_interval_s_min: minRequestIntervalSMin,
-				antiflood_pause_s_min: antifloodPauseSMin,
-				antiflood_retry_max_max: antifloodRetryMaxMax,
-				action_ttl_s_max: actionTtlSMax
+				min_request_interval_s_min: Number(minRequestIntervalSMin),
+				antiflood_pause_s_min: Number(antifloodPauseSMin),
+				antiflood_retry_max_max: Number(antifloodRetryMaxMax),
+				action_ttl_s_max: Number(actionTtlSMax)
 			}
 		};
 

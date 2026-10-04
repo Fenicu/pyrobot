@@ -18,7 +18,7 @@
 	let { store }: Props = $props();
 
 	let editingLimit = $state<AdminUserOut | null>(null);
-	let newLimit = $state<number>(1);
+	let newLimit = $state<number | null>(1);
 	let limitError = $state('');
 
 	let disabling = $state<AdminUserOut | null>(null);
@@ -46,8 +46,8 @@
 	async function saveLimit(e: SubmitEvent) {
 		e.preventDefault();
 		if (!editingLimit) return;
-		if (newLimit < 1 || newLimit > 1000) {
-			limitError = 'Лимит должен быть от 1 до 1000';
+		if (newLimit == null || Number.isNaN(newLimit) || !Number.isInteger(newLimit) || newLimit < 1 || newLimit > 1000) {
+			limitError = 'Лимит должен быть целым числом от 1 до 1000';
 			return;
 		}
 		actionBusy = true;
@@ -249,7 +249,7 @@
 
 {#if editingLimit}
 	<Modal title="Лимит аккаунтов" onclose={() => (editingLimit = null)}>
-		<form id="limit-form" class="space-y-3" onsubmit={saveLimit}>
+		<form id="limit-form" class="space-y-3" onsubmit={saveLimit} novalidate>
 			<p class="text-sm text-fg-muted">
 				Пользователь: <span class="font-mono font-medium text-fg">{editingLimit.login}</span>
 			</p>
@@ -257,6 +257,7 @@
 				<span class="label">Максимум аккаунтов (1..1000)</span>
 				<input
 					type="number"
+					step="any"
 					class="input"
 					bind:value={newLimit}
 					min="1"
@@ -275,7 +276,7 @@
 				type="submit"
 				form="limit-form"
 				class="btn btn-primary"
-				disabled={actionBusy || newLimit < 1 || newLimit > 1000}
+				disabled={actionBusy || newLimit == null || newLimit < 1 || newLimit > 1000}
 			>
 				Сохранить
 			</button>
