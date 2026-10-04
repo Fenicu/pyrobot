@@ -26,7 +26,7 @@ describe('форма по схеме настроек с прода', () => {
 	it('секции — корневые свойства', () => {
 		expect(sections.map((s) => s.name)).toEqual([
 			'engine', 'chats', 'features', 'strategy', 'food', 'sleep', 'levelup', 'battle',
-			'stocks', 'tangerine', 'metro', 'daily', 'lottery', 'retention'
+			'stocks', 'tangerine', 'metro', 'daily', 'lottery'
 		]);
 		expect(sections.find((s) => s.name === 'features')?.description).toMatch(/Включённые механики/);
 	});

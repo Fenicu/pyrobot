@@ -360,10 +360,6 @@ LIMITS: dict[str, int] = {
     "metro.min_budget_min": 1440,
     "metro.battle_margin_min": 1440,
     "metro.extra_margin_min": 1440,
-    "retention.messages_days": 3650,
-    "retention.decisions_days": 3650,
-    "retention.metrics_days": 3650,
-    "retention.ledger_days": 3650,
 }
 DURATION = re.compile(r"_(s|min|h|days)$")
 

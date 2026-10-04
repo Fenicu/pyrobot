@@ -300,17 +300,6 @@ class TripsSection(BaseModel):
         return value
 
 
-class RetentionSection(BaseModel):
-    # Журнал: сообщения (с нераспознанными), действия, запуски сценариев, уведомления.
-    messages_days: int = Field(default=90, ge=1, le=3650)
-    decisions_days: int = Field(default=30, ge=1, le=3650)
-    # Долгая статистика: ряды метрик и забеги метро.
-    metrics_days: int = Field(default=365, ge=1, le=3650)
-    # Журнал прихода — целыми сутками MSK: сегодня и `ledger_days - 1` суток до него; не меньше 31,
-    # чтобы все 30 дней «Итогов» были полными.
-    ledger_days: int = Field(default=31, ge=31, le=3650)
-
-
 class Settings(BaseModel):
     engine: EngineSection = Field(default_factory=EngineSection)
     chats: ChatsSection = Field(default_factory=ChatsSection)
@@ -330,7 +319,6 @@ class Settings(BaseModel):
     artifact_run: ArtifactRunSection = Field(
         default_factory=ArtifactRunSection, json_schema_extra=READ_ONLY
     )
-    retention: RetentionSection = Field(default_factory=RetentionSection)
 
 
 class SettingsConflict(Exception):
@@ -389,12 +377,20 @@ def apply_patch(settings: Settings, changes: Mapping[str, Any]) -> Settings:
     return _patched(settings.model_dump(mode="json"), changes)
 
 
+def patch_model[M: BaseModel](
+    model: type[M], values: Mapping[str, Any], changes: Mapping[str, Any]
+) -> M:
+    """Частичное обновление модели BaseModel по словарю изменений; незнакомый или read-only путь —
+    SettingsPatchError."""
+    data = copy.deepcopy(dict(values))
+    _merge(model, data, changes, "")
+    return model.model_validate(data)
+
+
 def _patched(values: Mapping[str, Any], changes: Mapping[str, Any]) -> Settings:
     # Проверяется только итог: так изменение ложится и на значения, которые текущая сборка не
     # принимает (`stored_values`). `values` не меняются.
-    data = copy.deepcopy(dict(values))
-    _merge(Settings, data, changes, "")
-    return Settings.model_validate(data)
+    return patch_model(Settings, values, changes)
 
 
 def stored_values(data: Mapping[str, Any]) -> dict[str, Any]:

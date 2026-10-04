@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db import models
 from app.db.base import Base, Database
+from app.engine.server_settings import ServerSettings
 
 TEST_DB_URL = os.environ.get(
     "PYROBOT_TEST_DATABASE_URL",
@@ -24,6 +25,12 @@ async def _seed_account(conn: AsyncConnection) -> None:
     await conn.execute(text("SELECT setval('accounts_id_seq', 1)"))
 
 
+async def _seed_server_settings(conn: AsyncConnection) -> None:
+    """Строка настроек сервера id=1 с версией 1, как после миграции 0016."""
+    data = ServerSettings().model_dump(mode="json")
+    await conn.execute(insert(models.ServerSettingsRow).values(id=1, version=1, data=data))
+
+
 @pytest.fixture(scope="session")
 async def db() -> AsyncIterator[Database]:
     database = Database(TEST_DB_URL)
@@ -31,6 +38,7 @@ async def db() -> AsyncIterator[Database]:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
         await _seed_account(conn)
+        await _seed_server_settings(conn)
     yield database
     await database.dispose()
 
@@ -43,4 +51,5 @@ async def clean_db(db: Database) -> AsyncIterator[Database]:
         # `users`; аккаунт 1 создаётся заново.
         await conn.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
         await _seed_account(conn)
+        await _seed_server_settings(conn)
     yield db

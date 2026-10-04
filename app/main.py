@@ -12,12 +12,13 @@ from app.api.container import Container
 from app.api.security import LoginRateLimiter
 from app.config import AppConfig
 from app.db.accounts import AccountRepo
+from app.db.audit import AuditLog
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
 from app.db.crypto import SecretBox, SecretKeyError, ensure_key, parse_key
 from app.db.notifications import DbNotifier, ServerNotifier
 from app.db.retention import DbRetention
-from app.db.settings_store import DbSettingsStore
+from app.db.server_settings import ServerSettingsRepo
 from app.db.users import UserRepo
 from app.engine.clock import SystemClock
 from app.engine.host.account import RuntimeDeps
@@ -66,15 +67,26 @@ class Runtime:
         self.lag = LoopLagMonitor()
         self.leases = LeaseManager(self.db, uuid4().hex)
         self.box = _secret_box(config)
+        self.server_notifier = ServerNotifier(self.db)
+        self.audit = AuditLog(self.db)
+        self.server_settings = ServerSettingsRepo(self.db, self.audit)
+        self._host_tasks: set[asyncio.Task[None]] = set()
+        codes = CodeLimiter(
+            lambda: (
+                self.server_settings.current.limits.tg_codes_per_hour,
+                self.server_settings.current.limits.tg_codes_per_account_hour,
+            ),
+            on_host_limit=self._on_tg_codes_limit,
+        )
         deps = RuntimeDeps(
             db=self.db,
             config=config,
             accounts=self.accounts,
             lag=self.lag,
-            codes=CodeLimiter(config.tg_codes_per_hour),
+            codes=codes,
             box=self.box,
+            server=self.server_settings,
         )
-        self.server_notifier = ServerNotifier(self.db)
         self.host = EngineHost(
             deps,
             self.leases,
@@ -94,6 +106,7 @@ class Runtime:
             accounts=self.accounts,
             engines=self.host,
             users=self.users,
+            server_settings=self.server_settings,
         )
         self.session_purge_s = SESSION_PURGE_S
         self.retention_first_s = RETENTION_FIRST_S
@@ -112,6 +125,7 @@ class Runtime:
         if "PYROBOT_ACCOUNT_ID" in os.environ:
             log.warning("PYROBOT_ACCOUNT_ID больше не читается")
         await self._check_key()
+        await self.server_settings.load()
         password = self.config.admin_password
         await self.auth.ensure_owner(
             self.config.admin_login, password.get_secret_value() if password else None
@@ -137,6 +151,16 @@ class Runtime:
         except SecretKeyError as exc:
             log.error("процесс не стартует: %s", exc)
             raise
+
+    def _on_tg_codes_limit(self) -> None:
+        async def _notify() -> None:
+            await self.server_notifier.notify(
+                "warn", "tg_codes_limit", "telegram login codes host limit reached"
+            )
+
+        task = asyncio.create_task(_notify())
+        self._host_tasks.add(task)
+        task.add_done_callback(self._host_tasks.discard)
 
     async def _on_lock_connection_lost(self) -> None:
         await self.server_notifier.notify(
@@ -166,10 +190,12 @@ class Runtime:
             await asyncio.sleep(self.retention_s)
 
     async def _retention_pass(self) -> None:
-        """Все аккаунты, кроме удаляемых, — включая выключенные и упавшие, — каждый по своей
-        политике из настроек в базе: движка в процессе у аккаунта может и не быть. Сбой не
-        роняет задачу (иначе супервизор перезапускал бы её с начальной паузой): одно уведомление
-        аккаунту на серию неудач, следующая попытка — по расписанию."""
+        """Все аккаунты, кроме удаляемых, — включая выключенные и упавшие, — по политике сервера:
+        движка в процессе у аккаунта может и не быть. Сбой не роняет задачу (иначе супервизор
+        перезапускал бы её с начальной паузой): одно уведомление аккаунту на серию неудач,
+        следующая попытка — по расписанию."""
+        policy = self.server_settings.current.retention
+        now = SystemClock().now()
         try:
             accounts = await self.accounts.with_status("enabled", "disabled", "error")
         except Exception:
@@ -177,11 +203,7 @@ class Runtime:
             return
         for account in accounts:
             try:
-                settings = DbSettingsStore(self.db, account.id)
-                await settings.load()
-                purged = await DbRetention(self.db, account.id).purge(
-                    SystemClock().now(), settings.current.retention
-                )
+                purged = await DbRetention(self.db, account.id).purge(now, policy)
             except Exception:
                 log.exception("retention of account %d failed", account.id)
                 if account.id not in self._retention_failing:
@@ -193,8 +215,16 @@ class Runtime:
                 self._retention_failing.discard(account.id)
                 if any(purged.values()):
                     log.info("retention of account %d purged %s", account.id, purged)
+        try:
+            purged_server = await DbRetention(self.db, 1).purge_server(now, policy)
+            if any(purged_server.values()):
+                log.info("retention of server purged %s", purged_server)
+        except Exception:
+            log.exception("retention of server failed")
 
     async def stop(self) -> None:
+        for task in list(self._host_tasks):
+            task.cancel()
         # Хост — первым: сверка, затем движки (штатно, пока аренда действует, иначе аварийно) и
         # освобождение их аренд.
         with contextlib.suppress(Exception):

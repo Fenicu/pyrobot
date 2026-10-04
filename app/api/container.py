@@ -14,6 +14,7 @@ from app.engine.clock import Clock, SystemClock
 
 if TYPE_CHECKING:
     from app.api.scope import EngineRegistry
+    from app.db.server_settings import ServerSettingsRepo
 
 
 @dataclass
@@ -34,3 +35,4 @@ class Container:
     clock: Clock = field(default_factory=SystemClock)
     # Правка настроек при занятой аренде ждёт регистрации движка аккаунта не дольше этого.
     engine_wait_s: float = 5.0
+    server_settings: ServerSettingsRepo | None = None

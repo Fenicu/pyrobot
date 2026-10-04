@@ -26,15 +26,15 @@ function schemaPaths(): { groups: string[]; leaves: string[] } {
 describe('описания настроек', () => {
 	const { groups, leaves } = schemaPaths();
 
-	it('схема: 20 секций и групп, 107 листьев', () => {
-		expect(groups).toHaveLength(20);
+	it('схема: 19 секций и групп, 103 листа', () => {
+		expect(groups).toHaveLength(19);
 		expect(groups).toContain('lottery.tickets');
 		expect(groups).toContain('lottery.keep');
 		expect(groups).toContain('strategy.reserve_ahead_min');
 		expect(groups).toContain('artifacts');
 		expect(groups).toContain('artifact_run');
 		expect(groups).toContain('trips');
-		expect(leaves).toHaveLength(107);
+		expect(leaves).toHaveLength(103);
 	});
 
 	it('словарь совпадает с путями схемы в обе стороны', () => {

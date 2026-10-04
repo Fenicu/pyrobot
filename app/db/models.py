@@ -280,6 +280,18 @@ class AuditRow(Base):
     details: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
 
 
+class ServerSettingsRow(Base):
+    """Настройки сервера (раздел 5.6 спеки): ровно одна строка с id = 1."""
+
+    __tablename__ = "server_settings"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_server_settings_single_row"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    version: Mapped[int] = mapped_column(BigInteger)
+    data: Mapped[dict[str, Any]]
+    updated_at: Mapped[datetime] = _now_col()
+
+
 class DecisionRow(Base):
     __tablename__ = "decisions"
     __table_args__ = (Index("ix_decisions_account_at", "account_id", "at"),)

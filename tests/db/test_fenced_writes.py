@@ -35,13 +35,13 @@ def _fence(epoch: int) -> Fence:
 
 
 async def _written(db: Database) -> int:
-    """Строк во всех таблицах, кроме `accounts`."""
+    """Строк во всех таблицах, кроме `accounts` и `server_settings`."""
     async with db.sessions() as session:
         return sum(
             [
                 await session.scalar(select(func.count()).select_from(table)) or 0
                 for table in Base.metadata.sorted_tables
-                if table.name != "accounts"
+                if table.name not in ("accounts", "server_settings")
             ]
         )
 

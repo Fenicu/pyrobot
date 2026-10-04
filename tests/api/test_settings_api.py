@@ -140,9 +140,9 @@ async def test_history_pages_with_diffs(with_settings: Container, api_client: As
 async def test_history_ignores_sections_missing_in_old_versions(
     container: Container, clean_db: Database, api_client: AsyncClient
 ) -> None:
-    # Версия, записанная до появления секции retention, не даёт ложного изменения.
+    # Версия, записанная до появления секции metro, не даёт ложного изменения.
     old = Settings().model_dump(mode="json")
-    del old["retention"]
+    del old["metro"]
     new = Settings().model_dump(mode="json")
     new["food"]["banana_reserve"] = 40
     async with clean_db.sessions() as s, s.begin():

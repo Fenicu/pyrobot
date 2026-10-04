@@ -24,7 +24,7 @@ from app.engine.events import Unrecognized
 from app.engine.gametime import MSK
 from app.engine.metro.store import METRO_HISTORY
 from app.engine.planner.types import Wait
-from app.engine.settings import RetentionSection
+from app.engine.server_settings import RetentionPolicy
 from tests.engine.helpers import make_msg
 
 pytestmark = pytest.mark.db
@@ -63,13 +63,13 @@ async def _count(db: Database, model: type) -> int:
 
 
 async def test_retention_defaults() -> None:
-    policy = RetentionSection()
+    policy = RetentionPolicy()
     assert (policy.messages_days, policy.decisions_days, policy.metrics_days) == (90, 30, 365)
 
 
 async def test_purge_with_longest_retention(clean_db: Database) -> None:
     # Предел хранения — 10 лет: срок считается без переполнения даты.
-    longest = RetentionSection(
+    longest = RetentionPolicy(
         messages_days=3650, decisions_days=3650, metrics_days=3650, ledger_days=3650
     )
     purged = await DbRetention(clean_db, 1).purge(NOW, longest)
@@ -116,7 +116,7 @@ async def test_purge_keeps_recent_and_open_obligations(clean_db: Database) -> No
                 NotificationRow(account_id=1, created_at=_ago(1), level="info", code="b", text=""),
             ]
         )
-    purged = await DbRetention(clean_db, 1, batch=1).purge(NOW, RetentionSection())
+    purged = await DbRetention(clean_db, 1, batch=1).purge(NOW, RetentionPolicy())
     assert purged == {
         "messages": 2,
         "actions": 4,
@@ -147,7 +147,7 @@ async def test_purge_keeps_recent_and_open_obligations(clean_db: Database) -> No
     assert runs == ["done", "running"] and decisions == ["fresh"]
     assert await _count(clean_db, MetroRunRow) == 1 and await _count(clean_db, MetricRow) == 1
     assert await _count(clean_db, NotificationRow) == 1
-    again = await DbRetention(clean_db, 1).purge(NOW, RetentionSection())
+    again = await DbRetention(clean_db, 1).purge(NOW, RetentionPolicy())
     assert set(again.values()) == {0}
 
 
@@ -174,16 +174,16 @@ async def test_ledger_purged_by_whole_msk_days(clean_db: Database) -> None:
     last_gone = datetime(2026, 8, 27, 23, 59, tzinfo=MSK)
     async with clean_db.sessions() as s, s.begin():
         s.add_all([_ledger(first_kept, date(2026, 8, 28)), _ledger(last_gone, date(2026, 8, 27))])
-    purged = await DbRetention(clean_db, 1).purge(NOW, RetentionSection())
+    purged = await DbRetention(clean_db, 1).purge(NOW, RetentionPolicy())
     assert purged["ledger"] == 1
     async with clean_db.sessions() as s:
         assert [r.day for r in await s.scalars(select(LedgerRow))] == [date(2026, 8, 28)]
 
 
 def test_ledger_retention_keeps_every_shown_day() -> None:
-    assert RetentionSection().ledger_days == 31
+    assert RetentionPolicy().ledger_days == 31
     with pytest.raises(ValidationError):
-        RetentionSection(ledger_days=30)
+        RetentionPolicy(ledger_days=30)
 
 
 async def test_purge_keeps_last_completed_metro_runs(clean_db: Database) -> None:
@@ -191,7 +191,7 @@ async def test_purge_keeps_last_completed_metro_runs(clean_db: Database) -> None
     for i in range(METRO_HISTORY + 2):
         await metro.save(None, "done", {"started_at": _ago(1000 - i).isoformat(), "duration_s": i})
     await metro.save(None, "stopped", {"started_at": _ago(500).isoformat()})
-    purged = await DbRetention(clean_db, 1).purge(NOW, RetentionSection())
+    purged = await DbRetention(clean_db, 1).purge(NOW, RetentionPolicy())
     # Для p90 бюджета остаются последние 20 завершённых забегов, даже старше года.
     assert purged["metro_runs"] == 3
     assert await metro.durations() == [float(i) for i in range(2, METRO_HISTORY + 2)]
@@ -208,8 +208,63 @@ async def test_purged_run_leaves_open_obligation_without_run(clean_db: Database)
     step.scenario_run_id = run_id
     async with clean_db.sessions() as s, s.begin():
         s.add(step)
-    purged = await DbRetention(clean_db, 1).purge(NOW, RetentionSection())
+    purged = await DbRetention(clean_db, 1).purge(NOW, RetentionPolicy())
     assert (purged["scenario_runs"], purged["actions"]) == (1, 0)
     async with clean_db.sessions() as s:
         kept = await s.get(ActionRow, step.id)
     assert kept is not None and kept.scenario_run_id is None
+
+
+async def test_purge_server_rows_by_policy(clean_db: Database) -> None:
+    from app.db.models import AuditRow, NotificationRow
+    from app.engine.server_settings import RetentionPolicy
+
+    policy = RetentionPolicy(messages_days=90, audit_days=365)
+    old_notif = NotificationRow(
+        account_id=None,
+        created_at=_ago(91),
+        level="error",
+        code="old_err",
+        text="old text",
+    )
+    new_notif = NotificationRow(
+        account_id=None,
+        created_at=_ago(10),
+        level="error",
+        code="new_err",
+        text="new text",
+    )
+    acc_old_notif = NotificationRow(
+        account_id=1,
+        created_at=_ago(91),
+        level="error",
+        code="acc_old_err",
+        text="acc old text",
+    )
+
+    old_audit = AuditRow(
+        at=_ago(366),
+        actor_login="cli",
+        action="password_set_by_cli",
+        details={},
+    )
+    new_audit = AuditRow(
+        at=_ago(100),
+        actor_login="cli",
+        action="password_set_by_cli",
+        details={},
+    )
+
+    async with clean_db.sessions() as s, s.begin():
+        s.add_all([old_notif, new_notif, acc_old_notif, old_audit, new_audit])
+
+    retention = DbRetention(clean_db, 1)
+    purged = await retention.purge_server(NOW, policy)
+    assert purged == {"notifications": 1, "audit_log": 1}
+
+    async with clean_db.sessions() as s:
+        notif_codes = set(await s.scalars(select(NotificationRow.code)))
+        audit_count = await s.scalar(select(func.count()).select_from(AuditRow))
+
+    assert notif_codes == {"new_err", "acc_old_err"}
+    assert audit_count == 1

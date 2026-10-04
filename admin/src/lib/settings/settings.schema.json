@@ -841,40 +841,6 @@
    "title": "ReserveAhead",
    "type": "object"
   },
-  "RetentionSection": {
-   "properties": {
-    "decisions_days": {
-     "default": 30,
-     "maximum": 3650,
-     "minimum": 1,
-     "title": "Decisions Days",
-     "type": "integer"
-    },
-    "ledger_days": {
-     "default": 31,
-     "maximum": 3650,
-     "minimum": 31,
-     "title": "Ledger Days",
-     "type": "integer"
-    },
-    "messages_days": {
-     "default": 90,
-     "maximum": 3650,
-     "minimum": 1,
-     "title": "Messages Days",
-     "type": "integer"
-    },
-    "metrics_days": {
-     "default": 365,
-     "maximum": 3650,
-     "minimum": 1,
-     "title": "Metrics Days",
-     "type": "integer"
-    }
-   },
-   "title": "RetentionSection",
-   "type": "object"
-  },
   "SleepSection": {
    "properties": {
     "duration_h": {
@@ -1104,9 +1070,6 @@
   },
   "metro": {
    "$ref": "#/$defs/MetroSection"
-  },
-  "retention": {
-   "$ref": "#/$defs/RetentionSection"
   },
   "sleep": {
    "$ref": "#/$defs/SleepSection"

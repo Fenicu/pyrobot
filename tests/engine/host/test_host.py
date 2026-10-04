@@ -23,7 +23,6 @@ from app.engine.host.codes import CodeLimiter
 from app.engine.host.host import EngineHost
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
-from app.engine.settings import RetentionSection, Settings
 from app.main import Runtime
 from tests.api.conftest import A1, PASSWORD, login, make_container
 from tests.conftest import TEST_DB_URL
@@ -649,9 +648,6 @@ async def test_retention_covers_disabled_skips_deleting(clean_db: Database) -> N
     disabled = await _add(clean_db, "disabled")
     failed = await _add(clean_db, "error")
     deleting = await _add(clean_db, "deleting")
-    short = Settings(retention=RetentionSection(messages_days=7)).model_dump(mode="json")
-    async with clean_db.sessions() as session, session.begin():
-        session.add(SettingsRow(account_id=disabled, version=1, data=short))
     for account_id in (1, disabled, failed, deleting):
         await _journal(clean_db, account_id, 100, 10)
     runtime = Runtime(_config())
@@ -659,10 +655,11 @@ async def test_retention_covers_disabled_skips_deleting(clean_db: Database) -> N
         await runtime._retention_pass()
     finally:
         await runtime.db.dispose()
-    # Каждый аккаунт — по своей политике: у выключенного журнал короче (7 дней).
+    # Все активные/выключенные/упавшие аккаунты чистятся по политике сервера (90 дней),
+    # удаляемые пропускаются.
     assert await _messages(clean_db, 1) == 1
     assert await _messages(clean_db, failed) == 1
-    assert await _messages(clean_db, disabled) == 0
+    assert await _messages(clean_db, disabled) == 1
     assert await _messages(clean_db, deleting) == 2
 
 

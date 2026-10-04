@@ -140,11 +140,6 @@
     "raw": 0,
     "details": 0
    }
-  },
-  "retention": {
-   "messages_days": 90,
-   "decisions_days": 30,
-   "metrics_days": 365
   }
  },
  "defaults": {
@@ -286,11 +281,6 @@
     "raw": 0,
     "details": 0
    }
-  },
-  "retention": {
-   "messages_days": 90,
-   "decisions_days": 30,
-   "metrics_days": 365
   }
  },
  "schema": {
@@ -859,30 +849,6 @@
     "title": "MetroSection",
     "type": "object"
    },
-   "RetentionSection": {
-    "properties": {
-     "messages_days": {
-      "default": 90,
-      "minimum": 1,
-      "title": "Messages Days",
-      "type": "integer"
-     },
-     "decisions_days": {
-      "default": 30,
-      "minimum": 1,
-      "title": "Decisions Days",
-      "type": "integer"
-     },
-     "metrics_days": {
-      "default": 365,
-      "minimum": 1,
-      "title": "Metrics Days",
-      "type": "integer"
-     }
-    },
-    "title": "RetentionSection",
-    "type": "object"
-   },
    "SleepSection": {
     "properties": {
      "duration_h": {
@@ -1081,9 +1047,6 @@
    },
    "lottery": {
     "$ref": "#/$defs/LotterySection"
-   },
-   "retention": {
-    "$ref": "#/$defs/RetentionSection"
    }
   },
   "title": "Settings",

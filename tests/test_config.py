@@ -53,13 +53,12 @@ def test_secret_key_and_host_limits_defaults(monkeypatch: pytest.MonkeyPatch) ->
         "PYROBOT_DB_MAX_OVERFLOW",
         "PYROBOT_MAX_ENGINES",
         "PYROBOT_ENGINE_START_GAP_S",
-        "PYROBOT_TG_CODES_PER_HOUR",
     ):
         monkeypatch.delenv(key, raising=False)
     cfg = AppConfig(_env_file=None, transport="fake")
     assert cfg.secret_key is None and cfg.secret_key_reset is False
     assert (cfg.db_pool_size, cfg.db_max_overflow, cfg.max_engines) == (10, 20, 20)
-    assert cfg.engine_start_gap_s == 3.0 and cfg.tg_codes_per_hour == 10
+    assert cfg.engine_start_gap_s == 3.0
 
 
 def test_secret_key_from_env_is_hidden(monkeypatch: pytest.MonkeyPatch) -> None:

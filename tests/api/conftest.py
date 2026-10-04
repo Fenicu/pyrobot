@@ -12,9 +12,11 @@ from app.api.container import Container
 from app.api.security import LoginRateLimiter, hash_password
 from app.config import AppConfig
 from app.db.accounts import AccountRepo
+from app.db.audit import AuditLog
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
 from app.db.models import User
+from app.db.server_settings import ServerSettingsRepo
 from app.db.users import UserRepo
 from app.engine.facade import EngineFacade
 from app.engine.host.host import HostStatus
@@ -107,6 +109,7 @@ def make_container(db: Database, *, secure: bool = False) -> Container:
         accounts=AccountRepo(db),
         engines=FakeEngines(),
         users=UserRepo(db),
+        server_settings=ServerSettingsRepo(db, AuditLog(db)),
     )
 
 

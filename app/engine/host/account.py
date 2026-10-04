@@ -3,6 +3,8 @@
 реакции, пересылка в чат команды, фасад и свой супервизор. Процесс создаёт движок после захвата
 аренды."""
 
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import logging
@@ -10,6 +12,9 @@ from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.db.server_settings import ServerSettingsRepo
 
 from app.config import AppConfig
 from app.db.accounts import AccountInfo, AccountRepo
@@ -137,6 +142,7 @@ class RuntimeDeps:
     codes: CodeLimiter
     # Ключ сессий Telegram в базе; нет только у транспорта fake без `PYROBOT_SECRET_KEY`.
     box: SecretBox | None = None
+    server: ServerSettingsRepo | None = None
 
 
 class AccountRuntime:

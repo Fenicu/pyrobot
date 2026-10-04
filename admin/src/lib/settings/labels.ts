@@ -34,9 +34,8 @@ export const SECTION_ORDER = [
 	'levelup',
 	'tangerine',
 	'chats',
-	'engine',
-	'retention'
+	'engine'
 ];
 
-/** «Дополнительно»: темп шлюза и хранение журнала — ставят один раз. */
-export const ADVANCED_SECTIONS = ['engine', 'retention'];
+/** «Дополнительно»: темп шлюза — ставят один раз. */
+export const ADVANCED_SECTIONS = ['engine'];

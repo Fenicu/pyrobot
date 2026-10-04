@@ -501,8 +501,26 @@ async def test_retention_task_purges_old_journal(clean_db: Database) -> None:
         for _ in range(200):
             if await journal_size() == 0:
                 break
-            await asyncio.sleep(0.01)
         assert await journal_size() == 0
+
+
+async def test_retention_uses_server_policy_for_disabled_accounts(clean_db: Database) -> None:
+    from app.db.models import Account
+
+    async with clean_db.sessions() as s, s.begin():
+        s.add(Account(id=2, name="acc2", status="disabled"))
+    old = now() - timedelta(days=91)
+    await DbJournal(clean_db, 2).append(make_msg("old", msg_id=1, received_at=old), [], None, 0)
+
+    app = create_application(_cfg())
+    runtime = app.state.runtime
+    await runtime._retention_pass()
+
+    async with clean_db.sessions() as s:
+        count = await s.scalar(
+            select(func.count()).select_from(MessageRow).where(MessageRow.account_id == 2)
+        )
+    assert count == 0
 
 
 async def test_retention_failure_notifies_once(

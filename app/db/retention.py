@@ -8,6 +8,7 @@ from app.db.actions import UNRECONCILED_FREE
 from app.db.base import Database
 from app.db.models import (
     ActionRow,
+    AuditRow,
     DecisionRow,
     LedgerRow,
     MessageRow,
@@ -19,7 +20,7 @@ from app.db.models import (
 from app.engine.gametime import tasks_day
 from app.engine.gateway.types import ActionStatus
 from app.engine.metro.store import METRO_HISTORY
-from app.engine.settings import RetentionSection
+from app.engine.server_settings import RetentionPolicy
 
 BATCH = 5000
 
@@ -32,7 +33,7 @@ class DbRetention:
         self._account_id = account_id
         self._batch = batch
 
-    async def purge(self, now: datetime, policy: RetentionSection) -> dict[str, int]:
+    async def purge(self, now: datetime, policy: RetentionPolicy) -> dict[str, int]:
         journal = now - timedelta(days=policy.messages_days)
         decisions = now - timedelta(days=policy.decisions_days)
         stats = now - timedelta(days=policy.metrics_days)
@@ -81,15 +82,29 @@ class DbRetention:
             "ledger": await self._purge(LedgerRow, LedgerRow.day < ledger),
         }
 
+    async def purge_server(self, now: datetime, policy: RetentionPolicy) -> dict[str, int]:
+        """Очистка уведомлений сервера и журнала аудита по политике сервера."""
+        messages_cutoff = now - timedelta(days=policy.messages_days)
+        audit_cutoff = now - timedelta(days=policy.audit_days)
+        return {
+            "notifications": await self._purge_table(
+                NotificationRow,
+                NotificationRow.account_id.is_(None),
+                NotificationRow.created_at < messages_cutoff,
+            ),
+            "audit_log": await self._purge_table(
+                AuditRow,
+                AuditRow.at < audit_cutoff,
+            ),
+        }
+
     async def _purge(self, model: Any, *conds: Any) -> int:
+        return await self._purge_table(model, model.account_id == self._account_id, *conds)
+
+    async def _purge_table(self, model: Any, *conds: Any) -> int:
         total = 0
         while True:
-            ids = (
-                select(model.id)
-                .where(model.account_id == self._account_id, *conds)
-                .limit(self._batch)
-                .scalar_subquery()
-            )
+            ids = select(model.id).where(*conds).limit(self._batch).scalar_subquery()
             async with self._db.sessions() as session, session.begin():
                 result = await session.execute(
                     delete(model).where(model.id.in_(ids)).returning(model.id)

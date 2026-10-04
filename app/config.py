@@ -36,8 +36,6 @@ class AppConfig(DbConfig):
     db_max_overflow: int = 20
     max_engines: int = 20
     engine_start_gap_s: float = 3.0
-    # Запросов кода входа Telegram в час на хост.
-    tg_codes_per_hour: int = 10
     # Собранная админка (SvelteKit, `admin/build`): её отдаёт то же приложение; каталога нет —
     # `/` отвечает 404 (разработка, тесты).
     admin_dir: Path | None = Path("/app/admin")
