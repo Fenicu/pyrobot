@@ -1529,6 +1529,77 @@
         "title": "FoodStockState",
         "type": "object"
       },
+      "GadgetState": {
+        "description": "Надетый гаджет с экрана `/inv`: значок редкости, уровень, значок слота, название, бонусы по\nнавыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка (🧶, 📿, 💎).",
+        "properties": {
+          "bonuses": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Bonuses",
+            "type": "object"
+          },
+          "grade": {
+            "title": "Grade",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "integer"
+          },
+          "mark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mark"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "grade",
+          "level",
+          "slot",
+          "name"
+        ],
+        "title": "GadgetState",
+        "type": "object"
+      },
+      "GadgetsState": {
+        "description": "Надетые гаджеты в порядке экрана и строки сетов («⚫️Сет VIP»).",
+        "properties": {
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/GadgetState"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "sets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Sets",
+            "type": "array"
+          }
+        },
+        "title": "GadgetsState",
+        "type": "object"
+      },
       "GameChatJoinOut": {
         "properties": {
           "game_chat_member": {
@@ -2461,6 +2532,35 @@
           "next_before"
         ],
         "title": "NotificationsPage",
+        "type": "object"
+      },
+      "Observed_GadgetsState_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/GadgetsState"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[GadgetsState]",
         "type": "object"
       },
       "Observed_GorbushkaState_": {
@@ -4220,6 +4320,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/Observed_dict_str__FoodStockState__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gadgets": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_GadgetsState_"
               },
               {
                 "type": "null"
