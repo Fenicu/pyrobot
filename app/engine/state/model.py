@@ -338,23 +338,14 @@ def load_state(data: dict[str, Any]) -> CharacterState:
         return CharacterState()
 
 
-def _seen_str(data: dict[str, Any], field: str) -> str | None:
-    if data.get("schema_version") != SCHEMA_VERSION:
-        return None
-    seen = data.get(field)
-    value = seen.get("value") if isinstance(seen, dict) else None
-    return value if isinstance(value, str) else None
-
-
 def company_of(data: dict[str, Any]) -> str | None:
     """Своя компания из снимка состояния; None — ещё не видели в профиле или значок не
     распознан. Без разбора всего снимка: шлюз спрашивает её перед каждой отправкой."""
-    return _seen_str(data, "company")
-
-
-def team_tag_of(data: dict[str, Any]) -> str | None:
-    """Тег своей команды из снимка состояния; None — не наблюдали или команды нет."""
-    return _seen_str(data, "team_tag")
+    if data.get("schema_version") != SCHEMA_VERSION:
+        return None
+    seen = data.get("company")
+    value = seen.get("value") if isinstance(seen, dict) else None
+    return value if isinstance(value, str) else None
 
 
 def dump_state(state: CharacterState) -> dict[str, Any]:

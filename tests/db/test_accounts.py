@@ -16,7 +16,7 @@ from app.db.accounts import (
 from app.db.base import Database
 from app.db.models import Account, AdminUser, SettingsRow, StateSnapshot
 from app.engine.settings import Settings
-from app.engine.state.model import CharacterState, Obs, dump_state
+from app.engine.state.model import SCHEMA_VERSION, CharacterState, Obs, dump_state
 
 pytestmark = pytest.mark.db
 
@@ -291,7 +291,28 @@ async def test_overview_unreadable_snapshot_gives_none(
 ) -> None:
     acc = await repo.create(admin_id, "Второй", capacity=20)
     await _snapshot(
-        clean_db, acc.id, {"schema_version": 1, "company": {"value": 5}, "team_tag": "SU"}
+        clean_db,
+        acc.id,
+        {"schema_version": SCHEMA_VERSION, "company": {"value": 5}, "team_tag": "SU"},
     )
+    (only,) = await repo.overview(admin_id)
+    assert (only.company, only.team_tag) == (None, None)
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"company": {"value": "piper"}, "team_tag": {"value": "SU"}},
+        {"schema_version": SCHEMA_VERSION + 1, "company": {"value": "piper"}},
+        {"schema_version": str(SCHEMA_VERSION), "company": {"value": "piper"}},
+        {"schema_version": SCHEMA_VERSION, "company": {"value": None}, "team_tag": {}},
+        {"schema_version": SCHEMA_VERSION, "company": [], "team_tag": None},
+    ],
+)
+async def test_overview_foreign_snapshot_shapes_give_none(
+    repo: AccountRepo, clean_db: Database, admin_id: int, state: dict[str, Any]
+) -> None:
+    acc = await repo.create(admin_id, "Второй", capacity=20)
+    await _snapshot(clean_db, acc.id, state)
     (only,) = await repo.overview(admin_id)
     assert (only.company, only.team_tag) == (None, None)

@@ -138,7 +138,7 @@ export const COMPANY: Record<string, { mark: string; name: string }> = {
 	bmesa: { mark: '☣️', name: 'Black Mesa' }
 };
 
-const VS16 = '️';
+const VS16 = '\uFE0F';
 
 /** Остаток имени после префикса, если имя им начинается (значки сравниваются без VS16), иначе null. */
 function afterPrefix(name: string, prefix: string): string | null {
