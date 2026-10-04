@@ -75,7 +75,7 @@ describe('словари плана', () => {
 		expect(verdictText('no_hard_team_offer')).toBe('нет командного hard-задания');
 	});
 
-		it('отказ из-за запаса 🔥 — под что он держится; у метро — только запас Горбушки', () => {
+	it('отказ из-за запаса 🔥 — под что он держится; у метро — только запас Горбушки', () => {
 		expect(verdictText('reserved')).toBe('🔥 в запасе');
 		expect(verdictTone('reserved')).toBe('muted');
 		const deed = { scenario: 'deed:harvest', params: {}, score: 0.5, verdict: 'reserved' };
