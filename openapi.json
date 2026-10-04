@@ -1554,7 +1554,7 @@
         "type": "object"
       },
       "GadgetState": {
-        "description": "Надетый гаджет с экрана `/inv`: значок редкости, уровень, значок слота, название, бонусы по\nнавыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка (🧶, 📿, 💎).",
+        "description": "Надетый гаджет с экрана `/inv`: значок редкости и уровень (у неулучшенного их нет), значок\nслота, название, бонусы по навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка\n(🧶, 📿, 💎).",
         "properties": {
           "bonuses": {
             "additionalProperties": {
@@ -1565,12 +1565,26 @@
             "type": "object"
           },
           "grade": {
-            "title": "Grade",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
           },
           "level": {
-            "title": "Level",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
           },
           "mark": {
             "anyOf": [
@@ -1593,8 +1607,6 @@
           }
         },
         "required": [
-          "grade",
-          "level",
           "slot",
           "name"
         ],

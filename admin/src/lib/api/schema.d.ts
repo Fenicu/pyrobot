@@ -1480,8 +1480,9 @@ export interface components {
         };
         /**
          * GadgetState
-         * @description Надетый гаджет с экрана `/inv`: значок редкости, уровень, значок слота, название, бонусы по
-         *     навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка (🧶, 📿, 💎).
+         * @description Надетый гаджет с экрана `/inv`: значок редкости и уровень (у неулучшенного их нет), значок
+         *     слота, название, бонусы по навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка
+         *     (🧶, 📿, 💎).
          */
         GadgetState: {
             /**
@@ -1492,9 +1493,9 @@ export interface components {
                 [key: string]: number;
             };
             /** Grade */
-            grade: string;
+            grade?: string | null;
             /** Level */
-            level: number;
+            level?: number | null;
             /** Mark */
             mark?: string | null;
             /** Name */

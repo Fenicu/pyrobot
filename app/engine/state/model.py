@@ -187,11 +187,12 @@ class TripsState(_Frozen):
 
 
 class GadgetState(_Frozen):
-    """Надетый гаджет с экрана `/inv`: значок редкости, уровень, значок слота, название, бонусы по
-    навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка (🧶, 📿, 💎)."""
+    """Надетый гаджет с экрана `/inv`: значок редкости и уровень (у неулучшенного их нет), значок
+    слота, название, бонусы по навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка
+    (🧶, 📿, 💎)."""
 
-    grade: str
-    level: int
+    grade: str | None = None
+    level: int | None = None
     slot: str
     name: str
     bonuses: dict[str, int] = {}

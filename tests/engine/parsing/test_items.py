@@ -255,3 +255,48 @@ def test_broken_gadget_line_is_skipped_inventory_still_parsed() -> None:
         12,
         20,
     )
+
+
+_TAIL = "Занято 0 из 20\n"
+
+
+def test_sets_stop_at_first_non_set_line_without_bonuses_line() -> None:
+    text = (
+        "Гаджеты при тебе: (снять)\n⚫️25\xa0👔Жилетка LoRat (+110🐢, +40🎓) /unwear_t501\n\n"
+        "⚫️Сет VIP\n🌞Сет Летний\nТвои ресурсы - 1 шт.\nПосмотреть - /bag\n\n" + _TAIL
+    )
+    assert _inventory(text).gadgets.sets == ("⚫️Сет VIP", "🌞Сет Летний")
+
+
+def test_sets_none_when_next_line_is_foreign() -> None:
+    text = (
+        "Гаджеты при тебе: (снять)\n⚫️25\xa0👔Жилетка LoRat (+110🐢, +40🎓) /unwear_t501\n\n"
+        "Твои ресурсы - 1 шт.\nПосмотреть - /bag\n\n" + _TAIL
+    )
+    assert _inventory(text).gadgets.sets == ()
+
+
+def test_empty_screen_without_bonuses_line_has_no_items_and_sets() -> None:
+    text = "Гаджеты при тебе: (снять)\n\nТвои ресурсы - 1 шт.\nПосмотреть - /bag\n\n" + _TAIL
+    assert _inventory(text).gadgets == Gadgets()
+
+
+def test_worn_gadget_without_grade_and_level() -> None:
+    text = (
+        "Гаджеты при тебе: (снять)\n👔Жилетка LoRat (+63🐢, +23🎓) /unwear_t501\n"
+        "💍Простое кольцо (+10🔨, +10🐢) /unwear_r10\n\nБонусы - /bonuses\n\n" + _TAIL
+    )
+    first, second = _inventory(text).gadgets.items
+    assert first == Gadget(
+        grade=None,
+        level=None,
+        slot="👔",
+        name="Жилетка LoRat",
+        bonuses={"wisdom": 63, "theory": 23},
+    )
+    assert (second.grade, second.level, second.slot, second.name) == (
+        None,
+        None,
+        "💍",
+        "Простое кольцо",
+    )

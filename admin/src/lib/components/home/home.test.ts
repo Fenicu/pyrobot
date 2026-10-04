@@ -248,6 +248,38 @@ describe('карточка гаджетов', () => {
 		expect(card).not.toHaveTextContent('(устарело)');
 	});
 
+	it('гаджет без редкости и уровня, без метки и с незнакомым навыком', () => {
+		const items = [
+			{
+				grade: null,
+				level: null,
+				slot: '👔',
+				name: 'Жилетка LoRat',
+				bonuses: { wisdom: 63, theory: 23 },
+				mark: null
+			},
+			{
+				grade: null,
+				level: null,
+				slot: '💍',
+				name: 'Кольцо',
+				bonuses: { luck: 7 },
+				mark: null
+			}
+		];
+		render(GadgetsCard, {
+			state: { ...prod.state, gadgets: gadgets({ items, sets: [] }) },
+			stale: []
+		});
+		const card = screen.getByRole('region', { name: 'Гаджеты' });
+		const rows = within(card).getAllByRole('listitem');
+		expect(rows.map((li) => li.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+			'👔 Жилетка LoRat · +63🐢 +23🎓',
+			'💍 Кольцо · +7luck'
+		]);
+		expect(card).not.toHaveTextContent('null');
+	});
+
 	it('без сетов строки сетов нет', () => {
 		render(GadgetsCard, { state: { ...prod.state, gadgets: gadgets({ sets: [] }) }, stale: [] });
 		expect(screen.getByRole('region', { name: 'Гаджеты' })).not.toHaveTextContent('Сет');

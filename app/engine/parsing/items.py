@@ -13,11 +13,11 @@ _INVENTORY = "Гаджеты при тебе: (снять)"
 _BOOKS = re.compile(r"^📒Книга опыта: (?P<n>\d+)(?: \((?P<t>" + DURATION + r")\))?", re.M)
 _CARDS = re.compile(r"^💳Подарочная карта: (?P<n>\d+)(?: \((?P<t>" + DURATION + r")\))?", re.M)
 _VS16 = "\ufe0f"
-_BONUSES_LINE = "Бонусы - /bonuses"
-_BACKPACK = "Гаджеты в рюкзаке"
-# Строка надетого гаджета: «⚫️26 🕶Хиджаб (+85🎓, 🧶) /unwear_h18»; значок слота слитно с названием.
+_SET = re.compile(r"^\S+?Сет ")
+# Строка надетого гаджета: «⚫️26 🕶Хиджаб (+85🎓, 🧶) /unwear_h18»; значок слота слитно с названием,
+# у неулучшенного гаджета редкости и уровня нет: «👔Жилетка LoRat (+63🐢, +23🎓) /unwear_t501».
 _GADGET = re.compile(
-    r"^(?P<grade>[^\d\s]+)(?P<level>\d+)[ \xa0](?P<slot>[^\w\s]\ufe0f?)(?P<name>.+?)"
+    r"^(?:(?P<grade>[^\d\s]+)(?P<level>\d+)[ \xa0])?(?P<slot>[^\w\s]\ufe0f?)(?P<name>.+?)"
     r" \((?P<stats>[^()]*)\) /unwear_\w+$"
 )
 _BONUS = re.compile(r"^\+(?P<n>\d+)(?P<icon>\S+)$")
@@ -48,11 +48,12 @@ _MONEY_AFTER = re.compile(r"Стало: \$(?P<money>" + NUM + r")")
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Gadget:
-    """Надетый гаджет: значок редкости, уровень, значок слота, название, бонусы по навыкам
-    (`practice`, `theory`, `cunning`, `wisdom`) и метка в конце скобок (🧶, 📿, 💎)."""
+    """Надетый гаджет: значок редкости и уровень (у неулучшенного их нет), значок слота, название,
+    бонусы по навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка в конце скобок
+    (🧶, 📿, 💎)."""
 
-    grade: str
-    level: int
+    grade: str | None
+    level: int | None
     slot: str
     name: str
     bonuses: dict[str, int]
@@ -149,7 +150,7 @@ def _gadget(line: str) -> Gadget | None:
         bonuses[code] = int(bonus["n"])
     return Gadget(
         grade=m["grade"],
-        level=int(m["level"]),
+        level=int(m["level"]) if m["level"] else None,
         slot=m["slot"],
         name=m["name"],
         bonuses=bonuses,
@@ -158,14 +159,12 @@ def _gadget(line: str) -> Gadget | None:
 
 
 def _gadgets(text: str) -> Gadgets:
-    """Блок «Гаджеты при тебе»: строки гаджетов до пустой, затем строки сетов до «Бонусы»; блок
-    рюкзака не читается. Нераспознанная строка гаджета пропускается."""
+    """Блок «Гаджеты при тебе»: строки гаджетов до пустой, затем строки сетов до первой строки не
+    сета; блок рюкзака не читается. Нераспознанная строка гаджета пропускается."""
     lines = text.split("\n")[1:]
     worn = list(itertools.takewhile(str.strip, lines))
     rest = lines[len(worn) + 1 :]
-    sets = itertools.takewhile(
-        lambda ln: ln.strip() and not ln.startswith((_BONUSES_LINE, _BACKPACK)), rest
-    )
+    sets = itertools.takewhile(_SET.match, rest)
     items = (_gadget(line) for line in worn)
     return Gadgets(
         items=tuple(g for g in items if g is not None), sets=tuple(s.strip() for s in sets)

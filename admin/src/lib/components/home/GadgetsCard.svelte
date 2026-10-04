@@ -29,7 +29,7 @@
 			<ul class="space-y-0.5">
 				{#each gadgets.items as g, i (i)}
 					<li>
-						{g.slot} {g.name} {g.grade}{g.level}
+						{g.slot} {g.name} {g.grade ?? ''}{g.level ?? ''}
 						{#if Object.keys(g.bonuses).length > 0 || g.mark}·{/if}
 						{bonuses(g.bonuses)}{#if g.mark}{` ${g.mark}`}{/if}
 					</li>
