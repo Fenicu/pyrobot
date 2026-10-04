@@ -409,3 +409,32 @@ class ServerMeta(Base):
     __tablename__ = "server_meta"
     key: Mapped[str] = mapped_column(Text, primary_key=True)
     value: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class InviteRow(Base):
+    """Приглашения для регистрации новых пользователей админки."""
+
+    __tablename__ = "invites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = _now_col()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    max_accounts: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(String(128))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    used_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RecoveryCodeRow(Base):
+    """Одноразовые резервные коды восстановления пароля."""
+
+    __tablename__ = "recovery_codes"
+    __table_args__ = (Index("ix_recovery_codes_user_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    code_hash: Mapped[str] = mapped_column(String(256))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

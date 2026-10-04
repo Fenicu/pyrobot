@@ -55,6 +55,8 @@ async def test_upgrade_and_downgrade() -> None:
         "users",
         "audit_log",
         "server_settings",
+        "invites",
+        "recovery_codes",
     } <= await _tables()
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
     assert await _tables() <= {"alembic_version"}
@@ -65,6 +67,7 @@ FK_INDEXES = {
     "ix_unrecognized_message_id",
     "ix_scenario_runs_decision_id",
     "ix_metro_runs_scenario_run_id",
+    "ix_recovery_codes_user_id",
 }
 # Постраничное чтение по `id` внутри аккаунта (уведомления, история настроек) и привязка Telegram.
 ACCOUNT_INDEXES = {
@@ -515,4 +518,54 @@ async def test_0016_without_settings_uses_defaults() -> None:
     _s_id, _s_ver, s_data = rows[0]
     assert s_data["retention"]["messages_days"] == 90
     assert s_data["retention"]["audit_days"] == 365
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0017_invites_and_recovery_codes() -> None:
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0016")
+
+    # Upgrade to 0017
+    await asyncio.to_thread(command.upgrade, _cfg(), "0017")
+    tables = await _tables()
+    assert {"invites", "recovery_codes"} <= tables
+
+    # Test FK constraints:
+    # 1. recovery_codes.user_id FK CASCADE
+    # 2. invites.created_by and invites.used_by FK SET NULL
+    await _exec(
+        "INSERT INTO users (id, login, password_hash, role) "
+        "VALUES (101, 'user101', 'phash', 'user')"
+    )
+    await _exec(
+        "INSERT INTO users (id, login, password_hash, role) "
+        "VALUES (102, 'user102', 'phash', 'user')"
+    )
+    await _exec(
+        "INSERT INTO invites (id, token_hash, created_by, expires_at, max_accounts, used_by) "
+        "VALUES (201, '\\x010203'::bytea, 101, now() + interval '1 day', 1, 102)"
+    )
+    await _exec("INSERT INTO recovery_codes (id, user_id, code_hash) VALUES (301, 102, 'chash')")
+
+    # Delete user 102:
+    # recovery_code 301 should be deleted (CASCADE)
+    # invite 201 should have used_by = NULL (SET NULL)
+    await _exec("DELETE FROM users WHERE id = 102")
+    rc_rows = await _exec("SELECT id FROM recovery_codes WHERE id = 301")
+    assert rc_rows == []
+    inv_rows = await _exec("SELECT id, created_by, used_by FROM invites WHERE id = 201")
+    assert inv_rows == [(201, 101, None)]
+
+    # Delete user 101:
+    # invite 201 should have created_by = NULL (SET NULL)
+    await _exec("DELETE FROM users WHERE id = 101")
+    inv_rows2 = await _exec("SELECT id, created_by, used_by FROM invites WHERE id = 201")
+    assert inv_rows2 == [(201, None, None)]
+
+    # Downgrade to 0016
+    await asyncio.to_thread(command.downgrade, _cfg(), "0016")
+    tables_down = await _tables()
+    assert "invites" not in tables_down
+    assert "recovery_codes" not in tables_down
+
     await asyncio.to_thread(command.downgrade, _cfg(), "base")

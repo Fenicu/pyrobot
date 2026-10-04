@@ -15,7 +15,10 @@ from app.db.accounts import AccountRepo
 from app.db.audit import AuditLog
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.invites import InviteRepo
 from app.db.models import User
+from app.db.notifications import ServerNotifier
+from app.db.recovery import RecoveryCodes
 from app.db.server_settings import ServerSettingsRepo
 from app.db.users import UserRepo
 from app.engine.facade import EngineFacade
@@ -101,6 +104,7 @@ def make_container(db: Database, *, secure: bool = False) -> Container:
         admin_login="admin",
         admin_password=SecretStr(PASSWORD),
     )
+    audit = AuditLog(db)
     return Container(
         config=cfg,
         auth=AuthRepo(db),
@@ -109,7 +113,11 @@ def make_container(db: Database, *, secure: bool = False) -> Container:
         accounts=AccountRepo(db),
         engines=FakeEngines(),
         users=UserRepo(db),
-        server_settings=ServerSettingsRepo(db, AuditLog(db)),
+        server_settings=ServerSettingsRepo(db, audit),
+        invites=InviteRepo(db, audit),
+        recovery_codes=RecoveryCodes(db),
+        audit=audit,
+        server_notifier=ServerNotifier(db),
     )
 
 

@@ -164,7 +164,11 @@ async def test_anonymous_gets_401_before_engine_check(
     assert engines(container).get(1) is None
     checked: list[str] = []
     for template, methods in create_api(container).openapi()["paths"].items():
-        if not template.startswith("/api/v1/") or template == "/api/v1/auth/login":
+        if (
+            not template.startswith("/api/v1/")
+            or template == "/api/v1/auth/login"
+            or template.startswith("/api/v1/invites/")
+        ):
             continue
         path = re.sub(r"\{[^}]+\}", "1", template)
         for method in methods:

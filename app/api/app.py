@@ -14,6 +14,7 @@ from app.api.routes_commands import router as commands_router
 from app.api.routes_daily import router as daily_router
 from app.api.routes_engine import router as engine_router
 from app.api.routes_events import router as events_router
+from app.api.routes_invites import router as invites_router
 from app.api.routes_journal import router as journal_router
 from app.api.routes_planner import router as planner_router
 from app.api.routes_reference import router as reference_router
@@ -67,6 +68,7 @@ def create_api(container: Container) -> FastAPI:
     app.add_exception_handler(ChatIsSelf, _chat_is_self)
     app.add_exception_handler(SettingsOutOfBounds, _out_of_bounds)
     app.include_router(auth_router)
+    app.include_router(invites_router)
     app.include_router(accounts_router)
     app.include_router(account_router)
     app.include_router(catalog_router)

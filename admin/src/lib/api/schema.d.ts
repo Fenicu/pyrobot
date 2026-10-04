@@ -862,6 +862,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reissue Recovery Codes */
+        post: operations["reissue_recovery_codes_api_v1_auth_recovery_codes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/host/status": {
         parameters: {
             query?: never;
@@ -873,6 +890,40 @@ export interface paths {
         get: operations["host_status_api_v1_host_status_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invites/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Peek Invite */
+        get: operations["peek_invite_api_v1_invites__token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invites/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Invite */
+        post: operations["accept_invite_api_v1_invites__token__accept_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1532,6 +1583,35 @@ export interface components {
             loop_lag_ms: number;
             /** Tasks Ok */
             tasks_ok: boolean;
+        };
+        /** InviteAcceptIn */
+        InviteAcceptIn: {
+            /** Login */
+            login: string;
+            /** Password */
+            password: string;
+        };
+        /** InviteAcceptOut */
+        InviteAcceptOut: {
+            /** Csrf Token */
+            csrf_token: string;
+            /** Login */
+            login: string;
+            /** Recovery Codes */
+            recovery_codes: string[];
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "user";
+        };
+        /** InvitePeekOut */
+        InvitePeekOut: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /** JournalPage */
         JournalPage: {
@@ -2551,6 +2631,16 @@ export interface components {
         ReadOut: {
             /** Read */
             read: number;
+        };
+        /** RecoveryCodesIn */
+        RecoveryCodesIn: {
+            /** Password */
+            password: string;
+        };
+        /** RecoveryCodesOut */
+        RecoveryCodesOut: {
+            /** Codes */
+            codes: string[];
         };
         /** RefusalState */
         RefusalState: {
@@ -6199,6 +6289,68 @@ export interface operations {
             };
         };
     };
+    reissue_recovery_codes_api_v1_auth_recovery_codes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryCodesIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodesOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch | invalid_password */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description too many attempts */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     host_status_api_v1_host_status_get: {
         parameters: {
             query?: never;
@@ -6219,6 +6371,126 @@ export interface operations {
             };
             /** @description not authenticated */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    peek_invite_api_v1_invites__token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePeekOut"];
+                };
+            };
+            /** @description invite_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description invite_gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_invite_api_v1_invites__token__accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAcceptIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteAcceptOut"];
+                };
+            };
+            /** @description invite_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description login_taken */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description invite_gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description too many attempts */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

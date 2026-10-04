@@ -17,6 +17,9 @@ from app.db.accounts import AccountRepo
 from app.db.audit import AuditLog
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.invites import InviteRepo
+from app.db.notifications import ServerNotifier
+from app.db.recovery import RecoveryCodes
 from app.db.server_settings import ServerSettingsRepo
 from app.db.users import UserRepo
 from tests.api.conftest import FakeEngines
@@ -70,6 +73,7 @@ def _app(admin_dir: Path | None) -> AsyncClient:
     # Соединение блокировок не открыто: /readyz отвечает 503, не обращаясь к базе.
     engines = FakeEngines()
     engines.lock_connection_ok = False
+    audit = AuditLog(db)
     container = Container(
         config=cfg,
         auth=AuthRepo(db),
@@ -78,7 +82,11 @@ def _app(admin_dir: Path | None) -> AsyncClient:
         accounts=AccountRepo(db),
         engines=engines,
         users=UserRepo(db),
-        server_settings=ServerSettingsRepo(db, AuditLog(db)),
+        server_settings=ServerSettingsRepo(db, audit),
+        invites=InviteRepo(db, audit),
+        recovery_codes=RecoveryCodes(db),
+        audit=audit,
+        server_notifier=ServerNotifier(db),
     )
     return AsyncClient(transport=ASGITransport(app=create_api(container)), base_url="http://t")
 

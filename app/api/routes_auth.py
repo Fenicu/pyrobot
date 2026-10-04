@@ -12,7 +12,7 @@ from app.api.deps import (
     require_csrf,
     set_session_cookie,
 )
-from app.api.errors import AUTH, CSRF, CSRF_MISMATCH, Responses, error
+from app.api.errors import AUTH, CSRF, CSRF_MISMATCH, INVALID_PASSWORD, Responses, error
 from app.api.security import (
     PASSWORD_MAX_LENGTH,
     PASSWORD_MIN_LENGTH,
@@ -20,6 +20,7 @@ from app.api.security import (
     hash_password,
     verify_password,
 )
+from app.db.audit import Actor
 from app.db.users import Role
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -39,6 +40,14 @@ class MeOut(BaseModel):
 class PasswordChangeIn(BaseModel):
     current: str = Field(max_length=1024)
     new: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)
+
+
+class RecoveryCodesIn(BaseModel):
+    password: str = Field(max_length=PASSWORD_MAX_LENGTH)
+
+
+class RecoveryCodesOut(BaseModel):
+    codes: list[str]
 
 
 def _raise_if_blocked(c: Container, key: str) -> None:
@@ -129,3 +138,38 @@ async def change_password(
         c.limiter.success(key)
     await c.auth.change_password(user.id, new_hash)
     response.delete_cookie(COOKIE, path="/")
+
+
+@router.post(
+    "/recovery-codes",
+    response_model=RecoveryCodesOut,
+    responses={
+        **CSRF,
+        403: error(CSRF_MISMATCH, INVALID_PASSWORD),
+        **_LIMITED,
+    },
+)
+async def reissue_recovery_codes(
+    body: RecoveryCodesIn,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    c: Annotated[Container, Depends(container)],
+) -> RecoveryCodesOut:
+    key = f"session:{ctx.session_id}"
+    async with c.limiter.lock_for(key):
+        _raise_if_blocked(c, key)
+        user = await c.auth.get_user(ctx.login)
+        async with c.limiter.slots:
+            if user is None or not await verify_password(user.password_hash, body.password):
+                c.limiter.failure(key)
+                raise HTTPException(status.HTTP_403_FORBIDDEN, INVALID_PASSWORD)
+        c.limiter.success(key)
+
+    codes = await c.recovery_codes.issue(ctx.user_id)
+    if c.audit is not None:
+        await c.audit.write(
+            Actor.of(ctx),
+            "recovery_codes_reissued",
+            target_type="user",
+            target_id=ctx.user_id,
+        )
+    return RecoveryCodesOut(codes=codes)

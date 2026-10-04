@@ -80,6 +80,10 @@ FLOOD_WAIT = "flood_wait"
 TG_NOT_ONLINE = "tg_not_online"
 # Чат по username общего чата игры — не `chats.swinfo_chat_id`: аккаунт в него не вступает.
 GAME_CHAT_MISMATCH = "game_chat_mismatch"
+INVITE_NOT_FOUND = "invite_not_found"
+INVITE_GONE = "invite_gone"
+LOGIN_TAKEN = "login_taken"
+INVALID_PASSWORD = "invalid_password"
 # Сессия (cookie): без неё или с истёкшей — 401.
 AUTH: Responses = {401: error(NOT_AUTHENTICATED)}
 # Изменяющий запрос: сессия и заголовок X-CSRF-Token.

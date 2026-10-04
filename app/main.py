@@ -16,7 +16,9 @@ from app.db.audit import AuditLog
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
 from app.db.crypto import SecretBox, SecretKeyError, ensure_key, parse_key
+from app.db.invites import InviteRepo
 from app.db.notifications import DbNotifier, ServerNotifier
+from app.db.recovery import RecoveryCodes
 from app.db.retention import DbRetention
 from app.db.server_settings import ServerSettingsRepo
 from app.db.users import UserRepo
@@ -98,6 +100,8 @@ class Runtime:
         self.leases.on_connection_lost = self._on_lock_connection_lost
         self.supervisor = self.host.supervisor
         self.users = UserRepo(self.db)
+        self.invites = InviteRepo(self.db, self.audit)
+        self.recovery_codes = RecoveryCodes(self.db)
         self.container = Container(
             config=config,
             auth=self.auth,
@@ -107,6 +111,10 @@ class Runtime:
             engines=self.host,
             users=self.users,
             server_settings=self.server_settings,
+            invites=self.invites,
+            recovery_codes=self.recovery_codes,
+            audit=self.audit,
+            server_notifier=self.server_notifier,
         )
         self.session_purge_s = SESSION_PURGE_S
         self.retention_first_s = RETENTION_FIRST_S
