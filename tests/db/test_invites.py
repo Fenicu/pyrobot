@@ -195,10 +195,6 @@ async def test_revoke_and_unused(clean_db: Database) -> None:
     with pytest.raises(InviteGone):
         await invites.revoke(inf1.id, actor)
 
-    # Revoke expired -> InviteGone
-    with pytest.raises(InviteGone):
-        await invites.revoke(inf3.id, actor)
-
     # Use inf2
     await invites.accept(tok2, "u_inf2", "hash", ["h"])
 
@@ -206,6 +202,10 @@ async def test_revoke_and_unused(clean_db: Database) -> None:
     with pytest.raises(InviteGone):
         await invites.revoke(inf2.id, actor)
 
-    # Now unused has only inf3 (expired, but not used and not revoked)
+    # Expired but unused is still listed and can be revoked
     unused_after = await invites.unused()
     assert [u.id for u in unused_after] == [inf3.id]
+    await invites.revoke(inf3.id, actor)
+    assert await invites.unused() == []
+    with pytest.raises(InviteGone):
+        await invites.revoke(inf3.id, actor)

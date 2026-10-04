@@ -188,10 +188,11 @@ class InviteRepo:
             row = await session.get(InviteRow, invite_id, with_for_update=True)
             if row is None:
                 raise InviteNotFound
+            # Истёкшее, но не использованное отзывается: иначе оно навсегда остаётся в unused().
+            if row.used_at is not None or row.revoked_at is not None:
+                raise InviteGone
             now = await session.scalar(select(func.now()))
             assert now is not None
-            if row.used_at is not None or row.revoked_at is not None or row.expires_at <= now:
-                raise InviteGone
             row.revoked_at = now
             await self._audit.write(
                 actor,

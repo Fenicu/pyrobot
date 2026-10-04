@@ -90,6 +90,25 @@ async def test_revoke_invite_then_accept_is_410(api: Api) -> None:
     assert accepted.status_code == 410 and accepted.json()["detail"] == "invite_gone"
 
 
+async def test_revoke_expired_invite_removes_it_from_list(api: Api) -> None:
+    created = await api.client.post(f"{BASE}/invites", headers=api.headers, json={})
+    assert created.status_code == 201, created.text
+    invite_id = created.json()["invite"]["id"]
+    async with api.db.sessions() as session, session.begin():
+        await session.execute(
+            update(InviteRow)
+            .where(InviteRow.id == invite_id)
+            .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+    listed = await api.client.get(f"{BASE}/invites")
+    assert [i["id"] for i in listed.json()] == [invite_id]
+    assert listed.json()[0]["expired"] is True
+
+    revoked = await api.client.delete(f"{BASE}/invites/{invite_id}", headers=api.headers)
+    assert revoked.status_code == 204, revoked.text
+    assert (await api.client.get(f"{BASE}/invites")).json() == []
+
+
 async def test_server_settings_patch_conflict_and_audit(api: Api) -> None:
     r = await api.client.get(f"{BASE}/server-settings")
     assert r.status_code == 200, r.text

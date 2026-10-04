@@ -56,6 +56,14 @@ def _raise_if_blocked(c: Container, key: str) -> None:
 _LIMITED: Responses = {429: error("too many attempts")}
 
 
+def _accept_error(exc: InviteNotFound | InviteGone | LoginTaken) -> HTTPException:
+    if isinstance(exc, InviteNotFound):
+        return HTTPException(status.HTTP_404_NOT_FOUND, INVITE_NOT_FOUND)
+    if isinstance(exc, InviteGone):
+        return HTTPException(status.HTTP_410_GONE, INVITE_GONE)
+    return HTTPException(status.HTTP_409_CONFLICT, LOGIN_TAKEN)
+
+
 @router.get(
     "/{token}",
     response_model=InvitePeekOut,
@@ -98,6 +106,12 @@ async def accept_invite(
     key = request.client.host if request.client else "unknown"
     async with c.limiter.lock_for(key):
         _raise_if_blocked(c, key)
+        try:
+            # Дешёвая проверка до 11 хэшей argon2: мёртвый токен не занимает limiter.slots.
+            await c.invites.peek(token)
+        except (InviteNotFound, InviteGone) as exc:
+            c.limiter.failure(key)
+            raise _accept_error(exc) from exc
 
         secrets_list = [new_secret() for _ in range(10)]
         async with c.limiter.slots:
@@ -108,11 +122,7 @@ async def accept_invite(
             res = await c.invites.accept(token, body.login, password_hash, code_hashes)
         except (InviteNotFound, InviteGone, LoginTaken) as exc:
             c.limiter.failure(key)
-            if isinstance(exc, InviteNotFound):
-                raise HTTPException(status.HTTP_404_NOT_FOUND, INVITE_NOT_FOUND) from exc
-            if isinstance(exc, InviteGone):
-                raise HTTPException(status.HTTP_410_GONE, INVITE_GONE) from exc
-            raise HTTPException(status.HTTP_409_CONFLICT, LOGIN_TAKEN) from exc
+            raise _accept_error(exc) from exc
 
         c.limiter.success(key)
 

@@ -1,6 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
+from app.api import routes_invites
 from app.api.container import Container
 from app.api.deps import COOKIE
 from app.db.audit import CLI_ACTOR
@@ -84,6 +85,33 @@ async def test_accept_rate_limited_by_ip(api_client: AsyncClient, container: Con
         for _ in range(7)
     ]
     assert codes == [404] * 6 + [429]
+
+
+async def test_accept_dead_invite_hashes_nothing(
+    api_client: AsyncClient, container: Container, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+    real_hash = routes_invites.hash_password
+
+    async def counting_hash(secret: str) -> str:
+        calls.append(secret)
+        return await real_hash(secret)
+
+    monkeypatch.setattr(routes_invites, "hash_password", counting_hash)
+    token, info = await container.invites.create(CLI_ACTOR, ttl_h=24, max_accounts=1, note=None)
+    await container.invites.revoke(info.id, CLI_ACTOR)
+    body = {"login": "someuser", "password": "password_12345"}
+
+    missing = await api_client.post("/api/v1/invites/nonexistent-token/accept", json=body)
+    assert missing.status_code == 404 and missing.json()["detail"] == "invite_not_found"
+    gone = await api_client.post(f"/api/v1/invites/{token}/accept", json=body)
+    assert gone.status_code == 410 and gone.json()["detail"] == "invite_gone"
+    assert calls == []
+
+    live, _ = await container.invites.create(CLI_ACTOR, ttl_h=24, max_accounts=1, note=None)
+    ok = await api_client.post(f"/api/v1/invites/{live}/accept", json=body)
+    assert ok.status_code == 201, ok.text
+    assert len(calls) == 11
 
 
 async def test_invite_used_server_notification_and_audit(
