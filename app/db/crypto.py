@@ -11,7 +11,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.base import Database
-from app.db.models import ServerMeta, TgPeer, TgSession
+from app.db.models import Account, ServerMeta, TgPeer, TgSession
 
 log = logging.getLogger(__name__)
 
@@ -118,12 +118,13 @@ async def ensure_key(db: Database, box: SecretBox, *, reset: bool) -> None:
         sessions = len(dropped_sessions.all())
         dropped_peers = await session.scalars(delete(TgPeer).returning(TgPeer.id))
         peers = len(dropped_peers.all())
+        await session.execute(update(Account).values(tg_api_id=None, tg_api_hash=None))
         await session.execute(
             update(ServerMeta).where(ServerMeta.key == KEY_CHECK).values(value=fresh)
         )
     log.warning(
-        "PYROBOT_SECRET_KEY_RESET: ключ не подходит к базе — сессии Telegram (%d) и пиры (%d) "
-        "удалены, все аккаунты войдут в Telegram заново; флаг можно убрать",
+        "PYROBOT_SECRET_KEY_RESET: key mismatch; deleted Telegram sessions (%d) and peers (%d), "
+        "cleared account Telegram applications; all accounts must log in again",
         sessions,
         peers,
     )

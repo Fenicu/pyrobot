@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.api.scope import EngineRegistry
     from app.db.admin_reads import AdminReads
     from app.db.audit import AuditLog
+    from app.db.crypto import SecretBox
     from app.db.invites import InviteRepo
     from app.db.notifications import ServerNotifier
     from app.db.recovery import RecoveryCodes, RecoveryRequests
@@ -55,6 +56,7 @@ class Container:
     # Правка настроек при занятой аренде ждёт регистрации движка аккаунта не дольше этого.
     engine_wait_s: float = 5.0
     recovery_key: bytes | None = None
+    box: SecretBox | None = None
     recovery_requests: RecoveryRequests = field(default=None)  # type: ignore[assignment]
     recover_limiter: WindowLimiter = field(default_factory=lambda: WindowLimiter(3, 3600.0))
     recovery_code_limiter: WindowLimiter = field(default_factory=lambda: WindowLimiter(10, 3600.0))

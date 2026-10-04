@@ -44,6 +44,7 @@ async def test_status_from_db_when_not_running(api: Api) -> None:
         "attempt_id": None,
         "error": None,
         "bound_user_id": 42,
+        "app": "server",
     }
     assert status == {
         "running": False,

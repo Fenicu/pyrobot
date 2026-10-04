@@ -59,7 +59,7 @@ from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
 from app.engine.transport.base import Transport
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from app.engine.transport.history import HistorySync, readers_for
-from app.engine.transport.kurigram import ChatFilter, KurigramTransport, session_peers
+from app.engine.transport.kurigram import ChatFilter, KurigramTransport, load_tg_app, session_peers
 from app.engine.types import IncomingMessage
 from app.engine.unrecognized import UnrecognizedWatch
 from app.logctx import current_account
@@ -494,11 +494,24 @@ class AccountRuntime:
         config = self._deps.config
         if config.transport == "fake":
             return FakeTransport(), FakeTgBackend(authorized=False)
+        box = self._deps.box
+        assert box is not None
+        had_account_app = await self._deps.accounts.tg_app(self.account_id) is not None
+        api_id, api_hash = await load_tg_app(
+            self._deps.accounts, box, config, self.account_id, self.notifier
+        )
+        storage = await self._session_storage()
+        if (
+            had_account_app
+            and await storage.user_id() is not None
+            and await storage.api_id() != api_id
+        ):
+            await storage.api_id(api_id)
         kurigram = KurigramTransport(
-            api_id=config.tg_api_id,
-            api_hash=config.tg_api_hash.get_secret_value(),
+            api_id=api_id,
+            api_hash=api_hash,
             account_id=self.account_id,
-            storage=await self._session_storage(),
+            storage=storage,
             fence=self.fence,
             chat_filter=ChatFilter.from_settings(self.settings.current.chats),
             sink=pipeline.submit,
@@ -506,6 +519,19 @@ class AccountRuntime:
         )
         self._kurigram = kurigram
         return kurigram, kurigram
+
+    async def reload_tg_app(self) -> None:
+        with _in_account(self.account_id):
+            kurigram = self._kurigram
+            if kurigram is not None:
+                box = self._deps.box
+                assert box is not None
+                api_id, api_hash = await load_tg_app(
+                    self._deps.accounts, box, self._deps.config, self.account_id, self.notifier
+                )
+                await kurigram.set_app(api_id, api_hash)
+            if self.tg is not None:
+                await self.tg.drop_attempt()
 
     async def _session_storage(self) -> PgSessionStorage:
         """Сессия Telegram аккаунта в базе (раздел 4.3 спеки); пиры, которые она держит в базе, —

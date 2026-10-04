@@ -207,6 +207,37 @@ async def test_log_out_after_disconnect_reaches_telegram() -> None:
     assert all(not c.is_connected for c in t.clients)
 
 
+async def test_set_app_recreates_client_with_new_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[tuple[int, str]] = []
+    make_client = FakeKurigram._make_client
+
+    def recorded(t: FakeKurigram) -> FakeClient:
+        seen.append((t._api_id, t._api_hash))
+        return make_client(t)
+
+    monkeypatch.setattr(FakeKurigram, "_make_client", recorded)
+    t = FakeKurigram(authorized=False)
+    old = t.client
+    assert not await t.connect()
+    await t.set_app(12345, "a" * 32)
+    assert t.client is not old and not old.is_connected
+    assert (t._api_id, t._api_hash) == (12345, "a" * 32)
+    assert seen == [(1, "x"), (12345, "a" * 32)]
+    assert not t.storage.deleted
+
+
+async def test_set_app_refused_when_logged_in() -> None:
+    from app.engine.transport.kurigram import TgLoggedIn
+
+    t = FakeKurigram()
+    old = t.client
+    with pytest.raises(TgLoggedIn):
+        await t.set_app(12345, "a" * 32)
+    assert t.client is old and t._api_id == 1
+
+
 async def test_log_out_without_session_does_not_connect() -> None:
     # Сессии в хранилище нет (уже вышли): выходить у Telegram нечем — клиент не подключается.
     t = FakeKurigram()
@@ -1132,6 +1163,32 @@ async def test_logout_offline_logs_out_and_deletes_storage(
     # Сессии в базе нет — временный клиент не поднимается.
     await logout_offline(clean_db, BOX, _kurigram_config(), 1)
     assert len(made) == 1
+
+
+@pytest.mark.db
+async def test_logout_offline_uses_account_app(
+    clean_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import pyrogram
+
+    from app.db.accounts import AccountRepo
+    from app.db.tg_storage import PgSessionStorage
+    from app.engine.transport.kurigram import logout_offline
+
+    await AccountRepo(clean_db).set_tg_app(1, 12345, BOX.seal(b"a" * 32, "tg_api_hash", 1))
+    stored = PgSessionStorage(clean_db, 1, BOX, set)
+    await stored.open()
+    await stored.auth_key(b"k" * 256)
+    await stored.user_id(EXPECTED)
+    made: list[dict[str, Any]] = []
+
+    def client(_name: str, **kwargs: Any) -> FakeClient:
+        made.append(kwargs)
+        return FakeClient(kwargs["storage_engine"])
+
+    monkeypatch.setattr(pyrogram, "Client", client)
+    await logout_offline(clean_db, BOX, _kurigram_config(), 1)
+    assert made[0]["api_id"] == 12345 and made[0]["api_hash"] == "a" * 32
 
 
 async def test_send_saved_uses_input_peer_self_through_fence() -> None:

@@ -53,6 +53,8 @@ class Account(Base):
     status_reason: Mapped[str | None] = mapped_column(Text)
     # Привязка к пользователю Telegram — на всю жизнь аккаунта.
     tg_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    tg_api_id: Mapped[int | None] = mapped_column(Integer)
+    tg_api_hash: Mapped[bytes | None] = mapped_column(LargeBinary)
     # Желаемое поколение движка: перезапуск его увеличивает, хост сверяет с запущенным.
     engine_generation: Mapped[int] = mapped_column(BigInteger, server_default="0")
     # Аренда: кто держит (NULL — свободна), номер (растёт с каждым захватом), срок по часам базы.

@@ -78,6 +78,7 @@ SETTING_OUT_OF_BOUNDS = "setting_out_of_bounds"
 TG_CODE_RATE_LIMITED = "tg_code_rate_limited"
 FLOOD_WAIT = "flood_wait"
 TG_NOT_ONLINE = "tg_not_online"
+TG_LOGGED_IN = "tg_logged_in"
 # Чат по username общего чата игры — не `chats.swinfo_chat_id`: аккаунт в него не вступает.
 GAME_CHAT_MISMATCH = "game_chat_mismatch"
 INVITE_NOT_FOUND = "invite_not_found"

@@ -68,6 +68,10 @@ class TgUserTaken(TgAuthError):
     code = "tg_user_taken"
 
 
+class TgLoggedIn(TgAuthError):
+    code = "tg_logged_in"
+
+
 class CodeRateLimited(TgAuthError):
     """Запросов кода входа больше лимита хоста или аккаунта: следующий — через
     `retry_after_s` секунд."""
@@ -280,6 +284,12 @@ class TgAuthManager:
                 return self.status()
             self._set(TgState.UNAUTHORIZED)
             return self.status()
+
+    async def drop_attempt(self) -> None:
+        async with self._lock:
+            self._attempt = None
+            self._user_id = None
+            self._set(TgState.UNAUTHORIZED)
 
     async def mark_lost(self) -> None:
         async with self._lock:

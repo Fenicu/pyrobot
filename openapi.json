@@ -6369,6 +6369,19 @@
         "title": "TeamTask",
         "type": "object"
       },
+      "TgAppOut": {
+        "properties": {
+          "api_id": {
+            "title": "Api Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "api_id"
+        ],
+        "title": "TgAppOut",
+        "type": "object"
+      },
       "TgPasswordIn": {
         "properties": {
           "attempt_id": {
@@ -6402,6 +6415,19 @@
       },
       "TgStatusOut": {
         "properties": {
+          "app": {
+            "anyOf": [
+              {
+                "const": "server",
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/TgAppOut"
+              }
+            ],
+            "default": "server",
+            "title": "App"
+          },
           "attempt_id": {
             "anyOf": [
               {
@@ -10429,6 +10455,224 @@
         "summary": "Get State",
         "tags": [
           "state"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/tg/app": {
+      "delete": {
+        "operationId": "delete_tg_app_api_v1_accounts__account_id__tg_app_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account_deleting | tg_logged_in"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Tg App",
+        "tags": [
+          "engine"
+        ]
+      },
+      "put": {
+        "operationId": "put_tg_app_api_v1_accounts__account_id__tg_app_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "api_hash": {
+                    "pattern": "^[0-9a-fA-F]{32}$",
+                    "title": "Api Hash",
+                    "type": "string"
+                  },
+                  "api_id": {
+                    "maximum": 2147483647,
+                    "minimum": 1,
+                    "title": "Api Id",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "api_id",
+                  "api_hash"
+                ],
+                "title": "TgAppIn",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account_deleting | tg_logged_in"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "invalid_tg_app"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "secret_key_unavailable"
+          }
+        },
+        "summary": "Put Tg App",
+        "tags": [
+          "engine"
         ]
       }
     },

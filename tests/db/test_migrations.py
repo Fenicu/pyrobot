@@ -97,6 +97,18 @@ async def test_models_match_migrations() -> None:
     assert FK_INDEXES | ACCOUNT_INDEXES <= indexes
 
 
+async def test_0020_tg_app_columns() -> None:
+    await asyncio.to_thread(command.upgrade, _cfg(), "0019")
+    await asyncio.to_thread(command.downgrade, _cfg(), "0019")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0020")
+    rows = await _exec(
+        "SELECT column_name, data_type FROM information_schema.columns "
+        "WHERE table_name = 'accounts' AND column_name IN ('tg_api_id', 'tg_api_hash') "
+        "ORDER BY column_name"
+    )
+    assert rows == [("tg_api_hash", "bytea"), ("tg_api_id", "integer")]
+
+
 def _at(minute: int) -> datetime:
     return datetime(2026, 9, 27, 12, tzinfo=UTC) + timedelta(minutes=minute)
 

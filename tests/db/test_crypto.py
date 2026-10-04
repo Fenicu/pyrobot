@@ -14,7 +14,7 @@ from app.db.crypto import (
     ensure_key,
     parse_key,
 )
-from app.db.models import ServerMeta, TgChatMark, TgPeer, TgSession
+from app.db.models import Account, ServerMeta, TgChatMark, TgPeer, TgSession
 
 
 def _b64(size: int) -> str:
@@ -170,6 +170,22 @@ async def test_ensure_key_reset_on_empty_base_just_writes_check(clean_db: Databa
     box = _box()
     await ensure_key(clean_db, box, reset=True)
     box.open(await _check(clean_db), "key_check", 0)
+
+
+@pytest.mark.db
+async def test_key_reset_clears_account_tg_app(clean_db: Database) -> None:
+    old, new = _box(), _box()
+    await ensure_key(clean_db, old, reset=False)
+    async with clean_db.sessions() as session, session.begin():
+        account = await session.get(Account, 1)
+        assert account is not None
+        account.tg_api_id = 12345
+        account.tg_api_hash = old.seal(b"a" * 32, "tg_api_hash", 1)
+    await ensure_key(clean_db, new, reset=True)
+    async with clean_db.sessions() as session:
+        account = await session.get(Account, 1)
+        assert account is not None
+        assert account.tg_api_id is None and account.tg_api_hash is None
 
 
 def test_derive_key_differs_by_purpose_and_is_stable() -> None:

@@ -114,6 +114,19 @@ async def test_mark_lost() -> None:
     assert st.state is TgState.UNAUTHORIZED and st.error == "session_revoked"
 
 
+async def test_drop_attempt_allows_new_login() -> None:
+    mgr = tg_auth(FakeTgBackend(), expected_user_id=EXPECTED)
+    await mgr.boot()
+    first = await mgr.start("+888", owner="s1")
+    await mgr.drop_attempt()
+    assert mgr.status().state is TgState.UNAUTHORIZED
+    assert mgr.status().attempt_id is None
+    with pytest.raises(AttemptMismatch):
+        await mgr.submit_code(first.attempt_id or "", "s1", "12345")
+    second = await mgr.start("+888", owner="s2")
+    assert second.attempt_id and second.attempt_id != first.attempt_id
+
+
 class _RaisingGoOnline(FakeTgBackend):
     async def go_online(self) -> None:
         raise RuntimeError("boom")

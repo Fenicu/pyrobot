@@ -30,7 +30,7 @@ from app.db.models import (
 )
 from app.engine.settings import EngineSection, Settings
 from app.engine.state.model import SCHEMA_VERSION
-from app.engine.tg_auth import TgUserTaken
+from app.engine.tg_auth import TgLoggedIn, TgUserTaken
 
 AccountStatus = Literal["enabled", "disabled", "error", "deleting"]
 
@@ -267,6 +267,63 @@ class AccountRepo:
                 select(TgSession.account_id).where(TgSession.account_id == account_id)
             )
         return found is not None
+
+    async def tg_app(self, account_id: int) -> tuple[int, bytes] | None:
+        async with self._db.sessions() as session:
+            row = await session.execute(
+                select(Account.tg_api_id, Account.tg_api_hash).where(Account.id == account_id)
+            )
+            app = row.one_or_none()
+        return (
+            (app[0], app[1])
+            if app is not None and app[0] is not None and app[1] is not None
+            else None
+        )
+
+    async def tg_logged_in(self, account_id: int) -> bool:
+        async with self._db.sessions() as session:
+            found = await session.scalar(
+                select(TgSession.account_id).where(
+                    TgSession.account_id == account_id, TgSession.user_id.is_not(None)
+                )
+            )
+        return found is not None
+
+    async def set_tg_app(self, account_id: int, api_id: int, sealed_hash: bytes) -> None:
+        await self._write_tg_app(account_id, api_id, sealed_hash)
+
+    async def clear_tg_app(self, account_id: int) -> None:
+        await self._write_tg_app(account_id, None, None)
+
+    async def clear_unreadable_tg_app(self, account_id: int, sealed_hash: bytes) -> None:
+        async with self._db.sessions() as session, session.begin():
+            await session.execute(
+                update(Account)
+                .where(Account.id == account_id, Account.tg_api_hash == sealed_hash)
+                .values(tg_api_id=None, tg_api_hash=None, updated_at=func.now())
+            )
+
+    async def _write_tg_app(
+        self, account_id: int, api_id: int | None, sealed_hash: bytes | None
+    ) -> None:
+        async with self._db.sessions() as session, session.begin():
+            row = await session.scalar(
+                select(Account).where(Account.id == account_id).with_for_update()
+            )
+            if row is None:
+                raise KeyError(account_id)
+            if row.status == "deleting":
+                raise AccountDeleting(account_id)
+            logged_in = await session.scalar(
+                select(TgSession.account_id).where(
+                    TgSession.account_id == account_id, TgSession.user_id.is_not(None)
+                )
+            )
+            if logged_in is not None:
+                raise TgLoggedIn(account_id)
+            row.tg_api_id = api_id
+            row.tg_api_hash = sealed_hash
+            row.updated_at = func.now()
 
     async def with_status(self, *statuses: AccountStatus) -> list[AccountInfo]:
         async with self._db.sessions() as session:

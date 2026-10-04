@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+import re
 from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from app.engine.tg_auth import (
     PasswordRequired,
     SendCodeRejected,
     SignUpRequired,
+    TgLoggedIn,
 )
 from app.engine.transport.base import (
     ChatUnavailable,
@@ -33,10 +35,12 @@ from app.engine.types import Button, IncomingMessage, MessageKind
 
 if TYPE_CHECKING:
     from app.config import AppConfig
+    from app.db.accounts import AccountRepo
     from app.db.base import Database
     from app.db.crypto import SecretBox
     from app.db.tg_storage import PgSessionStorage
     from app.engine.fence import Fence
+    from app.engine.notify import NotifierPort
     from app.engine.transport.history import Reader
 
 log = logging.getLogger(__name__)
@@ -629,6 +633,20 @@ class KurigramTransport:
         await _force_close(client)
 
     @_fenced
+    async def set_app(self, api_id: int, api_hash: str) -> None:
+        if await self._storage.user_id() is not None:
+            raise TgLoggedIn
+        await self._end_overload()
+        old = self._client
+        await _force_close(old)
+        self._online = False
+        self._me = None
+        self._peers = {}
+        self._api_id = api_id
+        self._api_hash = api_hash
+        self._client = self._new_client()
+
+    @_fenced
     async def log_out(self) -> None:
         from pyrogram import errors, raw
 
@@ -999,6 +1017,33 @@ class KurigramTransport:
             raise ChatUnavailable(chat_id, type(exc).__name__) from exc
 
 
+async def load_tg_app(
+    accounts: AccountRepo,
+    box: SecretBox,
+    config: AppConfig,
+    account_id: int,
+    notifier: NotifierPort,
+) -> tuple[int, str]:
+    from app.db.crypto import Undecryptable
+
+    app = await accounts.tg_app(account_id)
+    if app is not None:
+        api_id, sealed_hash = app
+        try:
+            api_hash = box.open(sealed_hash, "tg_api_hash", account_id).decode("ascii")
+            if re.fullmatch(r"[0-9a-fA-F]{32}", api_hash) is None:
+                raise ValueError("invalid telegram application hash")
+            return api_id, api_hash.lower()
+        except (Undecryptable, UnicodeDecodeError, ValueError):
+            await accounts.clear_unreadable_tg_app(account_id, sealed_hash)
+            await notifier.notify(
+                "warn",
+                "tg_app_unreadable",
+                "telegram application hash could not be decrypted; server application is used",
+            )
+    return config.tg_api_id, config.tg_api_hash.get_secret_value()
+
+
 async def logout_offline(db: Database, box: SecretBox, config: AppConfig, account_id: int) -> None:
     """Выход из Telegram удаляемого аккаунта, движка которого на хосте нет (раздел 4.2 спеки):
     временный клиент на сессии из базы — только для `auth.LogOut`, затем сессия и пиры аккаунта
@@ -1006,6 +1051,8 @@ async def logout_offline(db: Database, box: SecretBox, config: AppConfig, accoun
     поднимается; сбой выхода — исключение, но сессия из базы удалена."""
     from pyrogram import Client, errors, raw
 
+    from app.db.accounts import AccountRepo
+    from app.db.notifications import DbNotifier
     from app.db.tg_storage import PgSessionStorage
 
     storage = PgSessionStorage(db, account_id, box, set)
@@ -1013,10 +1060,17 @@ async def logout_offline(db: Database, box: SecretBox, config: AppConfig, accoun
     if await storage.user_id() is None:
         await storage.delete()
         return
+    accounts = AccountRepo(db)
+    had_account_app = await accounts.tg_app(account_id) is not None
+    api_id, api_hash = await load_tg_app(
+        accounts, box, config, account_id, DbNotifier(db, account_id)
+    )
+    if had_account_app and await storage.api_id() != api_id:
+        await storage.api_id(api_id)
     client = Client(
         f"account-{account_id}",
-        api_id=config.tg_api_id,
-        api_hash=config.tg_api_hash.get_secret_value(),
+        api_id=api_id,
+        api_hash=api_hash,
         storage_engine=storage,
         no_updates=True,
         **_DEVICE,

@@ -301,6 +301,37 @@ async def test_undecryptable_session_dropped_and_reported(
     assert await _codes(clean_db) == [("error", "tg_session_unreadable")]
 
 
+async def test_start_uses_account_app(kurigram: Engines) -> None:
+    sealed = BOX.seal(b"a" * 32, "tg_api_hash", 1)
+    await kurigram.deps.accounts.set_tg_app(1, 12345, sealed)
+    runtime = await kurigram.start(1)
+    assert runtime._kurigram is not None
+    assert (runtime._kurigram._api_id, runtime._kurigram._api_hash) == (12345, "a" * 32)
+
+
+async def test_unreadable_app_cleared_and_server_app_used(kurigram: Engines) -> None:
+    foreign = SecretBox(secrets.token_bytes(32)).seal(b"a" * 32, "tg_api_hash", 1)
+    await kurigram.deps.accounts.set_tg_app(1, 12345, foreign)
+    runtime = await kurigram.start(1)
+    assert runtime._kurigram is not None and runtime._kurigram._api_id == 1
+    assert await kurigram.deps.accounts.tg_app(1) is None
+    assert await _codes(kurigram.deps.db) == [("warn", "tg_app_unreadable")]
+
+
+async def test_reload_mid_login_drops_attempt(kurigram: Engines) -> None:
+    runtime = await kurigram.start(1)
+    assert runtime.tg is not None and runtime._kurigram is not None
+    first = await runtime.tg.start("+888", owner="s1")
+    assert first.state is TgState.AWAITING_CODE
+    await kurigram.deps.accounts.set_tg_app(1, 12345, BOX.seal(b"a" * 32, "tg_api_hash", 1))
+    await runtime.reload_tg_app()
+    assert runtime.tg.status().state is TgState.UNAUTHORIZED
+    assert runtime.tg.status().attempt_id is None
+    assert runtime._kurigram._api_id == 12345
+    second = await runtime.tg.start("+888", owner="s2")
+    assert second.attempt_id and second.attempt_id != first.attempt_id
+
+
 async def test_history_pass_runs_in_background_and_prunes_marks(
     kurigram: Engines, clean_db: Database, monkeypatch: pytest.MonkeyPatch
 ) -> None:

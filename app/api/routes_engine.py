@@ -4,8 +4,8 @@ from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import Depends, HTTPException, status
-from pydantic import BaseModel, Field, PlainSerializer
+from fastapi import Depends, HTTPException, Request, status
+from pydantic import BaseModel, Field, PlainSerializer, ValidationError
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, require_csrf
@@ -17,18 +17,20 @@ from app.api.errors import (
     FLOOD_WAIT,
     GAME_CHAT_MISMATCH,
     TG_CODE_RATE_LIMITED,
+    TG_LOGGED_IN,
     TG_NOT_ONLINE,
     Responses,
     error,
 )
 from app.api.scope import AccountScope, account_router, account_scope, running
-from app.db.accounts import AccountStatus
+from app.db.accounts import AccountDeleting, AccountStatus
 from app.engine.facade import EngineFacade, LockLostError, TgNotOnline
 from app.engine.tg_auth import (
     AttemptMismatch,
     CodeRateLimited,
     TgAuthError,
     TgBackendError,
+    TgLoggedIn,
     TgState,
     TgStatus,
 )
@@ -73,6 +75,15 @@ class TgPasswordIn(BaseModel):
     password: str
 
 
+class TgAppIn(BaseModel):
+    api_id: int = Field(ge=1, le=2**31 - 1)
+    api_hash: str = Field(pattern=r"^[0-9a-fA-F]{32}$")
+
+
+class TgAppOut(BaseModel):
+    api_id: int
+
+
 class TgStatusOut(BaseModel):
     state: TgState
     user_id: int | None
@@ -83,6 +94,7 @@ class TgStatusOut(BaseModel):
     # Пользователь Telegram, к которому аккаунт привязан на всю жизнь (`accounts.tg_user_id`);
     # None — привязывает первый вход. Выход из Telegram привязку не снимает.
     bound_user_id: int | None
+    app: Literal["server"] | TgAppOut = "server"
 
 
 class EngineStatusOut(BaseModel):
@@ -118,13 +130,14 @@ class EngineStatusOut(BaseModel):
     game_chat_member: bool | None
 
 
-def _tg(st: TgStatus) -> TgStatusOut:
+def _tg(st: TgStatus, app: Literal["server"] | TgAppOut = "server") -> TgStatusOut:
     return TgStatusOut(
         state=st.state,
         user_id=st.user_id,
         attempt_id=st.attempt_id,
         error=st.error,
         bound_user_id=st.bound_user_id,
+        app=app,
     )
 
 
@@ -139,6 +152,11 @@ def _stopped_tg(scope: AccountScope) -> TgStatusOut:
     )
 
 
+async def _app(c: Container, account_id: int) -> Literal["server"] | TgAppOut:
+    stored = await c.accounts.tg_app(account_id)
+    return TgAppOut(api_id=stored[0]) if stored is not None else "server"
+
+
 @router.get("/engine/status", response_model=EngineStatusOut, responses=AUTH)
 async def engine_status(
     scope: Annotated[AccountScope, Depends(account_scope)],
@@ -150,7 +168,7 @@ async def engine_status(
     if f is not None:
         st = f.status()
         data = asdict(st)
-        data["tg"] = _tg(st.tg)
+        data["tg"] = _tg(st.tg, await _app(c, account.id))
         return EngineStatusOut.model_validate(
             {
                 **data,
@@ -173,7 +191,7 @@ async def engine_status(
         killed=engine.killed,
         kill_reason=engine.kill_reason if engine.killed else None,
         spending_blocked=None,
-        tg=_stopped_tg(scope),
+        tg=_stopped_tg(scope).model_copy(update={"app": await _app(c, account.id)}),
         queue=0,
         in_flight=None,
         pipeline_backlog=0,
@@ -233,9 +251,90 @@ async def engine_reconciled(
 
 
 @router.get("/tg/status", response_model=TgStatusOut, responses=AUTH)
-async def tg_status(scope: Annotated[AccountScope, Depends(account_scope)]) -> TgStatusOut:
+async def tg_status(
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
+) -> TgStatusOut:
     f = scope.facade
-    return _tg(f.tg.status()) if f is not None else _stopped_tg(scope)
+    app = await _app(c, scope.account.id)
+    return (
+        _tg(f.tg.status(), app)
+        if f is not None
+        else _stopped_tg(scope).model_copy(update={"app": app})
+    )
+
+
+_TG_APP_RESPONSES: Responses = {**CSRF, 409: error(ACCOUNT_DELETING, TG_LOGGED_IN)}
+
+
+def _ensure_tg_logged_out(scope: AccountScope) -> None:
+    f = scope.facade
+    if f is not None and f.tg.status().state in (TgState.ONLINE, TgState.OVERLOAD):
+        raise HTTPException(status.HTTP_409_CONFLICT, TG_LOGGED_IN)
+
+
+@router.put(
+    "/tg/app",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        **_TG_APP_RESPONSES,
+        422: error("invalid_tg_app"),
+        503: error("secret_key_unavailable"),
+    },
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": TgAppIn.model_json_schema()}},
+        }
+    },
+)
+async def put_tg_app(
+    request: Request,
+    _: Annotated[SessionContext, Depends(require_csrf)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
+) -> None:
+    if scope.account.status == "deleting":
+        raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
+    _ensure_tg_logged_out(scope)
+    try:
+        body = TgAppIn.model_validate(await request.json())
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_tg_app") from exc
+    box = c.box
+    if box is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "secret_key_unavailable")
+    try:
+        await c.accounts.set_tg_app(
+            scope.account.id,
+            body.api_id,
+            box.seal(body.api_hash.lower().encode(), "tg_api_hash", scope.account.id),
+        )
+        if scope.engine is not None:
+            await scope.engine.reload_tg_app()
+    except AccountDeleting as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING) from exc
+    except TgLoggedIn as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, TG_LOGGED_IN) from exc
+
+
+@router.delete("/tg/app", status_code=status.HTTP_204_NO_CONTENT, responses=_TG_APP_RESPONSES)
+async def delete_tg_app(
+    _: Annotated[SessionContext, Depends(require_csrf)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
+) -> None:
+    if scope.account.status == "deleting":
+        raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
+    _ensure_tg_logged_out(scope)
+    try:
+        await c.accounts.clear_tg_app(scope.account.id)
+        if scope.engine is not None:
+            await scope.engine.reload_tg_app()
+    except AccountDeleting as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING) from exc
+    except TgLoggedIn as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, TG_LOGGED_IN) from exc
 
 
 def _flood_wait(exc: FloodWait) -> HTTPException:
@@ -245,9 +344,11 @@ def _flood_wait(exc: FloodWait) -> HTTPException:
     )
 
 
-async def _guard(coro: Awaitable[TgStatus]) -> TgStatusOut:
+async def _guard(
+    coro: Awaitable[TgStatus], app: Literal["server"] | TgAppOut = "server"
+) -> TgStatusOut:
     try:
-        return _tg(await coro)
+        return _tg(await coro, app)
     except AttemptMismatch as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except FloodWait as exc:
@@ -273,10 +374,14 @@ async def tg_start(
     body: PhoneIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(running)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
 ) -> TgStatusOut:
     """Запрос кода входа: не больше `PYROBOT_TG_CODES_PER_HOUR` на хост и 3 в час на аккаунт,
     сверх — 429 `tg_code_rate_limited` с `Retry-After`."""
-    return await _guard(f.tg.start(body.phone, owner=str(ctx.session_id)))
+    return await _guard(
+        f.tg.start(body.phone, owner=str(ctx.session_id)), await _app(c, scope.account.id)
+    )
 
 
 @router.post("/tg/login/code", response_model=TgStatusOut, responses=_TG_LOGIN)
@@ -284,8 +389,13 @@ async def tg_code(
     body: CodeIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(running)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
 ) -> TgStatusOut:
-    return await _guard(f.tg.submit_code(body.attempt_id, str(ctx.session_id), body.code))
+    return await _guard(
+        f.tg.submit_code(body.attempt_id, str(ctx.session_id), body.code),
+        await _app(c, scope.account.id),
+    )
 
 
 @router.post("/tg/login/password", response_model=TgStatusOut, responses=_TG_LOGIN)
@@ -293,16 +403,23 @@ async def tg_password(
     body: TgPasswordIn,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(running)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
 ) -> TgStatusOut:
-    return await _guard(f.tg.submit_password(body.attempt_id, str(ctx.session_id), body.password))
+    return await _guard(
+        f.tg.submit_password(body.attempt_id, str(ctx.session_id), body.password),
+        await _app(c, scope.account.id),
+    )
 
 
 @router.post("/tg/logout", response_model=TgStatusOut, responses=_WRITE)
 async def tg_logout(
     _: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(running)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
 ) -> TgStatusOut:
-    return _tg(await f.tg.logout())
+    return _tg(await f.tg.logout(), await _app(c, scope.account.id))
 
 
 class GameChatJoinOut(BaseModel):

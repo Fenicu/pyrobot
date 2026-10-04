@@ -22,7 +22,7 @@ from tests.fixtures import game_msg
 
 pytestmark = pytest.mark.db
 ISO_UTC = re.compile(r"\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?\+00:00\Z")
-TG_KEYS = ["state", "user_id", "attempt_id", "error", "bound_user_id"]
+TG_KEYS = ["state", "user_id", "attempt_id", "error", "bound_user_id", "app"]
 BOUND = 267519921
 
 
@@ -77,6 +77,7 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
             "attempt_id": None,
             "error": None,
             "bound_user_id": BOUND,
+            "app": "server",
         },
         "queue": 0,
         "in_flight": None,
@@ -110,6 +111,7 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
         "attempt_id": None,
         "error": None,
         "bound_user_id": BOUND,
+        "app": "server",
     }
     start = (
         await api_client.post(
@@ -124,6 +126,7 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
         "attempt_id": attempt,
         "error": None,
         "bound_user_id": BOUND,
+        "app": "server",
     }
     code = (
         await api_client.post(
@@ -154,6 +157,7 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
         "attempt_id": None,
         "error": None,
         "bound_user_id": BOUND,
+        "app": "server",
     }
     out = (await api_client.post("/api/v1/accounts/1/tg/logout", headers=h)).json()
     assert list(out) == TG_KEYS and out["state"] == "unauthorized"

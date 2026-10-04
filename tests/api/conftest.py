@@ -15,6 +15,7 @@ from app.db.accounts import AccountRepo
 from app.db.audit import AuditLog
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.crypto import SecretBox
 from app.db.invites import InviteRepo
 from app.db.models import User
 from app.db.notifications import ServerNotifier
@@ -38,6 +39,11 @@ class FakeEngine:
         self.account_id = account_id
         self.facade = facade
         self.stream = facade.stream if facade.stream is not None else EventStream()
+        self.app_reloads = 0
+
+    async def reload_tg_app(self) -> None:
+        self.app_reloads += 1
+        await self.facade.tg.drop_attempt()
 
 
 class FakeEngines:
@@ -139,6 +145,7 @@ def make_container(db: Database, *, secure: bool = False) -> Container:
         recovery_codes=RecoveryCodes(db),
         audit=audit,
         server_notifier=ServerNotifier(db),
+        box=SecretBox(b"test" * 8),
     )
 
 

@@ -127,6 +127,7 @@ class Runtime:
             server_notifier=self.server_notifier,
             recovery_key=self.recovery_key,
             recovery_requests=self.recovery_requests,
+            box=self.box,
         )
         self.session_purge_s = SESSION_PURGE_S
         self.retention_first_s = RETENTION_FIRST_S
