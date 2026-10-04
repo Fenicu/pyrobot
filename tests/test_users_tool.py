@@ -138,3 +138,67 @@ async def test_promote_unknown_login_exit_1(
 ) -> None:
     assert await users.promote(clean_db, "nobody") == 1
     assert "nobody" in capsys.readouterr().err
+
+
+async def test_set_password_audits_and_notifies_accounts(
+    clean_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.db.audit import AuditLog
+    from app.db.models import Account, NotificationRow
+
+    repo = await seed(clean_db, "admin")
+    admin = await repo.get_user("admin")
+    assert admin is not None
+    # Привяжем аккаунт 1 к admin и добавим ещё аккаунт 2
+    async with clean_db.sessions() as s, s.begin():
+        a1 = await s.get(Account, 1)
+        assert a1 is not None
+        a1.owner_id = admin.id
+        s.add(Account(id=2, name="acc2", owner_id=admin.id))
+
+    answers(monkeypatch, NEW, NEW)
+    assert await users.set_password(clean_db, "admin") == 0
+
+    # Проверим audit_log
+    audit = AuditLog(clean_db)
+    entries, _ = await audit.page()
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.action == "password_set_by_cli"
+    assert entry.actor_login == "cli"
+    assert entry.actor_user_id is None
+    assert entry.target_type == "user"
+    assert entry.target_id == admin.id
+
+    # Проверим notifications для обоих аккаунтов
+    async with clean_db.sessions() as s:
+        rows = list(
+            await s.scalars(
+                select(NotificationRow).where(NotificationRow.code == "password_set_by_cli")
+            )
+        )
+    assert len(rows) == 2
+    assert {r.account_id for r in rows} == {1, 2}
+    assert all(r.level == "warn" for r in rows)
+
+
+async def test_promote_audits(clean_db: Database) -> None:
+    from app.db.audit import AuditLog
+
+    async with clean_db.sessions() as s, s.begin():
+        u = User(login="bob", password_hash="h", role="user")
+        s.add(u)
+        await s.flush()
+        bob_id = u.id
+
+    assert await users.promote(clean_db, "bob") == 0
+
+    audit = AuditLog(clean_db)
+    entries, _ = await audit.page()
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.action == "owner_promoted"
+    assert entry.actor_login == "cli"
+    assert entry.actor_user_id is None
+    assert entry.target_type == "user"
+    assert entry.target_id == bob_id

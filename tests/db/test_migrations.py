@@ -53,6 +53,7 @@ async def test_upgrade_and_downgrade() -> None:
         "tg_chat_marks",
         "server_meta",
         "users",
+        "audit_log",
     } <= await _tables()
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
     assert await _tables() <= {"alembic_version"}
@@ -409,4 +410,48 @@ async def test_0014_max_accounts_counts_accounts() -> None:
     await asyncio.to_thread(command.upgrade, _cfg(), "0014")
     rows = await _exec("SELECT max_accounts FROM users WHERE id = 7")
     assert rows == [(12,)]
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0015_audit_log_and_nullable_notifications() -> None:
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0014")
+    await _exec(
+        "INSERT INTO users "
+        "(id, login, password_hash, created_at, password_changed_at, role, max_accounts) "
+        "VALUES (1, 'u1', 'h1', now(), now(), 'owner', 10)"
+    )
+    await asyncio.to_thread(command.upgrade, _cfg(), "0015")
+    tables = await _tables()
+    assert "audit_log" in tables
+
+    # notifications.account_id is nullable: insert notification with account_id = NULL
+    await _exec(
+        "INSERT INTO notifications (id, account_id, created_at, level, code, text, read) "
+        "VALUES (501, NULL, now(), 'error', 'account_error', 'some error', false)"
+    )
+    # notifications with account_id = 1 also works
+    await _exec(
+        "INSERT INTO notifications (id, account_id, created_at, level, code, text, read) "
+        "VALUES (502, 1, now(), 'warn', 'w1', 'test warn', false)"
+    )
+    # audit_log accepts entries with actor_user_id
+    await _exec(
+        "INSERT INTO audit_log "
+        "(id, at, actor_user_id, actor_login, action, target_type, target_id, details) "
+        "VALUES (1, now(), 1, 'u1', 'password_set_by_cli', 'user', 1, '{\"foo\": \"bar\"}')"
+    )
+    # foreign key ON DELETE SET NULL on actor_user_id
+    await _exec("DELETE FROM users WHERE id = 1")
+    audit_rows = await _exec("SELECT actor_user_id, actor_login FROM audit_log WHERE id = 1")
+    assert audit_rows == [(None, "u1")]
+
+    # Downgrade to 0014
+    await asyncio.to_thread(command.downgrade, _cfg(), "0014")
+    tables_down = await _tables()
+    assert "audit_log" not in tables_down
+    # notifications с account_id NULL удаляются, колонка снова NOT NULL
+    notif_rows = await _exec("SELECT id, account_id FROM notifications WHERE id IN (501, 502)")
+    assert notif_rows == [(502, 1)]
+
     await asyncio.to_thread(command.downgrade, _cfg(), "base")

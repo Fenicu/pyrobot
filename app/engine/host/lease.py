@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -100,6 +100,7 @@ class LeaseManager:
         # Будит слежение за сроками: срок новой ограды может наступить раньше, чем оно проснулось
         # бы само, — t снят до захвата, а захват мог ждать строку до lock_timeout.
         self._fence_added = asyncio.Event()
+        self.on_connection_lost: Callable[[], Awaitable[None]] | None = None
 
     def healthy(self) -> bool:
         """Соединение блокировок открыто; обрыв замечается на следующем запросе."""
@@ -311,11 +312,17 @@ class LeaseManager:
             raise
 
     async def _lost(self, conn: AsyncConnection) -> None:
-        if self._conn is conn:
+        was_active = self._conn is conn
+        if was_active:
             self._conn = None
             self._locks.clear()
             log.warning("lease lock connection lost: locks forgotten, leases expire by TTL")
         await _discard(conn)
+        if was_active and self.on_connection_lost is not None:
+            try:
+                await self.on_connection_lost()
+            except Exception:
+                log.exception("lease connection lost callback failed")
 
 
 async def _discard(conn: AsyncConnection) -> None:

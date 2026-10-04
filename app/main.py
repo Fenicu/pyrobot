@@ -15,7 +15,7 @@ from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
 from app.db.crypto import SecretBox, SecretKeyError, ensure_key, parse_key
-from app.db.notifications import DbNotifier
+from app.db.notifications import DbNotifier, ServerNotifier
 from app.db.retention import DbRetention
 from app.db.settings_store import DbSettingsStore
 from app.db.users import UserRepo
@@ -74,13 +74,16 @@ class Runtime:
             codes=CodeLimiter(config.tg_codes_per_hour),
             box=self.box,
         )
+        self.server_notifier = ServerNotifier(self.db)
         self.host = EngineHost(
             deps,
             self.leases,
             max_engines=config.max_engines,
             start_gap_s=config.engine_start_gap_s,
             logout_offline=self._logout_offline,
+            server=self.server_notifier,
         )
+        self.leases.on_connection_lost = self._on_lock_connection_lost
         self.supervisor = self.host.supervisor
         self.users = UserRepo(self.db)
         self.container = Container(
@@ -134,6 +137,11 @@ class Runtime:
         except SecretKeyError as exc:
             log.error("процесс не стартует: %s", exc)
             raise
+
+    async def _on_lock_connection_lost(self) -> None:
+        await self.server_notifier.notify(
+            "error", "lock_connection_lost", "lease lock connection lost"
+        )
 
     async def _logout_offline(self, account_id: int) -> None:
         """Выход из Telegram удаляемого аккаунта без движка; у транспорта fake Telegram нет."""

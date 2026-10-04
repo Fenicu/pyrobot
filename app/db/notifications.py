@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Callable
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.db.base import Database
 from app.db.models import NotificationRow
@@ -48,3 +48,51 @@ class DbNotifier:
                 .limit(limit)
             )
             return list(rows)
+
+
+class ServerNotifier:
+    """Уведомления уровня сервера (account_id IS NULL) для владельцев сервера."""
+
+    def __init__(self, db: Database) -> None:
+        self._db = db
+        self._log = LogNotifier()
+        self.listeners: list[Callable[[NotificationRow], None]] = []
+
+    async def notify(self, level: Level, code: str, text: str) -> None:
+        try:
+            await self._log.notify(level, code, text)
+            row = NotificationRow(account_id=None, level=level, code=code, text=text)
+            async with self._db.sessions() as session, session.begin():
+                session.add(row)
+        except Exception:
+            log.exception("server notify failed: %s", code)
+            return
+        for listener in self.listeners:
+            try:
+                listener(row)
+            except Exception:
+                log.exception("server notification listener failed: %s", code)
+
+    async def recent(self, limit: int = 50) -> list[NotificationRow]:
+        async with self._db.sessions() as session:
+            rows = await session.scalars(
+                select(NotificationRow)
+                .where(NotificationRow.account_id.is_(None))
+                .order_by(NotificationRow.id.desc())
+                .limit(limit)
+            )
+            return list(rows)
+
+    async def mark_read(self, up_to_id: int) -> int:
+        async with self._db.sessions() as session, session.begin():
+            done = await session.scalars(
+                update(NotificationRow)
+                .where(
+                    NotificationRow.account_id.is_(None),
+                    NotificationRow.id <= up_to_id,
+                    NotificationRow.read.is_(False),
+                )
+                .values(read=True)
+                .returning(NotificationRow.id)
+            )
+            return len(done.all())

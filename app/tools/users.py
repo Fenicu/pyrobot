@@ -17,8 +17,11 @@ from collections.abc import Sequence
 
 from app.api.security import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, hash_password
 from app.config import DbConfig
+from app.db.accounts import AccountRepo
+from app.db.audit import CLI_ACTOR, AuditLog
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.notifications import DbNotifier
 from app.db.users import UserRepo
 
 
@@ -40,6 +43,18 @@ async def set_password(db: Database, login: str) -> int:
     if not PASSWORD_MIN_LENGTH <= len(password) <= PASSWORD_MAX_LENGTH:
         return _fail(f"пароль: от {PASSWORD_MIN_LENGTH} до {PASSWORD_MAX_LENGTH} символов")
     await repo.change_password(user.id, await hash_password(password))
+    audit = AuditLog(db)
+    await audit.write(
+        CLI_ACTOR,
+        "password_set_by_cli",
+        target_type="user",
+        target_id=user.id,
+    )
+    accounts = await AccountRepo(db).owned(user.id)
+    for acc in accounts:
+        await DbNotifier(db, acc.id).notify(
+            "warn", "password_set_by_cli", "Пароль учётной записи изменён через командную строку"
+        )
     print(f"Пароль учётки {login!r} изменён, её сессии закрыты")
     return 0
 
@@ -47,10 +62,20 @@ async def set_password(db: Database, login: str) -> int:
 async def promote(db: Database, login: str) -> int:
     """Код выхода: 0 — учётка назначена владельцем; 1 — логин не найден."""
     repo = UserRepo(db)
+    user = await repo.by_login(login)
+    if user is None:
+        return _fail(f"учётки {login!r} нет")
     try:
         await repo.promote(login)
     except KeyError:
         return _fail(f"учётки {login!r} нет")
+    audit = AuditLog(db)
+    await audit.write(
+        CLI_ACTOR,
+        "owner_promoted",
+        target_type="user",
+        target_id=user.id,
+    )
     print(f"Учётка {login!r} теперь владелец сервера")
     return 0
 

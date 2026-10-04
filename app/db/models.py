@@ -249,14 +249,35 @@ class UnrecognizedRow(Base):
 
 class NotificationRow(Base):
     __tablename__ = "notifications"
-    __table_args__ = (Index("ix_notifications_account_id_id", "account_id", "id"),)
+    __table_args__ = (
+        Index("ix_notifications_account_id_id", "account_id", "id"),
+        Index("ix_notifications_server", "id", postgresql_where=text("account_id IS NULL")),
+    )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True)
     created_at: Mapped[datetime] = _now_col()
     level: Mapped[str] = mapped_column(String(8))
     code: Mapped[str] = mapped_column(String(64))
     text: Mapped[str] = mapped_column(Text)
     read: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class AuditRow(Base):
+    """Журнал действий администраторов и владельцев сервера (раздел 5.6 спеки)."""
+
+    __tablename__ = "audit_log"
+    __table_args__ = (Index("ix_audit_log_at", "at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    at: Mapped[datetime] = _now_col()
+    actor_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    actor_login: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(64))
+    target_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    target_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    details: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
 
 
 class DecisionRow(Base):

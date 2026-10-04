@@ -335,6 +335,31 @@ async def test_crash_loop_sets_error_and_notifies(clean_db: Database, hosts: Hos
     assert host.get(1) is None and host.host_reason(1) is None
 
 
+async def test_error_status_notifies_server(clean_db: Database, hosts: Hosts) -> None:
+    from app.db.notifications import ServerNotifier
+
+    two = await _add(clean_db)
+    host = await hosts.open()
+    (_one, _other) = await _registered(host, 1, two)
+
+    engine = _running(host, 1)
+
+    async def boom() -> None:
+        raise RuntimeError("boom")
+
+    engine.supervisor._base = engine.supervisor._max = 0.001
+    engine.supervisor.start("boom", boom)
+    await until(lambda: 1 not in host._engines, 5.0)
+
+    server = ServerNotifier(clean_db)
+    server_rows = await server.recent()
+    err_rows = [r for r in server_rows if r.code == "account_error"]
+    assert len(err_rows) == 1
+    assert err_rows[0].level == "error"
+    assert "account 1 -> error: crash_loop:boom" in err_rows[0].text
+    assert err_rows[0].account_id is None
+
+
 async def test_crash_loop_during_start_is_acted_on(
     clean_db: Database, hosts: Hosts, monkeypatch: pytest.MonkeyPatch
 ) -> None:

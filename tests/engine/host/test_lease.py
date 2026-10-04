@@ -486,6 +486,43 @@ async def test_run_wakes_for_fence_acquired_mid_sleep(clean_db: Database, hosts:
     lost: list[int] = []
     fence.on_lost = lambda: lost.append(1)
     # Срок новой ограды наступает раньше, чем слежение проснулось бы само (захват мог ждать
-    # строку до lock_timeout после того, как снял t): его будит сам захват.
     clock.now = fence.deadline
     await _wait_for(lambda: bool(lost), within_s=0.3)
+
+
+async def test_connection_lost_callback_once_per_break(clean_db: Database, hosts: Hosts) -> None:
+    a = await hosts.open("A", renew_every_s=0.05, retry_s=0.05)
+    calls: list[int] = []
+
+    async def on_lost() -> None:
+        calls.append(len(calls) + 1)
+
+    a.on_connection_lost = on_lost
+    fence = await a.acquire(1)
+    assert isinstance(fence, Fence)
+
+    # 1. pg_terminate_backend
+    await _kill_lock_connection(clean_db, 1)
+    with pytest.raises(DBAPIError):
+        await a.renew_once()
+    assert calls == [1]
+
+    # repeating while disconnected does NOT trigger callback again
+    assert not a.healthy()
+    await a.renew_once()
+    assert calls == [1]
+
+    # 2. reconnect and second break
+    hosts.run(a)
+    await _wait_for(lambda: a.healthy())
+    # acquire again on new connection
+    fence2 = await a.acquire(1)
+    assert isinstance(fence2, Fence)
+    # second kill
+    await _kill_lock_connection(clean_db, 1)
+    await _wait_for(lambda: len(calls) == 2)
+    assert calls == [1, 2]
+
+    # close() does not trigger callback
+    await a.close()
+    assert calls == [1, 2]

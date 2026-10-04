@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from app.db.accounts import AccountStatus
-from app.db.notifications import DbNotifier
+from app.db.notifications import DbNotifier, ServerNotifier
 from app.engine.fence import Fence, LeaseLost
 from app.engine.host.account import AccountRuntime, RuntimeDeps
 from app.engine.host.lease import Busy, LeaseManager
@@ -79,10 +79,12 @@ class EngineHost:
         reconcile_s: float = 30.0,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         logout_offline: Callable[[int], Awaitable[None]] = _no_offline_logout,
+        server: ServerNotifier | None = None,
     ) -> None:
         self.capacity = max_engines
         self._deps = deps
         self._leases = leases
+        self._server = server if server is not None else ServerNotifier(deps.db)
         self._start_gap = start_gap_s
         self._reconcile_s = reconcile_s
         self._sleep = sleep
@@ -463,6 +465,9 @@ class EngineHost:
             await self._deps.accounts.set_status(account_id, "error", reason)
         except Exception:
             log.exception("account %d status %s not saved", account_id, reason)
+        await self._server.notify(
+            "error", "account_error", f"account {account_id} -> error: {reason}"
+        )
 
     async def _notify(self, account_id: int, level: Level, code: str, text: str) -> None:
         # Без ограды: уведомление хоста пишется и после потери аренды.
