@@ -151,6 +151,32 @@ async def test_purge_keeps_recent_and_open_obligations(clean_db: Database) -> No
     assert set(again.values()) == {0}
 
 
+async def test_purge_drops_old_unreconciled_spend_free_clicks(clean_db: Database) -> None:
+    def click(days: float, data: str) -> ActionRow:
+        row = _action(days, "outcome_unknown")
+        row.kind, row.payload = "click", {"message_id": 7, "data": data}
+        return row
+
+    async with clean_db.sessions() as s, s.begin():
+        s.add_all(
+            [
+                click(91, "maze_left"),
+                click(91, "maze_exit_decline"),
+                click(91, "t_convDets_hard_confirm"),
+                click(1, "maze_left"),
+            ]
+        )
+    purged = await DbRetention(clean_db, 1, batch=1).purge(NOW, RetentionPolicy())
+    assert purged["actions"] == 2
+    async with clean_db.sessions() as s:
+        left = sorted(
+            (str(a.payload["data"]), a.created_at == _ago(1))
+            for a in await s.scalars(select(ActionRow))
+        )
+    # Ход метро ничего не тратит и не сверяется: его неизвестный исход не держит строку вечно.
+    assert left == [("maze_left", True), ("t_convDets_hard_confirm", False)]
+
+
 def _ledger(at: datetime, day: date) -> LedgerRow:
     return LedgerRow(
         account_id=1,

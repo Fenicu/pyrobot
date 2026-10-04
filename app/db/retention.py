@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, delete, not_, select
+from sqlalchemy import and_, delete, not_, or_, select
 
 from app.db.actions import UNRECONCILED_FREE
 from app.db.base import Database
@@ -18,7 +18,8 @@ from app.db.models import (
     ScenarioRunRow,
 )
 from app.engine.gametime import tasks_day
-from app.engine.gateway.types import ActionStatus
+from app.engine.gateway.store import Obligation
+from app.engine.gateway.types import ActionKind, ActionStatus
 from app.engine.metro.store import METRO_HISTORY
 from app.engine.server_settings import RetentionPolicy
 
@@ -44,6 +45,8 @@ class DbRetention:
             ActionRow.command_class.not_in(UNRECONCILED_FREE),
             ActionRow.reconciled_at.is_(None),
         )
+        # Клик без трат (ход метро) сверке не нужен и обязательством не считается.
+        spend_free = await self._spend_free_clicks(open_obligation, ActionRow.created_at < journal)
         unfinished = (ActionStatus.INTENT.value, ActionStatus.SENT.value)
         # Бюджет метро — по p90 последних завершённых забегов, какими бы старыми они ни были.
         recent_metro = (
@@ -60,7 +63,7 @@ class DbRetention:
                 ActionRow,
                 ActionRow.created_at < journal,
                 ActionRow.status.not_in(unfinished),
-                not_(open_obligation),
+                or_(not_(open_obligation), ActionRow.id.in_(spend_free)),
                 ActionRow.idempotency_key.is_(None),
             ),
             "scenario_runs": await self._purge(
@@ -97,6 +100,21 @@ class DbRetention:
                 AuditRow.at < audit_cutoff,
             ),
         }
+
+    async def _spend_free_clicks(self, *conds: Any) -> list[int]:
+        async with self._db.sessions() as session:
+            rows = await session.execute(
+                select(ActionRow.id, ActionRow.kind, ActionRow.payload).where(
+                    ActionRow.account_id == self._account_id,
+                    ActionRow.kind == ActionKind.CLICK.value,
+                    *conds,
+                )
+            )
+            return [
+                row.id
+                for row in rows
+                if Obligation(row.id, row.kind, data=row.payload.get("data")).spends_nothing
+            ]
 
     async def _purge(self, model: Any, *conds: Any) -> int:
         return await self._purge_table(model, model.account_id == self._account_id, *conds)
