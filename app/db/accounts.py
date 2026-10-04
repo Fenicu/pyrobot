@@ -46,6 +46,14 @@ class CapacityReached(Exception):
     """Включённых аккаунтов стало бы больше ёмкости."""
 
 
+class LimitReached(Exception):
+    """Учётка достигла своего лимита аккаунтов max_accounts."""
+
+
+class ServerFull(Exception):
+    """Сервер достиг общего лимита аккаунтов total_max."""
+
+
 class AccountDeleting(Exception):
     """Аккаунт удаляется: `deleting` — конечный статус, правка отклонена."""
 
@@ -202,10 +210,32 @@ class AccountRepo:
             )
             return [_info(r) for r in rows]
 
-    async def create(self, owner_id: int, name: str, *, capacity: int) -> AccountInfo:
+    async def create(
+        self,
+        owner_id: int,
+        name: str,
+        *,
+        max_accounts: int = 10,
+        total_max: int = 50,
+        capacity: int = 20,
+    ) -> AccountInfo:
         """Новый аккаунт `enabled` с настройками по умолчанию — одной транзакцией."""
         async with self._db.sessions() as session, session.begin():
             await _lock_enabled(session)
+            user_count = await session.scalar(
+                select(func.count())
+                .select_from(Account)
+                .where(Account.owner_id == owner_id, Account.status != "deleting")
+            )
+            if (user_count or 0) + 1 > max_accounts:
+                raise LimitReached
+
+            server_count = await session.scalar(
+                select(func.count()).select_from(Account).where(Account.status != "deleting")
+            )
+            if (server_count or 0) + 1 > total_max:
+                raise ServerFull
+
             await _check_capacity(session, capacity)
             row = await session.scalar(
                 pg_insert(Account)

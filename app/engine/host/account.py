@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from app.db.server_settings import ServerSettingsRepo
+    from app.db.tg_storage import PgSessionStorage
 
 from app.config import AppConfig
 from app.db.accounts import AccountInfo, AccountRepo
@@ -493,7 +494,7 @@ class AccountRuntime:
         self._kurigram = kurigram
         return kurigram, kurigram
 
-    async def _session_storage(self) -> "PgSessionStorage":
+    async def _session_storage(self) -> PgSessionStorage:
         """Сессия Telegram аккаунта в базе (раздел 4.3 спеки); пиры, которые она держит в базе, —
         чаты из текущих настроек и пользователь swinfo. Сессия, которая не расшифровалась,
         удаляется: движок стартует без Telegram, нужен вход заново. Аккаунт 1 без вошедшей
@@ -522,7 +523,7 @@ class AccountRuntime:
             await self._import_session_file(storage)
         return storage
 
-    async def _import_session_file(self, storage: "PgSessionStorage") -> None:
+    async def _import_session_file(self, storage: PgSessionStorage) -> None:
         """Перенос `<data_dir>/pyrobot.session` в базу; файла нет — ничего. Сбой —
         предупреждение аккаунта, файл остаётся, аккаунт требует входа."""
         from app.db.tg_storage import import_session_file

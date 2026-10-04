@@ -10,7 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, StringConstraints
 
 from app.api.container import Container
-from app.api.deps import SessionContext, container, current_session, require_csrf
+from app.api.deps import (
+    SessionContext,
+    container,
+    current_session,
+    require_csrf,
+    require_owner,
+)
 from app.api.errors import (
     ACCOUNT_DELETING,
     ACCOUNT_NOT_FOUND,
@@ -19,7 +25,9 @@ from app.api.errors import (
     CONFIRM_NAME_MISMATCH,
     CSRF,
     ENGINE,
+    LIMIT_REACHED,
     NAME_TAKEN,
+    SERVER_FULL,
     error,
 )
 from app.api.routes_engine import IsoDatetime
@@ -29,7 +37,9 @@ from app.db.accounts import (
     AccountOverview,
     AccountStatus,
     CapacityReached,
+    LimitReached,
     NameTaken,
+    ServerFull,
 )
 from app.engine.tg_auth import TgState
 
@@ -145,7 +155,10 @@ async def list_accounts(
     "/accounts",
     response_model=AccountOut,
     status_code=status.HTTP_201_CREATED,
-    responses={**CSRF, 409: error(NAME_TAKEN, CAPACITY_REACHED)},
+    responses={
+        **CSRF,
+        409: error(NAME_TAKEN, LIMIT_REACHED, SERVER_FULL, CAPACITY_REACHED),
+    },
 )
 async def create_account(
     body: AccountCreateIn,
@@ -154,8 +167,22 @@ async def create_account(
 ) -> AccountOut:
     """Новый аккаунт — `enabled`, настройки по умолчанию (`dry_run`): движок поднимет хост, он
     работает без Telegram до первого входа."""
+    user = await c.users.get(ctx.user_id)
+    max_accounts = user.max_accounts if user is not None else 10
+    total_max = c.server_settings.current.limits.max_accounts_total
+    capacity = c.config.max_engines
     try:
-        created = await c.accounts.create(ctx.user_id, body.name, capacity=c.config.max_engines)
+        created = await c.accounts.create(
+            ctx.user_id,
+            body.name,
+            max_accounts=max_accounts,
+            total_max=total_max,
+            capacity=capacity,
+        )
+    except LimitReached as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, LIMIT_REACHED) from exc
+    except ServerFull as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, SERVER_FULL) from exc
     except NameTaken as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, NAME_TAKEN) from exc
     except CapacityReached as exc:
@@ -166,7 +193,7 @@ async def create_account(
 
 @router.get("/host/status", response_model=HostStatusOut, responses=AUTH)
 async def host_status(
-    _: Annotated[SessionContext, Depends(current_session)],
+    _: Annotated[SessionContext, Depends(require_owner)],
     c: Annotated[Container, Depends(container)],
 ) -> HostStatusOut:
     return HostStatusOut.model_validate(asdict(c.engines.status()))

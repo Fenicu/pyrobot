@@ -3046,7 +3046,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description name_taken | capacity_reached */
+            /** @description name_taken | limit_reached | server_full | capacity_reached */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4491,6 +4491,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description too_many_streams */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description engine not running */

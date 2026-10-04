@@ -9,7 +9,9 @@ from app.db.accounts import (
     AccountRepo,
     AccountStatus,
     CapacityReached,
+    LimitReached,
     NameTaken,
+    ServerFull,
     TgUserTaken,
 )
 from app.db.base import Database
@@ -255,3 +257,46 @@ async def test_mark_deleting_is_idempotent(repo: AccountRepo, user_id: int) -> N
         await repo.mark_deleting(acc.id)
         assert (await _info(repo, acc.id)).status == "deleting"
     await repo.mark_deleting(999)  # нет такого аккаунта — ничего не происходит
+
+
+async def test_create_limit_reached_ignores_deleting(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    # 1 аккаунт при max_accounts=1: второй вызовет LimitReached
+    acc1 = await repo.create(user_id, "Первый", max_accounts=1)
+    with pytest.raises(LimitReached):
+        await repo.create(user_id, "Второй", max_accounts=1)
+    # Помечаем один как deleting: теперь активных аккаунтов 0, создание разрешено
+    await repo.mark_deleting(acc1.id)
+    acc2 = await repo.create(user_id, "Второй", max_accounts=1)
+    assert acc2.name == "Второй"
+
+
+async def test_create_server_full_counts_all_statuses(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    other_user = await _user(clean_db, "other")
+    await repo.create(user_id, "Первый", total_max=10)
+    acc2 = await repo.create(other_user, "Второй", total_max=10)
+    await repo.set_status(acc2.id, "disabled", "test")
+    # clean_db имеет аккаунт 1 изначально, плюс созданные = 3 аккаунта
+    total = len(await repo.with_status("enabled")) + len(await repo.with_status("disabled"))
+    with pytest.raises(ServerFull):
+        await repo.create(user_id, "Лишний", total_max=total)
+
+
+async def test_create_checks_in_spec_order(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    # Порядок проверок: LimitReached -> ServerFull -> CapacityReached
+    await repo.create(user_id, "Первый", max_accounts=5, total_max=50, capacity=20)
+    # У пользователя 1 аккаунт. На сервере 2 аккаунта (seed + первый).
+    # Все три лимита нарушаются: max_accounts=1, total_max=2, capacity=1 -> LimitReached
+    with pytest.raises(LimitReached):
+        await repo.create(user_id, "Второй", max_accounts=1, total_max=2, capacity=1)
+    # Превышены ServerFull и CapacityReached, но max_accounts=5 позволяет -> ServerFull
+    with pytest.raises(ServerFull):
+        await repo.create(user_id, "Второй", max_accounts=5, total_max=2, capacity=1)
+    # Превышен только CapacityReached (total_max=10 позволяет) -> CapacityReached
+    with pytest.raises(CapacityReached):
+        await repo.create(user_id, "Второй", max_accounts=5, total_max=10, capacity=2)

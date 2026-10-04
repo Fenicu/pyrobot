@@ -5,8 +5,10 @@ from app.api.container import Container
 from app.api.security import LoginRateLimiter
 from app.config import AppConfig
 from app.db.accounts import AccountRepo
+from app.db.audit import AuditLog
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.server_settings import ServerSettingsRepo
 from app.db.users import UserRepo
 from app.engine.host.account import AccountRuntime
 from app.engine.host.host import HostStatus
@@ -41,5 +43,6 @@ def build_schema() -> dict[str, Any]:
         accounts=AccountRepo(db),
         engines=_NoEngines(),
         users=UserRepo(db),
+        server_settings=ServerSettingsRepo(db, AuditLog(db)),
     )
     return create_api(container).openapi()

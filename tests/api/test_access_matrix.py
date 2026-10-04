@@ -3,10 +3,11 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 
 from app.api.app import create_api
 from app.db.base import Database
-from tests.api.conftest import Api, make_container, make_user
+from tests.api.conftest import Api, login, make_container, make_user
 from tests.engine.test_facade import build
 
 pytestmark = pytest.mark.db
@@ -85,24 +86,89 @@ async def _foreign_account(api: Api) -> int:
     return account.id
 
 
-@pytest.mark.parametrize("target", ["foreign", "missing"])
-async def test_every_account_route_is_404_for_foreign_or_missing(api: Api, target: str) -> None:
-    account_id = await _foreign_account(api) if target == "foreign" else 999
-    # Движок у аккаунта есть: маршрут, пропустивший проверку, ответил бы не 404.
-    api.engines.put(build(), account_id)
-    routes = account_routes(create_api(api.container))
+@pytest.mark.parametrize("role", ["user", "owner"])
+async def test_foreign_account_is_404_for_every_path(api: Api, role: str) -> None:
+    # учётка «bob» с ролью role владеет аккаунтом bob_acc;
+    # bob на всех путях аккаунта 1 — 404,
+    # admin (owner) на всех путях аккаунта bob_acc — 404
+    bob_id = await make_user(api.container, "bob", role=role)
+    bob_acc = await api.container.accounts.create(bob_id, "Боб", capacity=10)
+    api.engines.put(build(), 1)
+    api.engines.put(build(), bob_acc.id)
+
+    app = create_api(api.container)
+    routes = account_routes(app)
     assert routes
-    for method, template in routes:
-        tail = template.removeprefix(PREFIX)
-        path = re.sub(r"\{[^}]+\}", "1", tail)
-        body = BODIES.get(tail, {}) if method != "GET" else None
-        resp = await api.client.request(
-            method, f"/api/v1/accounts/{account_id}{path}", headers=api.headers, json=body
-        )
-        assert (resp.status_code, resp.json()) == (404, {"detail": "account not found"}), (
-            method,
-            template,
-        )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as bob_client:
+        bob_csrf = await login(bob_client, login="bob")
+        bob_headers = {"X-CSRF-Token": bob_csrf}
+
+        for method, template in routes:
+            tail = template.removeprefix(PREFIX)
+            path = re.sub(r"\{[^}]+\}", "1", tail)
+            body = BODIES.get(tail, {}) if method != "GET" else None
+
+            # 1. bob обращается к аккаунту 1 (admin's account)
+            resp_bob = await bob_client.request(
+                method, f"/api/v1/accounts/1{path}", headers=bob_headers, json=body
+            )
+            assert (resp_bob.status_code, resp_bob.json()) == (
+                404,
+                {"detail": "account not found"},
+            ), (
+                "bob on account 1",
+                method,
+                template,
+            )
+
+            # 2. admin (owner) обращается к чужому аккаунту bob_acc.id
+            resp_admin = await api.client.request(
+                method, f"/api/v1/accounts/{bob_acc.id}{path}", headers=api.headers, json=body
+            )
+            assert (resp_admin.status_code, resp_admin.json()) == (
+                404,
+                {"detail": "account not found"},
+            ), (
+                "admin on bob's account",
+                method,
+                template,
+            )
+
+
+async def test_host_status_is_404_for_user(api: Api) -> None:
+    await make_user(api.container, "bob", role="user")
+    app = create_api(api.container)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as bob_client:
+        await login(bob_client, login="bob")
+        r = await bob_client.get("/api/v1/host/status")
+        assert r.status_code == 404
+
+    r_admin = await api.client.get("/api/v1/host/status")
+    assert r_admin.status_code == 200
+
+
+def test_no_route_changes_foreign_password(app: FastAPI) -> None:
+    # среди путей /api/v1/admin/* и /api/v1/auth/* нет пути с телом, где есть поле password и
+    # путь содержит {user_id} — проверка по openapi
+    schema = app.openapi()
+    paths = schema.get("paths", {})
+    components = schema.get("components", {}).get("schemas", {})
+    for path, ops in paths.items():
+        if "{user_id}" in path:
+            for method, op in ops.items():
+                req_body = op.get("requestBody", {})
+                content = req_body.get("content", {})
+                for media in content.values():
+                    schema_obj = media.get("schema", {})
+                    ref = schema_obj.get("$ref", "")
+                    if ref:
+                        schema_name = ref.split("/")[-1]
+                        model = components.get(schema_name, {})
+                        props = model.get("properties", {})
+                        assert "password" not in props, (
+                            f"Route {method} {path} has password field in {schema_name}"
+                        )
 
 
 async def test_old_paths_are_gone(api: Api) -> None:

@@ -6,14 +6,31 @@ from typing import Annotated, Any
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
+from starlette.types import Receive, Scope, Send
 
 from app.api.container import Container
-from app.api.deps import COOKIE, container
-from app.api.errors import AUTH, ENGINE_NOT_RUNNING, error
+from app.api.deps import COOKIE, SessionContext, container, current_session
+from app.api.errors import AUTH, ENGINE_NOT_RUNNING, TOO_MANY_STREAMS, error
 from app.api.scope import AccountScope, account_router, account_scope
+from app.api.sse_slots import SseSlot
 from app.engine.stream import EventStream, Subscription
 
 router = account_router("events")
+
+
+class SseResponse(StreamingResponse):
+    """StreamingResponse, гарантирующий освобождение слота SSE при любом исходе."""
+
+    def __init__(self, slot: SseSlot, *args: Any, **kwargs: Any) -> None:
+        self._slot = slot
+        super().__init__(*args, **kwargs)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._slot.release()
 
 
 def _frame(event_id: str, kind: str, data: dict[str, Any]) -> str:
@@ -26,6 +43,7 @@ async def _events(
     sub: Subscription,
     alive: Callable[[], Awaitable[bool]],
     heartbeat_s: float,
+    slot: SseSlot | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> AsyncIterator[str]:
     # Сессия перепроверяется по часам раз в heartbeat_s, а не только в тишине: иначе поток,
@@ -68,6 +86,8 @@ async def _events(
                 return
             yield _frame(stream.event_id(event.seq), event.type, event.data)
     finally:
+        if slot is not None:
+            slot.release()
         stream.unsubscribe(sub)
 
 
@@ -77,12 +97,14 @@ async def _events(
     responses={
         200: {"content": {"text/event-stream": {}}, "description": "SSE stream"},
         **AUTH,
+        429: error(TOO_MANY_STREAMS),
         503: error(ENGINE_NOT_RUNNING),
     },
 )
 async def events(
     request: Request,
     scope: Annotated[AccountScope, Depends(account_scope)],
+    ctx: Annotated[SessionContext, Depends(current_session)],
     c: Annotated[Container, Depends(container)],
     last_event_id: Annotated[str | None, Header(max_length=64)] = None,
 ) -> StreamingResponse:
@@ -90,6 +112,12 @@ async def events(
     остановится — поток закончится."""
     if scope.engine is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, ENGINE_NOT_RUNNING)
+
+    limit = c.server_settings.current.limits.sse_per_user
+    slot = c.sse_slots.take(ctx.user_id, limit)
+    if slot is None:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, TOO_MANY_STREAMS)
+
     stream = scope.engine.stream
     token = request.cookies.get(COOKIE)
 
@@ -97,8 +125,10 @@ async def events(
         return token is not None and await c.auth.resolve(token, slide=False) is not None
 
     sub = stream.subscribe(last_event_id)
-    return StreamingResponse(
-        _events(stream, sub, alive, c.sse_heartbeat_s),
+    return SseResponse(
+        slot,
+        _events(stream, sub, alive, c.sse_heartbeat_s, slot),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        background=BackgroundTask(slot.release),
     )
