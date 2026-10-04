@@ -216,6 +216,38 @@ async def test_patch_rename_enable_disable(api: Api) -> None:
     assert account is not None and (account.name, account.status) == ("Новый", "deleting")
 
 
+@pytest.mark.parametrize("op", ["create", "enable"])
+async def test_user_disabled_mid_request_is_401(
+    api: Api, monkeypatch: pytest.MonkeyPatch, op: str
+) -> None:
+    # Сессия уже проверена, а учётку отключают до транзакции создания или включения.
+    await make_user(api.container, "owner2", role="owner")
+    admin = await _admin_id(api)
+    second = await _second(api)
+    await api.container.accounts.update(second.id, enabled=False, capacity=10)
+    repo = api.container.accounts
+    real = getattr(repo, "create" if op == "create" else "update")
+
+    async def disabled_first(*args: Any, **kwargs: Any) -> Any:
+        await api.container.users.disable(admin, None)
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(repo, "create" if op == "create" else "update", disabled_first)
+    if op == "create":
+        r = await api.client.post(ACCOUNTS, headers=api.headers, json={"name": "Третий"})
+    else:
+        r = await api.client.patch(
+            f"{ACCOUNTS}/{second.id}", headers=api.headers, json={"enabled": True}
+        )
+    assert (r.status_code, r.json()) == (401, {"detail": "not authenticated"})
+    monkeypatch.undo()
+    assert [(a.name, a.status) for a in await repo.owned(admin)] == [
+        ("Основной", "disabled"),
+        ("Второй", "disabled"),
+    ]
+    assert api.engines.pokes == 0
+
+
 async def test_delete_requires_exact_name(api: Api) -> None:
     for body in ({"confirm_name": "основной"}, {"confirm_name": "Основной "}):
         r = await api.client.request("DELETE", A1, headers=api.headers, json=body)

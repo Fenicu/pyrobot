@@ -18,6 +18,7 @@ from app.db.accounts import (
 )
 from app.db.base import Database
 from app.db.models import Account, NotificationRow, SettingsRow, StateSnapshot, User
+from app.db.users import UserRepo
 from app.engine.settings import Settings
 from app.engine.state.model import SCHEMA_VERSION, CharacterState, Obs, dump_state
 
@@ -26,7 +27,7 @@ pytestmark = pytest.mark.db
 
 async def _user(db: Database, login: str, *, role: str = "owner") -> int:
     async with db.sessions() as session, session.begin():
-        user = User(login=login, password_hash="x", role=role)
+        user = User(login=login, password_hash="x", role=role, max_accounts=10)
         session.add(user)
         await session.flush()
         return user.id
@@ -266,12 +267,13 @@ async def test_create_limit_reached_ignores_deleting(
     repo: AccountRepo, clean_db: Database, user_id: int
 ) -> None:
     # 1 аккаунт при max_accounts=1: второй вызовет LimitReached
-    acc1 = await repo.create(user_id, "Первый", max_accounts=1)
+    await UserRepo(clean_db).set_limit(user_id, 1)
+    acc1 = await repo.create(user_id, "Первый")
     with pytest.raises(LimitReached):
-        await repo.create(user_id, "Второй", max_accounts=1)
+        await repo.create(user_id, "Второй")
     # Помечаем один как deleting: теперь активных аккаунтов 0, создание разрешено
     await repo.mark_deleting(acc1.id)
-    acc2 = await repo.create(user_id, "Второй", max_accounts=1)
+    acc2 = await repo.create(user_id, "Второй")
     assert acc2.name == "Второй"
 
 
@@ -292,17 +294,21 @@ async def test_create_checks_in_spec_order(
     repo: AccountRepo, clean_db: Database, user_id: int
 ) -> None:
     # Порядок проверок: LimitReached -> ServerFull -> CapacityReached
-    await repo.create(user_id, "Первый", max_accounts=5, total_max=50, capacity=20)
+    users = UserRepo(clean_db)
+    await users.set_limit(user_id, 5)
+    await repo.create(user_id, "Первый", total_max=50, capacity=20)
     # У пользователя 1 аккаунт. На сервере 2 аккаунта (seed + первый).
     # Все три лимита нарушаются: max_accounts=1, total_max=2, capacity=1 -> LimitReached
+    await users.set_limit(user_id, 1)
     with pytest.raises(LimitReached):
-        await repo.create(user_id, "Второй", max_accounts=1, total_max=2, capacity=1)
+        await repo.create(user_id, "Второй", total_max=2, capacity=1)
     # Превышены ServerFull и CapacityReached, но max_accounts=5 позволяет -> ServerFull
+    await users.set_limit(user_id, 5)
     with pytest.raises(ServerFull):
-        await repo.create(user_id, "Второй", max_accounts=5, total_max=2, capacity=1)
+        await repo.create(user_id, "Второй", total_max=2, capacity=1)
     # Превышен только CapacityReached (total_max=10 позволяет) -> CapacityReached
     with pytest.raises(CapacityReached):
-        await repo.create(user_id, "Второй", max_accounts=5, total_max=10, capacity=2)
+        await repo.create(user_id, "Второй", total_max=10, capacity=2)
 
 
 async def _snapshot(db: Database, account_id: int, state: dict[str, Any]) -> None:

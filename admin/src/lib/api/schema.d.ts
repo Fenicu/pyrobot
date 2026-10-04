@@ -20,7 +20,8 @@ export interface paths {
         /**
          * Create Account
          * @description Новый аккаунт — `enabled`, настройки по умолчанию (`dry_run`): движок поднимет хост, он
-         *     работает без Telegram до первого входа.
+         *     работает без Telegram до первого входа. Учётку отключили или удалили посреди запроса — 401,
+         *     как у отозванной сессии.
          */
         post: operations["create_account_api_v1_accounts_post"];
         delete?: never;
@@ -50,7 +51,7 @@ export interface paths {
         /**
          * Patch Account
          * @description Переименование, включение (снимает причину `error`) и выключение; удаляемый аккаунт не
-         *     правится.
+         *     правится. Включение у учётки, отключённой посреди запроса, — 401.
          */
         patch: operations["patch_account_api_v1_accounts__account_id__patch"];
         trace?: never;

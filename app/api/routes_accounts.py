@@ -28,6 +28,7 @@ from app.api.errors import (
     ENGINE,
     LIMIT_REACHED,
     NAME_TAKEN,
+    NOT_AUTHENTICATED,
     SERVER_FULL,
     error,
 )
@@ -42,6 +43,7 @@ from app.db.accounts import (
     LimitReached,
     NameTaken,
     ServerFull,
+    UserInactive,
 )
 from app.engine.tg_auth import TgState
 
@@ -178,19 +180,17 @@ async def create_account(
     c: Annotated[Container, Depends(container)],
 ) -> AccountOut:
     """Новый аккаунт — `enabled`, настройки по умолчанию (`dry_run`): движок поднимет хост, он
-    работает без Telegram до первого входа."""
-    user = await c.users.get(ctx.user_id)
-    max_accounts = user.max_accounts if user is not None else 10
-    total_max = c.server_settings.current.limits.max_accounts_total
-    capacity = c.config.max_engines
+    работает без Telegram до первого входа. Учётку отключили или удалили посреди запроса — 401,
+    как у отозванной сессии."""
     try:
         created = await c.accounts.create(
             ctx.user_id,
             body.name,
-            max_accounts=max_accounts,
-            total_max=total_max,
-            capacity=capacity,
+            total_max=c.server_settings.current.limits.max_accounts_total,
+            capacity=c.config.max_engines,
         )
+    except UserInactive as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, NOT_AUTHENTICATED) from exc
     except LimitReached as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, LIMIT_REACHED) from exc
     except ServerFull as exc:
@@ -227,7 +227,7 @@ async def patch_account(
     c: Annotated[Container, Depends(container)],
 ) -> AccountOut:
     """Переименование, включение (снимает причину `error`) и выключение; удаляемый аккаунт не
-    правится."""
+    правится. Включение у учётки, отключённой посреди запроса, — 401."""
     try:
         await c.accounts.update(
             scope.account.id,
@@ -235,6 +235,8 @@ async def patch_account(
             enabled=body.enabled,
             capacity=c.config.max_engines,
         )
+    except UserInactive as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, NOT_AUTHENTICATED) from exc
     except BlockedByOwner as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, BLOCKED_BY_OWNER) from exc
     except NameTaken as exc:

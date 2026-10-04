@@ -38,6 +38,9 @@ AccountStatus = Literal["enabled", "disabled", "error", "deleting"]
 # транзакции, иначе два запроса разом заняли бы одно последнее место.
 _ENABLED_LOCK_KEY = 0x7079726F616363
 
+# Порядок блокировок во всех путях (обратный порядок у двух транзакций — взаимная блокировка):
+# `_lock_enabled` → строки владельцев сервера (по `id`) → строка учётки → строки её аккаунтов.
+
 
 class NameTaken(Exception):
     """У владельца уже есть аккаунт с таким именем."""
@@ -61,6 +64,10 @@ class AccountDeleting(Exception):
 
 class BlockedByOwner(Exception):
     """Аккаунт заблокирован владельцем сервера: включение запрещено."""
+
+
+class UserInactive(Exception):
+    """Учётка отключена, удаляется или уже удалена: аккаунт не создаётся и не включается."""
 
 
 @dataclass(frozen=True)
@@ -177,6 +184,16 @@ async def _lock_enabled(session: AsyncSession) -> None:
     await session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _ENABLED_LOCK_KEY})
 
 
+async def _lock_active_user(session: AsyncSession, user_id: int) -> int:
+    """Строка учётки FOR SHARE до конца транзакции и её `max_accounts`: отключение, удаление и
+    смена лимита ждут конца транзакции, а уже закоммиченные видны здесь. Учётка отключена,
+    удаляется или удалена — UserInactive."""
+    user = await session.scalar(select(User).where(User.id == user_id).with_for_update(read=True))
+    if user is None or not user.active:
+        raise UserInactive(user_id)
+    return user.max_accounts
+
+
 async def _check_capacity(session: AsyncSession, capacity: int) -> None:
     """Ещё один `enabled` должен поместиться; вызывается под `_lock_enabled`."""
     enabled = await session.scalar(
@@ -263,13 +280,14 @@ class AccountRepo:
         owner_id: int,
         name: str,
         *,
-        max_accounts: int = 10,
         total_max: int = 50,
         capacity: int = 20,
     ) -> AccountInfo:
-        """Новый аккаунт `enabled` с настройками по умолчанию — одной транзакцией."""
+        """Новый аккаунт `enabled` с настройками по умолчанию — одной транзакцией. Учётка
+        проверяется и её лимит читается в ней же: неактивная учётка — UserInactive."""
         async with self._db.sessions() as session, session.begin():
             await _lock_enabled(session)
+            max_accounts = await _lock_active_user(session, owner_id)
             user_count = await session.scalar(
                 select(func.count())
                 .select_from(Account)
@@ -307,15 +325,28 @@ class AccountRepo:
         capacity: int,
     ) -> AccountInfo:
         """Переименование и включение (`enabled=True` очищает причину) или выключение.
-        KeyError — нет такого аккаунта; AccountDeleting — он удаляется, и ничего не меняется."""
+        KeyError — нет такого аккаунта; AccountDeleting — он удаляется, и ничего не меняется;
+        включение у неактивной учётки — UserInactive."""
         try:
             async with self._db.sessions() as session, session.begin():
+                owner_id: int | None = None
                 if enabled:
                     await _lock_enabled(session)
+                    # Владелец читается без блокировки: строка учётки берётся раньше строки
+                    # аккаунта (порядок блокировок модуля).
+                    owner_id = await session.scalar(
+                        select(Account.owner_id).where(Account.id == account_id)
+                    )
+                    if owner_id is not None:
+                        await _lock_active_user(session, owner_id)
                 row = await session.scalar(
                     select(Account).where(Account.id == account_id).with_for_update()
                 )
                 if row is None:
+                    raise KeyError(account_id)
+                if enabled and row.owner_id != owner_id:
+                    # Сироту подхватил владелец между чтением и блокировкой: его учётка не
+                    # проверена — как будто аккаунта нет.
                     raise KeyError(account_id)
                 if row.status == "deleting":
                     raise AccountDeleting(account_id)
@@ -413,6 +444,11 @@ class AccountRepo:
             while deleted >= batch:
                 deleted = await self._delete_rows(model, account_id, batch)
         async with self._db.sessions() as session, session.begin():
+            if owner_id is not None:
+                # Строка учётки — раньше строки аккаунта: параллельная чистка другого её
+                # аккаунта ждёт здесь, а после ожидания её новые запросы (READ COMMITTED) видят
+                # этот аккаунт удалённым, и последняя из чисток удаляет учётку.
+                await session.execute(select(User.id).where(User.id == owner_id).with_for_update())
             await session.execute(
                 delete(Account).where(Account.id == account_id, Account.status == "deleting")
             )
