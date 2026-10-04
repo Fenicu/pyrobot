@@ -112,4 +112,11 @@ describe('плашка «аккаунт не в общем чате игры»',
 		expect(screen.getByRole('button', JOIN)).toBeEnabled();
 		expect(onchange).not.toHaveBeenCalled();
 	});
+
+	it('текст плашки без лишних переносов и отступов', () => {
+		banner(false);
+		const p = screen.getByText(/Аккаунт не состоит/);
+		expect(p.textContent).not.toMatch(/[\n\t]/);
+		expect(p.textContent).toContain('цены акций.');
+	});
 });

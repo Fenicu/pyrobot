@@ -54,10 +54,7 @@
 
 {#if status.game_chat_member === false && joinedAt !== status}
 	<section class="card mb-3 flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3" role="status">
-		<p class="ext-text w-full font-medium sm:w-auto sm:min-w-0 sm:flex-1">
-			Аккаунт не состоит в общем чате игры @startupwarschat — бот не видит SWINFO: анонсы фабрики, лотерею, цены
-			акций.
-		</p>
+		<p class="ext-text w-full font-medium sm:w-auto sm:min-w-0 sm:flex-1">Аккаунт не состоит в общем чате игры @startupwarschat — бот не видит SWINFO: анонсы фабрики, лотерею, цены акций.</p>
 		{#if requested}
 			<p class="ext-text w-full text-warn-fg">Заявка отправлена, ждёт одобрения в чате</p>
 		{:else}
