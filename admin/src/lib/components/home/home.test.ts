@@ -249,7 +249,7 @@ describe('карточка гаджетов', () => {
 	});
 
 	it('гаджет без редкости и уровня, без метки и с незнакомым навыком', () => {
-		const items = [
+		const items: GadgetsState['items'] = [
 			{
 				grade: null,
 				level: null,
