@@ -167,6 +167,7 @@ async def test_anonymous_gets_401_before_engine_check(
         if (
             not template.startswith("/api/v1/")
             or template == "/api/v1/auth/login"
+            or template.startswith("/api/v1/auth/recover/")
             or template.startswith("/api/v1/invites/")
         ):
             continue

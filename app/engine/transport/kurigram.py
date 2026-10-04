@@ -751,6 +751,29 @@ class KurigramTransport:
         return 0
 
     @_fenced
+    async def send_saved(self, text: str) -> None:
+        from pyrogram import errors, raw
+
+        client = self._client
+        try:
+            await client.invoke(
+                raw.functions.messages.SendMessage(
+                    peer=raw.types.InputPeerSelf(),
+                    message=text,
+                    random_id=client.rnd_id(),
+                    no_webpage=True,
+                ),
+                retries=1,
+                sleep_threshold=0,
+                retry_delay=0,
+            )
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+
+    @_fenced
     async def click(
         self, chat_id: int, message_id: int, data: str, timeout_s: float
     ) -> str | None:

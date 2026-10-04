@@ -79,6 +79,10 @@ class User(Base):
     invited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     deleting_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    @property
+    def active(self) -> bool:
+        return self.disabled_at is None and self.deleting_at is None
+
 
 class AuthSession(Base):
     __tablename__ = "auth_sessions"
@@ -438,3 +442,17 @@ class RecoveryCodeRow(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     code_hash: Mapped[str] = mapped_column(String(256))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RecoveryRequestRow(Base):
+    """Активный запрос на восстановление пароля (код в «Избранное» Telegram)."""
+
+    __tablename__ = "recovery_requests"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    code_hash: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, server_default=text("0"), default=0)
+    created_at: Mapped[datetime] = _now_col()

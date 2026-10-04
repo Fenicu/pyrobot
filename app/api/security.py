@@ -124,3 +124,47 @@ class LoginRateLimiter:
         for key in idle:
             if key not in self._failures:
                 del self._locks[key]
+
+
+class WindowLimiter:
+    """Скользящее окно запросов по ключу: не больше `limit` попаданий
+    за последние `window_s` секунд."""
+
+    def __init__(
+        self,
+        limit: int,
+        window_s: float,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._limit = limit
+        self._window_s = window_s
+        self._clock = clock
+        self._hits: dict[str, list[float]] = {}
+
+    def _cleanup_key(self, key: str, now: float) -> list[float]:
+        cutoff = now - self._window_s
+        timestamps = [t for t in self._hits.get(key, []) if t > cutoff]
+        if timestamps:
+            self._hits[key] = timestamps
+        else:
+            self._hits.pop(key, None)
+        return timestamps
+
+    def blocked_for(self, key: str) -> float:
+        now = self._clock()
+        timestamps = self._cleanup_key(key, now)
+        if len(timestamps) >= self._limit:
+            return max(0.0, timestamps[0] + self._window_s - now)
+        return 0.0
+
+    def hit(self, key: str) -> float | None:
+        now = self._clock()
+        timestamps = self._cleanup_key(key, now)
+        if len(timestamps) >= self._limit:
+            return max(0.0, timestamps[0] + self._window_s - now)
+        timestamps.append(now)
+        self._hits[key] = timestamps
+        if len(self._hits) > 10_000:
+            for k in list(self._hits.keys()):
+                self._cleanup_key(k, now)
+        return None

@@ -131,6 +131,7 @@ class FakeClient:
         self.hang: set[str] = set()
         self.cancelled: list[str] = []
         self.invoked: list[tuple[str, dict[str, Any]]] = []
+        self.queries: list[Any] = []
         self.get_me_calls = 0
         self.stop_error: BaseException | None = None
         self.me: Any = None
@@ -197,6 +198,7 @@ class FakeClient:
     async def invoke(self, query: Any, **kw: Any) -> Any:
         name = type(query).__name__
         self.invoked.append((name, kw))
+        self.queries.append(query)
         await self._hang(name)
         err = self.errors.pop(name, None)
         if err is not None:

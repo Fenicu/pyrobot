@@ -84,6 +84,7 @@ INVITE_NOT_FOUND = "invite_not_found"
 INVITE_GONE = "invite_gone"
 LOGIN_TAKEN = "login_taken"
 INVALID_PASSWORD = "invalid_password"
+INVALID_CODE = "invalid_code"
 # Сессия (cookie): без неё или с истёкшей — 401.
 AUTH: Responses = {401: error(NOT_AUTHENTICATED)}
 # Изменяющий запрос: сессия и заголовок X-CSRF-Token.

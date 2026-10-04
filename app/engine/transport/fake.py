@@ -23,6 +23,7 @@ class Sent:
 class FakeTransport:
     def __init__(self) -> None:
         self.sent: list[Sent] = []
+        self.saved: list[str] = []
         self.before_send: Callable[[Sent], None] | None = None
         self.responder: Callable[[Sent], Awaitable[None]] | None = None
         self.fail_with: list[BaseException] = []
@@ -105,6 +106,11 @@ class FakeTransport:
             raise self.join_fail_with.pop(0)
         self.joins.append((username, expect_id))
         return self.join_status
+
+    async def send_saved(self, text: str) -> None:
+        if self.fail_with:
+            raise self.fail_with.pop(0)
+        self.saved.append(text)
 
 
 class FakeTgBackend:

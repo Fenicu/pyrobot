@@ -77,3 +77,7 @@ class Transport(Protocol):
         """Вступление в публичный чат по username; чат с другим id — отказ `chat_mismatch`
         без вступления."""
         ...
+
+    async def send_saved(self, text: str) -> None:
+        """Отправка сообщения в «Избранное» (Saved Messages) текущего аккаунта."""
+        ...

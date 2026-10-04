@@ -4,7 +4,9 @@ import os
 import re
 
 from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -44,6 +46,17 @@ def parse_key(value: str | None) -> bytes:
     if len(key) != KEY_LEN:
         raise SecretKeyError(_KEY_HINT)
     return key
+
+
+def derive_key(secret: bytes, purpose: str) -> bytes:
+    """HKDF-SHA256: 32 байта, salt=None, info=f"pyrobot:{purpose}".encode()."""
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=KEY_LEN,
+        salt=None,
+        info=f"pyrobot:{purpose}".encode(),
+    )
+    return hkdf.derive(secret)
 
 
 class SecretBox:

@@ -15,10 +15,10 @@ from app.db.accounts import AccountRepo
 from app.db.audit import AuditLog
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
-from app.db.crypto import SecretBox, SecretKeyError, ensure_key, parse_key
+from app.db.crypto import SecretBox, SecretKeyError, derive_key, ensure_key, parse_key
 from app.db.invites import InviteRepo
 from app.db.notifications import DbNotifier, ServerNotifier
-from app.db.recovery import RecoveryCodes
+from app.db.recovery import RecoveryCodes, RecoveryRequests
 from app.db.retention import DbRetention
 from app.db.server_settings import ServerSettingsRepo
 from app.db.users import UserRepo
@@ -102,6 +102,16 @@ class Runtime:
         self.users = UserRepo(self.db)
         self.invites = InviteRepo(self.db, self.audit)
         self.recovery_codes = RecoveryCodes(self.db)
+        key_text = _key_text(config)
+        if key_text:
+            try:
+                raw_key = parse_key(key_text)
+                self.recovery_key = derive_key(raw_key, "recovery")
+            except SecretKeyError:
+                self.recovery_key = os.urandom(32)
+        else:
+            self.recovery_key = os.urandom(32)
+        self.recovery_requests = RecoveryRequests(self.db, self.recovery_key)
         self.container = Container(
             config=config,
             auth=self.auth,
@@ -115,6 +125,8 @@ class Runtime:
             recovery_codes=self.recovery_codes,
             audit=self.audit,
             server_notifier=self.server_notifier,
+            recovery_key=self.recovery_key,
+            recovery_requests=self.recovery_requests,
         )
         self.session_purge_s = SESSION_PURGE_S
         self.retention_first_s = RETENTION_FIRST_S
@@ -233,6 +245,8 @@ class Runtime:
     async def stop(self) -> None:
         for task in list(self._host_tasks):
             task.cancel()
+        with contextlib.suppress(Exception):
+            await self.container.drain()
         # Хост — первым: сверка, затем движки (штатно, пока аренда действует, иначе аварийно) и
         # освобождение их аренд.
         with contextlib.suppress(Exception):

@@ -190,6 +190,12 @@ class EngineFacade:
             watch.game_chat_joined()
         return status
 
+    async def send_saved(self, text: str) -> None:
+        """Отправка сообщения в «Избранное» (Saved Messages) текущего аккаунта."""
+        if self._transport is None or self.tg.status().state is not TgState.ONLINE:
+            raise TgNotOnline
+        await self._transport.send_saved(text)
+
     def ready(self) -> bool:
         st = self.status()
         return (

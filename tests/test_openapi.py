@@ -112,6 +112,8 @@ def test_session_routes_document_401() -> None:
     paths = build_schema()["paths"]
     open_paths = {
         "/api/v1/auth/login",
+        "/api/v1/auth/recover/start",
+        "/api/v1/auth/recover/finish",
         "/api/v1/invites/{token}",
         "/api/v1/invites/{token}/accept",
         "/healthz",

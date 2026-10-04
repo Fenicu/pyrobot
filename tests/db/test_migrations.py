@@ -57,6 +57,7 @@ async def test_upgrade_and_downgrade() -> None:
         "server_settings",
         "invites",
         "recovery_codes",
+        "recovery_requests",
     } <= await _tables()
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
     assert await _tables() <= {"alembic_version"}
@@ -567,5 +568,40 @@ async def test_0017_invites_and_recovery_codes() -> None:
     tables_down = await _tables()
     assert "invites" not in tables_down
     assert "recovery_codes" not in tables_down
+
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0018_recovery_requests() -> None:
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0017")
+
+    # Upgrade to 0018
+    await asyncio.to_thread(command.upgrade, _cfg(), "0018")
+    tables = await _tables()
+    assert "recovery_requests" in tables
+
+    # Test FK constraints: user_id FK CASCADE
+    await _exec(
+        "INSERT INTO users (id, login, password_hash, role) "
+        "VALUES (201, 'user201', 'phash', 'user')"
+    )
+    await _exec(
+        "INSERT INTO recovery_requests (user_id, code_hash, expires_at) "
+        "VALUES (201, '\\x0102'::bytea, now() + interval '10 minutes')"
+    )
+
+    req_rows = await _exec("SELECT user_id FROM recovery_requests WHERE user_id = 201")
+    assert req_rows == [(201,)]
+
+    # Delete user 201: recovery_requests should be deleted (CASCADE)
+    await _exec("DELETE FROM users WHERE id = 201")
+    req_rows2 = await _exec("SELECT user_id FROM recovery_requests WHERE user_id = 201")
+    assert req_rows2 == []
+
+    # Downgrade to 0017
+    await asyncio.to_thread(command.downgrade, _cfg(), "0017")
+    tables_down = await _tables()
+    assert "recovery_requests" not in tables_down
 
     await asyncio.to_thread(command.downgrade, _cfg(), "base")

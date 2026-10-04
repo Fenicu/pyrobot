@@ -1132,3 +1132,37 @@ async def test_logout_offline_logs_out_and_deletes_storage(
     # Сессии в базе нет — временный клиент не поднимается.
     await logout_offline(clean_db, BOX, _kurigram_config(), 1)
     assert len(made) == 1
+
+
+async def test_send_saved_uses_input_peer_self_through_fence() -> None:
+    from pyrogram import raw
+
+    t = FakeKurigram()
+    await _online(t)
+
+    await t.send_saved("привет в избранное")
+    assert [name for name, _ in t.client.invoked[-1:]] == ["SendMessage"]
+    last_query = t.client.queries[-1]
+    assert isinstance(last_query.peer, raw.types.InputPeerSelf)
+    assert last_query.message == "привет в избранное"
+
+    # Через ограду аренды: если ограда просрочена — LeaseLost
+    clock = FakeMonotonic()
+    fence = Fence(1, 1, clock.now + 10.0, monotonic=clock)
+    t_fenced = FakeKurigram(fence=fence)
+    await _online(t_fenced)
+    clock.now += 20.0
+    with pytest.raises(LeaseLost):
+        await t_fenced.send_saved("тест")
+
+
+def test_saved_messages_not_accepted_by_chat_filter() -> None:
+    chats = ChatsSection(
+        game_chat_id=-1001234567,
+        swinfo_chat_id=-1007654321,
+        swinfo_user_id=123,
+    )
+    f = ChatFilter.from_settings(chats)
+    own_user_id = 99999999
+    saved_msg = NS(chat=NS(id=own_user_id), from_user=NS(id=own_user_id), reply_markup=None)
+    assert not f.accepts(saved_msg)

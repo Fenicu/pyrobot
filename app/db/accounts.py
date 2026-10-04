@@ -175,6 +175,8 @@ class AccountRepo:
             )
             return [_info(r) for r in rows]
 
+    list_for_user = owned
+
     async def overview(self, owner_id: int) -> list[AccountOverview]:
         """Аккаунты учётки для списка — одним запросом: настройки, последнее действие и
         непрочитанные предупреждения и ошибки каждого."""

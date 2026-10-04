@@ -6,7 +6,14 @@ import pytest
 from sqlalchemy import select
 
 from app.db.base import Database
-from app.db.crypto import SecretBox, SecretKeyError, Undecryptable, ensure_key, parse_key
+from app.db.crypto import (
+    SecretBox,
+    SecretKeyError,
+    Undecryptable,
+    derive_key,
+    ensure_key,
+    parse_key,
+)
 from app.db.models import ServerMeta, TgChatMark, TgPeer, TgSession
 
 
@@ -163,3 +170,18 @@ async def test_ensure_key_reset_on_empty_base_just_writes_check(clean_db: Databa
     box = _box()
     await ensure_key(clean_db, box, reset=True)
     box.open(await _check(clean_db), "key_check", 0)
+
+
+def test_derive_key_differs_by_purpose_and_is_stable() -> None:
+    secret = secrets.token_bytes(32)
+    k1 = derive_key(secret, "recovery")
+    k2 = derive_key(secret, "recovery")
+    assert k1 == k2
+    assert len(k1) == 32
+
+    k_other = derive_key(secret, "sessions")
+    assert k1 != k_other
+
+    secret2 = secrets.token_bytes(32)
+    k_diff_secret = derive_key(secret2, "recovery")
+    assert k1 != k_diff_secret
