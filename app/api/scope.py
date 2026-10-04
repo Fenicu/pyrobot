@@ -15,7 +15,7 @@ from app.db.accounts import AccountInfo
 from app.db.reads import DbReads
 from app.engine.facade import EngineFacade
 from app.engine.host.account import AccountRuntime
-from app.engine.host.host import HostStatus
+from app.engine.host.host import EngineStats, HostStatus
 from app.logctx import current_account
 
 ACCOUNT_PREFIX = "/api/v1/accounts/{account_id}"
@@ -42,6 +42,10 @@ class EngineRegistry(Protocol):
 
     def poke(self) -> None:
         """Желаемое состояние аккаунтов изменилось: сверить движки сейчас."""
+        ...
+
+    def stats(self, account_id: int) -> EngineStats:
+        """Статистика запущенного движка: онлайн, рестарты, последняя ошибка."""
         ...
 
 

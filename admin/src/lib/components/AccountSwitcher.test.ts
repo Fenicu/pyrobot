@@ -9,6 +9,8 @@ const account = (id: number, name: string, over: Partial<AccountOut> = {}): Acco
 	name,
 	status: 'enabled',
 	status_reason: null,
+	blocked: false,
+	blocked_reason: null,
 	tg: { user_id: 100 + id, online: true },
 	mode: 'live',
 	paused: false,

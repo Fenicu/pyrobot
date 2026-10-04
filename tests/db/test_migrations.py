@@ -605,3 +605,46 @@ async def test_0018_recovery_requests() -> None:
     assert "recovery_requests" not in tables_down
 
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0019_account_block_columns() -> None:
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0018")
+
+    cols_0018 = {
+        r[0]
+        for r in await _exec(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'accounts'"
+        )
+    }
+    assert "blocked" not in cols_0018
+    assert "blocked_reason" not in cols_0018
+
+    # Upgrade to 0019
+    await asyncio.to_thread(command.upgrade, _cfg(), "0019")
+    cols_0019 = {
+        r[0]
+        for r in await _exec(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'accounts'"
+        )
+    }
+    assert "blocked" in cols_0019
+    assert "blocked_reason" in cols_0019
+
+    # Default value test: insert account without blocked/blocked_reason
+    await _exec("INSERT INTO accounts (id, name) VALUES (101, 'acc101')")
+    row = await _exec("SELECT blocked, blocked_reason FROM accounts WHERE id = 101")
+    assert row == [(False, None)]
+
+    # Downgrade to 0018
+    await asyncio.to_thread(command.downgrade, _cfg(), "0018")
+    cols_down = {
+        r[0]
+        for r in await _exec(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'accounts'"
+        )
+    }
+    assert "blocked" not in cols_down
+    assert "blocked_reason" not in cols_down
+
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")

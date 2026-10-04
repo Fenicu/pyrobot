@@ -21,6 +21,7 @@ from app.api.errors import (
     ACCOUNT_DELETING,
     ACCOUNT_NOT_FOUND,
     AUTH,
+    BLOCKED_BY_OWNER,
     CAPACITY_REACHED,
     CONFIRM_NAME_MISMATCH,
     CSRF,
@@ -36,6 +37,7 @@ from app.db.accounts import (
     AccountDeleting,
     AccountOverview,
     AccountStatus,
+    BlockedByOwner,
     CapacityReached,
     LimitReached,
     NameTaken,
@@ -69,6 +71,8 @@ class AccountOut(BaseModel):
     # Желаемое состояние (`enabled`, `disabled`, `error`, `deleting`) и причина.
     status: AccountStatus
     status_reason: str | None
+    blocked: bool
+    blocked_reason: str | None
     tg: AccountTgOut
     # У запущенного движка — его, иначе — из настроек в базе.
     mode: Literal["dry_run", "live"]
@@ -128,6 +132,8 @@ def _out(c: Container, o: AccountOverview) -> AccountOut:
             "name": info.name,
             "status": info.status,
             "status_reason": info.status_reason,
+            "blocked": info.blocked,
+            "blocked_reason": info.blocked_reason,
             "tg": AccountTgOut(user_id=info.tg_user_id, online=online),
             "mode": mode,
             "paused": paused,
@@ -208,7 +214,11 @@ async def host_status(
 @account.patch(
     "",
     response_model=AccountOut,
-    responses={**CSRF, 409: error(NAME_TAKEN, CAPACITY_REACHED, ACCOUNT_DELETING)},
+    responses={
+        **CSRF,
+        403: error(BLOCKED_BY_OWNER),
+        409: error(NAME_TAKEN, CAPACITY_REACHED, ACCOUNT_DELETING),
+    },
 )
 async def patch_account(
     body: AccountPatchIn,
@@ -225,6 +235,8 @@ async def patch_account(
             enabled=body.enabled,
             capacity=c.config.max_engines,
         )
+    except BlockedByOwner as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, BLOCKED_BY_OWNER) from exc
     except NameTaken as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, NAME_TAKEN) from exc
     except CapacityReached as exc:

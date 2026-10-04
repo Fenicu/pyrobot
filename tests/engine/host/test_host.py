@@ -686,3 +686,33 @@ async def test_retention_failure_notifies_account_once(
     assert (await _codes(clean_db, 1)).count("retention_failed") == 1
     assert "retention_failed" not in await _codes(clean_db, two)
     assert await _messages(clean_db, two) == 0
+
+
+async def test_stats_counts_restarts_and_last_error(clean_db: Database, hosts: Hosts) -> None:
+    host = await hosts.open()
+    (first,) = await _registered(host, 1)
+
+    # 1. Начальный старт движка: running=True, tg_online=False, restarts_24h=0
+    # (первый старт исключен)
+    st = host.stats(1)
+    assert st.running is True
+    assert st.tg_online is False
+    assert st.restarts_24h == 0
+    assert st.last_error_code is None
+    assert st.last_error_at is None
+
+    # 2. Перезапуск движка: restarts_24h становится 1
+    await hosts.repo.restart(1)
+    host.poke()
+    await until(lambda: host.get(1) not in (None, first), 5.0)
+    st = host.stats(1)
+    assert st.running is True
+    assert st.restarts_24h == 1
+
+    # 3. Фатальная ошибка (потеря аренды lock_lost)
+    engine = _running(host, 1)
+    engine.fence.revoke()
+    await until(lambda: host.stats(1).last_error_code == "lock_lost", 5.0)
+    st_err = host.stats(1)
+    assert st_err.last_error_code == "lock_lost"
+    assert st_err.last_error_at is not None

@@ -59,6 +59,8 @@ class Account(Base):
     lease_holder: Mapped[str | None] = mapped_column(Text)
     lease_epoch: Mapped[int] = mapped_column(BigInteger, server_default="0")
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    blocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    blocked_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _now_col()
     updated_at: Mapped[datetime] = _now_col()
 

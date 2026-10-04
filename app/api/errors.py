@@ -86,6 +86,8 @@ LOGIN_TAKEN = "login_taken"
 LAST_OWNER = "last_owner"
 USER_NOT_FOUND = "user_not_found"
 CONFIRM_LOGIN_MISMATCH = "confirm_login_mismatch"
+BLOCKED_BY_OWNER = "blocked_by_owner"
+REASON_REQUIRED = "reason_required"
 INVALID_PASSWORD = "invalid_password"
 INVALID_CODE = "invalid_code"
 # Сессия (cookie): без неё или с истёкшей — 401.

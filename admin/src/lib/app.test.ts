@@ -11,6 +11,8 @@ const account = (id: number, status: AccountOut['status'] = 'enabled'): AccountO
 	name: `acc${id}`,
 	status,
 	status_reason: null,
+	blocked: false,
+	blocked_reason: null,
 	tg: { user_id: id, online: true },
 	mode: 'dry_run',
 	paused: false,

@@ -14,7 +14,7 @@ from app.db.recovery import RecoveryCodes
 from app.db.server_settings import ServerSettingsRepo
 from app.db.users import UserRepo
 from app.engine.host.account import AccountRuntime
-from app.engine.host.host import HostStatus
+from app.engine.host.host import EngineStats, HostStatus
 
 
 class _NoEngines:
@@ -32,6 +32,9 @@ class _NoEngines:
 
     def poke(self) -> None:
         pass
+
+    def stats(self, account_id: int) -> EngineStats:
+        return EngineStats(False, False, 0, None, None)
 
 
 def build_schema() -> dict[str, Any]:

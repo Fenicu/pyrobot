@@ -9,6 +9,7 @@ from app.db.accounts import (
     AccountInfo,
     AccountRepo,
     AccountStatus,
+    BlockedByOwner,
     CapacityReached,
     LimitReached,
     NameTaken,
@@ -16,7 +17,7 @@ from app.db.accounts import (
     TgUserTaken,
 )
 from app.db.base import Database
-from app.db.models import Account, SettingsRow, StateSnapshot, User
+from app.db.models import Account, NotificationRow, SettingsRow, StateSnapshot, User
 from app.engine.settings import Settings
 from app.engine.state.model import SCHEMA_VERSION, CharacterState, Obs, dump_state
 
@@ -361,3 +362,86 @@ async def test_overview_foreign_snapshot_shapes_give_none(
     await _snapshot(clean_db, acc.id, state)
     (only,) = await repo.overview(user_id)
     assert (only.company, only.team_tag) == (None, None)
+
+
+async def test_block_disables_and_enable_is_refused(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    acc = await repo.create(user_id, "Блокируемый")
+    assert acc.status == "enabled"
+    assert acc.blocked is False
+    assert acc.blocked_reason is None
+
+    # Блокировка переводит в disabled и выставляет причину
+    await repo.block(acc.id, "Нарушение правил")
+    info = await _info(repo, acc.id)
+    assert info.blocked is True
+    assert info.blocked_reason == "Нарушение правил"
+    assert info.status == "disabled"
+    assert info.status_reason == "blocked_by_owner"
+
+    # Создано уведомление warn account_blocked
+    async with clean_db.sessions() as session:
+        notif = await session.scalar(
+            select(NotificationRow).where(
+                NotificationRow.account_id == acc.id, NotificationRow.code == "account_blocked"
+            )
+        )
+        assert notif is not None
+        assert notif.level == "warn"
+        assert notif.text == "Нарушение правил"
+
+    # Включение заблокированного аккаунта запрещено
+    with pytest.raises(BlockedByOwner):
+        await repo.update(acc.id, enabled=True, capacity=10)
+
+    # Переименование разрешено
+    renamed = await repo.update(acc.id, name="Новое имя", capacity=10)
+    assert renamed.name == "Новое имя"
+    assert renamed.blocked is True
+    assert renamed.status == "disabled"
+
+
+async def test_unblock_keeps_disabled(repo: AccountRepo, clean_db: Database, user_id: int) -> None:
+    acc = await repo.create(user_id, "Разблокируемый")
+    await repo.block(acc.id, "Причина")
+
+    # Разблокировка снимает blocked/blocked_reason, статус не трогает
+    await repo.unblock(acc.id)
+    info = await _info(repo, acc.id)
+    assert info.blocked is False
+    assert info.blocked_reason is None
+    assert info.status == "disabled"
+    assert info.status_reason == "blocked_by_owner"
+
+    # Создано уведомление info account_unblocked
+    async with clean_db.sessions() as session:
+        notif = await session.scalar(
+            select(NotificationRow).where(
+                NotificationRow.account_id == acc.id, NotificationRow.code == "account_unblocked"
+            )
+        )
+        assert notif is not None
+        assert notif.level == "info"
+        assert notif.text == "account unblocked by owner"
+
+    # Теперь аккаунт можно включить
+    updated = await repo.update(acc.id, enabled=True, capacity=10)
+    assert updated.status == "enabled"
+    assert updated.status_reason is None
+
+
+async def test_block_keeps_deleting_status(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    acc = await repo.create(user_id, "Удаляемый")
+    await repo.mark_deleting(acc.id)
+    info = await _info(repo, acc.id)
+    assert info.status == "deleting"
+
+    # Блокировка удаляемого аккаунта не перезаписывает статус deleting
+    await repo.block(acc.id, "Причина")
+    info2 = await _info(repo, acc.id)
+    assert info2.status == "deleting"
+    assert info2.blocked is True
+    assert info2.blocked_reason == "Причина"

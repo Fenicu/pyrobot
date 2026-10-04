@@ -22,8 +22,9 @@ from app.db.recovery import RecoveryCodes
 from app.db.server_settings import ServerSettingsRepo
 from app.db.users import UserRepo
 from app.engine.facade import EngineFacade
-from app.engine.host.host import HostStatus
+from app.engine.host.host import EngineStats, HostStatus
 from app.engine.stream import EventStream
+from app.engine.tg_auth import TgState
 
 PASSWORD = "correct horse battery"
 # Пути аккаунта 1 — аккаунта учётки admin в тестах.
@@ -52,6 +53,7 @@ class FakeEngines:
         self.waited: list[tuple[int, float]] = []
         self.lock_connection_ok = True
         self.pokes = 0
+        self.stats_map: dict[int, EngineStats] = {}
 
     def put(self, facade: EngineFacade, account_id: int = 1) -> FakeEngine:
         engine = FakeEngine(facade, account_id)
@@ -75,6 +77,25 @@ class FakeEngines:
 
     def poke(self) -> None:
         self.pokes += 1
+
+    def stats(self, account_id: int) -> EngineStats:
+        if account_id in self.stats_map:
+            return self.stats_map[account_id]
+        engine = self.engines.get(account_id)
+        running = engine is not None
+        online = False
+        if engine is not None and getattr(engine, "facade", None) is not None:
+            try:
+                online = engine.facade.status().tg.state is TgState.ONLINE
+            except Exception:
+                online = False
+        return EngineStats(
+            running=running,
+            tg_online=online,
+            restarts_24h=0,
+            last_error_code=None,
+            last_error_at=None,
+        )
 
     def status(self) -> HostStatus:
         return HostStatus(

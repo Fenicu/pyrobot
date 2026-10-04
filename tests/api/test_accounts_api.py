@@ -89,6 +89,8 @@ def _listed(
         "name": name,
         "status": status,
         "status_reason": None,
+        "blocked": False,
+        "blocked_reason": None,
         "tg": tg or {"user_id": None, "online": False},
         "mode": mode,
         "paused": paused,

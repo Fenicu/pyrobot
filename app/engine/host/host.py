@@ -10,8 +10,10 @@
 import asyncio
 import contextlib
 import logging
+from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from app.db.accounts import AccountStatus
 from app.db.notifications import DbNotifier, ServerNotifier
@@ -20,6 +22,7 @@ from app.engine.host.account import AccountRuntime, RuntimeDeps
 from app.engine.host.lease import Busy, LeaseManager
 from app.engine.notify import Level, LogNotifier
 from app.engine.supervisor import Supervisor
+from app.engine.tg_auth import TgState
 from app.logctx import current_account
 
 log = logging.getLogger(__name__)
@@ -31,6 +34,15 @@ LOGOUT_TIMEOUT_S = 30.0
 
 async def _no_offline_logout(account_id: int) -> None:
     """Выхода без движка нет."""
+
+
+@dataclass(frozen=True)
+class EngineStats:
+    running: bool
+    tg_online: bool
+    restarts_24h: int
+    last_error_code: str | None
+    last_error_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -115,6 +127,9 @@ class EngineHost:
         # Удаляемые аккаунты, чей движок на этом хосте уже вышел из Telegram.
         self._logged_out: set[int] = set()
         self._last_start: float | None = None
+        self._starts: dict[int, deque[datetime]] = {}
+        self._first_start: dict[int, datetime] = {}
+        self._last_error: dict[int, tuple[str, datetime]] = {}
 
     async def start(self) -> None:
         """Аккаунты без владельца достаются первой учётке, и запускается цикл сверки. Движки
@@ -170,6 +185,51 @@ class EngineHost:
             loop_lag_ms=self._deps.lag.lag_ms,
             tasks_ok=self.supervisor.healthy(),
         )
+
+    def stats(self, account_id: int) -> EngineStats:
+        engine = self._engines.get(account_id)
+        running = engine is not None and engine.live
+        tg_online = False
+        if running and engine is not None and engine.runtime.facade is not None:
+            try:
+                tg_online = engine.runtime.facade.status().tg.state is TgState.ONLINE
+            except Exception:
+                tg_online = False
+
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(hours=24)
+        deq = self._starts.get(account_id)
+        if deq:
+            while deq and deq[0] < cutoff:
+                deq.popleft()
+            first = self._first_start.get(account_id)
+            if first is not None and deq and deq[0] == first:
+                restarts = len(deq) - 1
+            else:
+                restarts = len(deq)
+        else:
+            restarts = 0
+
+        last_err = self._last_error.get(account_id)
+        last_error_code = last_err[0] if last_err is not None else None
+        last_error_at = last_err[1] if last_err is not None else None
+
+        return EngineStats(
+            running=running,
+            tg_online=tg_online,
+            restarts_24h=restarts,
+            last_error_code=last_error_code,
+            last_error_at=last_error_at,
+        )
+
+    def _record_start(self, account_id: int) -> None:
+        now = datetime.now(UTC)
+        if account_id not in self._first_start:
+            self._first_start[account_id] = now
+        self._starts.setdefault(account_id, deque()).append(now)
+
+    def _record_error(self, account_id: int, code: str) -> None:
+        self._last_error[account_id] = (code, datetime.now(UTC))
 
     async def _run(self) -> None:
         """Цикл сверки: по `poke()`, раз в `reconcile_s` и к сроку повтора захвата. Повтор,
@@ -268,6 +328,9 @@ class EngineHost:
                 finally:
                     await self._complete(self._leases.release(got))
                 self._logged_out.discard(account_id)
+                self._starts.pop(account_id, None)
+                self._first_start.pop(account_id, None)
+                self._last_error.pop(account_id, None)
                 log.info("account %d deleted", account_id)
         except Exception:
             log.exception("account %d not cleaned up", account_id)
@@ -321,13 +384,16 @@ class EngineHost:
                 if isinstance(exc, LeaseLost) or not fence.alive:
                     log.warning("account %d lease lost while engine started", account_id)
                     text = f"account {account_id} lease lost; engine stopped"
+                    self._record_error(account_id, "lock_lost")
                     await self._notify(account_id, "error", "lock_lost", text)
                     self.poke()
                     return
                 log.exception("engine of account %d failed to start", account_id)
                 # Статус — до освобождения аренды: иначе сверка (этого или другого хоста) подняла
                 # бы аккаунт снова.
-                await self._set_error(account_id, f"start_failed:{type(exc).__name__}")
+                err_code = f"start_failed:{type(exc).__name__}"
+                self._record_error(account_id, err_code)
+                await self._set_error(account_id, err_code)
                 return
             except BaseException:
                 self._engines.pop(account_id, None)
@@ -344,6 +410,7 @@ class EngineHost:
             # остановка уже назначена.
             if not engine.ending:
                 engine.live = True
+                self._record_start(account_id)
                 self._registry_changed()
 
     async def _acquire(self, account_id: int) -> Fence | Busy:
@@ -383,6 +450,7 @@ class EngineHost:
         if engine is None or engine.runtime.fence is not fence:
             return
         engine.lost = True
+        self._record_error(account_id, "lock_lost")
         self._end(account_id, engine)
 
     async def _crash_loop(self, account_id: int, task: str) -> None:
@@ -394,6 +462,7 @@ class EngineHost:
         log.error("account %d task %s crashed repeatedly, engine stopped", account_id, task)
         if engine.crash is None:
             engine.crash = task
+        self._record_error(account_id, f"crash_loop:{task}")
         self._end(account_id, engine)
 
     def _end(self, account_id: int, engine: _Engine) -> None:
@@ -445,6 +514,7 @@ class EngineHost:
             log.exception("engine of account %d failed to stop", account_id)
         if engine.crash is not None:
             reason = f"crash_loop:{engine.crash}"
+            self._record_error(account_id, reason)
             await self._set_error(account_id, reason)
             await self._notify(
                 account_id,
@@ -455,6 +525,7 @@ class EngineHost:
         elif engine.lost:
             log.warning("account %d lease lost, engine aborted", account_id)
             text = f"account {account_id} lease lost; engine stopped"
+            self._record_error(account_id, "lock_lost")
             await self._notify(account_id, "error", "lock_lost", text)
         await self._leases.release(fence)
         del self._engines[account_id]

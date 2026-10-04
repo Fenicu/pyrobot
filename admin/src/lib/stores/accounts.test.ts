@@ -9,6 +9,8 @@ const account = (id: number, name: string): AccountOut => ({
 	name,
 	status: 'enabled',
 	status_reason: null,
+	blocked: false,
+	blocked_reason: null,
 	tg: { user_id: 100 + id, online: true },
 	mode: 'dry_run',
 	paused: false,

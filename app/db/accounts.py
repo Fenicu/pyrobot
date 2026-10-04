@@ -59,6 +59,10 @@ class AccountDeleting(Exception):
     """Аккаунт удаляется: `deleting` — конечный статус, правка отклонена."""
 
 
+class BlockedByOwner(Exception):
+    """Аккаунт заблокирован владельцем сервера: включение запрещено."""
+
+
 @dataclass(frozen=True)
 class AccountInfo:
     id: int
@@ -68,6 +72,8 @@ class AccountInfo:
     status_reason: str | None
     tg_user_id: int | None
     engine_generation: int
+    blocked: bool = False
+    blocked_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +100,8 @@ def _info(row: Account) -> AccountInfo:
         status_reason=row.status_reason,
         tg_user_id=row.tg_user_id,
         engine_generation=row.engine_generation,
+        blocked=row.blocked,
+        blocked_reason=row.blocked_reason,
     )
 
 
@@ -311,6 +319,8 @@ class AccountRepo:
                     raise KeyError(account_id)
                 if row.status == "deleting":
                     raise AccountDeleting(account_id)
+                if enabled and row.blocked:
+                    raise BlockedByOwner(account_id)
                 if enabled and row.status != "enabled":
                     await _check_capacity(session, capacity)
                 if name is None and enabled is None:
@@ -328,6 +338,51 @@ class AccountRepo:
             if _violated(exc) == "uq_accounts_owner_name":
                 raise NameTaken(name) from exc
             raise
+
+    async def block(self, account_id: int, reason: str) -> None:
+        """Блокировка аккаунта владельцем сервера: выставляет blocked и blocked_reason,
+        переводит в disabled/blocked_by_owner (кроме deleting) и создаёт уведомление warn."""
+        async with self._db.sessions() as session, session.begin():
+            row = await session.scalar(
+                select(Account).where(Account.id == account_id).with_for_update()
+            )
+            if row is None:
+                raise KeyError(account_id)
+            row.blocked = True
+            row.blocked_reason = reason
+            if row.status != "deleting":
+                row.status = "disabled"
+                row.status_reason = "blocked_by_owner"
+            row.updated_at = func.now()
+            session.add(
+                NotificationRow(
+                    account_id=account_id,
+                    level="warn",
+                    code="account_blocked",
+                    text=reason,
+                )
+            )
+
+    async def unblock(self, account_id: int) -> None:
+        """Разблокировка аккаунта владельцем сервера: снимает blocked/blocked_reason,
+        статус не меняет, создаёт уведомление info."""
+        async with self._db.sessions() as session, session.begin():
+            row = await session.scalar(
+                select(Account).where(Account.id == account_id).with_for_update()
+            )
+            if row is None:
+                raise KeyError(account_id)
+            row.blocked = False
+            row.blocked_reason = None
+            row.updated_at = func.now()
+            session.add(
+                NotificationRow(
+                    account_id=account_id,
+                    level="info",
+                    code="account_unblocked",
+                    text="account unblocked by owner",
+                )
+            )
 
     async def set_status(self, account_id: int, status: AccountStatus, reason: str | None) -> None:
         """У удаляемого аккаунта (`deleting`) статус не меняется: чистка должна дойти до конца."""
