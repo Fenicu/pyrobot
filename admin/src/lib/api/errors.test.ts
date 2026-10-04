@@ -127,4 +127,18 @@ describe('normalizeError', () => {
 			expect(errorText(err), code).toBe(text);
 		}
 	});
+
+	it('422 по полю login показывает русское описание требований', () => {
+		const err = normalizeError(422, {
+			detail: [
+				{
+					loc: ['body', 'login'],
+					msg: "String should match pattern '^[A-Za-z0-9_.-]{3,64}$'",
+					type: 'string_pattern_mismatch'
+				}
+			]
+		});
+		expect(errorText(err)).toBe('Логин: латиница, цифры, точка, дефис, подчёркивание; 3–64 символа');
+	});
 });
+

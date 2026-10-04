@@ -198,4 +198,64 @@ describe('аутентификация и восстановление', () => {
 		expect(await screen.findByText('new-code-1')).toBeInTheDocument();
 		expect(screen.getByText('new-code-2')).toBeInTheDocument();
 	});
+
+	it('приглашение: невалидный логин — кнопка заблокирована, ноль POST, русская подсказка', async () => {
+		const user = userEvent.setup();
+		const fetch = mockFetch(() => json({ expires_at: '2026-10-10T00:00:00Z' }));
+
+		render(InvitePage, { token: 'valid-token', fetchImpl: fetch });
+		await screen.findByLabelText('Логин');
+
+		const loginInput = screen.getByLabelText('Логин');
+		const passwordInput = screen.getByLabelText('Пароль (не короче 12)');
+		const repeatInput = screen.getByLabelText('Пароль ещё раз');
+		const submitBtn = screen.getByRole('button', { name: 'Зарегистрироваться' });
+
+		await user.type(passwordInput, 'validpassword123');
+		await user.type(repeatInput, 'validpassword123');
+
+		// Невалидный логин: кириллица («Вася»)
+		await user.type(loginInput, 'Вася');
+		expect(
+			screen.getByText('латиница, цифры, точка, дефис, подчёркивание; 3–64 символа')
+		).toBeInTheDocument();
+		expect(submitBtn).toBeDisabled();
+
+		// Клик по заблокированной кнопке не отправляет POST
+		await user.click(submitBtn);
+		const posts = fetch.calls.filter((c) => c.method === 'POST');
+		expect(posts).toHaveLength(0);
+	});
+
+	it('восстановление: вызывает stopApp() перед adopt()', async () => {
+		const user = userEvent.setup();
+		const session = new Session();
+		const stopApp = vi.fn();
+		const fetch = mockFetch((c) => {
+			if (c.url === '/api/v1/auth/recover/start') return json({}, 202);
+			if (c.url === '/api/v1/auth/recover/finish') {
+				return json({ login: 'alice', csrf_token: 'csrf-rec', role: 'user' }, 200);
+			}
+			return json({}, 404);
+		});
+
+		render(RecoverPage, { session, stopApp, fetchImpl: fetch });
+
+		await user.type(screen.getByLabelText('Логин'), 'alice');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+
+		await screen.findByRole('button', { name: 'Код восстановления' });
+		await user.click(screen.getByRole('button', { name: 'Код восстановления' }));
+
+		await user.type(screen.getByLabelText('Код восстановления'), '412-K7QM2-XH9TD');
+		await user.type(screen.getByLabelText('Новый пароль (не короче 12)'), 'newpassword123');
+		await user.type(screen.getByLabelText('Новый пароль ещё раз'), 'newpassword123');
+
+		await user.click(screen.getByRole('button', { name: 'Сменить пароль и войти' }));
+
+		await vi.waitFor(() => expect(stopApp).toHaveBeenCalledTimes(1));
+		expect(session.status).toBe('authenticated');
+		expect(session.login).toBe('alice');
+	});
 });
+

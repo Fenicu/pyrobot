@@ -29,13 +29,17 @@
 	let codes = $state<string[]>([]);
 	let saved = $state(false);
 
+	const LOGIN_RE = /^[A-Za-z0-9_.-]{3,64}$/;
+	const LOGIN_HINT = 'латиница, цифры, точка, дефис, подчёркивание; 3–64 символа';
 	const MIN_PASSWORD = 12;
 	const problem = $derived(
-		password.length > 0 && password.length < MIN_PASSWORD
-			? `не короче ${MIN_PASSWORD} символов`
-			: repeat.length > 0 && repeat !== password
-				? 'пароли не совпадают'
-				: ''
+		login.length > 0 && !LOGIN_RE.test(login)
+			? LOGIN_HINT
+			: password.length > 0 && password.length < MIN_PASSWORD
+				? `не короче ${MIN_PASSWORD} символов`
+				: repeat.length > 0 && repeat !== password
+					? 'пароли не совпадают'
+					: ''
 	);
 
 	onMount(() => {
@@ -61,7 +65,7 @@
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
-		if (!token || problem || login.trim().length < 3 || password.length < MIN_PASSWORD || password !== repeat) {
+		if (!token || problem || !LOGIN_RE.test(login) || password.length < MIN_PASSWORD || password !== repeat) {
 			return;
 		}
 		busy = true;
@@ -139,7 +143,7 @@
 			<button
 				type="submit"
 				class="btn btn-primary w-full"
-				disabled={busy || !!problem || login.trim().length < 3 || password.length < MIN_PASSWORD || password !== repeat}
+				disabled={busy || !!problem || !LOGIN_RE.test(login) || password.length < MIN_PASSWORD || password !== repeat}
 			>
 				{busy ? 'Регистрация…' : 'Зарегистрироваться'}
 			</button>

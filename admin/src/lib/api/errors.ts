@@ -137,8 +137,18 @@ export function errorText(err: ApiError): string {
 		case 'version_conflict':
 			return `Настройки уже изменены (версия ${err.version}) — перечитайте`;
 		case 'validation':
-			return err.issues.map((i) => `${i.loc.slice(1).join('.')}: ${i.msg}`).join('\n') || 'Ошибка проверки';
-		case 'rate_limited':
+			return (
+				err.issues
+					.map((i) => {
+						const field = i.loc[0] === 'body' ? i.loc.slice(1).join('.') : i.loc.join('.');
+						if (field === 'login' || i.loc.at(-1) === 'login') {
+							return 'Логин: латиница, цифры, точка, дефис, подчёркивание; 3–64 символа';
+						}
+						return `${i.loc.slice(1).join('.')}: ${i.msg}`;
+					})
+					.join('\n') || 'Ошибка проверки'
+			);
+		case 'rate_limited': {
 			if (err.code === TG_CODE_RATE_LIMITED) {
 				const text = 'Слишком много запросов кода входа';
 				return err.retryAfter !== null ? `${text} — следующий через ${waitText(err.retryAfter)}` : text;
@@ -148,7 +158,11 @@ export function errorText(err: ApiError): string {
 			return err.retryAfter !== null
 				? `Слишком часто — подождите ${err.retryAfter} с`
 				: 'Слишком часто — подождите';
+		}
 		case 'invalid':
+			if (err.code === 'login' || err.fields?.includes('login')) {
+				return 'Логин: латиница, цифры, точка, дефис, подчёркивание; 3–64 символа';
+			}
 			return err.fields?.length
 				? `${CODE_TEXT[err.code] ?? err.code}: ${err.fields.join(', ')}`
 				: (CODE_TEXT[err.code] ?? err.code);
