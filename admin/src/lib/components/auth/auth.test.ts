@@ -172,6 +172,41 @@ describe('аутентификация и восстановление', () => {
 		});
 	});
 
+	it('восстановление: «У меня уже есть код» ведёт к шагу 2 без recover/start', async () => {
+		const user = userEvent.setup();
+		const session = new Session();
+		const fetch = mockFetch((c) => {
+			if (c.url === '/api/v1/auth/recover/finish') {
+				const body = JSON.parse(c.body);
+				return json({ login: body.login, csrf_token: 'csrf-rec', role: 'user' }, 200);
+			}
+			return json({}, 404);
+		});
+
+		render(RecoverPage, { session, fetchImpl: fetch });
+
+		const skip = screen.getByRole('button', { name: 'У меня уже есть код' });
+		expect(skip).toBeDisabled();
+		await user.type(screen.getByLabelText('Логин'), 'bob');
+		await user.click(skip);
+
+		expect(screen.queryByText(/код отправлен в «Избранное»/)).not.toBeInTheDocument();
+		await user.click(screen.getByRole('button', { name: 'Код восстановления' }));
+		await user.type(screen.getByLabelText('Код восстановления'), '412-K7QM2-XH9TD');
+		await user.type(screen.getByLabelText('Новый пароль (не короче 12)'), 'newpassword123');
+		await user.type(screen.getByLabelText('Новый пароль ещё раз'), 'newpassword123');
+		await user.click(screen.getByRole('button', { name: 'Сменить пароль и войти' }));
+
+		await vi.waitFor(() => expect(goto).toHaveBeenCalledWith('/'));
+		expect(fetch.calls.some((c) => c.url === '/api/v1/auth/recover/start')).toBe(false);
+		const finishCall = fetch.calls.find((c) => c.url === '/api/v1/auth/recover/finish')!;
+		expect(JSON.parse(finishCall.body)).toEqual({
+			login: 'bob',
+			recovery_code: '412-K7QM2-XH9TD',
+			password: 'newpassword123'
+		});
+	});
+
 	it('перевыпуск кодов: неверный пароль — текст invalid_password', async () => {
 		const user = userEvent.setup();
 		let ok = false;

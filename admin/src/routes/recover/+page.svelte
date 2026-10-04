@@ -20,6 +20,8 @@
 	}: Props = $props();
 
 	let step = $state<1 | 2>(1);
+	// false — к шагу 2 перешли по «У меня уже есть код», recover/start не вызывался.
+	let sent = $state(false);
 	let kind = $state<'tg' | 'recovery'>('tg');
 
 	let login = $state('');
@@ -47,12 +49,20 @@
 		error = '';
 		try {
 			await recoverStart(login.trim(), fetchImpl);
+			sent = true;
 			step = 2;
 		} catch (err) {
 			error = err instanceof ApiFailure ? err.message : String(err);
 		} finally {
 			busy = false;
 		}
+	}
+
+	function skipStart() {
+		if (!login.trim()) return;
+		error = '';
+		sent = false;
+		step = 2;
 	}
 
 	async function submitFinish(e: SubmitEvent) {
@@ -107,13 +117,26 @@
 				<button type="submit" class="btn btn-primary w-full" disabled={busy || !login.trim()}>
 					{busy ? 'Отправка…' : 'Получить код'}
 				</button>
-				<div class="flex items-center justify-center">
+				<div class="flex items-center justify-between gap-2">
+					<button
+						type="button"
+						class="text-xs text-fg-muted hover:text-fg disabled:opacity-50"
+						disabled={busy || !login.trim()}
+						onclick={skipStart}
+					>
+						У меня уже есть код
+					</button>
 					<a href="/login" class="text-xs text-fg-muted hover:text-fg">Вспомнили пароль? Войти</a>
 				</div>
 			</form>
 		{:else if step === 2}
 			<p class="rounded-md border border-line bg-surface-2 p-3 text-xs text-fg-muted">
-				Если у учётки есть аккаунт онлайн в Telegram, код отправлен в «Избранное».
+				{#if sent}
+					Если у учётки есть аккаунт онлайн в Telegram, код отправлен в «Избранное».
+				{:else}
+					Введите код из «Избранного» Telegram (действует 10 минут) или код восстановления для
+					учётки <span class="font-mono">{login.trim()}</span>.
+				{/if}
 			</p>
 			<div class="flex gap-2">
 				<button
