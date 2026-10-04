@@ -12,6 +12,7 @@ from app.engine.facade import EngineFacade, GameChatWatch, LockLostError, TgNotO
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.store import ActionStore
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
+from app.engine.host.account import live_reread
 from app.engine.host.codes import CodeLimiter
 from app.engine.memory import MemoryActionStore, MemoryJournal
 from app.engine.notify import NotifierPort
@@ -68,6 +69,7 @@ def build(
         clock=SystemClock(),
         state_version=lambda: pipeline.version,
         own_company=lambda: company_of(pipeline.state),
+        reread=live_reread(transport, pipeline),
     )
     bus.subscribe(gateway.on_delivery, priority=0)
     current = settings

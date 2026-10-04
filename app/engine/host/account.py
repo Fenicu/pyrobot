@@ -242,6 +242,7 @@ class AccountRuntime:
             can_send=self._can_send,
             state_version=lambda: pipeline.version,
             own_company=lambda: company_of(pipeline.state),
+            reread=live_reread(transport, pipeline),
         )
         pending = await actions.unreconciled()
         if pending:

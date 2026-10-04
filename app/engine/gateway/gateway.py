@@ -5,7 +5,7 @@ import itertools
 import logging
 import re
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -43,6 +43,7 @@ from app.engine.types import IncomingMessage
 log = logging.getLogger(__name__)
 
 LatestLookup = Callable[[int, int], IncomingMessage | None]
+Reread = Callable[[int, int], Awaitable[IncomingMessage | None]]
 Boundary = Callable[[], int]
 CanSend = Callable[[], str | None]
 StateVersion = Callable[[], int]
@@ -158,6 +159,7 @@ class ActionGateway:
         on_uncertain: UncertainHook | None = None,
         state_version: StateVersion | None = None,
         own_company: OwnCompany = _company_unknown,
+        reread: Reread | None = None,
     ) -> None:
         self._transport = transport
         self._own_company = own_company
@@ -168,6 +170,7 @@ class ActionGateway:
         self._latest = latest
         self._boundary = boundary
         self._clock = clock
+        self._reread = reread
         self.on_uncertain = on_uncertain
         self._queue: list[_Pending] = []
         self._cond = asyncio.Condition()
@@ -225,6 +228,7 @@ class ActionGateway:
                 shared = self._live_shared(key)
             if shared is not None:
                 return await asyncio.shield(shared)
+        await self._reread_unknown(req)
         eng = self._settings.current.engine
         cls = command_class(req, self._own_company())
         pending = _Pending(
@@ -391,7 +395,7 @@ class ActionGateway:
         # Исход траты неизвестен: до сверки состояния новые траты запрещены. Блок ставится
         # синхронно, до выбора следующего действия. Пересылка ничего в игре не тратит: её
         # неизвестный исход не сверяется и не повторяется.
-        if p.cls in (CommandClass.NAV, CommandClass.FORWARD):
+        if p.cls in (CommandClass.NAV, CommandClass.FORWARD) or spends_nothing(p.req):
             return
         self._spend_block = RECONCILE_REASON
         if self.on_uncertain is not None:
@@ -399,6 +403,23 @@ class ActionGateway:
                 self.on_uncertain(p.req, p.action_id)
             except Exception:
                 log.exception("uncertain hook failed")
+
+    async def _reread_unknown(self, req: ActionRequest) -> None:
+        """Клик по сообщению, правки которого нет в кэше (рестарт): кнопки и ревизия
+        проверяются по перечитанному из Telegram. Клик, который всё равно не уйдёт, не читает."""
+        if (
+            self._reread is None
+            or req.kind is not ActionKind.CLICK
+            or req.message_id is None
+            or req.chat_id not in self._allowed_chats()
+            or self._can_send() is not None
+            or self._latest(req.chat_id, req.message_id) is not None
+        ):
+            return
+        try:
+            await self._reread(req.chat_id, req.message_id)
+        except Exception as exc:
+            log.warning("reread of %s/%s failed: %r", req.chat_id, req.message_id, exc)
 
     def _static_checks(self, req: ActionRequest, cls: CommandClass) -> Blocked | None:
         eng = self._settings.current.engine

@@ -4,10 +4,11 @@ from dataclasses import replace
 
 import pytest
 
+from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Expectation, Source
 from app.engine.settings import ArtifactRunSection, Settings
 from app.engine.transport.fake import Sent
-from app.engine.types import Button
+from app.engine.types import Button, IncomingMessage
 from tests.engine.gateway_rig import LIVE, Rig, expect_text, running_rig, send
 from tests.engine.helpers import GAME, make_msg
 
@@ -183,3 +184,164 @@ async def test_manual_accept_still_needs_confirmation(rig: Rig) -> None:
     # Ручной клик без токена подтверждения — как любой risky.
     res = await rig.gw.submit(replace(_accept(rig, None), source=Source.MANUAL))
     assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+
+
+async def test_reconcile_required_allows_metro_moves_but_blocks_purchases(rig: Rig) -> None:
+    rig.gw.block_spending(RECONCILE_REASON)
+    btn_left = (Button("⬅️", 0, 1, data="maze_left"),)
+    btn_tokens = (Button("⚡️Баф", 0, 0, data="maze_buf_tokens_fastMove"),)
+    btn_coins = (Button("⚡️Баф 🌐", 0, 0, data="maze_buf_coins_fastMove"),)
+    rig.latest[(GAME, 77)] = make_msg(
+        "карта", msg_id=77, buttons=(*btn_left, *btn_tokens, *btn_coins)
+    )
+
+    rig.reply_with("Идёшь Влево.")
+    move = await rig.gw.submit(
+        ActionRequest(
+            kind=ActionKind.CLICK,
+            chat_id=GAME,
+            message_id=77,
+            data="maze_left",
+            expect=expect_text("Идёшь"),
+        )
+    )
+    assert move.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["maze_left"]
+
+    tokens = await rig.gw.submit(
+        ActionRequest(
+            kind=ActionKind.CLICK,
+            chat_id=GAME,
+            message_id=77,
+            data="maze_buf_tokens_fastMove",
+            expect=expect_text("Баф"),
+        )
+    )
+    assert (tokens.status, tokens.reason) == (
+        ActionStatus.REJECTED,
+        f"blocked:{RECONCILE_REASON}",
+    )
+
+    coins = await rig.gw.submit(
+        ActionRequest(
+            kind=ActionKind.CLICK,
+            chat_id=GAME,
+            message_id=77,
+            data="maze_buf_coins_fastMove",
+            expect=expect_text("Баф"),
+        )
+    )
+    assert (coins.status, coins.reason) == (ActionStatus.REJECTED, "donate")
+
+    enter = await rig.gw.submit(
+        ActionRequest(
+            kind=ActionKind.CLICK,
+            chat_id=GAME,
+            message_id=77,
+            data="maze_enter_accept",
+            expect=expect_text("Вход"),
+        )
+    )
+    assert (enter.status, enter.reason) == (
+        ActionStatus.REJECTED,
+        f"blocked:{RECONCILE_REASON}",
+    )
+
+
+async def test_metro_move_uncertain_does_not_block_spending(rig: Rig) -> None:
+    btn_left = (Button("⬅️", 0, 1, data="maze_left"),)
+    rig.latest[(GAME, 77)] = make_msg("карта", msg_id=77, buttons=btn_left)
+    res = await rig.gw.submit(
+        ActionRequest(
+            kind=ActionKind.CLICK,
+            chat_id=GAME,
+            message_id=77,
+            data="maze_left",
+            expect=Expectation(lambda d: None, 0.05),
+        )
+    )
+    assert res.status is ActionStatus.OUTCOME_UNKNOWN
+    assert rig.gw.spending_blocked is None
+
+
+@pytest.mark.parametrize(
+    ("data", "spend_free"),
+    [
+        ("maze_up", True),
+        ("maze_down", True),
+        ("maze_left", True),
+        ("maze_right", True),
+        ("maze_start", True),
+        ("maze_exit", True),
+        ("maze_exit_accept", True),
+        ("maze_exit_decline", True),
+        ("maze_npc_low_accept", True),
+        ("maze_npc_low_decline", True),
+        ("maze_npc_high_accept", True),
+        ("maze_npc_high_decline", True),
+        ("maze_chest_accept", True),
+        ("maze_chest_decline", True),
+        ("maze_first_aid", True),
+        ("maze_first_aid_accept", True),
+        ("maze_first_aid_decline", True),
+        ("maze_continue", True),
+        ("maze_cancel_move", True),
+        ("maze_enter_decline", True),
+        ("maze_buf_tokens_fastMove", False),
+        ("maze_buf_coins_fastMove", False),
+        ("maze_enter_accept", False),
+        # Незнакомые кнопки диалогов метро тратами не считаются заранее.
+        ("maze_exit_buy_tokens", False),
+        ("maze_npc_any", False),
+    ],
+)
+def test_metro_spends_nothing_classification(data: str, spend_free: bool) -> None:
+    from app.engine.commands import spends_nothing_callback
+
+    assert spends_nothing_callback(data) is spend_free
+
+
+async def test_spending_block_keeps_pause_and_dry_run_reasons(rig: Rig) -> None:
+    rig.gw.block_spending(RECONCILE_REASON)
+    await _pause(rig)
+    paused = await rig.gw.submit(send("/job", source=Source.SCENARIO, expect=expect_text("x")))
+    assert (paused.status, paused.reason) == (ActionStatus.REJECTED, "paused")
+    await rig.settings.update(
+        lambda s: s.model_copy(
+            update={"engine": s.engine.model_copy(update={"paused": False, "mode": "dry_run"})}
+        ),
+        changed_by="test",
+    )
+    dry = await rig.gw.submit(send("/job", source=Source.MANUAL, expect=expect_text("x")))
+    assert (dry.status, dry.reason) == (ActionStatus.SUPPRESSED, "dry_run")
+    assert rig.transport.sent == []
+
+
+async def test_unknown_message_reread_only_for_click_that_may_be_sent(rig: Rig) -> None:
+    reads: list[tuple[int, int]] = []
+
+    async def reread(chat_id: int, msg_id: int) -> IncomingMessage | None:
+        reads.append((chat_id, msg_id))
+        return None
+
+    rig.gw._reread = reread
+
+    def click(chat_id: int) -> ActionRequest:
+        return ActionRequest(
+            kind=ActionKind.CLICK,
+            chat_id=chat_id,
+            message_id=5,
+            data="maze_left",
+            expect=expect_text("x"),
+        )
+
+    foreign = await rig.gw.submit(click(42))
+    assert (foreign.status, foreign.reason) == (ActionStatus.REJECTED, "chat_not_allowed")
+    rig.block = "tg_offline"
+    offline = await rig.gw.submit(click(GAME))
+    assert (offline.status, offline.reason) == (ActionStatus.REJECTED, "tg_offline")
+    assert reads == []
+    rig.block = None
+    unknown = await rig.gw.submit(click(GAME))
+    assert (unknown.status, unknown.reason) == (ActionStatus.REJECTED, "stale_button")
+    assert reads == [(GAME, 5)]

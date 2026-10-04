@@ -168,10 +168,11 @@ class DbActionStore:
                 )
                 .order_by(ActionRow.id)
             )
-            return [
+            found = (
                 Obligation(row.id, row.kind, row.payload.get("text"), row.payload.get("data"))
                 for row in rows
-            ]
+            )
+            return [o for o in found if not o.spends_nothing]
 
     async def mark_reconciled(self, action_ids: Sequence[int]) -> None:
         if not action_ids:

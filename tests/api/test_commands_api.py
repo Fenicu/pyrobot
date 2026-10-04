@@ -328,3 +328,56 @@ async def test_key_reused_after_first_finished_in_between_is_422(
     code, again = await _send(api_client, h, "/job", "w1")
     assert code == 200 and again == first
     assert transport.sent == []
+
+
+async def test_manual_click_after_restart_rereads_message(
+    container: Container,
+    api_client: AsyncClient,
+    clean_db: Database,
+    running: list[asyncio.Task[None]],
+) -> None:
+    f, transport = await _start(container, clean_db, LIVE, running)
+    running.append(asyncio.create_task(f.pipeline.run()))
+    h = {"X-CSRF-Token": await login(api_client)}
+
+    async def click(msg_id: int, data: str, revision: int, key: str) -> dict[str, object]:
+        body = {
+            "chat_id": GAME,
+            "message_id": msg_id,
+            "revision": revision,
+            "callback_data": data,
+            "idempotency_key": key,
+        }
+        r = await api_client.post("/api/v1/accounts/1/commands/click", headers=h, json=body)
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    # 1) Ручной клик после рестарта: кэш ревизий пуст, сообщение есть в Telegram (FakeTransport).
+    # Шлюз перечитывает сообщение, кнопка найдена, ревизия совпадает -> подтверждён и отправлен.
+    btn = (Button("✖️", 0, 0, data="cancel_inline"),)
+    transport.messages[(GAME, 50)] = make_msg("встреча", msg_id=50, revision=10, buttons=btn)
+    assert f.pipeline.latest(GAME, 50) is None
+
+    res = await click(50, "cancel_inline", 10, "c1")
+    assert (res["status"], res["reason"]) == ("confirmed", "sent")
+    assert (GAME, 50) in transport.fetches
+    assert [(s.kind, s.payload, s.message_id) for s in transport.sent] == [
+        ("click", "cancel_inline", 50)
+    ]
+
+    # 2) Если после перечитывания кнопки нет в сообщении -> отклоняется с stale_button.
+    btn_other = (Button("🗡", 0, 0, data="gorbushka_fight"),)
+    transport.messages[(GAME, 51)] = make_msg("бой", msg_id=51, revision=5, buttons=btn_other)
+    assert f.pipeline.latest(GAME, 51) is None
+
+    stale_btn = await click(51, "cancel_inline", 5, "c2")
+    assert (stale_btn["status"], stale_btn["reason"]) == ("rejected", "stale_button")
+    assert (GAME, 51) in transport.fetches
+
+    # 3) Если после перечитывания ревизия не совпадает -> отклоняется с stale_revision.
+    transport.messages[(GAME, 52)] = make_msg("карта", msg_id=52, revision=20, buttons=btn)
+    assert f.pipeline.latest(GAME, 52) is None
+
+    stale_rev = await click(52, "cancel_inline", 19, "c3")
+    assert (stale_rev["status"], stale_rev["reason"]) == ("rejected", "stale_revision")
+    assert (GAME, 52) in transport.fetches

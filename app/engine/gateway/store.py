@@ -4,8 +4,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.engine.commands import CommandClass
-from app.engine.gateway.types import ActionRequest, ActionResult, ActionStatus, Match, Verdict
+from app.engine.commands import CommandClass, spends_nothing_callback
+from app.engine.gateway.types import (
+    ActionKind,
+    ActionRequest,
+    ActionResult,
+    ActionStatus,
+    Match,
+    Verdict,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +41,11 @@ class Obligation:
     kind: str
     text: str | None = None
     data: str | None = None
+
+    @property
+    def spends_nothing(self) -> bool:
+        # Клик, который ничего не тратит (ход в метро): сверять нечего.
+        return self.kind == ActionKind.CLICK.value and spends_nothing_callback(self.data or "")
 
 
 @dataclass(frozen=True, slots=True)

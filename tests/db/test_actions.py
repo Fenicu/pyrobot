@@ -189,3 +189,24 @@ async def test_lost_forward_not_closed_without_its_notification(
     monkeypatch.undo()
     assert [c.action_id for c in await store.mark_unfinished_unknown()] == [forwarded]
     assert [n.code for n in await _notes(clean_db)] == ["team_forward_unknown"]
+
+
+async def test_spend_free_click_unknown_after_restart_is_not_an_obligation(
+    clean_db: Database,
+) -> None:
+    # Ход в метро ничего не тратит: рестарт посреди забега не должен снова ставить блок трат.
+    store = DbActionStore(clean_db, account_id=1)
+    move = await store.create(
+        ActionRequest(kind=ActionKind.CLICK, chat_id=1, message_id=7, data="maze_left"),
+        CommandClass.ACTION,
+        ActionStatus.SENT,
+    )
+    buff = await store.create(
+        ActionRequest(
+            kind=ActionKind.CLICK, chat_id=1, message_id=7, data="maze_buf_tokens_fastMove"
+        ),
+        CommandClass.ACTION,
+        ActionStatus.SENT,
+    )
+    assert sorted(c.action_id for c in await store.mark_unfinished_unknown()) == [move, buff]
+    assert [o.action_id for o in await store.unreconciled()] == [buff]

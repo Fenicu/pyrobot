@@ -11,7 +11,13 @@ from app.engine.clock import SystemClock
 from app.engine.commands import CommandClass
 from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.store import Obligation
-from app.engine.gateway.types import ActionStatus, Expectation, Source
+from app.engine.gateway.types import (
+    ActionKind,
+    ActionRequest,
+    ActionStatus,
+    Expectation,
+    Source,
+)
 from app.engine.memory import MemoryJournal
 from app.engine.notify import Level
 from app.engine.parsing import default_parser
@@ -192,6 +198,14 @@ async def test_obligation_from_restart_is_reconciled(world: World) -> None:
     assert [o.action_id for o in await store.unreconciled()] == [action_id]
     world.rig.gw.block_spending(RECONCILE_REASON)
     await until(lambda: world.rig.gw.spending_blocked is None)
+    assert await store.unreconciled() == []
+
+
+async def test_spend_free_click_from_restart_is_not_an_obligation(world: World) -> None:
+    store = world.rig.store
+    move = ActionRequest(kind=ActionKind.CLICK, chat_id=GAME, message_id=7, data="maze_left")
+    await store.create(move, CommandClass.ACTION, ActionStatus.SENT)
+    await store.mark_unfinished_unknown()
     assert await store.unreconciled() == []
 
 

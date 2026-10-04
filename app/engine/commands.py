@@ -413,8 +413,13 @@ _FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(
     )
 )
 # Не тратят ничего: блок трат (неизвестный исход, рестарт до сверки) их не держит. Проснуться при
-# ограблении — единственный способ не потерять 30% 💵.
-_SPEND_FREE_CALLBACK = re.compile(r"rob_awake_\d+\Z")
+# ограблении — единственный способ не потерять 30% 💵; ходы и диалоги в метро ничего не тратят.
+_SPEND_FREE_CALLBACK = re.compile(
+    r"(?:rob_awake_\d+"
+    r"|maze_(?:up|down|left|right|start|continue|cancel_move|enter_decline|exit|exit_accept"
+    r"|exit_decline|first_aid|first_aid_accept|first_aid_decline|chest_accept|chest_decline"
+    r"|npc_low_accept|npc_low_decline|npc_high_accept|npc_high_decline))\Z"
+)
 
 
 def feature_of_text(text: str) -> str | None:

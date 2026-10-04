@@ -171,13 +171,14 @@ class MemoryActionStore:
         return closed
 
     async def unreconciled(self) -> list[Obligation]:
-        return [
+        found = (
             Obligation(i, r.req.kind.value, r.req.text, r.req.data)
             for i, r in self.rows.items()
             if r.status is ActionStatus.OUTCOME_UNKNOWN
             and r.cls not in (CommandClass.NAV, CommandClass.FORWARD)
             and not r.reconciled
-        ]
+        )
+        return [o for o in found if not o.spends_nothing]
 
     async def mark_reconciled(self, action_ids: Sequence[int]) -> None:
         for action_id in action_ids:
