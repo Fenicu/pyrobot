@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, Field, ValidationError
 
 from app.api.container import Container
 from app.api.deps import (
@@ -22,15 +22,22 @@ from app.api.errors import (
     CONFIRM_NAME_MISMATCH,
     CSRF,
     ENGINE_NOT_RUNNING,
+    INVITE_GONE,
+    INVITE_NOT_FOUND,
     LAST_OWNER,
     REASON_REQUIRED,
     USER_NOT_FOUND,
+    ValidationErrorOut,
+    VersionConflictOut,
     error,
 )
 from app.db.admin_reads import AdminAccountRow
 from app.db.audit import Actor
+from app.db.invites import InviteGone, InviteInfo, InviteNotFound
 from app.db.users import LastOwner, Role
 from app.engine.host.host import EngineStats
+from app.engine.server_settings import ServerSettings
+from app.engine.settings import SettingsConflict, SettingsPatchError
 
 router = APIRouter(
     prefix="/api/v1/admin",
@@ -366,3 +373,237 @@ async def delete_account(
         )
     c.engines.poke()
     return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+class AdminInviteOut(BaseModel):
+    id: int
+    created_at: datetime
+    expires_at: datetime
+    max_accounts: int
+    note: str | None
+    expired: bool
+
+
+class AdminInviteCreateIn(BaseModel):
+    max_accounts: int | None = Field(default=None, ge=1, le=1000)
+    ttl_h: int | None = Field(default=None, ge=1, le=720)
+    note: str | None = Field(default=None, max_length=128)
+
+
+class AdminInviteCreatedOut(BaseModel):
+    invite: AdminInviteOut
+    token: str
+    path: str
+
+
+def _invite_out(info: InviteInfo, now: datetime) -> AdminInviteOut:
+    return AdminInviteOut(
+        id=info.id,
+        created_at=info.created_at,
+        expires_at=info.expires_at,
+        max_accounts=info.max_accounts,
+        note=info.note,
+        expired=info.expires_at <= now,
+    )
+
+
+@router.get("/invites", response_model=list[AdminInviteOut], responses=AUTH)
+async def list_invites(c: Annotated[Container, Depends(container)]) -> list[AdminInviteOut]:
+    """Неиспользованные и неотозванные приглашения без токенов."""
+    now = datetime.now(UTC)
+    return [_invite_out(info, now) for info in await c.invites.unused()]
+
+
+@router.post(
+    "/invites",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AdminInviteCreatedOut,
+    responses=CSRF,
+)
+async def create_invite(
+    body: AdminInviteCreateIn,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    c: Annotated[Container, Depends(container)],
+) -> AdminInviteCreatedOut:
+    """Создание приглашения; токен выдаётся только в этом ответе."""
+    settings, _ = await c.server_settings.load()
+    defaults = settings.invites
+    token, info = await c.invites.create(
+        Actor.of(ctx),
+        ttl_h=body.ttl_h if body.ttl_h is not None else defaults.default_ttl_h,
+        max_accounts=(
+            body.max_accounts if body.max_accounts is not None else defaults.default_max_accounts
+        ),
+        note=body.note,
+    )
+    return AdminInviteCreatedOut(
+        invite=_invite_out(info, datetime.now(UTC)), token=token, path=f"/invite/{token}"
+    )
+
+
+@router.delete(
+    "/invites/{invite_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    responses={**CSRF, 404: error(INVITE_NOT_FOUND), 410: error(INVITE_GONE)},
+)
+async def revoke_invite(
+    invite_id: int,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    c: Annotated[Container, Depends(container)],
+) -> Response:
+    try:
+        await c.invites.revoke(invite_id, Actor.of(ctx))
+    except InviteNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, INVITE_NOT_FOUND) from exc
+    except InviteGone as exc:
+        raise HTTPException(status.HTTP_410_GONE, INVITE_GONE) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class AdminServerSettingsOut(BaseModel):
+    version: int
+    values: dict[str, Any]
+    defaults: dict[str, Any]
+    json_schema: dict[str, Any] = Field(serialization_alias="schema")
+
+
+class AdminServerSettingsPatchIn(BaseModel):
+    version: int = Field(ge=0)
+    changes: dict[str, Any]
+
+
+class AdminServerSettingsPatchOut(BaseModel):
+    version: int
+    values: dict[str, Any]
+    changed: dict[str, list[Any]]
+
+
+@router.get("/server-settings", response_model=AdminServerSettingsOut, responses=AUTH)
+async def get_server_settings(
+    c: Annotated[Container, Depends(container)],
+) -> AdminServerSettingsOut:
+    settings, version = await c.server_settings.load()
+    return AdminServerSettingsOut(
+        version=version,
+        values=settings.model_dump(mode="json"),
+        defaults=ServerSettings().model_dump(mode="json"),
+        json_schema=ServerSettings.model_json_schema(),
+    )
+
+
+@router.patch(
+    "/server-settings",
+    response_model=AdminServerSettingsPatchOut,
+    responses={**CSRF, 409: {"model": VersionConflictOut}, 422: {"model": ValidationErrorOut}},
+)
+async def patch_server_settings(
+    body: AdminServerSettingsPatchIn,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    c: Annotated[Container, Depends(container)],
+) -> AdminServerSettingsPatchOut:
+    await c.server_settings.load()
+    try:
+        settings, version, changed = await c.server_settings.update(
+            body.changes, version=body.version, actor=Actor.of(ctx)
+        )
+    except SettingsConflict as exc:
+        _, current_version = await c.server_settings.load()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, {"code": "version_conflict", "version": current_version}
+        ) from exc
+    except SettingsPatchError as exc:
+        issue = {
+            "loc": ["body", "changes", *exc.path.split(".")],
+            "msg": exc.code,
+            "type": exc.code,
+        }
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, [issue]) from exc
+    except ValidationError as exc:
+        issues = [
+            {"loc": ["body", "changes", *e["loc"]], "msg": e["msg"], "type": e["type"]}
+            for e in exc.errors(include_url=False)
+        ]
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, issues) from exc
+    return AdminServerSettingsPatchOut(
+        version=version, values=settings.model_dump(mode="json"), changed=changed
+    )
+
+
+class AdminAuditOut(BaseModel):
+    id: int
+    at: datetime
+    actor_user_id: int | None
+    actor_login: str
+    action: str
+    target_type: str | None
+    target_id: int | None
+    details: dict[str, Any]
+
+
+class AdminAuditPageOut(BaseModel):
+    items: list[AdminAuditOut]
+    next_before: int | None
+
+
+@router.get("/audit", response_model=AdminAuditPageOut, responses=AUTH)
+async def list_audit(
+    c: Annotated[Container, Depends(container)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    before: Annotated[int | None, Query(ge=1)] = None,
+) -> AdminAuditPageOut:
+    assert c.audit is not None
+    items, next_before = await c.audit.page(limit=limit, before=before)
+    return AdminAuditPageOut(
+        items=[AdminAuditOut.model_validate(asdict(item)) for item in items],
+        next_before=next_before,
+    )
+
+
+class AdminNotificationOut(BaseModel):
+    id: int
+    created_at: datetime
+    level: str
+    code: str
+    text: str
+    read: bool
+
+
+class AdminNotificationReadIn(BaseModel):
+    up_to_id: int = Field(ge=1)
+
+
+@router.get("/notifications", response_model=list[AdminNotificationOut], responses=AUTH)
+async def list_server_notifications(
+    c: Annotated[Container, Depends(container)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[AdminNotificationOut]:
+    assert c.server_notifier is not None
+    rows = await c.server_notifier.recent(limit=limit)
+    return [
+        AdminNotificationOut(
+            id=row.id,
+            created_at=row.created_at,
+            level=row.level,
+            code=row.code,
+            text=row.text,
+            read=row.read,
+        )
+        for row in rows
+    ]
+
+
+@router.post(
+    "/notifications/read",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    responses=CSRF,
+)
+async def read_server_notifications(
+    body: AdminNotificationReadIn,
+    _: Annotated[SessionContext, Depends(require_csrf)],
+    c: Annotated[Container, Depends(container)],
+) -> Response:
+    assert c.server_notifier is not None
+    await c.server_notifier.mark_read(body.up_to_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

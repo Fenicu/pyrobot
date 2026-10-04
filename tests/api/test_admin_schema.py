@@ -7,8 +7,6 @@ from app.api.app import create_api
 from app.db.base import Database
 from tests.api.conftest import make_container
 
-pytestmark = pytest.mark.db
-
 # Имена полей всех ответов /admin/* — только служебные метаданные.
 ALLOWED = {
     "id",
@@ -37,6 +35,28 @@ ALLOWED = {
     "messages_1h",
     "actions_1h",
     "rows",
+    # Приглашения, журнал действий и уведомления сервера.
+    "expires_at",
+    "note",
+    "expired",
+    "invite",
+    "token",
+    "path",
+    "version",
+    "defaults",
+    "changed",
+    "items",
+    "next_before",
+    "at",
+    "actor_user_id",
+    "actor_login",
+    "action",
+    "target_type",
+    "target_id",
+    "details",
+    "level",
+    "code",
+    "read",
     # Стандартные поля ошибок FastAPI / Pydantic
     "detail",
     "loc",
@@ -59,8 +79,10 @@ FORBIDDEN = {
 
 
 @pytest.fixture
-def app(clean_db: Database) -> FastAPI:
-    return create_api(make_container(clean_db))
+def app() -> FastAPI:
+    return create_api(
+        make_container(Database("postgresql+asyncpg://pyrobot:pyrobot@localhost/unused"))
+    )
 
 
 def _collect_properties(
@@ -104,9 +126,25 @@ def test_admin_responses_only_service_fields(app: FastAPI) -> None:
     schemas = openapi.get("components", {}).get("schemas", {})
     admin_paths = {p: ops for p, ops in openapi["paths"].items() if p.startswith("/api/v1/admin")}
     assert admin_paths, "no /api/v1/admin routes found in openapi"
+    assert {
+        "/api/v1/admin/invites",
+        "/api/v1/admin/invites/{invite_id}",
+        "/api/v1/admin/server-settings",
+        "/api/v1/admin/audit",
+        "/api/v1/admin/notifications",
+        "/api/v1/admin/notifications/read",
+    }.issubset(admin_paths)
 
     all_props: set[str] = set()
-    for _, ops in admin_paths.items():
+    for path, ops in admin_paths.items():
+        path_allowed = ALLOWED.copy()
+        path_forbidden = FORBIDDEN.copy()
+        if path == "/api/v1/admin/server-settings":
+            path_allowed.update({"values", "schema"})
+            path_forbidden.difference_update({"values"})
+        if path == "/api/v1/admin/notifications":
+            path_allowed.add("text")
+            path_forbidden.discard("text")
         for op in ops.values():
             if not isinstance(op, dict):
                 continue
@@ -117,8 +155,14 @@ def test_admin_responses_only_service_fields(app: FastAPI) -> None:
                 content = resp.get("content", {})
                 for media in content.values():
                     if isinstance(media, dict) and "schema" in media:
-                        all_props.update(_collect_properties(media["schema"], schemas, set()))
+                        props = _collect_properties(media["schema"], schemas, set())
+                        all_props.update(props)
+                        assert props.issubset(path_allowed), (
+                            f"unauthorized fields in {path}: {props - path_allowed}"
+                        )
+                        assert props.isdisjoint(path_forbidden), (
+                            f"forbidden fields in {path}: {props & path_forbidden}"
+                        )
 
     assert all_props, "no response properties collected from /api/v1/admin routes"
-    assert all_props.issubset(ALLOWED), f"unauthorized fields found: {all_props - ALLOWED}"
-    assert all_props.isdisjoint(FORBIDDEN), f"forbidden fields present: {all_props & FORBIDDEN}"
+    assert "metrics" not in all_props
