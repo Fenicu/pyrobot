@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import fields, replace
 from datetime import datetime, timedelta
 from typing import Any
@@ -12,6 +13,7 @@ from app.engine.metro.budget import Budget, prior_step_s
 from app.engine.metro.solver import Click, Done, MetroSolver, Policy, policy_of
 from app.engine.parsing.metro import (
     ENTRY_COST,
+    WALL,
     MetroBuffs,
     MetroChest,
     MetroChestOpened,
@@ -63,6 +65,16 @@ ALERTS = {
 # Продолжение застало ход («Идёшь …»): новое окно приходит через секунды — перечитать.
 MOVING_WAIT_S = 10.0
 MOVING_POLL_S = 2.0
+# Зависание шага: на карте «Идёшь …» без новых правок дольше max(60 с, 3 × wait_s).
+STUCK_WAIT_MIN_S = 60.0
+STUCK_STEP_FACTOR = 3.0
+MOVES = ("maze_up", "maze_down", "maze_left", "maze_right")
+OPPOSITE: dict[str, tuple[str, tuple[int, int]]] = {
+    "left": ("right", (2, 3)),
+    "right": ("left", (2, 1)),
+    "up": ("down", (3, 2)),
+    "down": ("up", (1, 2)),
+}
 
 
 def expect_metro(message_id: int) -> Predicate:
@@ -251,6 +263,10 @@ def _wait_s(ctx: ScenarioContext, buffs: MetroBuffs) -> float:
     return ctx.timeout_s * prior_step_s("fastMove" in buffs.bought) / prior_step_s(True)
 
 
+def _stuck_timeout_s(ctx: ScenarioContext, buffs: MetroBuffs) -> float:
+    return max(STUCK_WAIT_MIN_S, STUCK_STEP_FACTOR * _wait_s(ctx, buffs))
+
+
 def _budget(params: Params, started: datetime, buffs: MetroBuffs) -> Budget:
     battle = params.get("battle_at")
     return Budget(
@@ -273,10 +289,18 @@ async def _resume(ctx: ScenarioContext, params: Params, message: int) -> Scenari
     history = await ctx.history(message)
     if not history:
         return ScenarioResult("stopped", "resume_without_history")
+    bought = [e for m in history for e in recognize_metro(m)[:1] if isinstance(e, MetroBuffs)]
+    buffs = bought[-1] if bought else MetroBuffs(bought=(), offers=(), tokens=0, coins=0)
+    stuck_s = _stuck_timeout_s(ctx, buffs)
     current = await ctx.reread(message)
     waited = 0.0
     moving: list[IncomingMessage] = []
-    while current is not None and _moving(current) and waited < MOVING_WAIT_S:
+    while (
+        current is not None
+        and _moving(current)
+        and waited < MOVING_WAIT_S
+        and not _stuck(ctx, current, stuck_s)
+    ):
         moving.append(current)
         await asyncio.sleep(MOVING_POLL_S)
         waited += MOVING_POLL_S
@@ -290,13 +314,12 @@ async def _resume(ctx: ScenarioContext, params: Params, message: int) -> Scenari
     if screen is None:
         # Последний экран незнакомый: без человека не продолжаем.
         return await _halt(ctx, "resume_unknown_screen")
-    if _moving(current):
+    if _moving(current) and not _stuck(ctx, current, stuck_s):
         return ScenarioResult("stopped", "resume_while_moving")
-    # «Идёшь …», прочитанное при ожидании, — ход, которым пришли к текущему кадру.
+    # «Идёшь …», прочитанное при ожидании, — ход, которым пришли к текущему кадру; зависший
+    # «Идёшь …» расшевеливает `_explore`.
     seen = [*history, *moving]
     frames = [(m, e) for m in seen if not _same(m, current) for e in recognize_metro(m)[:1]]
-    bought = [e for _, e in frames if isinstance(e, MetroBuffs)]
-    buffs = bought[-1] if bought else MetroBuffs(bought=(), offers=(), tokens=0, coins=0)
     maze = [n for n, (_, e) in enumerate(frames) if isinstance(e, SCREENS)]
     started = frames[maze[0]][0].date if maze else current.date
     solver = MetroSolver(_policy(params), _budget(params, started, buffs))
@@ -313,6 +336,152 @@ def _moving(msg: IncomingMessage) -> bool:
     return isinstance(screen, MetroMap) and screen.footer == "going"
 
 
+def _stuck(ctx: ScenarioContext, msg: IncomingMessage, after_s: float) -> bool:
+    """«Идёшь …», которое игра не правит дольше срока зависания (по дате правки)."""
+    return _moving(msg) and (ctx.clock.now() - msg.date).total_seconds() >= after_s
+
+
+def _in_run(screen: Event | None) -> bool:
+    """Кадр, с которого забег продолжается обычным путём."""
+    return isinstance(screen, SCREENS) and not isinstance(screen, MetroEarlyExit | MetroFinished)
+
+
+def _back_move(frame: IncomingMessage) -> str | None:
+    """Шаг назад: кнопка, противоположная ходу из «Идёшь …», если клетка позади не стена."""
+    screen = metro_screen(frame)
+    if not isinstance(screen, MetroMap) or screen.direction not in OPPOSITE:
+        return None
+    back, (row, col) = OPPOSITE[screen.direction]
+    window = screen.window
+    if not (0 <= row < len(window) and 0 <= col < len(window[row])) or window[row][col] == WALL:
+        return None
+    return f"maze_{back}"
+
+
+async def _recover_stuck(
+    ctx: ScenarioContext,
+    message: int,
+    current: IncomingMessage,
+    buffs: MetroBuffs,
+    solver: MetroSolver,
+    stages: list[str],
+    record: Callable[[str], dict[str, Any]],
+) -> ScenarioResult | IncomingMessage:
+    """Лестница расшевеливания зависшего шага; каждая ступень — если предыдущая осталась без
+    ответа: шаг назад → 🚪 и «Остаться» → 🚪 и «Выйти». Ответ, который не кадр забега и не
+    ожидаемый экран (в том числе отказ игры), — остановка без выхода. Возвращает кадр, с
+    которого забег продолжается; сработавшая ступень — в `stages`."""
+    wait_s = _wait_s(ctx, buffs)
+    tried: list[str] = []
+    shown = current
+
+    async def press(data: str) -> StepResult:
+        return await ctx.click(
+            message,
+            data,
+            expect_metro(message),
+            revision=shown.revision,
+            content=shown.content_hash(),
+            timeout_s=wait_s,
+        )
+
+    async def unknown(screen: Event | None) -> ScenarioResult:
+        kind = screen.kind if screen is not None else "unknown"
+        text = f"metro: unexpected answer while recovering a stuck step ({kind}), not leaving"
+        await ctx.notify("warn", "metro_stuck_unknown", text)
+        return ScenarioResult("stopped", "stuck_unknown", record("stuck_unknown"))
+
+    async def answer(step: StepResult) -> IncomingMessage | ScenarioResult | None:
+        """Правка-ответ; None — ответа нет в срок."""
+        if step.step is Step.OK:
+            assert step.delivery is not None
+            return step.delivery.msg
+        if step.step is Step.FAILED and step.reason == "timeout":
+            return None
+        if step.step is Step.REFUSED:
+            return await unknown(step.first(Refused) or step.first(Busy))
+        require(step)
+        raise AssertionError("unreachable")
+
+    def recovered(frame: IncomingMessage, stage: str) -> IncomingMessage:
+        stages.append(stage)
+        return frame
+
+    async def late() -> IncomingMessage | ScenarioResult | None:
+        """Правка, пришедшая после срока ступени: кадр забега — успех, незнакомый экран —
+        остановка; новое «Идёшь …» — зависание продолжается на нём."""
+        nonlocal shown
+        latest = ctx.latest(message)
+        if latest is None or _same(latest, shown):
+            return None
+        if _moving(latest):
+            shown = latest
+            return None
+        if _in_run(metro_screen(latest)):
+            return recovered(latest, tried[-1] if tried else "late_answer")
+        return await unknown(metro_screen(latest))
+
+    if (back := _back_move(current)) is not None:
+        tried.append("back_step")
+        await ctx.safe_point()
+        got = await answer(await press(back))
+        if got is not None:
+            if isinstance(got, ScenarioResult):
+                return got
+            if _in_run(metro_screen(got)):
+                return recovered(got, "back_step")
+            return await unknown(metro_screen(got))
+
+    await ctx.safe_point()
+    if (got := await late()) is not None:
+        return got
+    tried.append("exit_decline")
+    got = await answer(await press("maze_exit"))
+    if isinstance(got, ScenarioResult):
+        return got
+    if got is not None:
+        if not isinstance(metro_screen(got), MetroEarlyExit):
+            return await unknown(metro_screen(got))
+        shown = got
+        await ctx.safe_point()
+        got = await answer(await press("maze_exit_decline"))
+        if isinstance(got, ScenarioResult):
+            return got
+        if got is not None:
+            if _in_run(metro_screen(got)):
+                return recovered(got, "exit_decline")
+            return await unknown(metro_screen(got))
+
+    await ctx.safe_point()
+    if (got := await late()) is not None:
+        return got
+    if not isinstance(metro_screen(shown), MetroEarlyExit):
+        door = await press("maze_exit")
+        if door.step is Step.REFUSED:
+            return await unknown(door.first(Refused) or door.first(Busy))
+        if door.step is not Step.OK:
+            return await _halt(ctx, door.reason, record(door.reason))
+        assert door.delivery is not None
+        shown = door.delivery.msg
+        if not isinstance(metro_screen(shown), MetroEarlyExit):
+            return await unknown(metro_screen(shown))
+        await ctx.safe_point()
+    leave = await press("maze_exit_accept")
+    if leave.step is Step.REFUSED:
+        return await unknown(leave.first(Refused) or leave.first(Busy))
+    if leave.step is not Step.OK:
+        return await _halt(ctx, leave.reason, record(leave.reason))
+    assert leave.delivery is not None
+    finished = metro_screen(leave.delivery.msg)
+    if not isinstance(finished, MetroFinished):
+        return await unknown(finished)
+    stages.append("stuck_exit")
+    solver.observe(finished)
+    text = f"metro: step stuck, left the run after trying: {', '.join(tried)}"
+    await ctx.notify("warn", "metro_stuck_exit", text)
+    return ScenarioResult("done", "finished", record("finished"))
+
+
 async def _explore(
     ctx: ScenarioContext,
     message: int,
@@ -322,27 +491,42 @@ async def _explore(
     started: datetime,
 ) -> ScenarioResult:
     wait_s = _wait_s(ctx, buffs)
+    stuck_s = _stuck_timeout_s(ctx, buffs)
     notified: set[str] = set(solver.alerts)
+    # Сработавшие ступени лестницы зависшего шага — для статистики забегов.
+    stages: list[str] = []
 
     def record(outcome: str) -> dict[str, Any]:
         finished = ctx.clock.now()
-        return {
-            "metro": {
-                **solver.snapshot(),
-                "message_id": message,
-                "buffs": list(buffs.bought),
-                "tokens": buffs.tokens,
-                "started_at": started.isoformat(),
-                "finished_at": finished.isoformat(),
-                "duration_s": (finished - started).total_seconds(),
-                "step_s": solver.step_s(),
-                "result": solver.result,
-                "outcome": outcome,
-            }
+        run: dict[str, Any] = {
+            **solver.snapshot(),
+            "message_id": message,
+            "buffs": list(buffs.bought),
+            "tokens": buffs.tokens,
+            "started_at": started.isoformat(),
+            "finished_at": finished.isoformat(),
+            "duration_s": (finished - started).total_seconds(),
+            "step_s": solver.step_s(),
+            "result": solver.result,
+            "outcome": outcome,
         }
+        if stages:
+            run["stuck_recovered"] = list(stages)
+        return {"metro": run}
 
     try:
         while True:
+            if _stuck(ctx, current, stuck_s):
+                # Продолжение застало давно зависший ход.
+                recovered = await _recover_stuck(
+                    ctx, message, current, buffs, solver, stages, record
+                )
+                if isinstance(recovered, ScenarioResult):
+                    return recovered
+                solver.cancel()
+                solver.resync()
+                current = recovered
+                continue
             screen = metro_screen(current)
             if screen is None:
                 return await _halt(ctx, "unexpected_screen", record("unexpected_screen"))
@@ -365,16 +549,32 @@ async def _explore(
                     return await _halt(ctx, "screen_changed", record("screen_changed"))
                 current = latest
                 continue
-            step = require(
-                await ctx.click(
-                    message,
-                    move.data,
-                    expect_metro(message),
-                    revision=current.revision,
-                    content=current.content_hash(),
-                    timeout_s=wait_s,
-                )
+            step = await ctx.click(
+                message,
+                move.data,
+                expect_metro(message),
+                revision=current.revision,
+                content=current.content_hash(),
+                timeout_s=stuck_s if move.data in MOVES else wait_s,
             )
+            latest = ctx.latest(message)
+            if (
+                step.step is Step.FAILED
+                and step.reason == "timeout"
+                and latest is not None
+                and _moving(latest)
+            ):
+                # Ход начался («Идёшь …»), а нового окна нет дольше срока зависания.
+                recovered = await _recover_stuck(
+                    ctx, message, latest, buffs, solver, stages, record
+                )
+                if isinstance(recovered, ScenarioResult):
+                    return recovered
+                solver.cancel()
+                solver.resync()
+                current = recovered
+                continue
+            require(step)
             assert step.delivery is not None
             current = step.delivery.msg
     except ScenarioStopped as stop:

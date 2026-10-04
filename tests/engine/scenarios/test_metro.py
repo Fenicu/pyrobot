@@ -11,6 +11,7 @@ from app.engine.events import Event
 from app.engine.memory import MemoryJournal
 from app.engine.metro.solver import policy_of
 from app.engine.parsing.metro import (
+    MetroBuffs,
     MetroChest,
     MetroChestOpened,
     MetroEarlyExit,
@@ -27,7 +28,7 @@ from app.engine.scenarios.library import ScenarioResult, run_scenario
 from app.engine.scenarios.metro import metro
 from app.engine.settings import MetroSection
 from app.engine.state.model import CharacterState
-from app.engine.types import IncomingMessage
+from app.engine.types import Button, IncomingMessage
 from tests.engine.fakegame import GAME, World, running_world
 from tests.engine.metro.sim import hide_events, tree_maze
 from tests.engine.metro.simgame import RUN, SimGame, enter_with_real_frames
@@ -45,9 +46,11 @@ ENTRY = ["🏢Офис", "🚇Метро", "maze_enter_accept"] + [
 class Notes:
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
+        self.texts: list[str] = []
 
     async def notify(self, level: Any, code: str, text: str) -> None:
         self.sent.append((level, code))
+        self.texts.append(text)
 
 
 def _click_for(event: Event, nxt: Event) -> str:
@@ -283,14 +286,42 @@ async def test_lost_fight_without_packs_leaves_early(world: World) -> None:
 
 
 @certifies("metro")
-async def test_move_without_new_window_times_out(world: World) -> None:
+async def test_move_without_new_window_runs_ladder_then_halts(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
     enter_with_real_frames(world.game)
     world.game.on_click("maze_start", edit=("metro", RUN, 5))
-    # Только «Идёшь …» со старым окном: ход не подтверждён.
+    # Только «Идёшь …» со старым окном: ход не подтверждён, игра молчит и на лестницу.
     world.game.on_click("maze_left", edit=("metro", RUN, 6))
-    result = await run(world, ctx(world))
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
     assert (result.status, result.reason) == ("stopped", "timeout")
+    # Кадр — «Идёшь Вправо»: шаг назад — влево.
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_left",
+        "maze_left",
+        "maze_exit",
+        "maze_exit",
+    ]
+    assert notes.sent == [("warn", "metro_halted")]
     assert result.details is not None and result.details["metro"]["outcome"] == "timeout"
+
+
+def test_stuck_threshold_is_three_expected_steps_but_not_under_a_minute() -> None:
+    context = ScenarioContext(
+        None,  # type: ignore[arg-type]
+        game_chat_id=GAME,
+        simulate=False,
+        paused=lambda: False,
+        timeout_s=20.0,
+    )
+    fast = MetroBuffs(bought=("fastMove",), offers=(), tokens=0, coins=0)
+    slow = MetroBuffs(bought=(), offers=(), tokens=0, coins=0)
+    assert metro_module._stuck_timeout_s(context, fast) == 60.0
+    assert metro_module._stuck_timeout_s(context, slow) == 240.0
 
 
 OTHER = ("screens", 3623175)
@@ -373,7 +404,9 @@ def _swap_screen(world: World, run: int, version: int) -> None:
     [message] = [
         i
         for i, m in world.game.messages.items()
-        if (m.text or "").startswith(("🔋", "Ты у входа", "Бафы"))
+        if (m.text or "").startswith(
+            ("🔋", "Ты у входа", "Бафы", "Ты собираешься досрочно", "Ты в шаге")
+        )
     ]
     now = datetime.now(UTC)
     swapped = replace(
@@ -639,7 +672,7 @@ def _entrance_says(world: World, cost: int, motivation: int) -> None:
             await world.game._push(shown)
         return sent
 
-    world.game.send_text = answer  # type: ignore[method-assign]
+    world.game.send_text = answer  # type: ignore[method-assign,assignment]
 
 
 @certifies("metro")
@@ -762,3 +795,473 @@ def test_policy_params_default_to_metro_settings() -> None:
     assert metro_module._policy({"npc_low": False, "heal_at": "40"}) == replace(
         defaults, npc_low=False, heal_at=40
     )
+
+
+STUCK_MAP_GOING_LEFT = (
+    "🔋3%\n"
+    "⬛️⬜️⬜️⬜️⬜️               \n"
+    "⬛️⬜️⬛️⬛️⬛️               \n"
+    "⬛️⬜️😎⬜️⬜️               \n"
+    "⬛️⬜️⬛️⬛️⬛️               \n"
+    "⬛️⬜️⬛️⬜️⬜️               \n"
+    "Идёшь Влево."
+)
+STUCK_MAP_WALL_BACK = (
+    "🔋3%\n"
+    "⬛️⬜️⬜️⬜️⬜️               \n"
+    "⬛️⬜️⬛️⬛️⬛️               \n"
+    "⬛️⬜️😎⬛️⬜️               \n"
+    "⬛️⬜️⬛️⬛️⬛️               \n"
+    "⬛️⬜️⬛️⬜️⬜️               \n"
+    "Идёшь Влево."
+)
+STUCK_EARLY_EXIT_TEXT = (
+    "Ты собираешься досрочно покинуть метро.\n"
+    "Ты потеряешь половину найденного.\n\n"
+    "Найдено\n"
+    "🍕Пицца: 2\n"
+    "📚Знания: 5\n"
+    "🔩Сырьё: 3\n"
+    "💵Деньги: 98\n"
+    "⚙️Детали: 7\n"
+    "⚪️Улучшения: 1\n"
+    "🌭Хот-дог: 4\n"
+    "🍔Бургер: 1\n\n"
+    "Получишь половину\n"
+    "🍕Пицца: 1\n"
+    "📚Знания: 3\n"
+    "🔩Сырьё: 2\n"
+    "💵Деньги: 49\n"
+    "⚙️Детали: 4\n"
+    "⚪️Улучшения: 1\n"
+    "🌭Хот-дог: 2\n"
+    "🍔Бургер: 1\n\n"
+    "Выходишь?"
+)
+STUCK_FINISHED_TEXT = (
+    "Ты вышел из метро досрочно. Но при этом потерял половину найденного.\n\n"
+    "Получено\n"
+    "🍕Пицца: 1\n"
+    "📚Знания: 3\n"
+    "🔩Сырьё: 2\n"
+    "💵Деньги: 49\n"
+    "⚙️Детали: 4\n"
+    "⚪️Улучшения: 1\n"
+    "🌭Хот-дог: 2\n"
+    "🍔Бургер: 1\n"
+    "🔋Осталось выносливости: 3%\n\n"
+    "К персонажу - /main."
+)
+EARLY_EXIT_BUTTONS = (
+    Button("👍Выйти", 0, 0, "maze_exit_accept"),
+    Button("👎Остаться", 0, 1, "maze_exit_decline"),
+)
+
+
+@certifies("metro")
+async def test_stuck_step_recovered_by_back_step(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    world.game.on_click("maze_right", edit=("metro", RUN, 7))
+    result = await run(world, ctx(world, stop_after=len(ENTRY) + 3))
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads()[len(ENTRY) :] == ["maze_start", "maze_left", "maze_right"]
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["back_step"]
+
+
+@certifies("metro")
+async def test_stuck_step_back_unanswered_exit_declined_recovers(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    early_exit = replace(
+        game_msg("metro", RUN, 6), text=STUCK_EARLY_EXIT_TEXT, inline=EARLY_EXIT_BUTTONS
+    )
+    world.game.on_click("maze_exit", edit=early_exit)
+    world.game.on_click("maze_exit_decline", edit=("metro", RUN, 7))
+    result = await run(world, ctx(world, stop_after=len(ENTRY) + 5))
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_left",
+        "maze_right",
+        "maze_exit",
+        "maze_exit_decline",
+    ]
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["exit_decline"]
+
+
+@certifies("metro")
+async def test_stuck_step_both_unanswered_exits_with_notification(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    early_exit = replace(
+        game_msg("metro", RUN, 6), text=STUCK_EARLY_EXIT_TEXT, inline=EARLY_EXIT_BUTTONS
+    )
+    world.game.on_click("maze_exit", edit=early_exit)
+    finished = replace(game_msg("metro", RUN, 6), text=STUCK_FINISHED_TEXT, inline=())
+    world.game.on_click("maze_exit_accept", edit=finished)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("done", "finished")
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_left",
+        "maze_right",
+        "maze_exit",
+        "maze_exit_decline",
+        "maze_exit_accept",
+    ]
+    assert ("warn", "metro_stuck_exit") in notes.sent
+    assert any("back_step" in t and "exit_decline" in t for t in notes.texts)
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["stuck_exit"]
+
+
+@certifies("metro")
+async def test_stuck_step_unknown_answer_stops_without_exit(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    world.game.on_click("maze_right", edit=OTHER)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("stopped", "stuck_unknown")
+    assert world.game.payloads()[len(ENTRY) :] == ["maze_start", "maze_left", "maze_right"]
+    assert notes.sent == [("warn", "metro_stuck_unknown")]
+
+
+@certifies("metro")
+async def test_resume_on_old_stuck_map_runs_ladder(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "MOVING_POLL_S", 0.01)
+    monkeypatch.setattr(metro_module, "MOVING_WAIT_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    for version in game_versions("metro", RUN)[: 165 + 1]:
+        await world.game.show(version)
+    stuck = replace(
+        game_msg("metro", RUN, 166),
+        msg_id=RUN,
+        kind="edit",
+        revision=next(world.game._revisions),
+        date=datetime.now(UTC) - timedelta(hours=2),
+    )
+    world.game.current[RUN] = stuck
+    world.game.on_click("maze_left", edit=("metro", RUN, 167))
+    result = await run(world, ctx(world, stop_after=1), resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads() == ["maze_left"]
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["back_step"]
+
+
+@certifies("metro")
+async def test_stuck_step_wall_behind_skips_to_door_and_decline(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck_wall = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_WALL_BACK)
+    world.game.on_click("maze_left", edit=stuck_wall)
+    early_exit = replace(
+        game_msg("metro", RUN, 6), text=STUCK_EARLY_EXIT_TEXT, inline=EARLY_EXIT_BUTTONS
+    )
+    world.game.on_click("maze_exit", edit=early_exit)
+    world.game.on_click("maze_exit_decline", edit=("metro", RUN, 7))
+    result = await run(world, ctx(world, stop_after=len(ENTRY) + 4))
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_left",
+        "maze_exit",
+        "maze_exit_decline",
+    ]
+    assert "maze_right" not in world.game.payloads()
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["exit_decline"]
+
+
+@certifies("metro")
+async def test_stuck_step_door_unanswered_on_step2_recovers_on_step3(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    early_exit = replace(
+        game_msg("metro", RUN, 6), text=STUCK_EARLY_EXIT_TEXT, inline=EARLY_EXIT_BUTTONS
+    )
+    finished = replace(game_msg("metro", RUN, 6), text=STUCK_FINISHED_TEXT, inline=())
+    # Ступень 2: maze_exit без ответа (таймаут)
+    world.game.on_click("maze_exit")
+    # Ступень 3: maze_exit ответил early_exit, затем maze_exit_accept ответил finished
+    world.game.on_click("maze_exit", edit=early_exit)
+    world.game.on_click("maze_exit_accept", edit=finished)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("done", "finished")
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_left",
+        "maze_right",
+        "maze_exit",
+        "maze_exit",
+        "maze_exit_accept",
+    ]
+    assert ("warn", "metro_stuck_exit") in notes.sent
+    assert any("back_step" in t and "exit_decline" in t for t in notes.texts)
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["stuck_exit"]
+
+
+@certifies("metro")
+async def test_stuck_step_late_answer_before_step2_recovers_back_step(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    swapped = False
+
+    def paused() -> bool:
+        nonlocal swapped
+        sent = len(world.game.sent)
+        # После отправки maze_right (шаг назад) на безопасной точке перед ступенью 2
+        # имитируем приход запоздалого ответа с картой в кэш конвейера.
+        if sent == len(ENTRY) + 3 and not swapped:
+            _swap_screen(world, RUN, 7)
+            swapped = True
+            return False
+        return sent >= len(ENTRY) + 3 and swapped
+
+    result = await run(world, _context(world, paused))
+    assert (result.status, result.reason) == ("stopped", "paused")
+    # maze_exit не нажимался, расшевеливание успешно по back_step
+    assert world.game.payloads()[len(ENTRY) :] == ["maze_start", "maze_left", "maze_right"]
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["back_step"]
+
+
+@certifies("metro")
+async def test_stuck_step_late_answer_before_step3_recovers_exit_decline(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    early_exit = replace(
+        game_msg("metro", RUN, 6), text=STUCK_EARLY_EXIT_TEXT, inline=EARLY_EXIT_BUTTONS
+    )
+    world.game.on_click("maze_exit", edit=early_exit)
+    # maze_exit_decline без ответа (таймаут)
+    swapped = False
+
+    def paused() -> bool:
+        nonlocal swapped
+        sent = len(world.game.sent)
+        # После отправки maze_exit_decline на безопасной точке перед ступенью 3
+        # имитируем запоздалый ответ с картой
+        if sent == len(ENTRY) + 5 and not swapped:
+            _swap_screen(world, RUN, 7)
+            swapped = True
+            return False
+        return sent >= len(ENTRY) + 5 and swapped
+
+    result = await run(world, _context(world, paused))
+    assert (result.status, result.reason) == ("stopped", "paused")
+    # maze_exit_accept не нажимался
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_left",
+        "maze_right",
+        "maze_exit",
+        "maze_exit_decline",
+    ]
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["exit_decline"]
+
+
+@certifies("metro")
+async def test_stuck_step_door_failure_on_step3_halts(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    # Ступень 1: maze_right таймаут (нет обработчика)
+    # Ступень 2: maze_exit таймаут
+    world.game.on_click("maze_exit")
+    # Ступень 3: maze_exit тоже таймаут
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("stopped", "timeout")
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_left",
+        "maze_right",
+        "maze_exit",
+        "maze_exit",
+    ]
+    assert ("warn", "metro_halted") in notes.sent
+    assert result.details is not None
+    assert result.details["metro"]["outcome"] == "timeout"
+
+
+@certifies("metro")
+async def test_stuck_step_accept_failure_on_step3_halts(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    early_exit = replace(
+        game_msg("metro", RUN, 6), text=STUCK_EARLY_EXIT_TEXT, inline=EARLY_EXIT_BUTTONS
+    )
+    # Ступень 2: maze_exit отвечает early_exit, maze_exit_decline таймаут
+    world.game.on_click("maze_exit", edit=early_exit)
+    # Ступень 3: maze_exit_accept таймаут (нет обработчика)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("stopped", "timeout")
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_left",
+        "maze_right",
+        "maze_exit",
+        "maze_exit_decline",
+        "maze_exit_accept",
+    ]
+    assert ("warn", "metro_halted") in notes.sent
+    assert result.details is not None
+    assert result.details["metro"]["outcome"] == "timeout"
+
+
+REFUSAL = ("refusals", 3516893)
+
+
+@certifies("metro")
+@pytest.mark.parametrize(
+    ("refusing", "payloads"),
+    [
+        ("maze_right", ["maze_start", "maze_left", "maze_right"]),
+        ("maze_exit", ["maze_start", "maze_left", "maze_right", "maze_exit"]),
+    ],
+)
+async def test_stuck_step_refusal_stops_without_exit(
+    world: World, monkeypatch: pytest.MonkeyPatch, refusing: str, payloads: list[str]
+) -> None:
+    # Отказ игры отдельным сообщением — живой, но незнакомый ответ на зависание: не выходить.
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    world.game.on_click(refusing, new=(REFUSAL,))
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("stopped", "stuck_unknown")
+    assert world.game.payloads()[len(ENTRY) :] == payloads
+    assert notes.sent == [("warn", "metro_stuck_unknown")]
+
+
+@certifies("metro")
+async def test_stuck_step_late_unknown_frame_stops_without_exit(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    stuck = replace(game_msg("metro", RUN, 6), text=STUCK_MAP_GOING_LEFT)
+    world.game.on_click("maze_left", edit=stuck)
+    swapped = False
+
+    def paused() -> bool:
+        nonlocal swapped
+        # Шаг назад без ответа в срок, а перед дверью пришла правка с незнакомым экраном.
+        if len(world.game.sent) == len(ENTRY) + 3 and not swapped:
+            [message] = [
+                i for i, m in world.game.messages.items() if m.text == STUCK_MAP_GOING_LEFT
+            ]
+            now = datetime.now(UTC)
+            unknown = replace(
+                game_msg(*OTHER), msg_id=message, kind="edit", revision=10_000, date=now
+            )
+            world.pipeline._remember(unknown)
+            swapped = True
+        return False
+
+    notes = Notes()
+    result = await run(world, _context(world, paused, notes))
+    assert (result.status, result.reason) == ("stopped", "stuck_unknown")
+    assert world.game.payloads()[len(ENTRY) :] == ["maze_start", "maze_left", "maze_right"]
+    assert notes.sent == [("warn", "metro_stuck_unknown")]
+
+
+@certifies("metro")
+async def test_pause_inside_ladder_on_resume_keeps_run_record(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(metro_module, "MOVING_POLL_S", 0.01)
+    monkeypatch.setattr(metro_module, "MOVING_WAIT_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_WAIT_MIN_S", 0.05)
+    monkeypatch.setattr(metro_module, "STUCK_STEP_FACTOR", 1.0)
+    for version in game_versions("metro", RUN)[: 165 + 1]:
+        await world.game.show(version)
+    stuck = replace(
+        game_msg("metro", RUN, 166),
+        msg_id=RUN,
+        kind="edit",
+        revision=next(world.game._revisions),
+        date=datetime.now(UTC) - timedelta(hours=2),
+    )
+    world.game.current[RUN] = stuck
+    # Шаг назад без ответа, пауза — перед дверью.
+    result = await run(world, ctx(world, stop_after=1), resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads() == ["maze_left"]
+    assert result.details is not None and result.details["metro"]["outcome"] == "paused"
