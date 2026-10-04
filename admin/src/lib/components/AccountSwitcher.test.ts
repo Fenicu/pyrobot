@@ -15,6 +15,8 @@ const account = (id: number, name: string, over: Partial<AccountOut> = {}): Acco
 	killed: false,
 	last_action_at: null,
 	unread: { warn: 0, error: 0 },
+	company: null,
+	team_tag: null,
 	...over
 });
 

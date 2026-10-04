@@ -66,6 +66,10 @@ class AccountOut(BaseModel):
     killed: bool
     last_action_at: IsoDatetime | None
     unread: UnreadOut
+    # Код компании (`piper`, `hooli`, `stark`, `umbrl`, `wayne`, `bmesa`) и тег команды из
+    # последнего снимка состояния; null — снимка нет или поле ещё не наблюдалось.
+    company: str | None
+    team_tag: str | None
 
 
 class AccountCreateIn(BaseModel):
@@ -120,6 +124,8 @@ def _out(c: Container, o: AccountOverview) -> AccountOut:
             "killed": killed,
             "last_action_at": o.last_action_at,
             "unread": UnreadOut(warn=o.unread_warn, error=o.unread_error),
+            "company": o.company,
+            "team_tag": o.team_tag,
         }
     )
 

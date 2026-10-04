@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 from sqlalchemy import select
@@ -13,8 +14,9 @@ from app.db.accounts import (
     TgUserTaken,
 )
 from app.db.base import Database
-from app.db.models import Account, AdminUser, SettingsRow
+from app.db.models import Account, AdminUser, SettingsRow, StateSnapshot
 from app.engine.settings import Settings
+from app.engine.state.model import CharacterState, Obs, dump_state
 
 pytestmark = pytest.mark.db
 
@@ -255,3 +257,41 @@ async def test_mark_deleting_is_idempotent(repo: AccountRepo, admin_id: int) -> 
         await repo.mark_deleting(acc.id)
         assert (await _info(repo, acc.id)).status == "deleting"
     await repo.mark_deleting(999)  # нет такого аккаунта — ничего не происходит
+
+
+async def _snapshot(db: Database, account_id: int, state: dict[str, Any]) -> None:
+    async with db.sessions() as session, session.begin():
+        session.add(StateSnapshot(account_id=account_id, version=1, state=state))
+
+
+def _seen(value: str | None) -> Obs[str | None]:
+    return Obs(value=value, at=datetime(2026, 10, 1, tzinfo=UTC))
+
+
+async def test_overview_company_and_team_tag_from_snapshot(
+    repo: AccountRepo, clean_db: Database, admin_id: int
+) -> None:
+    first = await repo.create(admin_id, "Первый", capacity=20)
+    second = await repo.create(admin_id, "Второй", capacity=20)
+    third = await repo.create(admin_id, "Третий", capacity=20)
+    await _snapshot(
+        clean_db,
+        first.id,
+        dump_state(CharacterState(company=_seen("umbrl"), team_tag=_seen("SU"))),
+    )
+    await _snapshot(clean_db, second.id, dump_state(CharacterState(company=_seen("piper"))))
+    by_id = {o.account.id: o for o in await repo.overview(admin_id)}
+    assert (by_id[first.id].company, by_id[first.id].team_tag) == ("umbrl", "SU")
+    assert (by_id[second.id].company, by_id[second.id].team_tag) == ("piper", None)
+    assert (by_id[third.id].company, by_id[third.id].team_tag) == (None, None)
+
+
+async def test_overview_unreadable_snapshot_gives_none(
+    repo: AccountRepo, clean_db: Database, admin_id: int
+) -> None:
+    acc = await repo.create(admin_id, "Второй", capacity=20)
+    await _snapshot(
+        clean_db, acc.id, {"schema_version": 1, "company": {"value": 5}, "team_tag": "SU"}
+    )
+    (only,) = await repo.overview(admin_id)
+    assert (only.company, only.team_tag) == (None, None)

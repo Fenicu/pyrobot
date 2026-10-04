@@ -31,6 +31,17 @@
       },
       "AccountOut": {
         "properties": {
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -88,6 +99,17 @@
             ],
             "title": "Status Reason"
           },
+          "team_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Tag"
+          },
           "tg": {
             "$ref": "#/components/schemas/AccountTgOut"
           },
@@ -105,7 +127,9 @@
           "paused",
           "killed",
           "last_action_at",
-          "unread"
+          "unread",
+          "company",
+          "team_tag"
         ],
         "title": "AccountOut",
         "type": "object"

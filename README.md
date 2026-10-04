@@ -3137,7 +3137,9 @@ found`. Запрос идёт в контексте аккаунта (в стр�
 
 - `GET /api/v1/accounts` (сессия) — аккаунты текущей учётки, удаляемые — до конца чистки: `id`,
   `name`, `status` (`enabled`, `disabled`, `error`, `deleting`), `status_reason`, `tg` (`user_id` —
-  привязка, `online`), `mode`, `paused`, `killed`, `last_action_at`, `unread` (`warn`, `error`);
+  привязка, `online`), `mode`, `paused`, `killed`, `last_action_at`, `unread` (`warn`, `error`),
+  `company` (код: `piper`, `hooli`, `stark`, `umbrl`, `wayne`, `bmesa`) и `team_tag` (например `SU`)
+  из последнего снимка состояния, `null` — снимка нет или поле ещё не наблюдалось;
 - `POST /api/v1/accounts {name}` (CSRF) — 201, аккаунт `enabled` с настройками по умолчанию
   (`dry_run`); 409 `name_taken` (имя уникально у учётки), 409 `capacity_reached` (включённых уже
   `PYROBOT_MAX_ENGINES`);

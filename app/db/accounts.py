@@ -29,6 +29,7 @@ from app.db.models import (
     TgSession,
 )
 from app.engine.settings import EngineSection, Settings
+from app.engine.state.model import company_of, team_tag_of
 from app.engine.tg_auth import TgUserTaken
 
 AccountStatus = Literal["enabled", "disabled", "error", "deleting"]
@@ -64,13 +65,16 @@ class AccountInfo:
 @dataclass(frozen=True)
 class AccountOverview:
     """Аккаунт в списке учётки: режим, пауза и kill из настроек в базе, последнее действие и
-    непрочитанные уведомления `warn` и `error`."""
+    непрочитанные уведомления `warn` и `error`; компания и тег команды — из последнего снимка
+    состояния (None — снимка нет или поле не наблюдалось)."""
 
     account: AccountInfo
     engine: EngineSection
     last_action_at: datetime | None
     unread_warn: int
     unread_error: int
+    company: str | None
+    team_tag: str | None
 
 
 def _info(row: Account) -> AccountInfo:
@@ -176,16 +180,32 @@ class AccountRepo:
             .scalar_subquery()
         )
         stmt = (
-            select(Account, SettingsRow.data, last_action, _unread("warn"), _unread("error"))
+            select(
+                Account,
+                SettingsRow.data,
+                last_action,
+                _unread("warn"),
+                _unread("error"),
+                StateSnapshot.state,
+            )
             .outerjoin(SettingsRow, SettingsRow.account_id == Account.id)
+            .outerjoin(StateSnapshot, StateSnapshot.account_id == Account.id)
             .where(Account.owner_id == owner_id)
             .order_by(Account.id)
         )
         async with self._db.sessions() as session:
             rows = (await session.execute(stmt)).all()
         return [
-            AccountOverview(_info(row), engine_section(data), last, int(warn), int(error))
-            for row, data, last, warn, error in rows
+            AccountOverview(
+                _info(row),
+                engine_section(data),
+                last,
+                int(warn),
+                int(error),
+                company_of(state or {}),
+                team_tag_of(state or {}),
+            )
+            for row, data, last, warn, error, state in rows
         ]
 
     async def has_tg_session(self, account_id: int) -> bool:

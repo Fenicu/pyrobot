@@ -949,6 +949,8 @@ export interface components {
         };
         /** AccountOut */
         AccountOut: {
+            /** Company */
+            company: string | null;
             /** Id */
             id: number;
             /** Killed */
@@ -971,6 +973,8 @@ export interface components {
             status: "enabled" | "disabled" | "error" | "deleting";
             /** Status Reason */
             status_reason: string | null;
+            /** Team Tag */
+            team_tag: string | null;
             tg: components["schemas"]["AccountTgOut"];
             unread: components["schemas"]["UnreadOut"];
         };
