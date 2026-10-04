@@ -55,6 +55,7 @@ export const SCENARIO: Record<string, string> = {
 	metro: '🚇 метро',
 	daily_refresh: '📋 перечитать задания',
 	daily_pick: '📋 выбрать личное задание',
+	team_pick: '📋 выбрать командное задание',
 	lottery_buy: '🤑 билеты лотереи',
 	book: '📒 книга',
 	card: '💳 подарочная карта',
@@ -278,7 +279,8 @@ export function actDetail(scenario: string, params: Record<string, unknown>, pla
 			return lotteryTickets(plan);
 		case 'sleep':
 			return `${plan.hints.sleep_hours} ч${sleepPlace(plan)}`;
-		case 'daily_pick': {
+		case 'daily_pick':
+		case 'team_pick': {
 			const kind = typeof params.task === 'string' ? params.task.replace(/_\w+$/, '') : '';
 			return PERSONAL_TASK[kind] ?? kind;
 		}
