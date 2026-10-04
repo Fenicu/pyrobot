@@ -127,3 +127,48 @@ export const VEHICLE: Record<string, string> = {
 	scooter: '🛴 самокат',
 	tractor: '🚜 трактор'
 };
+
+/** Компании игры по коду из профиля: значок и название. */
+export const COMPANY: Record<string, { mark: string; name: string }> = {
+	piper: { mark: '📯', name: 'Pied Piper' },
+	hooli: { mark: '🤖', name: 'Hooli' },
+	stark: { mark: '⚡️', name: 'Stark Ind.' },
+	umbrl: { mark: '☂️', name: 'Umbrella' },
+	wayne: { mark: '🎩', name: 'Wayne Ent.' },
+	bmesa: { mark: '☣️', name: 'Black Mesa' }
+};
+
+const VS16 = '️';
+
+/** Остаток имени после префикса, если имя им начинается (значки сравниваются без VS16), иначе null. */
+function afterPrefix(name: string, prefix: string): string | null {
+	const have = Array.from(name);
+	let i = 0;
+	for (const ch of Array.from(prefix)) {
+		if (ch === VS16) continue;
+		while (have[i] === VS16) i++;
+		if (have[i] !== ch) return null;
+		i++;
+	}
+	while (have[i] === VS16) i++;
+	return have.slice(i).join('');
+}
+
+/** Имя аккаунта как в игре: значок компании, `[TAG] ` команды, имя. Уже стоящие в имени значок и тег
+ * не повторяются. */
+export function accountTitle(a: { name: string; company: string | null; team_tag: string | null }): string {
+	const mark = a.company !== null ? (COMPANY[a.company]?.mark ?? '') : '';
+	let rest = a.name;
+	if (mark) rest = afterPrefix(rest, mark) ?? rest;
+	if (a.team_tag) rest = afterPrefix(rest.trimStart(), `[${a.team_tag}]`) ?? rest;
+	if (a.team_tag || mark) rest = rest.trimStart();
+	return `${mark}${a.team_tag ? `[${a.team_tag}] ` : ''}${rest}`;
+}
+
+/** Значки навыков по коду бонуса гаджета. */
+export const SKILL_MARK: Record<string, string> = {
+	practice: '🔨',
+	theory: '🎓',
+	cunning: '🐿',
+	wisdom: '🐢'
+};

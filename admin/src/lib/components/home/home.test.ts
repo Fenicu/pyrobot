@@ -3,12 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createAccountApi } from '$lib/api/account';
 import { dialogs } from '$lib/stores/confirm.svelte';
-import type { DayOut, EngineStatus, StateOut } from '$lib/api/types';
+import type { DayOut, EngineStatus, GadgetsState, Observed, StateOut } from '$lib/api/types';
 import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import ConfirmDialog from '../ConfirmDialog.svelte';
 import CharacterCard from './CharacterCard.svelte';
 import ControlsCard from './ControlsCard.svelte';
+import GadgetsCard from './GadgetsCard.svelte';
 import StatusHeader from './StatusHeader.svelte';
 import TodayCard from './TodayCard.svelte';
 
@@ -170,6 +171,104 @@ function controls(mode: 'live' | 'dry_run', running = true) {
 	render(ControlsCard, { api, status: { ...status, mode, running }, onchange: () => {} });
 	return fetch;
 }
+
+describe('компания и команда в карточке персонажа', () => {
+	const obs = <T>(value: T) => ({ at: prod.now, src: 'screen' as const, value });
+
+	it('строки «Компания» и «Команда»', () => {
+		render(CharacterCard, { state: { ...prod.state, company: obs('bmesa') }, stale: [], now: NOW });
+		const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
+		expect(within(card).getByText('Компания').parentElement).toHaveTextContent('☣️ Black Mesa');
+		expect(within(card).getByText('Команда').parentElement).toHaveTextContent('[SU]');
+	});
+
+	it('незнакомый код компании — сам код', () => {
+		render(CharacterCard, { state: { ...prod.state, company: obs('zzz') }, stale: [], now: NOW });
+		expect(screen.getByText('Компания').parentElement).toHaveTextContent('zzz');
+	});
+
+	it('не в команде или компания неизвестна — строки нет', () => {
+		render(CharacterCard, {
+			state: { ...prod.state, company: null, team_tag: obs<string | null>(null) },
+			stale: [],
+			now: NOW
+		});
+		expect(screen.queryByText('Компания')).toBeNull();
+		expect(screen.queryByText('Команда')).toBeNull();
+	});
+
+	it('пометка устаревания у строк', () => {
+		render(CharacterCard, {
+			state: { ...prod.state, company: obs('bmesa') },
+			stale: ['company', 'team_tag'],
+			now: NOW
+		});
+		expect(screen.getByText('Компания').parentElement).toHaveTextContent('(устарело)');
+		expect(screen.getByText('Команда').parentElement).toHaveTextContent('(устарело)');
+	});
+});
+
+describe('карточка гаджетов', () => {
+	const gadgets = (over: Partial<GadgetsState> = {}): Observed<GadgetsState> => ({
+		at: prod.now,
+		src: 'screen',
+		value: {
+			items: [
+				{
+					grade: '⚫️',
+					level: 26,
+					slot: '🕶',
+					name: 'Хиджаб',
+					bonuses: { theory: 85, wisdom: 55, practice: 30 },
+					mark: '🧶'
+				},
+				{
+					grade: '🔴',
+					level: 18,
+					slot: '💻',
+					name: 'MAC-адрес ноута',
+					bonuses: { theory: 31, cunning: 31 },
+					mark: null
+				}
+			],
+			sets: ['⚫️Сет VIP', '🔴Сет Хакер'],
+			...over
+		}
+	});
+
+	it('строка на гаджет, сеты одной строкой', () => {
+		render(GadgetsCard, { state: { ...prod.state, gadgets: gadgets() }, stale: [] });
+		const card = screen.getByRole('region', { name: 'Гаджеты' });
+		const items = within(card).getAllByRole('listitem');
+		expect(items.map((li) => li.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+			'🕶 Хиджаб ⚫️26 · +85🎓 +55🐢 +30🔨 🧶',
+			'💻 MAC-адрес ноута 🔴18 · +31🎓 +31🐿'
+		]);
+		expect(card).toHaveTextContent('⚫️Сет VIP · 🔴Сет Хакер');
+		expect(card).not.toHaveTextContent('(устарело)');
+	});
+
+	it('без сетов строки сетов нет', () => {
+		render(GadgetsCard, { state: { ...prod.state, gadgets: gadgets({ sets: [] }) }, stale: [] });
+		expect(screen.getByRole('region', { name: 'Гаджеты' })).not.toHaveTextContent('Сет');
+	});
+
+	it('пустой список — «ничего не надето»', () => {
+		render(GadgetsCard, { state: { ...prod.state, gadgets: gadgets({ items: [], sets: [] }) }, stale: [] });
+		expect(screen.getByRole('region', { name: 'Гаджеты' })).toHaveTextContent('ничего не надето');
+		expect(screen.queryByRole('listitem')).toBeNull();
+	});
+
+	it('данных нет — «нет данных»', () => {
+		render(GadgetsCard, { state: { ...prod.state, gadgets: null }, stale: [] });
+		expect(screen.getByRole('region', { name: 'Гаджеты' })).toHaveTextContent('нет данных');
+	});
+
+	it('устаревшее — с пометкой', () => {
+		render(GadgetsCard, { state: { ...prod.state, gadgets: gadgets() }, stale: ['gadgets'] });
+		expect(screen.getByRole('region', { name: 'Гаджеты' })).toHaveTextContent('(устарело)');
+	});
+});
 
 describe('управление', () => {
 	beforeEach(() => dialogs.answer(null));

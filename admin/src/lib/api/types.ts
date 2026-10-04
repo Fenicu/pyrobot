@@ -39,6 +39,7 @@ export type KindOut = S['KindOut'];
 export type BalanceOut = S['BalanceOut'];
 export type AccountOut = S['AccountOut'];
 export type ArtifactOut = S['ArtifactOut'];
+export type GadgetsState = S['GadgetsState'];
 
 /** Наблюдение поля состояния: `{value, at, src}`. */
 export interface Observed<T> {

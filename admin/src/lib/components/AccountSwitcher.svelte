@@ -2,6 +2,7 @@
 	import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down';
 	import type { AccountOut } from '$lib/api/types';
 	import { switchHref } from '$lib/nav';
+	import { accountTitle } from '$lib/util/game';
 
 	interface Props {
 		/** Аккаунты учётки (null — список ещё не загружен). */
@@ -55,7 +56,7 @@
 		title={statusText(a)}
 		aria-hidden="true"
 	></span>
-	<span class="min-w-0 flex-1 truncate text-left">{a.name}</span>
+	<span class="min-w-0 flex-1 truncate text-left">{accountTitle(a)}</span>
 	<span class="sr-only">({statusText(a)})</span>
 	{#if count(a) > 0}
 		<span class="pill pill-bad" aria-label="непрочитанных предупреждений и ошибок: {count(a)}">{count(a)}</span>

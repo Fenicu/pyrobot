@@ -12,6 +12,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { STATUS_LABEL, reasonText } from '$lib/util/accounts';
 	import { fmtMoment } from '$lib/util/format';
+	import { accountTitle } from '$lib/util/game';
 	import AccountsPending from '../AccountsPending.svelte';
 	import Modal from '../Modal.svelte';
 	import Pill from '../Pill.svelte';
@@ -187,9 +188,9 @@
 				>
 					<div role="cell" class="min-w-0">
 						{#if a.status === 'deleting'}
-							<span class="ext-text font-medium">{a.name}</span>
+							<span class="ext-text font-medium">{accountTitle(a)}</span>
 						{:else}
-							<a class="ext-text font-medium text-accent hover:underline" href={accountHref(a.id, '')}>{a.name}</a>
+							<a class="ext-text font-medium text-accent hover:underline" href={accountHref(a.id, '')}>{accountTitle(a)}</a>
 						{/if}
 					</div>
 					<div role="cell" class="flex flex-wrap items-center justify-between gap-1.5 md:justify-start">

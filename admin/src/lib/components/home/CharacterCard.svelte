@@ -2,7 +2,7 @@
 	import type { DayOut, PublicState } from '$lib/api/types';
 	import { levelForecast, levelForecastText } from '$lib/daily/forecast';
 	import { fmtCompact, fmtNum, fmtRelative } from '$lib/util/format';
-	import { busyText } from '$lib/util/game';
+	import { busyText, COMPANY } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
 	import Row from './Row.svelte';
 
@@ -26,6 +26,8 @@
 	const motivationMax = $derived(val(state, 'motivation_max'));
 	const nextAt = $derived(val(state, 'motivation_next_at'));
 	const busy = $derived(val(state, 'busy'));
+	const company = $derived(val(state, 'company'));
+	const teamTag = $derived(val(state, 'team_tag'));
 	const isStale = (field: string) => stale.includes(field);
 </script>
 
@@ -34,6 +36,14 @@
 	{#if Object.keys(state).length === 0}
 		<p class="text-sm text-fg-muted">Снимка ещё нет: бот не видел ни одного экрана.</p>
 	{:else}
+		{#if company}
+			<Row label="Компания" stale={isStale('company')}>
+				{COMPANY[company] ? `${COMPANY[company].mark} ${COMPANY[company].name}` : company}
+			</Row>
+		{/if}
+		{#if teamTag}
+			<Row label="Команда" stale={isStale('team_tag')}>[{teamTag}]</Row>
+		{/if}
 		<Row label="💡 опыт" stale={isStale('exp')}>{fmtCompact(exp)}</Row>
 		{#if expLeft !== null && level !== null}
 			<Row label="до ур. {level + 1}" stale={isStale('exp')}>
