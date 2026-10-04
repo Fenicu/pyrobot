@@ -34,7 +34,7 @@ from tests.fixtures import game_msg
 
 PARSER = default_parser(ChatsSection())
 ANSWERS = {
-    "😎Я": ("profile", 3624478),
+    "/compact": ("profile", 3624478),
     "/to_eat": ("food", 3624997),
     "/inv": ("items", 3625102),
     "/gifts": ("items", 3623585),
@@ -138,7 +138,7 @@ async def test_uncertain_spending_blocks_until_sources_refreshed(world: World) -
     await _uncertain(world, "/read_exp")
     assert world.rig.gw.spending_blocked == RECONCILE_REASON
     await until(lambda: world.rig.gw.spending_blocked is None)
-    assert world.sent() == ["/read_exp", "😎Я", "/inv"]
+    assert world.sent() == ["/read_exp", "/compact", "/inv"]
     assert await world.rig.store.unreconciled() == []
     await until(lambda: world.notes.codes == ["reconciled_auto"])
 
@@ -157,7 +157,7 @@ async def test_blocked_action_rejected_meanwhile() -> None:
 async def test_food_uncertainty_refreshes_menu(world: World) -> None:
     await _uncertain(world, "🌭Хот-дог")
     await until(lambda: world.rig.gw.spending_blocked is None)
-    assert world.sent()[1:] == ["😎Я", "/to_eat"]
+    assert world.sent()[1:] == ["/compact", "/to_eat"]
 
 
 async def test_nav_timeout_does_not_block(world: World) -> None:
@@ -175,7 +175,7 @@ async def test_event_without_state_update_keeps_block_and_backs_off() -> None:
         await until(lambda: "reconcile_stuck" in w.notes.codes, timeout=2.0)
         assert w.rig.gw.spending_blocked == RECONCILE_REASON
         await asyncio.sleep(0.3)
-        profile_requests = w.sent().count("😎Я")
+        profile_requests = w.sent().count("/compact")
         assert 3 <= profile_requests <= 8
         assert w.notes.codes.count("reconcile_stuck") == 1
     finally:
@@ -201,7 +201,7 @@ async def test_new_obligation_during_reconcile_keeps_block(world: World) -> None
 
     async def respond(rec: Sent) -> None:
         nonlocal first
-        if rec.payload == "😎Я" and first:
+        if rec.payload == "/compact" and first:
             first = False
             late = await store.create(send("/job"), CommandClass.ACTION, ActionStatus.SENT)
             await store.update(late, status=ActionStatus.OUTCOME_UNKNOWN, reason="timeout")
@@ -210,7 +210,7 @@ async def test_new_obligation_during_reconcile_keeps_block(world: World) -> None
     world.rig.transport.responder = respond
     await _uncertain(world, "/harvest")
     await until(lambda: world.rig.gw.spending_blocked is None, timeout=2.0)
-    assert world.sent().count("😎Я") >= 2
+    assert world.sent().count("/compact") >= 2
     assert await store.unreconciled() == []
 
 
@@ -266,7 +266,7 @@ async def test_final_check_catches_field_spoiled_by_later_screen(world: World) -
     await _uncertain(world, "/read_exp")
     await until(lambda: world.rig.gw.spending_blocked is None, timeout=2.0)
     assert spoiled
-    assert world.sent().count("😎Я") >= 2
+    assert world.sent().count("/compact") >= 2
 
 
 async def test_shutdown_is_not_a_reconcile_failure() -> None:
