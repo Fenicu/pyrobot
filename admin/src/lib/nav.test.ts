@@ -68,6 +68,15 @@ describe('возврат после входа', () => {
 		const item = moreNav(null).find((i) => i.href === '/password');
 		expect(item?.label).toBe('Пароль и коды');
 	});
+
+	it('пункт «Сервер» только у владельца', () => {
+		expect(moreNav(null, 'owner').find((i) => i.href === '/admin')?.label).toBe('Сервер');
+		expect(moreNav(1, 'owner').find((i) => i.href === '/admin')?.label).toBe('Сервер');
+		expect(moreNav(null, 'user').find((i) => i.href === '/admin')).toBeUndefined();
+		expect(moreNav(1, 'user').find((i) => i.href === '/admin')).toBeUndefined();
+		expect(moreNav(null).find((i) => i.href === '/admin')).toBeUndefined();
+		expect(loginHref(url('/admin'))).toBe('/login');
+	});
 });
 
 describe('экраны аккаунта', () => {

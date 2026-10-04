@@ -28,7 +28,7 @@
 	const opened = $derived(ctx?.id === account ? ctx : null);
 	const stopped = $derived(opened?.engine.status?.running === false);
 	const main = $derived(account === null ? [] : mainNav(account));
-	const more = $derived(moreNav(account));
+	const more = $derived(moreNav(account, session.role));
 	const moreActive = $derived(more.some((i) => isActive(path, i.href)));
 	const unread = $derived(opened?.unread.count ?? 0);
 

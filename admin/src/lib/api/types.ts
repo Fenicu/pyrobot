@@ -49,6 +49,23 @@ export type RecoveryCodesIn = S['RecoveryCodesIn'];
 export type RecoveryCodesOut = S['RecoveryCodesOut'];
 export type MeOut = S['MeOut'];
 
+export type AdminUserOut = S['AdminUserOut'];
+export type AdminUserPatchIn = S['AdminUserPatchIn'];
+export type AdminUserDeleteIn = S['AdminUserDeleteIn'];
+export type AdminAccountOut = S['AdminAccountOut'];
+export type AdminAccountPatchIn = S['AdminAccountPatchIn'];
+export type AdminAccountDeleteIn = S['AdminAccountDeleteIn'];
+export type AdminInviteOut = S['AdminInviteOut'];
+export type AdminInviteCreateIn = S['AdminInviteCreateIn'];
+export type AdminInviteCreatedOut = S['AdminInviteCreatedOut'];
+export type AdminServerSettingsOut = S['AdminServerSettingsOut'];
+export type AdminServerSettingsPatchIn = S['AdminServerSettingsPatchIn'];
+export type AdminServerSettingsPatchOut = S['AdminServerSettingsPatchOut'];
+export type AdminAuditOut = S['AdminAuditOut'];
+export type AdminAuditPageOut = S['AdminAuditPageOut'];
+export type AdminNotificationOut = S['AdminNotificationOut'];
+export type AdminNotificationReadIn = S['AdminNotificationReadIn'];
+
 /** Наблюдение поля состояния: `{value, at, src}`. */
 export interface Observed<T> {
 	value: T;

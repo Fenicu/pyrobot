@@ -8,6 +8,7 @@ import KeyRound from '@lucide/svelte/icons/key-round';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
 import Send from '@lucide/svelte/icons/send';
 import Settings from '@lucide/svelte/icons/settings';
+import ShieldCheck from '@lucide/svelte/icons/shield-check';
 import TrainFront from '@lucide/svelte/icons/train-front';
 import Users from '@lucide/svelte/icons/users';
 
@@ -36,7 +37,7 @@ export function mainNav(id: number): NavItem[] {
 }
 
 /** «Ещё» на телефоне, продолжение меню на ПК: разделы аккаунта (если он есть) и общие. */
-export function moreNav(id: number | null): NavItem[] {
+export function moreNav(id: number | null, role?: 'owner' | 'user' | null): NavItem[] {
 	const account: NavItem[] =
 		id === null
 			? []
@@ -47,10 +48,12 @@ export function moreNav(id: number | null): NavItem[] {
 					{ href: accountHref(id, '/notifications'), label: 'Уведомления', icon: Bell, badge: 'unread' },
 					{ href: accountHref(id, '/telegram'), label: 'Telegram', icon: Send }
 				];
+	const admin: NavItem[] = role === 'owner' ? [{ href: '/admin', label: 'Сервер', icon: ShieldCheck }] : [];
 	return [
 		...account,
 		{ href: '/accounts', label: 'Аккаунты', icon: Users },
-		{ href: '/password', label: 'Пароль и коды', icon: KeyRound }
+		{ href: '/password', label: 'Пароль и коды', icon: KeyRound },
+		...admin
 	];
 }
 
@@ -162,7 +165,7 @@ export function screenAccountContext(id: number): Map<symbol, () => number | nul
 const BASE = 'http://app.invalid';
 // Без возврата: главная — и так по умолчанию, после смены пароля форма не нужна, список аккаунтов —
 // в меню.
-const NO_RETURN = new Set(['/', '/login', '/password', '/accounts']);
+const NO_RETURN = new Set(['/', '/login', '/password', '/accounts', '/admin']);
 
 /** Вход с возвратом на текущую страницу (`?next=`); со страницы входа — её же `next`. */
 export function loginHref(url: URL): string {
