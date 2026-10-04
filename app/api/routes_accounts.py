@@ -138,7 +138,7 @@ async def list_accounts(
     c: Annotated[Container, Depends(container)],
 ) -> list[AccountOut]:
     """Аккаунты текущей учётки, удаляемые — до конца чистки."""
-    return [_out(c, o) for o in await c.accounts.overview(ctx.admin_id)]
+    return [_out(c, o) for o in await c.accounts.overview(ctx.user_id)]
 
 
 @router.post(
@@ -155,13 +155,13 @@ async def create_account(
     """Новый аккаунт — `enabled`, настройки по умолчанию (`dry_run`): движок поднимет хост, он
     работает без Telegram до первого входа."""
     try:
-        created = await c.accounts.create(ctx.admin_id, body.name, capacity=c.config.max_engines)
+        created = await c.accounts.create(ctx.user_id, body.name, capacity=c.config.max_engines)
     except NameTaken as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, NAME_TAKEN) from exc
     except CapacityReached as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, CAPACITY_REACHED) from exc
     c.engines.poke()
-    return await _one(c, ctx.admin_id, created.id)
+    return await _one(c, ctx.user_id, created.id)
 
 
 @router.get("/host/status", response_model=HostStatusOut, responses=AUTH)
@@ -201,7 +201,7 @@ async def patch_account(
     except KeyError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, ACCOUNT_NOT_FOUND) from exc
     c.engines.poke()
-    return await _one(c, ctx.admin_id, scope.account.id)
+    return await _one(c, ctx.user_id, scope.account.id)
 
 
 @account.delete(

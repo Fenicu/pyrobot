@@ -40,7 +40,7 @@ async def clean_db(db: Database) -> AsyncIterator[Database]:
     tables = [t.name for t in Base.metadata.sorted_tables]
     async with db.engine.begin() as conn:
         # `accounts` чистится вместе со всеми: на неё ссылаются остальные таблицы, а она — на
-        # `admin_users`; аккаунт 1 создаётся заново.
+        # `users`; аккаунт 1 создаётся заново.
         await conn.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
         await _seed_account(conn)
     yield db

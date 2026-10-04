@@ -179,7 +179,7 @@ async def test_starts_enabled_accounts_in_id_order_with_gap(
     clean_db: Database, hosts: Hosts
 ) -> None:
     # Аккаунт без владельца при старте хоста достаётся первой учётке.
-    await AuthRepo(clean_db).ensure_admin("admin", "correct horse battery")
+    await AuthRepo(clean_db).ensure_owner("admin", "correct horse battery")
     two = await _add(clean_db)
     await _add(clean_db, "disabled")
     await _add(clean_db, "error")
@@ -361,7 +361,7 @@ async def test_crash_loop_during_start_is_acted_on(
 async def test_start_failure_sets_error_other_accounts_unaffected(
     clean_db: Database, hosts: Hosts
 ) -> None:
-    await AuthRepo(clean_db).ensure_admin("admin", PASSWORD)
+    await AuthRepo(clean_db).ensure_owner("admin", PASSWORD)
     async with clean_db.sessions() as session, session.begin():
         session.add(SettingsRow(account_id=1, version=1, data={"engine": {"mode": "warp"}}))
     two = await _add(clean_db)

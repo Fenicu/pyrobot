@@ -7,6 +7,7 @@ from app.config import AppConfig
 from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.users import UserRepo
 from app.engine.host.account import AccountRuntime
 from app.engine.host.host import HostStatus
 
@@ -39,5 +40,6 @@ def build_schema() -> dict[str, Any]:
         db=db,
         accounts=AccountRepo(db),
         engines=_NoEngines(),
+        users=UserRepo(db),
     )
     return create_api(container).openapi()

@@ -1,17 +1,20 @@
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 
 from app.api.security import hash_password, new_token, token_hash
 from app.db.base import Database
-from app.db.models import AdminUser, AuthSession
+from app.db.models import AuthSession, User
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
 class Resolved:
     session: AuthSession
-    admin: AdminUser
+    user: User
     slid: bool
 
 
@@ -31,25 +34,39 @@ class AuthRepo:
     def ttl(self) -> timedelta:
         return self._ttl
 
-    async def ensure_admin(self, login: str, password: str | None) -> None:
-        if await self.get_admin(login) is not None or not password:
-            return
-        password_hash = await hash_password(password)
+    async def ensure_owner(self, login: str, password: str | None) -> None:
         async with self._db.sessions() as session, session.begin():
-            session.add(AdminUser(login=login, password_hash=password_hash))
+            owners_count = await session.scalar(
+                select(func.count()).select_from(User).where(User.role == "owner")
+            )
+            if owners_count and owners_count > 0:
+                return
+            user = await session.scalar(select(User).where(User.login == login))
+            if user is not None:
+                log.warning(
+                    "no owner: user %r exists with role user; promote it with app.tools.users",
+                    login,
+                )
+                return
+            if not password:
+                return
+            password_hash = await hash_password(password)
+            session.add(
+                User(login=login, password_hash=password_hash, role="owner", max_accounts=10)
+            )
 
-    async def get_admin(self, login: str) -> AdminUser | None:
+    async def get_user(self, login: str) -> User | None:
         async with self._db.sessions() as session:
-            return await session.scalar(select(AdminUser).where(AdminUser.login == login))
+            return await session.scalar(select(User).where(User.login == login))
 
     async def create_session(
-        self, admin_id: int, ip: str | None, ua: str | None
+        self, user_id: int, ip: str | None, ua: str | None
     ) -> tuple[str, AuthSession]:
         token = new_token()
         row = AuthSession(
             token_hash=token_hash(token),
             csrf_token=new_token(),
-            admin_user_id=admin_id,
+            admin_user_id=user_id,
             expires_at=datetime.now(UTC) + self._ttl,
             ip=ip,
             user_agent=(ua or "")[:256] or None,
@@ -70,14 +87,16 @@ class AuthRepo:
             )
             if row is None:
                 return None
-            admin = await session.get(AdminUser, row.admin_user_id)
-            if admin is None:
+            user = await session.get(User, row.admin_user_id)
+            if user is None:
+                return None
+            if user.disabled_at is not None or user.deleting_at is not None:
                 return None
             slid = slide and now - row.last_seen_at > self._slide_after
             if slid:
                 row.last_seen_at = now
                 row.expires_at = now + self._ttl
-            return Resolved(row, admin, slid)
+            return Resolved(row, user, slid)
 
     async def purge_expired(self) -> int:
         async with self._db.sessions() as session, session.begin():
@@ -92,11 +111,20 @@ class AuthRepo:
         async with self._db.sessions() as session, session.begin():
             await session.execute(delete(AuthSession).where(AuthSession.id == session_id))
 
-    async def change_password(self, admin_id: int, new_hash: str) -> None:
+    async def revoke_all(self, user_id: int) -> int:
+        async with self._db.sessions() as session, session.begin():
+            deleted = await session.scalars(
+                delete(AuthSession)
+                .where(AuthSession.admin_user_id == user_id)
+                .returning(AuthSession.id)
+            )
+            return len(list(deleted))
+
+    async def change_password(self, user_id: int, new_hash: str) -> None:
         async with self._db.sessions() as session, session.begin():
             await session.execute(
-                update(AdminUser)
-                .where(AdminUser.id == admin_id)
+                update(User)
+                .where(User.id == user_id)
                 .values(password_hash=new_hash, password_changed_at=datetime.now(UTC))
             )
-            await session.execute(delete(AuthSession).where(AuthSession.admin_user_id == admin_id))
+            await session.execute(delete(AuthSession).where(AuthSession.admin_user_id == user_id))

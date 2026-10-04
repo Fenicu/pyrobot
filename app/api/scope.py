@@ -68,7 +68,7 @@ async def account_scope(
     if not 1 <= account_id <= _ID_MAX:
         raise HTTPException(status.HTTP_404_NOT_FOUND, ACCOUNT_NOT_FOUND)
     account = await c.accounts.get(account_id)
-    if account is None or account.owner_id != ctx.admin_id:
+    if account is None or account.owner_id != ctx.user_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, ACCOUNT_NOT_FOUND)
     token = current_account.set(account.id)
     try:

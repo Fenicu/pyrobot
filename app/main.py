@@ -18,6 +18,7 @@ from app.db.crypto import SecretBox, SecretKeyError, ensure_key, parse_key
 from app.db.notifications import DbNotifier
 from app.db.retention import DbRetention
 from app.db.settings_store import DbSettingsStore
+from app.db.users import UserRepo
 from app.engine.clock import SystemClock
 from app.engine.host.account import RuntimeDeps
 from app.engine.host.codes import CodeLimiter
@@ -81,6 +82,7 @@ class Runtime:
             logout_offline=self._logout_offline,
         )
         self.supervisor = self.host.supervisor
+        self.users = UserRepo(self.db)
         self.container = Container(
             config=config,
             auth=self.auth,
@@ -88,6 +90,7 @@ class Runtime:
             db=self.db,
             accounts=self.accounts,
             engines=self.host,
+            users=self.users,
         )
         self.session_purge_s = SESSION_PURGE_S
         self.retention_first_s = RETENTION_FIRST_S
@@ -107,7 +110,7 @@ class Runtime:
             log.warning("PYROBOT_ACCOUNT_ID больше не читается")
         await self._check_key()
         password = self.config.admin_password
-        await self.auth.ensure_admin(
+        await self.auth.ensure_owner(
             self.config.admin_login, password.get_secret_value() if password else None
         )
         await self.leases.open()

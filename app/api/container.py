@@ -9,6 +9,7 @@ from app.config import AppConfig
 from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.users import UserRepo
 from app.engine.clock import Clock, SystemClock
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ class Container:
     db: Database
     accounts: AccountRepo
     engines: EngineRegistry
+    users: UserRepo
     confirm: ConfirmTokens = field(default_factory=ConfirmTokens)
     # Сколько запрос ручной команды ждёт итога шлюза, прежде чем ответить 202 pending.
     command_wait_s: float = 30.0

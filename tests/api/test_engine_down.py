@@ -276,7 +276,7 @@ async def test_lease_lost_in_engine_call_is_503(api: Api) -> None:
 
 
 async def test_sse_streams_only_own_account(api: Api) -> None:
-    admin = await api.container.auth.get_admin("admin")
+    admin = await api.container.auth.get_user("admin")
     assert admin is not None
     second = await api.container.accounts.create(admin.id, "Второй", capacity=10)
     own = api.engines.put(build(), 1).stream

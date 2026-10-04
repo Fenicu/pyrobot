@@ -1604,6 +1604,11 @@ export interface components {
             csrf_token: string;
             /** Login */
             login: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "user";
         };
         /** MessageItem */
         MessageItem: {

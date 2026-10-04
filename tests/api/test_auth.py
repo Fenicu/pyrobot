@@ -11,7 +11,7 @@ from app.api.container import Container
 from app.api.deps import COOKIE
 from app.db.base import Database
 from app.db.models import AuthSession
-from tests.api.conftest import PASSWORD, engines, login, make_container
+from tests.api.conftest import PASSWORD, Api, engines, login, make_container, make_user
 
 pytestmark = pytest.mark.db
 
@@ -20,7 +20,11 @@ async def test_login_me_logout(api_client: AsyncClient) -> None:
     assert (await api_client.get("/api/v1/auth/me")).status_code == 401
     csrf = await login(api_client)
     me = await api_client.get("/api/v1/auth/me")
-    assert me.status_code == 200 and me.json() == {"login": "admin", "csrf_token": csrf}
+    assert me.status_code == 200 and me.json() == {
+        "login": "admin",
+        "role": "owner",
+        "csrf_token": csrf,
+    }
     assert (await api_client.post("/api/v1/auth/logout")).status_code == 403
     resp = await api_client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": csrf})
     assert resp.status_code == 204
@@ -83,7 +87,7 @@ async def test_sliding_expiry_refreshes_cookie(
 
 async def test_secure_cookie_over_https(clean_db: Database) -> None:
     c = make_container(clean_db, secure=True)
-    await c.auth.ensure_admin("admin", PASSWORD)
+    await c.auth.ensure_owner("admin", PASSWORD)
     app = create_api(c)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as client:
         resp = await client.post(
@@ -172,3 +176,33 @@ async def test_anonymous_gets_401_before_engine_check(
         "/api/v1/accounts/1/state",
         "/api/v1/accounts/1/tg/logout",
     } <= set(checked)
+
+
+async def test_me_returns_role(api: Api) -> None:
+    resp = await api.client.get("/api/v1/auth/me")
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "owner"
+
+
+async def test_login_of_disabled_user_is_401(
+    api_client: AsyncClient, container: Container
+) -> None:
+    user = await container.users.by_login("admin")
+    assert user is not None
+    # Add a dummy second owner so disabling admin is permitted by UserRepo
+    await make_user(container, "admin2", role="owner")
+    await container.users.disable(user.id, "banned")
+    resp = await api_client.post(
+        "/api/v1/auth/login", json={"login": "admin", "password": PASSWORD}
+    )
+    assert resp.status_code == 401
+
+
+async def test_login_updates_last_login_at(api_client: AsyncClient, container: Container) -> None:
+    user = await container.users.by_login("admin")
+    assert user is not None
+    assert user.last_login_at is None
+    await login(api_client)
+    updated = await container.users.get(user.id)
+    assert updated is not None
+    assert updated.last_login_at is not None

@@ -8,7 +8,7 @@ from app.db.accounts import AccountInfo
 from app.db.models import Account, ActionRow, NotificationRow
 from app.db.settings_store import direct_update
 from app.engine.settings import Settings, StaticSettings
-from tests.api.conftest import A1, Api, run_engine
+from tests.api.conftest import A1, Api, make_user, run_engine
 from tests.engine.test_facade import build
 
 pytestmark = pytest.mark.db
@@ -17,9 +17,9 @@ TG_USER = 267519921
 
 
 async def _admin_id(api: Api, login: str = "admin") -> int:
-    admin = await api.container.auth.get_admin(login)
-    assert admin is not None
-    return admin.id
+    user = await api.container.auth.get_user(login)
+    assert user is not None
+    return user.id
 
 
 async def _second(api: Api, name: str = "Второй") -> AccountInfo:
@@ -27,10 +27,8 @@ async def _second(api: Api, name: str = "Второй") -> AccountInfo:
 
 
 async def _foreign(api: Api) -> int:
-    await api.container.auth.ensure_admin("other", "other horse battery")
-    account = await api.container.accounts.create(
-        await _admin_id(api, "other"), "Чужой", capacity=10
-    )
+    other_id = await make_user(api.container, "other")
+    account = await api.container.accounts.create(other_id, "Чужой", capacity=10)
     return account.id
 
 

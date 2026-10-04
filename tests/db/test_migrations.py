@@ -52,6 +52,7 @@ async def test_upgrade_and_downgrade() -> None:
         "tg_peers",
         "tg_chat_marks",
         "server_meta",
+        "users",
     } <= await _tables()
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
     assert await _tables() <= {"alembic_version"}
@@ -353,4 +354,59 @@ async def test_0013_without_settings_uses_chat_defaults() -> None:
         await _message(chat_id, msg_id, from_id)
     await asyncio.to_thread(command.upgrade, _cfg(), "0013")
     assert await _marks() == {(1, game, 0, 10), (1, smoothie, 0, 7), (1, swinfo, swinfo_user, 50)}
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0014_users_become_owners() -> None:
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0013")
+    # до 0014: admin_users id=7 'admin' (аккаунты 1, 2, 3) и id=8 'old' (без аккаунтов),
+    # auth_sessions(admin_user_id=7)
+    await _exec(
+        "INSERT INTO admin_users (id, login, password_hash, created_at, password_changed_at) "
+        "VALUES (7, 'admin', 'h7', now(), now()), (8, 'old', 'h8', now(), now())"
+    )
+    await _exec("UPDATE accounts SET owner_id = 7 WHERE id = 1")
+    await _exec("INSERT INTO accounts (id, name, owner_id) VALUES (2, 'acc2', 7), (3, 'acc3', 7)")
+    await _exec(
+        "INSERT INTO auth_sessions (id, token_hash, csrf_token, admin_user_id, expires_at) "
+        "VALUES (101, 'th', 'csrf', 7, now() + interval '1 day')"
+    )
+    # upgrade 0014:
+    await asyncio.to_thread(command.upgrade, _cfg(), "0014")
+    tables = await _tables()
+    assert "users" in tables and "admin_users" not in tables
+    rows = await _exec(
+        "SELECT id, login, role, max_accounts, disabled_at, disabled_reason, "
+        "invited_by, last_login_at, deleting_at FROM users ORDER BY id"
+    )
+    u7 = rows[0]
+    assert u7[0] == 7 and u7[1] == "admin" and u7[2] == "owner" and u7[3] == 10 and u7[4] is None
+    u8 = rows[1]
+    assert u8[0] == 8 and u8[1] == "old" and u8[2] == "owner" and u8[3] == 10 and u8[4] is None
+    # сессия учётки 7 на месте, FK accounts.owner_id и auth_sessions → users
+    s_rows = await _exec("SELECT admin_user_id FROM auth_sessions WHERE id = 101")
+    assert s_rows == [(7,)]
+    # downgrade 0013: таблица admin_users с теми же строками, лишних колонок нет
+    await asyncio.to_thread(command.downgrade, _cfg(), "0013")
+    tables_down = await _tables()
+    assert "admin_users" in tables_down and "users" not in tables_down
+    adm_rows = await _exec("SELECT id, login FROM admin_users ORDER BY id")
+    assert adm_rows == [(7, "admin"), (8, "old")]
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+
+
+async def test_0014_max_accounts_counts_accounts() -> None:
+    await asyncio.to_thread(command.downgrade, _cfg(), "base")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0013")
+    await _exec(
+        "INSERT INTO admin_users (id, login, password_hash, created_at, password_changed_at) "
+        "VALUES (7, 'big', 'h7', now(), now())"
+    )
+    await _exec("UPDATE accounts SET owner_id = 7 WHERE id = 1")
+    for i in range(2, 13):
+        await _exec(f"INSERT INTO accounts (id, name, owner_id) VALUES ({i}, 'acc{i}', 7)")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0014")
+    rows = await _exec("SELECT max_accounts FROM users WHERE id = 7")
+    assert rows == [(12,)]
     await asyncio.to_thread(command.downgrade, _cfg(), "base")

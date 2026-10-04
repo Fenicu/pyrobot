@@ -1,11 +1,12 @@
 import secrets
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends, Header, HTTPException, Request, Response, status
 
 from app.api.container import Container
 from app.config import AppConfig
+from app.db.users import Role
 
 COOKIE = "pyrobot_session"
 
@@ -13,8 +14,9 @@ COOKIE = "pyrobot_session"
 @dataclass(frozen=True)
 class SessionContext:
     session_id: int
-    admin_id: int
+    user_id: int
     login: str
+    role: Role
     csrf_token: str
 
 
@@ -43,8 +45,16 @@ async def current_session(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
     if resolved.slid:
         set_session_cookie(response, token, c.config, int(c.auth.ttl.total_seconds()))
-    row, admin = resolved.session, resolved.admin
-    return SessionContext(row.id, admin.id, admin.login, row.csrf_token)
+    row, user = resolved.session, resolved.user
+    return SessionContext(row.id, user.id, user.login, cast(Role, user.role), row.csrf_token)
+
+
+async def require_owner(
+    ctx: Annotated[SessionContext, Depends(current_session)],
+) -> SessionContext:
+    if ctx.role != "owner":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "not found")
+    return ctx
 
 
 async def require_csrf(

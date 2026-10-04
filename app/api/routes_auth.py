@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
@@ -20,6 +20,7 @@ from app.api.security import (
     hash_password,
     verify_password,
 )
+from app.db.users import Role
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -31,6 +32,7 @@ class LoginIn(BaseModel):
 
 class MeOut(BaseModel):
     login: str
+    role: Role
     csrf_token: str
 
 
@@ -65,23 +67,29 @@ async def login(
     key = request.client.host if request.client else "unknown"
     async with c.limiter.lock_for(key):
         _raise_if_blocked(c, key)
-        admin = await c.auth.get_admin(body.login)
+        user = await c.auth.get_user(body.login)
         async with c.limiter.slots:
             valid = await verify_password(
-                admin.password_hash if admin else await dummy_hash(), body.password
+                user.password_hash if user else await dummy_hash(), body.password
             )
-        if admin is None or not valid:
+        if (
+            user is None
+            or not valid
+            or user.disabled_at is not None
+            or user.deleting_at is not None
+        ):
             c.limiter.failure(key)
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
         c.limiter.success(key)
-    token, session = await c.auth.create_session(admin.id, key, request.headers.get("user-agent"))
+    await c.users.touch_login(user.id)
+    token, session = await c.auth.create_session(user.id, key, request.headers.get("user-agent"))
     set_session_cookie(response, token, c.config, int(c.auth.ttl.total_seconds()))
-    return MeOut(login=admin.login, csrf_token=session.csrf_token)
+    return MeOut(login=user.login, role=cast(Role, user.role), csrf_token=session.csrf_token)
 
 
 @router.get("/me", response_model=MeOut, responses=AUTH)
 async def me(ctx: Annotated[SessionContext, Depends(current_session)]) -> MeOut:
-    return MeOut(login=ctx.login, csrf_token=ctx.csrf_token)
+    return MeOut(login=ctx.login, role=ctx.role, csrf_token=ctx.csrf_token)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, responses=CSRF)
@@ -112,12 +120,12 @@ async def change_password(
     key = f"session:{ctx.session_id}"
     async with c.limiter.lock_for(key):
         _raise_if_blocked(c, key)
-        admin = await c.auth.get_admin(ctx.login)
+        user = await c.auth.get_user(ctx.login)
         async with c.limiter.slots:
-            if admin is None or not await verify_password(admin.password_hash, body.current):
+            if user is None or not await verify_password(user.password_hash, body.current):
                 c.limiter.failure(key)
                 raise HTTPException(status.HTTP_403_FORBIDDEN, "invalid current password")
             new_hash = await hash_password(body.new)
         c.limiter.success(key)
-    await c.auth.change_password(admin.id, new_hash)
+    await c.auth.change_password(user.id, new_hash)
     response.delete_cookie(COOKIE, path="/")

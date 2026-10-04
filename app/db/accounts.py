@@ -13,7 +13,6 @@ from app.db.base import Database
 from app.db.models import (
     Account,
     ActionRow,
-    AdminUser,
     DecisionRow,
     LedgerRow,
     MessageRow,
@@ -27,6 +26,7 @@ from app.db.models import (
     TgChatMark,
     TgPeer,
     TgSession,
+    User,
 )
 from app.engine.settings import EngineSection, Settings
 from app.engine.tg_auth import TgUserTaken
@@ -330,9 +330,17 @@ class AccountRepo:
         return bound
 
     async def adopt_orphans(self) -> int:
-        """Аккаунты без владельца достаются первой (по `id`) учётке; сколько аккаунтов получили
-        владельца."""
-        first = select(func.min(AdminUser.id)).scalar_subquery()
+        """Аккаунты без владельца достаются первому (по `id`) активному владельцу; сколько
+        аккаунтов получили владельца."""
+        first = (
+            select(func.min(User.id))
+            .where(
+                User.role == "owner",
+                User.disabled_at.is_(None),
+                User.deleting_at.is_(None),
+            )
+            .scalar_subquery()
+        )
         async with self._db.sessions() as session, session.begin():
             adopted = await session.scalars(
                 update(Account)

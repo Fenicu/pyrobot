@@ -9,11 +9,13 @@ from pydantic import SecretStr
 
 from app.api.app import create_api
 from app.api.container import Container
-from app.api.security import LoginRateLimiter
+from app.api.security import LoginRateLimiter, hash_password
 from app.config import AppConfig
 from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.models import User
+from app.db.users import UserRepo
 from app.engine.facade import EngineFacade
 from app.engine.host.host import HostStatus
 from app.engine.stream import EventStream
@@ -104,13 +106,25 @@ def make_container(db: Database, *, secure: bool = False) -> Container:
         db=db,
         accounts=AccountRepo(db),
         engines=FakeEngines(),
+        users=UserRepo(db),
     )
+
+
+async def make_user(
+    c: Container, login: str, *, role: str = "user", password: str = PASSWORD
+) -> int:
+    password_hash = await hash_password(password)
+    async with c.db.sessions() as session, session.begin():
+        u = User(login=login, password_hash=password_hash, role=role, max_accounts=10)
+        session.add(u)
+        await session.flush()
+        return u.id
 
 
 @pytest.fixture
 async def container(clean_db: Database) -> Container:
     c = make_container(clean_db)
-    await c.auth.ensure_admin("admin", PASSWORD)
+    await c.auth.ensure_owner("admin", PASSWORD)
     # Аккаунт 1 — учётки admin.
     await c.accounts.adopt_orphans()
     return c
@@ -123,8 +137,8 @@ async def api_client(container: Container) -> AsyncIterator[AsyncClient]:
         yield client
 
 
-async def login(client: AsyncClient, password: str = PASSWORD) -> str:
-    resp = await client.post("/api/v1/auth/login", json={"login": "admin", "password": password})
+async def login(client: AsyncClient, password: str = PASSWORD, *, login: str = "admin") -> str:
+    resp = await client.post("/api/v1/auth/login", json={"login": login, "password": password})
     assert resp.status_code == 200, resp.text
     return str(resp.json()["csrf_token"])
 

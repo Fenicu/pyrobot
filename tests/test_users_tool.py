@@ -3,10 +3,11 @@ from collections.abc import Iterator
 import pytest
 from sqlalchemy import func, select
 
-from app.api.security import verify_password
+from app.api.security import hash_password, verify_password
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
-from app.db.models import AuthSession
+from app.db.models import AuthSession, User
+from app.db.users import UserRepo
 from app.tools import users
 
 pytestmark = pytest.mark.db
@@ -30,22 +31,31 @@ def answers(monkeypatch: pytest.MonkeyPatch, *typed: str) -> list[str]:
 
 async def seed(db: Database, *logins: str) -> AuthRepo:
     repo = AuthRepo(db)
-    for login in logins:
-        await repo.ensure_admin(login, OLD)
+    password_hash = await hash_password(OLD)
+    async with db.sessions() as s, s.begin():
+        for i, login in enumerate(logins):
+            s.add(
+                User(
+                    login=login,
+                    password_hash=password_hash,
+                    role="owner" if i == 0 else "user",
+                    max_accounts=10,
+                )
+            )
     return repo
 
 
 async def hash_of(repo: AuthRepo, login: str) -> str:
-    admin = await repo.get_admin(login)
-    assert admin is not None
-    return admin.password_hash
+    user = await repo.get_user(login)
+    assert user is not None
+    return user.password_hash
 
 
 async def test_set_password_changes_hash_and_closes_sessions(
     clean_db: Database, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     repo = await seed(clean_db, "admin", "other")
-    admin, other = await repo.get_admin("admin"), await repo.get_admin("other")
+    admin, other = await repo.get_user("admin"), await repo.get_user("other")
     assert admin is not None and other is not None
     token, _ = await repo.create_session(admin.id, None, None)
     await repo.create_session(admin.id, None, None)
@@ -101,7 +111,7 @@ async def test_set_password_mismatch_or_short_exit_1(
     fragment: str,
 ) -> None:
     repo = await seed(clean_db, "admin")
-    admin = await repo.get_admin("admin")
+    admin = await repo.get_user("admin")
     assert admin is not None
     await repo.create_session(admin.id, None, None)
     before = await hash_of(repo, "admin")
@@ -113,3 +123,18 @@ async def test_set_password_mismatch_or_short_exit_1(
     assert await hash_of(repo, "admin") == before
     async with clean_db.sessions() as s:
         assert await s.scalar(select(func.count()).select_from(AuthSession)) == 1
+
+
+async def test_promote_makes_owner(clean_db: Database) -> None:
+    async with clean_db.sessions() as s, s.begin():
+        s.add(User(login="bob", password_hash="h", role="user"))
+    assert await users.promote(clean_db, "bob") == 0
+    u = await UserRepo(clean_db).by_login("bob")
+    assert u is not None and u.role == "owner"
+
+
+async def test_promote_unknown_login_exit_1(
+    clean_db: Database, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert await users.promote(clean_db, "nobody") == 1
+    assert "nobody" in capsys.readouterr().err

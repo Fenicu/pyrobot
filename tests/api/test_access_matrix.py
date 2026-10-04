@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from app.api.app import create_api
 from app.db.base import Database
-from tests.api.conftest import Api, make_container
+from tests.api.conftest import Api, make_container, make_user
 from tests.engine.test_facade import build
 
 pytestmark = pytest.mark.db
@@ -80,10 +80,8 @@ def test_matrix_covers_spec_table(app: FastAPI) -> None:
 
 
 async def _foreign_account(api: Api) -> int:
-    await api.container.auth.ensure_admin("other", "other horse battery")
-    other = await api.container.auth.get_admin("other")
-    assert other is not None
-    account = await api.container.accounts.create(other.id, "Чужой", capacity=10)
+    other_id = await make_user(api.container, "other")
+    account = await api.container.accounts.create(other_id, "Чужой", capacity=10)
     return account.id
 
 
@@ -117,7 +115,7 @@ async def test_old_paths_are_gone(api: Api) -> None:
 
 
 async def test_confirm_token_not_valid_on_other_account(api: Api) -> None:
-    admin = await api.container.auth.get_admin("admin")
+    admin = await api.container.auth.get_user("admin")
     assert admin is not None
     second = await api.container.accounts.create(admin.id, "Второй", capacity=10)
     api.engines.put(build(), 1)

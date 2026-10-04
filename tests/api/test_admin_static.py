@@ -16,6 +16,7 @@ from app.config import AppConfig
 from app.db.accounts import AccountRepo
 from app.db.auth_repo import AuthRepo
 from app.db.base import Database
+from app.db.users import UserRepo
 from tests.api.conftest import FakeEngines
 
 # Форма стартовой страницы adapter-static (fallback SPA): встроенный стартовый скрипт.
@@ -74,6 +75,7 @@ def _app(admin_dir: Path | None) -> AsyncClient:
         db=db,
         accounts=AccountRepo(db),
         engines=engines,
+        users=UserRepo(db),
     )
     return AsyncClient(transport=ASGITransport(app=create_api(container)), base_url="http://t")
 

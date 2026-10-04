@@ -46,7 +46,7 @@ class Account(Base):
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # NULL — аккаунт без владельца: никому не виден, при старте его получает первая учётка.
-    owner_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id", ondelete="RESTRICT"))
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     name: Mapped[str] = mapped_column(String(64))
     # Движок крутится только у `enabled`; у `disabled` и `error` причина — в `status_reason`.
     status: Mapped[str] = mapped_column(String(16), server_default="enabled")
@@ -63,13 +63,21 @@ class Account(Base):
     updated_at: Mapped[datetime] = _now_col()
 
 
-class AdminUser(Base):
-    __tablename__ = "admin_users"
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role IN ('owner', 'user')", name="ck_users_role"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     login: Mapped[str] = mapped_column(String(64), unique=True)
     password_hash: Mapped[str] = mapped_column(String(256))
+    role: Mapped[str] = mapped_column(String(8), server_default="user")
+    max_accounts: Mapped[int] = mapped_column(Integer, server_default="1")
     created_at: Mapped[datetime] = _now_col()
     password_changed_at: Mapped[datetime] = _now_col()
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_reason: Mapped[str | None] = mapped_column(Text)
+    invited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    deleting_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AuthSession(Base):
@@ -77,7 +85,7 @@ class AuthSession(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     csrf_token: Mapped[str] = mapped_column(String(64))
-    admin_user_id: Mapped[int] = mapped_column(ForeignKey("admin_users.id", ondelete="CASCADE"))
+    admin_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = _now_col()
     last_seen_at: Mapped[datetime] = _now_col()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
