@@ -31,10 +31,20 @@
 	// Приложение не сменить, пока аккаунт в Telegram: сервер откажет 409 `tg_logged_in`.
 	const app = $derived(status === null ? null : (status.app ?? 'server'));
 	const inTelegram = $derived(status?.state === 'online' || status?.state === 'overload');
+	// При остановленном движке статус «stopped» не отличает вошедшего от вышедшего (движка нет,
+	// сессия — в базе). Если сервер отказал 409 `tg_logged_in`, подсказку держит флаг, пока
+	// перечитанный статус не покажет, что входа нет.
+	let logged = $state(false);
+	$effect(() => {
+		if (status !== null && status.state !== 'stopped') logged = false;
+	});
+	const appLocked = $derived(inTelegram || logged);
 
 	/** Проверка как у сервера (`PUT /tg/app`): пустое отсечено неактивной кнопкой сохранения. */
 	function checkApp(): string | null {
-		const id = Number(appId.trim());
+		// Number() понимает `1e3`, `0x1F` и `+5` как числа — пропускаем только цифры без знака.
+		const raw = appId.trim();
+		const id = /^\d+$/.test(raw) ? Number(raw) : NaN;
 		if (!Number.isInteger(id) || id < 1 || id > TG_APP_ID_MAX) return 'api_id — целое число от 1 до 2147483647';
 		if (!/^[0-9a-fA-F]{32}$/.test(appHash.trim())) return 'api_hash — 32 шестнадцатеричных символа';
 		return null;
@@ -49,6 +59,9 @@
 			await refresh();
 		} catch (e) {
 			appError = e instanceof ApiFailure ? e.message : String(e);
+			// Вход в Telegram при остановленном движке: статус его не покажет — запоминаем отказ.
+			if (e instanceof ApiFailure && e.error.kind === 'conflict' && e.error.code === 'tg_logged_in')
+				logged = true;
 			await refresh();
 		} finally {
 			appBusy = false;
@@ -272,7 +285,7 @@
 			<p class="text-sm">
 				{app === null || app === 'server' ? 'Серверное приложение' : `Своё: api_id ${app.api_id}`}
 			</p>
-			{#if inTelegram}
+			{#if appLocked}
 				<p class="mt-1 text-sm text-fg-muted">Сначала выйдите из Telegram</p>
 			{:else}
 				<p class="mt-1 text-sm text-fg-muted">Приложение действует со следующего входа в Telegram.</p>
@@ -290,7 +303,7 @@
 					</label>
 					<label class="block space-y-1">
 						<span class="label">api_hash</span>
-						<input class="input" type="password" autocomplete="off" bind:value={appHash} required />
+						<input class="input" type="password" autocomplete="new-password" bind:value={appHash} required />
 					</label>
 					<div class="flex flex-wrap gap-2">
 						<button type="submit" class="btn btn-primary" disabled={appBusy || !appId.trim() || !appHash.trim()}>

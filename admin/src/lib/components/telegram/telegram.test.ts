@@ -247,13 +247,29 @@ describe('Своё приложение Telegram', () => {
 		expect(fetch.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
 	});
 
+	it('экспонента, hex и плюс не проходят как api_id — без запроса', async () => {
+		const user = userEvent.setup();
+		const fetch = setup(() => json(st('unauthorized', { app: 'server' })));
+		const id = await screen.findByLabelText('api_id');
+		await user.type(screen.getByLabelText('api_hash'), HASH);
+		for (const bad of ['1e3', '0x1F', '+5']) {
+			await user.clear(id);
+			await user.type(id, bad);
+			await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+			expect(await screen.findByRole('alert')).toHaveTextContent(
+				'api_id — целое число от 1 до 2147483647'
+			);
+		}
+		expect(fetch.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+	});
+
 	it('«Убрать» возвращает серверное приложение', async () => {
 		const user = userEvent.setup();
 		let status = st('unauthorized', { app: { api_id: 12345 } });
 		const fetch = setup((c) => {
 			if (c.url === '/api/v1/accounts/1/tg/status') return json(status);
 			status = st('unauthorized', { app: 'server' });
-		return new Response(null, { status: 204 });
+			return new Response(null, { status: 204 });
 		});
 		expect(await screen.findByText('Своё: api_id 12345')).toBeInTheDocument();
 		await user.click(screen.getByRole('button', { name: 'Убрать' }));
@@ -280,5 +296,25 @@ describe('Своё приложение Telegram', () => {
 		expect(fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/tg/status')).toHaveLength(2);
 		expect(screen.queryByLabelText('api_id')).not.toBeInTheDocument();
 		expect(screen.getByText('Сначала выйдите из Telegram')).toBeInTheDocument();
+	});
+
+	it('движок остановлен, вход в базе: 409 — подсказка вместо формы', async () => {
+		const user = userEvent.setup();
+		// Движок не запущен: статус «stopped» не отличает вошедшего от вышедшего, сервер
+		// отказывает по сессии в базе — и статус после перечитывания остаётся «stopped».
+		const status = st('stopped', { app: { api_id: 12345 } });
+		const fetch = setup((c) => {
+			if (c.method === 'PUT') return json({ detail: 'tg_logged_in' }, 409);
+			return json(status);
+		});
+		await user.type(await screen.findByLabelText('api_id'), '99999');
+		await user.type(screen.getByLabelText('api_hash'), HASH);
+		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('Вход в Telegram уже выполнен');
+		expect(fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/tg/status')).toHaveLength(2);
+		// Подсказка вместо формы и «Убрать»: менять приложение нельзя, пока есть вход.
+		expect(screen.getByText('Сначала выйдите из Telegram')).toBeInTheDocument();
+		expect(screen.queryByLabelText('api_id')).not.toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Убрать' })).not.toBeInTheDocument();
 	});
 });

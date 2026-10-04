@@ -190,7 +190,10 @@ export function errorText(err: ApiError): string {
 		case 'network':
 			return 'Нет связи с сервером';
 		case 'unavailable':
-			return CODE_TEXT[err.code] ?? (err.status === 502 ? 'Telegram недоступен' : 'Сервис временно недоступен');
+			return (
+				CODE_TEXT[err.code] ??
+				(err.status === 502 ? 'Telegram недоступен' : 'Сервис временно недоступен')
+			);
 		default:
 			return CODE_TEXT[err.code] ?? (err.code || `Ошибка ${err.status}`);
 	}
