@@ -228,6 +228,23 @@ async def test_set_app_recreates_client_with_new_credentials(
     assert not t.storage.deleted
 
 
+async def test_set_app_swaps_client_before_closing_old(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Параллельный connect() не должен подхватить закрывающийся клиент: подмена раньше закрытия.
+    t = FakeKurigram(authorized=False)
+    old = t.client
+    assert not await t.connect()
+    seen: list[bool] = []
+    disconnect = old.disconnect
+
+    async def watched() -> None:
+        seen.append(t._client is not old)
+        await disconnect()
+
+    monkeypatch.setattr(old, "disconnect", watched)
+    await t.set_app(12345, "a" * 32)
+    assert seen == [True] and not old.is_connected
+
+
 async def test_set_app_refused_when_logged_in() -> None:
     from app.engine.transport.kurigram import TgLoggedIn
 

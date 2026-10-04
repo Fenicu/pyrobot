@@ -273,6 +273,24 @@ def _ensure_tg_logged_out(scope: AccountScope) -> None:
         raise HTTPException(status.HTTP_409_CONFLICT, TG_LOGGED_IN)
 
 
+async def _reload_tg_app(
+    c: Container,
+    scope: AccountScope,
+    *,
+    written: tuple[int, bytes] | None,
+    previous: tuple[int, bytes] | None,
+) -> None:
+    """Вход мог завершиться между записью приложения и пересозданием клиента: движок отказывает
+    (`TgLoggedIn`), и тогда запись откатывается, чтобы 409 ничего не менял (раздел 5.6 спеки)."""
+    if scope.engine is None:
+        return
+    try:
+        await scope.engine.reload_tg_app()
+    except TgLoggedIn as exc:
+        await c.accounts.restore_tg_app(scope.account.id, written, previous)
+        raise HTTPException(status.HTTP_409_CONFLICT, TG_LOGGED_IN) from exc
+
+
 @router.put(
     "/tg/app",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -304,18 +322,14 @@ async def put_tg_app(
     box = c.box
     if box is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "secret_key_unavailable")
+    sealed = box.seal(body.api_hash.lower().encode(), "tg_api_hash", scope.account.id)
     try:
-        await c.accounts.set_tg_app(
-            scope.account.id,
-            body.api_id,
-            box.seal(body.api_hash.lower().encode(), "tg_api_hash", scope.account.id),
-        )
-        if scope.engine is not None:
-            await scope.engine.reload_tg_app()
+        previous = await c.accounts.set_tg_app(scope.account.id, body.api_id, sealed)
     except AccountDeleting as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING) from exc
     except TgLoggedIn as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, TG_LOGGED_IN) from exc
+    await _reload_tg_app(c, scope, written=(body.api_id, sealed), previous=previous)
 
 
 @router.delete("/tg/app", status_code=status.HTTP_204_NO_CONTENT, responses=_TG_APP_RESPONSES)
@@ -328,13 +342,12 @@ async def delete_tg_app(
         raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
     _ensure_tg_logged_out(scope)
     try:
-        await c.accounts.clear_tg_app(scope.account.id)
-        if scope.engine is not None:
-            await scope.engine.reload_tg_app()
+        previous = await c.accounts.clear_tg_app(scope.account.id)
     except AccountDeleting as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING) from exc
     except TgLoggedIn as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, TG_LOGGED_IN) from exc
+    await _reload_tg_app(c, scope, written=None, previous=previous)
 
 
 def _flood_wait(exc: FloodWait) -> HTTPException:

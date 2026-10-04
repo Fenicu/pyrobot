@@ -40,9 +40,12 @@ class FakeEngine:
         self.facade = facade
         self.stream = facade.stream if facade.stream is not None else EventStream()
         self.app_reloads = 0
+        self.reload_error: Exception | None = None
 
     async def reload_tg_app(self) -> None:
         self.app_reloads += 1
+        if self.reload_error is not None:
+            raise self.reload_error
         await self.facade.tg.drop_attempt()
 
 

@@ -289,11 +289,36 @@ class AccountRepo:
             )
         return found is not None
 
-    async def set_tg_app(self, account_id: int, api_id: int, sealed_hash: bytes) -> None:
-        await self._write_tg_app(account_id, api_id, sealed_hash)
+    async def set_tg_app(
+        self, account_id: int, api_id: int, sealed_hash: bytes
+    ) -> tuple[int, bytes] | None:
+        """Возвращает прежнее приложение: для отката при отказе движка."""
+        return await self._write_tg_app(account_id, api_id, sealed_hash)
 
-    async def clear_tg_app(self, account_id: int) -> None:
-        await self._write_tg_app(account_id, None, None)
+    async def clear_tg_app(self, account_id: int) -> tuple[int, bytes] | None:
+        return await self._write_tg_app(account_id, None, None)
+
+    async def restore_tg_app(
+        self,
+        account_id: int,
+        written: tuple[int, bytes] | None,
+        previous: tuple[int, bytes] | None,
+    ) -> None:
+        """Откат записи `written` к `previous`: только пока в базе всё ещё она. Запрос, который
+        успел записать другое приложение, не затирается. Без проверки входа: откат возвращает
+        приложение, под которым вошедшая сессия и живёт."""
+        cur_id, cur_hash = written if written is not None else (None, None)
+        old_id, old_hash = previous if previous is not None else (None, None)
+        async with self._db.sessions() as session, session.begin():
+            await session.execute(
+                update(Account)
+                .where(
+                    Account.id == account_id,
+                    Account.tg_api_id.is_not_distinct_from(cur_id),
+                    Account.tg_api_hash.is_not_distinct_from(cur_hash),
+                )
+                .values(tg_api_id=old_id, tg_api_hash=old_hash, updated_at=func.now())
+            )
 
     async def clear_unreadable_tg_app(self, account_id: int, sealed_hash: bytes) -> None:
         async with self._db.sessions() as session, session.begin():
@@ -305,7 +330,7 @@ class AccountRepo:
 
     async def _write_tg_app(
         self, account_id: int, api_id: int | None, sealed_hash: bytes | None
-    ) -> None:
+    ) -> tuple[int, bytes] | None:
         async with self._db.sessions() as session, session.begin():
             row = await session.scalar(
                 select(Account).where(Account.id == account_id).with_for_update()
@@ -321,9 +346,15 @@ class AccountRepo:
             )
             if logged_in is not None:
                 raise TgLoggedIn(account_id)
+            previous = (
+                (row.tg_api_id, row.tg_api_hash)
+                if row.tg_api_id is not None and row.tg_api_hash is not None
+                else None
+            )
             row.tg_api_id = api_id
             row.tg_api_hash = sealed_hash
             row.updated_at = func.now()
+            return previous
 
     async def with_status(self, *statuses: AccountStatus) -> list[AccountInfo]:
         async with self._db.sessions() as session:

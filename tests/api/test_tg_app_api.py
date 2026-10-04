@@ -5,6 +5,7 @@ from sqlalchemy import update
 
 from app.api.app import create_api
 from app.db.models import Account, TgSession
+from app.engine.tg_auth import TgLoggedIn
 from tests.api.conftest import A1, Api, run_engine
 from tests.engine.test_facade import build
 
@@ -77,6 +78,43 @@ async def test_put_reloads_registered_engine_and_drops_attempt(api: Api) -> None
     status = (await api.client.get(f"{A1}/tg/status")).json()
     assert status["state"] == "unauthorized" and status["attempt_id"] is None
     assert status["app"] == {"api_id": 12345}
+
+
+@pytest.mark.parametrize("method", ["put", "delete"])
+async def test_login_during_reload_leaves_app_unchanged(api: Api, method: str) -> None:
+    # Вход завершился между записью и пересозданием клиента: 409 ничего не меняет.
+    assert api.container.accounts is not None
+    first = await api.client.put(
+        APP, headers=api.headers, json={"api_id": 11111, "api_hash": HASH}
+    )
+    assert first.status_code == 204
+    before = await api.container.accounts.tg_app(1)
+    assert before is not None and before[0] == 11111
+    engine = run_engine(api.container, build(authorized=False))
+    engine.reload_error = TgLoggedIn(1)
+    kwargs = {"json": {"api_id": 23456, "api_hash": "B" * 32}} if method == "put" else {}
+    r = await getattr(api.client, method)(APP, headers=api.headers, **kwargs)
+    assert r.status_code == 409 and r.json()["detail"] == "tg_logged_in"
+    assert engine.app_reloads == 1
+    assert await api.container.accounts.tg_app(1) == before
+    assert (await api.client.get(f"{A1}/tg/status")).json()["app"] == {"api_id": 11111}
+
+
+async def test_refused_reload_does_not_overwrite_newer_app(api: Api) -> None:
+    # Откат сравнивает: приложение, которое успел записать другой запрос, остаётся.
+    assert api.container.accounts is not None
+    engine = run_engine(api.container, build(authorized=False))
+    newer = b"newer-sealed-hash"
+
+    async def refuse_after_newer_write() -> None:
+        assert api.container.accounts is not None
+        await api.container.accounts.set_tg_app(1, 77777, newer)
+        raise TgLoggedIn(1)
+
+    engine.reload_tg_app = refuse_after_newer_write  # type: ignore[method-assign]
+    r = await api.client.put(APP, headers=api.headers, json={"api_id": 23456, "api_hash": HASH})
+    assert r.status_code == 409
+    assert await api.container.accounts.tg_app(1) == (77777, newer)
 
 
 async def test_deleting_rejected(api: Api) -> None:

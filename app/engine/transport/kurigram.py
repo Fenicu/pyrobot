@@ -636,15 +636,14 @@ class KurigramTransport:
     async def set_app(self, api_id: int, api_hash: str) -> None:
         if await self._storage.user_id() is not None:
             raise TgLoggedIn
-        await self._end_overload()
         old = self._client
-        await _force_close(old)
         self._online = False
         self._me = None
         self._peers = {}
         self._api_id = api_id
         self._api_hash = api_hash
         self._client = self._new_client()
+        await _force_close(old)
 
     @_fenced
     async def log_out(self) -> None:
