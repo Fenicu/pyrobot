@@ -178,3 +178,107 @@ describe('Вход в Telegram', () => {
 		expect(await screen.findByText(/указан этот же пользователь Telegram/)).toBeInTheDocument();
 	});
 });
+
+describe('Своё приложение Telegram', () => {
+	const HASH = '0123456789abcdef0123456789abcdef';
+
+	it('своё приложение: форма только после выхода, hash не показывается', async () => {
+		const user = userEvent.setup();
+		// В сети — подсказка вместо формы и «Убрать».
+		setup(() => json(st('online', { user_id: 267519921, app: 'server' })));
+		expect(await screen.findByText('Серверное приложение')).toBeInTheDocument();
+		expect(screen.getByText('Сначала выйдите из Telegram')).toBeInTheDocument();
+		expect(screen.queryByLabelText('api_id')).not.toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Убрать' })).not.toBeInTheDocument();
+		cleanup();
+
+		// Вышел — форма; после сохранения статус перечитан, hash не показывается и не хранится.
+		let status = st('unauthorized', { app: 'server' });
+		const fetch = setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(status);
+			status = st('unauthorized', { app: { api_id: 12345 } });
+			return new Response(null, { status: 204 });
+		});
+		await user.type(await screen.findByLabelText('api_id'), '12345');
+		await user.type(screen.getByLabelText('api_hash'), HASH);
+		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+		const put = fetch.calls.find((c) => c.method === 'PUT')!;
+		expect([put.url, JSON.parse(put.body), put.headers.get('x-csrf-token')]).toEqual([
+			'/api/v1/accounts/1/tg/app',
+			{ api_id: 12345, api_hash: HASH },
+			'c'
+		]);
+		expect(await screen.findByText('Своё: api_id 12345')).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Убрать' })).toBeInTheDocument();
+		expect(fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/tg/status')).toHaveLength(2);
+		expect(screen.getByLabelText('api_hash')).toHaveValue('');
+		expect(document.body.textContent).not.toContain(HASH);
+	});
+
+	it('клиентская проверка: пустое, дробное и за границей api_id, не тот hash — без запроса', async () => {
+		const user = userEvent.setup();
+		const fetch = setup(() => json(st('unauthorized', { app: 'server' })));
+		const id = await screen.findByLabelText('api_id');
+		const hash = screen.getByLabelText('api_hash');
+		const save = screen.getByRole('button', { name: 'Сохранить' });
+		// Пустые значения не уходят на сервер: кнопка неактивна.
+		expect(save).toBeDisabled();
+		await user.type(id, '12345');
+		expect(save).toBeDisabled();
+		await user.type(hash, HASH);
+		expect(save).toBeEnabled();
+
+		await user.clear(id);
+		await user.type(id, '1.5');
+		await user.click(save);
+		expect(await screen.findByRole('alert')).toHaveTextContent('api_id — целое число от 1 до 2147483647');
+
+		await user.clear(id);
+		await user.type(id, '2147483648');
+		await user.click(save);
+		await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('api_id — целое число от 1 до 2147483647'));
+
+		await user.clear(id);
+		await user.type(id, '12345');
+		await user.clear(hash);
+		await user.type(hash, 'xyz');
+		await user.click(save);
+		await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('api_hash — 32 шестнадцатеричных символа'));
+		expect(fetch.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+	});
+
+	it('«Убрать» возвращает серверное приложение', async () => {
+		const user = userEvent.setup();
+		let status = st('unauthorized', { app: { api_id: 12345 } });
+		const fetch = setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(status);
+			status = st('unauthorized', { app: 'server' });
+		return new Response(null, { status: 204 });
+		});
+		expect(await screen.findByText('Своё: api_id 12345')).toBeInTheDocument();
+		await user.click(screen.getByRole('button', { name: 'Убрать' }));
+		const del = fetch.calls.find((c) => c.method === 'DELETE')!;
+		expect([del.url, del.headers.get('x-csrf-token')]).toEqual(['/api/v1/accounts/1/tg/app', 'c']);
+		expect(await screen.findByText('Серверное приложение')).toBeInTheDocument();
+		expect(fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/tg/status')).toHaveLength(2);
+	});
+
+	it('409 tg_logged_in при сохранении — текст, статус перечитан, форма скрыта', async () => {
+		const user = userEvent.setup();
+		let status = st('unauthorized', { app: 'server' });
+		const fetch = setup((c) => {
+			if (c.method === 'PUT') return json({ detail: 'tg_logged_in' }, 409);
+			const cur = status;
+			// Вход успел завершиться посреди смены: перечитанный статус — онлайн.
+			status = st('online', { user_id: 267519921, app: 'server' });
+			return json(cur);
+		});
+		await user.type(await screen.findByLabelText('api_id'), '12345');
+		await user.type(screen.getByLabelText('api_hash'), HASH);
+		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('Вход в Telegram уже выполнен');
+		expect(fetch.calls.filter((c) => c.url === '/api/v1/accounts/1/tg/status')).toHaveLength(2);
+		expect(screen.queryByLabelText('api_id')).not.toBeInTheDocument();
+		expect(screen.getByText('Сначала выйдите из Telegram')).toBeInTheDocument();
+	});
+});

@@ -1051,5 +1051,23 @@
   },
   "title": "Settings",
   "type": "object"
+ },
+ "bounds": {
+  "engine.min_request_interval_s": {
+   "min": 1.6,
+   "max": null
+  },
+  "engine.antiflood_pause_s": {
+   "min": 10,
+   "max": null
+  },
+  "engine.antiflood_retry_max": {
+   "min": null,
+   "max": 2
+  },
+  "engine.action_ttl_s": {
+   "min": null,
+   "max": 600
+  }
  }
 }

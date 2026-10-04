@@ -47,7 +47,15 @@
 {#if ctx}
 	{#key ctx}
 		{#if ctx.engine.status}
-			<EngineDownBanner status={ctx.engine.status} accountId={ctx.id} {api} onchange={reload} />
+			{@const acc = accounts.list?.find((a) => a.id === ctx.id) ?? null}
+			<EngineDownBanner
+				status={ctx.engine.status}
+				accountId={ctx.id}
+				{api}
+				onchange={reload}
+				blocked={acc?.blocked ?? false}
+				blockedReason={acc?.blocked_reason ?? null}
+			/>
 			<GameChatBanner status={ctx.engine.status} api={ctx.api} onchange={() => void ctx.engine.load()} />
 		{/if}
 		{@render children()}

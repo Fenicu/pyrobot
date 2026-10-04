@@ -9,6 +9,7 @@ export type ApiError =
 	| { kind: 'version_conflict'; status: 409; version: number }
 	| { kind: 'conflict'; status: 409; code: string }
 	| { kind: 'validation'; status: 422; issues: ValidationIssue[] }
+	| { kind: 'out_of_bounds'; status: 422; path: string; bound: 'min' | 'max'; limit: number }
 	| { kind: 'invalid'; status: 422; code: string; fields?: string[] }
 	| { kind: 'not_found'; status: 404; code: string }
 	| { kind: 'rate_limited'; status: 429; code: string; retryAfter: number | null }
@@ -64,6 +65,16 @@ export function normalizeError(status: number, body: unknown, headers?: Headers)
 	if (status === 409) return { kind: 'conflict', status, code };
 	if (status === 422) {
 		if (Array.isArray(detail)) return { kind: 'validation', status, issues: issues(detail) };
+		// Значение настройки движка за границей из настроек сервера: путь и границу держит ответ.
+		if (
+			detail === 'setting_out_of_bounds' &&
+			isRecord(body) &&
+			typeof body.path === 'string' &&
+			(body.bound === 'min' || body.bound === 'max') &&
+			typeof body.limit === 'number'
+		) {
+			return { kind: 'out_of_bounds', status, path: body.path, bound: body.bound, limit: body.limit };
+		}
 		const fields = isRecord(body) && Array.isArray(body.fields) ? body.fields.map(String) : null;
 		return fields ? { kind: 'invalid', status, code, fields } : { kind: 'invalid', status, code };
 	}
@@ -117,7 +128,9 @@ const CODE_TEXT: Record<string, string> = {
 	last_owner: 'Нельзя изменить или удалить последнего владельца',
 	confirm_login_mismatch: 'Логин для подтверждения введён неверно',
 	reason_required: 'Укажите причину блокировки',
-	too_many_streams: 'Слишком много активных подключений'
+	too_many_streams: 'Слишком много активных подключений',
+	invalid_tg_app: 'Неверные api_id или api_hash приложения Telegram',
+	secret_key_unavailable: 'Ключ шифрования сервера недоступен — попробуйте позже'
 };
 
 /** Ожидание для человека: секунды до минуты, дальше — минуты вверх. */
@@ -136,6 +149,10 @@ export function errorText(err: ApiError): string {
 			return 'Команда требует подтверждения';
 		case 'version_conflict':
 			return `Настройки уже изменены (версия ${err.version}) — перечитайте`;
+		case 'out_of_bounds':
+			return `Значение настройки выходит за границы: ${
+				err.bound === 'min' ? `не меньше ${err.limit}` : `не больше ${err.limit}`
+			}`;
 		case 'validation':
 			return (
 				err.issues
@@ -173,7 +190,7 @@ export function errorText(err: ApiError): string {
 		case 'network':
 			return 'Нет связи с сервером';
 		case 'unavailable':
-			return err.status === 502 ? 'Telegram недоступен' : 'Сервис временно недоступен';
+			return CODE_TEXT[err.code] ?? (err.status === 502 ? 'Telegram недоступен' : 'Сервис временно недоступен');
 		default:
 			return CODE_TEXT[err.code] ?? (err.code || `Ошибка ${err.status}`);
 	}

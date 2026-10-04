@@ -74,7 +74,7 @@
 		);
 		if (result.ok) {
 			toasts.show(`Сохранено, версия ${result.version}`, 'ok');
-		} else if ('error' in result && result.error.kind === 'validation') {
+		} else if ('error' in result && (result.error.kind === 'validation' || result.error.kind === 'out_of_bounds')) {
 			toasts.show(
 				editor.formErrors.length > 0 ? editor.formErrors.join('\n') : 'Сервер не принял значения — поля подсвечены',
 				'error'

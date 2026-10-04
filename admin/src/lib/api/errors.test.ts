@@ -120,12 +120,35 @@ describe('normalizeError', () => {
 			[409, 'last_owner', 'Нельзя изменить или удалить последнего владельца'],
 			[422, 'confirm_login_mismatch', 'Логин для подтверждения введён неверно'],
 			[422, 'reason_required', 'Укажите причину блокировки'],
-			[429, 'too_many_streams', 'Слишком много активных подключений']
+			[429, 'too_many_streams', 'Слишком много активных подключений'],
+			[422, 'invalid_tg_app', 'Неверные api_id или api_hash приложения Telegram'],
+			[503, 'secret_key_unavailable', 'Ключ шифрования сервера недоступен — попробуйте позже']
 		];
 		for (const [status, code, text] of cases) {
 			const err = normalizeError(status, { detail: code });
 			expect(errorText(err), code).toBe(text);
 		}
+	});
+
+	it('422 setting_out_of_bounds несёт путь и границу', () => {
+		const err = normalizeError(422, {
+			detail: 'setting_out_of_bounds',
+			path: 'engine.min_request_interval_s',
+			bound: 'min',
+			limit: 1.6
+		});
+		expect(err).toEqual({
+			kind: 'out_of_bounds',
+			status: 422,
+			path: 'engine.min_request_interval_s',
+			bound: 'min',
+			limit: 1.6
+		});
+		expect(errorText(err)).toBe('Значение настройки выходит за границы: не меньше 1.6');
+		// Без пути и границы (неожиданная оболочка) — прежний текст по коду.
+		expect(errorText(normalizeError(422, { detail: 'setting_out_of_bounds' }))).toBe(
+			'Значение настройки выходит за границы'
+		);
 	});
 
 	it('422 по полю login показывает русское описание требований', () => {

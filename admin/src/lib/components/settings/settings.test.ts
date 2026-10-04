@@ -173,9 +173,12 @@ describe('Настройки', () => {
 		expect(info).toHaveAttribute('aria-expanded', 'false');
 		expect(info).toHaveAttribute('aria-controls', help.id);
 		expect(info).toHaveClass('md:hidden');
-		// На ПК (описание всегда видно) поле связано с ним через aria-describedby.
+		// На ПК (описание всегда видно) поле связано с ним через aria-describedby; у поля с границей
+		// сервера — и с ней (под полем «не меньше 1.6»).
 		const field = within(row as HTMLElement).getByRole('spinbutton', { name: 'Пауза между запросами, с' });
-		expect(field).toHaveAttribute('aria-describedby', help.id);
+		expect(field.getAttribute('aria-describedby')!.split(' ')).toContain(help.id);
+		expect(row as HTMLElement).toHaveTextContent('не меньше 1.6');
+		expect(field.getAttribute('aria-describedby')!.split(' ')).toContain('set-engine-min_request_interval_s-bound');
 		info.focus();
 		await user.keyboard('{Enter}');
 		expect(info).toHaveAttribute('aria-expanded', 'true');
@@ -303,6 +306,39 @@ describe('Настройки', () => {
 		editor.onEvent({ type: 'settings', id: 'e:1', data: { version: 14, mode: 'live', paused: false, killed: false } });
 		await vi.waitFor(() => expect(editor.version).toBe(14));
 		await vi.waitFor(() => expect(history()).toBe(2));
+	});
+
+	it('граница видна у поля и ошибка 422 привязана к нему', async () => {
+		const user = userEvent.setup();
+		toasts.items = [];
+		const { fetch } = await view(() =>
+			json(
+				{ detail: 'setting_out_of_bounds', path: 'engine.min_request_interval_s', bound: 'min', limit: 1.6 },
+				422
+			)
+		);
+		await user.click(screen.getByRole('button', { name: 'Движок' }));
+		const engine = screen.getByRole('region', { name: 'Движок' });
+		expect(engine.querySelector('#set-engine-min_request_interval_s-bound')).toHaveTextContent('не меньше 1.6');
+		expect(engine.querySelector('#set-engine-action_ttl_s-bound')).toHaveTextContent('не больше 600');
+		// У поля без границы сервера подсказки нет.
+		expect(engine.querySelector('#set-engine-default_expect_timeout_s-bound')).toBeNull();
+
+		const interval = engine.querySelector('[data-path="engine.min_request_interval_s"]') as HTMLElement;
+		const input = within(interval).getByRole('spinbutton', { name: 'Пауза между запросами, с' });
+		await user.clear(input);
+		await user.type(input, '0.5');
+		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+		expect(await within(interval).findByRole('alert')).toHaveTextContent(
+			'Значение настройки выходит за границы: не меньше 1.6'
+		);
+		await vi.waitFor(() =>
+			expect(toasts.items.map((t) => t.text)).toEqual(['Сервер не принял значения — поля подсвечены'])
+		);
+		const patch = fetch.calls.find((c) => c.method === 'PATCH')!;
+		expect(JSON.parse(patch.body).changes).toEqual({ engine: { min_request_interval_s: 0.5 } });
+		// Правки на месте: после ошибки можно исправить значение и сохранить снова.
+		expect(screen.getByRole('region', { name: 'Несохранённые изменения' })).toBeInTheDocument();
 	});
 
 	it('422 без подходящего поля — сообщение с текстом ошибки, а не «поля подсвечены»', async () => {

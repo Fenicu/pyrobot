@@ -178,6 +178,47 @@ describe('экран аккаунтов', () => {
 		expect(screen.getByLabelText('Имя нового аккаунта')).toHaveValue('newbie');
 	});
 
+	it('limit_reached и server_full — текст у формы', async () => {
+		let detail = 'limit_reached';
+		const { user } = await setup([account(1, 'main')], (c) =>
+			c.method === 'POST' ? json({ detail }, 409) : undefined
+		);
+		await user.type(screen.getByLabelText('Имя нового аккаунта'), 'newbie');
+		await user.click(screen.getByRole('button', { name: 'Создать' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('Достигнут лимит аккаунтов');
+
+		detail = 'server_full';
+		await user.click(screen.getByRole('button', { name: 'Создать' }));
+		await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('На сервере нет свободных мест для аккаунтов'));
+		expect(goto).not.toHaveBeenCalled();
+		// Имя осталось в поле: исправить и повторить.
+		expect(screen.getByLabelText('Имя нового аккаунта')).toHaveValue('newbie');
+	});
+
+	it('заблокированный аккаунт: причина и нет кнопки «Включить»', async () => {
+		const blocked = account(5, 'spam', {
+			status: 'disabled',
+			status_reason: 'blocked_by_owner',
+			blocked: true,
+			blocked_reason: 'Спам',
+			tg: { user_id: 105, online: false }
+		});
+		// Разблокированный: статус выключен, причина блокировки устарела.
+		const freed = account(6, 'freed', { status: 'disabled', status_reason: 'blocked_by_owner' });
+		await setup([account(1, 'main'), blocked, freed]);
+		const spam = within(row('spam'));
+		expect(spam.getByText('Заблокирован владельцем сервера: Спам')).toBeInTheDocument();
+		expect(spam.queryByRole('button', { name: 'Включить' })).toBeNull();
+		// Остальные действия остаются: разблокирует только владелец сервера.
+		expect(spam.getByRole('button', { name: 'Переименовать' })).toBeInTheDocument();
+		expect(spam.getByRole('button', { name: 'Удалить' })).toBeInTheDocument();
+
+		const free = within(row('freed'));
+		expect(free.getByRole('button', { name: 'Включить' })).toBeInTheDocument();
+		expect(free.queryByText(/Заблокирован/)).toBeNull();
+		expect(free.queryByText('blocked_by_owner')).toBeNull();
+	});
+
 	it('переименование шлёт новое имя; name_taken — текст в окне', async () => {
 		let taken = true;
 		const { fetch, state, user } = await setup([account(1, 'main'), account(2, 'twink')], (c) => {
@@ -267,10 +308,14 @@ const down = (over: Partial<EngineStatus> = {}): EngineStatus => ({
 	...over
 });
 
-function banner(status: EngineStatus, handler: (c: Call) => Response = () => json(account(7, 'x'))) {
+function banner(
+	status: EngineStatus,
+	handler: (c: Call) => Response = () => json(account(7, 'x')),
+	props: { blocked?: boolean; blockedReason?: string | null } = {}
+) {
 	const fetch = mockFetch(handler);
 	const onchange = vi.fn();
-	render(EngineDownBanner, { status, accountId: 7, api: createApi(hooks, fetch), onchange });
+	render(EngineDownBanner, { status, accountId: 7, api: createApi(hooks, fetch), onchange, ...props });
 	return { fetch, onchange, user: userEvent.setup() };
 }
 
@@ -302,6 +347,24 @@ describe('плашка «движок не запущен»', () => {
 		await user.click(screen.getByRole('button', { name: 'Включить' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent('Достигнут предел включённых аккаунтов');
 		expect(onchange).not.toHaveBeenCalled();
+	});
+
+	it('заблокированный: причина блокировки вместо кнопки «Включить»', () => {
+		banner(
+			down({ status: 'disabled', status_reason: 'blocked_by_owner' }),
+			undefined,
+			{ blocked: true, blockedReason: 'Спам' }
+		);
+		expect(screen.getByRole('status')).toHaveTextContent(
+			'Движок не запущен: заблокирован владельцем сервера: Спам'
+		);
+		expect(screen.queryByRole('button', { name: 'Включить' })).toBeNull();
+		cleanup();
+
+		// После разблокировки причина устарела: аккаунт просто выключен, включить можно.
+		banner(down({ status: 'disabled', status_reason: 'blocked_by_owner' }));
+		expect(screen.getByRole('status')).toHaveTextContent('Движок не запущен: аккаунт выключен');
+		expect(screen.getByRole('button', { name: 'Включить' })).toBeInTheDocument();
 	});
 
 	it('включён, но не запущен (чужой хост, старт) и удаляемый — без кнопки', () => {

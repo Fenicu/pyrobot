@@ -208,7 +208,12 @@
 						{@render label('Статус')}
 						<span class="min-w-0">
 							<Pill tone={tone(a)}>{STATUS_LABEL[a.status]}</Pill>
-							{#if a.status_reason}
+							<!-- Причина blocked_by_owner без блокировки устарела после разблокировки. -->
+							{#if a.blocked}
+								<span class="ext-text mt-1 block text-xs text-bad-fg"
+									>Заблокирован владельцем сервера{a.blocked_reason ? `: ${a.blocked_reason}` : ''}</span
+								>
+							{:else if a.status_reason && a.status_reason !== 'blocked_by_owner'}
 								<span class="ext-text mt-1 block text-xs text-fg-muted">{reasonText(a.status_reason)}</span>
 							{/if}
 						</span>
@@ -249,7 +254,7 @@
 								<button type="button" class="btn" title="Выключить" disabled={busy} onclick={() => setEnabled(a, false)}>
 									<PowerOff class="size-4" aria-hidden="true" /><span class="md:sr-only">Выключить</span>
 								</button>
-							{:else}
+							{:else if !a.blocked}
 								<button type="button" class="btn" title="Включить" disabled={busy} onclick={() => setEnabled(a, true)}>
 									<Power class="size-4" aria-hidden="true" /><span class="md:sr-only">Включить</span>
 								</button>

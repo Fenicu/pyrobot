@@ -21,6 +21,58 @@
 	let password = $state('');
 	let busy = $state(false);
 	let message = $state('');
+	// Своё приложение Telegram: api_hash — секрет, после отправки не хранится.
+	let appId = $state('');
+	let appHash = $state('');
+	let appBusy = $state(false);
+	let appError = $state('');
+
+	const TG_APP_ID_MAX = 2 ** 31 - 1;
+	// Приложение не сменить, пока аккаунт в Telegram: сервер откажет 409 `tg_logged_in`.
+	const app = $derived(status === null ? null : (status.app ?? 'server'));
+	const inTelegram = $derived(status?.state === 'online' || status?.state === 'overload');
+
+	/** Проверка как у сервера (`PUT /tg/app`): пустое отсечено неактивной кнопкой сохранения. */
+	function checkApp(): string | null {
+		const id = Number(appId.trim());
+		if (!Number.isInteger(id) || id < 1 || id > TG_APP_ID_MAX) return 'api_id — целое число от 1 до 2147483647';
+		if (!/^[0-9a-fA-F]{32}$/.test(appHash.trim())) return 'api_hash — 32 шестнадцатеричных символа';
+		return null;
+	}
+
+	/** PUT/DELETE `/tg/app`, затем статус входа перечитывается: приложение видно в ответе. */
+	async function writeApp(request: () => Promise<unknown>): Promise<void> {
+		appBusy = true;
+		appError = '';
+		try {
+			await request();
+			await refresh();
+		} catch (e) {
+			appError = e instanceof ApiFailure ? e.message : String(e);
+			await refresh();
+		} finally {
+			appBusy = false;
+		}
+	}
+
+	function saveApp(e: SubmitEvent) {
+		e.preventDefault();
+		const invalid = checkApp();
+		if (invalid !== null) {
+			appError = invalid;
+			return;
+		}
+		const id = Number(appId.trim());
+		const hash = appHash.trim();
+		// Секрет не хранится в состоянии: значение уходит в запрос, поля очищаются сразу.
+		appId = '';
+		appHash = '';
+		void writeApp(() => call(api.PUT('/tg/app', { body: { api_id: id, api_hash: hash } })));
+	}
+
+	function removeApp(): void {
+		void writeApp(() => call(api.DELETE('/tg/app')));
+	}
 
 	const ERRORS: Record<string, string> = {
 		invalid_code: 'Неверный код — попробуйте ещё раз',
@@ -211,4 +263,46 @@
 			<button type="submit" class="btn btn-primary" disabled={busy || !phone.trim()}>Получить код</button>
 		</form>
 	{/if}
+
+	<section class="card" aria-labelledby="tg-app">
+		<h2 id="tg-app" class="card-title">Своё приложение Telegram</h2>
+		{#if status === null}
+			<p class="text-sm text-fg-muted">…</p>
+		{:else}
+			<p class="text-sm">
+				{app === null || app === 'server' ? 'Серверное приложение' : `Своё: api_id ${app.api_id}`}
+			</p>
+			{#if inTelegram}
+				<p class="mt-1 text-sm text-fg-muted">Сначала выйдите из Telegram</p>
+			{:else}
+				<p class="mt-1 text-sm text-fg-muted">Приложение действует со следующего входа в Telegram.</p>
+				<form class="mt-2 space-y-2" onsubmit={saveApp}>
+					<label class="block space-y-1">
+						<span class="label">api_id</span>
+						<input
+							class="input"
+							type="text"
+							inputmode="numeric"
+							bind:value={appId}
+							autocomplete="off"
+							required
+						/>
+					</label>
+					<label class="block space-y-1">
+						<span class="label">api_hash</span>
+						<input class="input" type="password" autocomplete="off" bind:value={appHash} required />
+					</label>
+					<div class="flex flex-wrap gap-2">
+						<button type="submit" class="btn btn-primary" disabled={appBusy || !appId.trim() || !appHash.trim()}>
+							Сохранить
+						</button>
+						{#if app !== 'server'}
+							<button type="button" class="btn" disabled={appBusy} onclick={removeApp}>Убрать</button>
+						{/if}
+					</div>
+				</form>
+			{/if}
+			{#if appError}<p class="ext-text mt-2 text-sm text-warn-fg" role="alert">{appError}</p>{/if}
+		{/if}
+	</section>
 </div>

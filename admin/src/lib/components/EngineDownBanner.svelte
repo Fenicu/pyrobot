@@ -12,8 +12,11 @@
 		api: Api;
 		/** После включения: перечитать статус движка и список аккаунтов. */
 		onchange: () => void;
+		/** Аккаунт заблокирован владельцем сервера: включить нельзя, причина — в плашке. */
+		blocked?: boolean;
+		blockedReason?: string | null;
 	}
-	let { status, accountId, api, onchange }: Props = $props();
+	let { status, accountId, api, onchange, blocked = false, blockedReason = null }: Props = $props();
 	let busy = $state(false);
 	let error = $state('');
 
@@ -25,8 +28,18 @@
 		deleting: 'аккаунт удаляется'
 	} as const;
 	const code = $derived(status.status_reason ?? status.host_reason);
-	const reason = $derived(code ? reasonText(code) : WITHOUT_REASON[status.status]);
-	const canEnable = $derived(status.status === 'disabled' || status.status === 'error');
+	// У заблокированного — причина блокировки; `blocked_by_owner` без блокировки устарел
+	// (разблокировали) — тогда причина обычная по состоянию аккаунта.
+	const reason = $derived(
+		blocked
+			? `заблокирован владельцем сервера${blockedReason ? `: ${blockedReason}` : ''}`
+			: code === 'blocked_by_owner'
+				? WITHOUT_REASON[status.status]
+				: code
+					? reasonText(code)
+					: WITHOUT_REASON[status.status]
+	);
+	const canEnable = $derived(!blocked && (status.status === 'disabled' || status.status === 'error'));
 
 	async function enable() {
 		busy = true;

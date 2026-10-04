@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { SettingsEditor } from '$lib/settings/editor.svelte';
+	import { boundsText, type SettingsEditor } from '$lib/settings/editor.svelte';
 	import { settingHelp, settingLabel, valueLabels } from '$lib/settings/labels';
 	import { settingPaths } from '$lib/settings/paths.svelte';
 	import { pathKey, type Field } from '$lib/settings/schema';
@@ -19,9 +19,17 @@
 	const id = $derived(`set-${key.replaceAll('.', '-')}`);
 	// На ПК описание видно всегда (`md:block`) и связано с полем через aria-describedby; на
 	// телефоне, пока свёрнуто (`hidden`), ссылка на скрытый элемент AT не читает. Пометка «не
-	// используется ботом» видна всегда.
+	// используется ботом» видна всегда. Граница сервера видна и там, и там.
+	const bound = $derived(editor.bound(field.path));
+	const boundHint = $derived(bound === null ? null : boundsText(bound));
 	const describedby = $derived(
-		[field.unused ? `${id}-unused` : null, help ? `${id}-help` : null].filter(Boolean).join(' ') || undefined
+		[
+			field.unused ? `${id}-unused` : null,
+			help ? `${id}-help` : null,
+			boundHint ? `${id}-bound` : null
+		]
+			.filter(Boolean)
+			.join(' ') || undefined
 	);
 	// На телефоне описание раскрывается кнопкой ⓘ, на ПК видно всегда.
 	let open = $state(false);
@@ -83,6 +91,7 @@
 					onchange={(next) => editor.set(field.path, next)}
 				/>
 			{/if}
+			{#if boundHint}<p id="{id}-bound" class="mt-1 text-xs text-fg-faint">{boundHint}</p>{/if}
 			{#if error}<p class="ext-text mt-1 text-xs text-bad-fg" role="alert">{error}</p>{/if}
 		</div>
 		<div class="flex flex-wrap items-center gap-1 text-xs text-fg-faint">

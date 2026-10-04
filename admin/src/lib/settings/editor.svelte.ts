@@ -26,6 +26,14 @@ export type SaveResult =
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
+/** Текст границ поля настроек: «не меньше 1.6», «не больше 600»; нет границ — null. */
+export function boundsText(bound: { min: number | null; max: number | null }): string | null {
+	const parts: string[] = [];
+	if (bound.min !== null) parts.push(`не меньше ${bound.min}`);
+	if (bound.max !== null) parts.push(`не больше ${bound.max}`);
+	return parts.length > 0 ? parts.join(', ') : null;
+}
+
 function longestPrefix(paths: Path[], loc: string[]): Path | null {
 	let best: Path | null = null;
 	for (const p of paths) {
@@ -101,6 +109,12 @@ export class SettingsEditor {
 		return getAt(this.server?.defaults, path);
 	}
 
+	/** Границы настройки движка из `GET /settings`: null — сервер для поля их не задаёт. */
+	bound(path: Path): { min: number | null; max: number | null } | null {
+		const b = this.server?.bounds[pathKey(path)];
+		return b === undefined ? null : { min: b.min ?? null, max: b.max ?? null };
+	}
+
 	isChanged(path: Path): boolean {
 		return !same(this.serverValue(path), this.value(path));
 	}
@@ -169,6 +183,7 @@ export class SettingsEditor {
 			const error = e.error;
 			if (error.kind === 'version_conflict') this.conflict = error.version;
 			if (error.kind === 'validation') this.#placeIssues(error.issues);
+			if (error.kind === 'out_of_bounds') this.#placeOutOfBounds(error);
 			return { ok: false, error };
 		} finally {
 			this.saving = false;
@@ -191,6 +206,20 @@ export class SettingsEditor {
 		} finally {
 			this.restarting = false;
 		}
+	}
+
+	/** 422 `setting_out_of_bounds`: ошибка с границей — у названного сервером поля;
+	 * путь вне схемы — в `formErrors`, как ошибки валидации без поля. */
+	#placeOutOfBounds(error: { path: string; bound: 'min' | 'max'; limit: number }): void {
+		const hint = error.bound === 'min' ? `не меньше ${error.limit}` : `не больше ${error.limit}`;
+		const known = this.sections
+			.flatMap((s) => leaves(s.fields))
+			.some((f) => pathKey(f.path) === error.path);
+		if (!known) {
+			this.formErrors = [`${error.path}: ${hint}`];
+			return;
+		}
+		this.fieldErrors = { [error.path]: `Значение настройки выходит за границы: ${hint}` };
 	}
 
 	/** Ошибка 422 — у поля с самым длинным путём, который начинает `loc` (элемент списка
