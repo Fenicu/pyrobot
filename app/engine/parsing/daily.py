@@ -33,6 +33,16 @@ _PERSONAL_TYPES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
     )
 )
 _GOAL = re.compile(r"\$?(?P<goal>\d+(?:[\xa0 ]\d{3})*)(?P<res>💵|📚|🔩|⚙️?)")
+# Дела командного задания по условию: в правке «Ты выбрал командное задание» подсказки нет.
+_TEAM_DEEDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Переработать всей командой ", ("dconv",)),
+    ("Добыть силами команды на Работе или Прогулке ", ("job", "walk")),
+    ("Заработать силами команды на Прогулке ", ("walk",)),
+    ("Заработать всей командой на Работе ", ("job",)),
+    ("Получить на всю команду на Учёбе ", ("learn",)),
+    ("Получить на всю команду на Конфе ", ("confa",)),
+    ("Силами команды добыть с Продаванов ", ("gorbushka",)),
+)
 _HINTS = {
     "/job": "job",
     "/walk": "walk",
@@ -44,11 +54,19 @@ _HINTS = {
 }
 _HEAD = "⏳Ежедневные задания\n"
 _OFFERS_HEAD = "\nЛичные задания - выбери одно из предложенных\n"
-_OFFER = re.compile(
-    r"^⏳(?P<cond>[^\n]+)\n🎖Награда: [^\n]*?(?P<trophies>\d+)🏆\.\n"
-    r"Выбрать: (?P<command>/t_(?P<type>[A-Za-z]+)_(?P<level>easy|medium|hard))$",
-    re.M,
-)
+_TEAM_OFFERS_HEAD = "\nКомандные задания - выбери одно из предложенных\n"
+
+
+def _offer_re(prefix: str) -> re.Pattern[str]:
+    return re.compile(
+        r"^⏳(?P<cond>[^\n]+)\n🎖Награда: [^\n]*?(?P<trophies>\d+)🏆\.\n"
+        r"Выбрать: (?P<command>/" + prefix + r"_(?P<type>[A-Za-z]+)_(?P<level>easy|medium|hard))$",
+        re.M,
+    )
+
+
+_OFFER = _offer_re("t")
+_TEAM_OFFER = _offer_re("ts")
 _TASK = (
     r"\n⏳(?P<cond>[^\n]+)\n🎖Награда: [^\n]*?(?P<trophies>\d+)🏆\.\n"
     r"(?:🔜Прогресс: (?P<cur>" + NUM + r") из (?P<goal>" + NUM + r")\.\n(?P<hint>[^\n]*)"
@@ -60,6 +78,12 @@ _TEAM_HEAD = "\nКомандн"
 _NO_TEAM = "\nКомандные задания\n\nГлава команды ещё не выбрал задание."
 _CONFIRM = "Ты собираешься выбрать задание:\n⏳"
 _CONFIRM_BUTTON = re.compile(r"t_(?P<task>[A-Za-z]+_(?:easy|medium|hard))_confirm\Z")
+_TEAM_CONFIRM = "Ты собираешься выбрать командное задание:\n⏳"
+_TEAM_CONFIRM_BUTTON = re.compile(r"ts_(?P<task>[A-Za-z]+_(?:easy|medium|hard))_confirm\Z")
+_TEAM_CHOSEN = re.compile(
+    r"\AТы выбрал командное задание:\n⏳(?P<cond>[^\n]+)\n🎖Награда: [^\n]*?\d+🏆\.\n"
+    r"Закончить необходимо до 24:00 по московскому времени\.\Z"
+)
 _CHOSEN = re.compile(
     r"\A⏳Выбранное задание\n\n⏳(?P<cond>[^\n]+)\n🎖Награда: [^\n]*?(?P<trophies>\d+)🏆\.\n"
     r".*?Погнали (?P<hint>[^\n]*)",
@@ -97,28 +121,32 @@ class ChosenTask:
 @dataclass(frozen=True, slots=True, kw_only=True)
 class DailyTasksScreen(Event):
     """Экран ⏳Ежедневные задания: личное — варианты или выбранное, командное — None, если
-    глава ещё не выбрал."""
+    глава ещё не выбрал; у самого главы до выбора — его варианты `team_offers`."""
 
     kind: ClassVar[str] = "daily_tasks_screen"
     offers: tuple[TaskOffer, ...] = ()
     chosen: ChosenTask | None = None
     team: ChosenTask | None = None
+    team_offers: tuple[TaskOffer, ...] = ()
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TaskConfirm(Event):
-    """Подтверждение выбора личного задания с кнопкой `t_<task>_confirm`."""
+    """Подтверждение выбора личного задания с кнопкой `t_<task>_confirm` или командного
+    (`team`) с кнопкой `ts_<task>_confirm`."""
 
     kind: ClassVar[str] = "task_confirm"
     task: str
+    team: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TaskChosen(Event):
-    """Правка подтверждения после «👍Беру!»: задание выбрано."""
+    """Правка подтверждения после «👍Беру!»: задание выбрано, `team` — командное."""
 
     kind: ClassVar[str] = "task_chosen"
     chosen: ChosenTask
+    team: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -138,6 +166,10 @@ def personal_type(condition: str) -> str | None:
 def _goal(condition: str) -> tuple[int, str]:
     m = _GOAL.search(condition)
     return (num(m["goal"]), resource(m["res"])) if m else (0, "")
+
+
+def _team_deeds(condition: str) -> tuple[str, ...]:
+    return next((deeds for head, deeds in _TEAM_DEEDS if condition.startswith(head)), ())
 
 
 def _hint(line: str) -> tuple[str, ...]:
@@ -163,10 +195,7 @@ def _task(m: re.Match[str], *, personal: bool) -> ChosenTask:
     )
 
 
-def _offers(text: str) -> tuple[TaskOffer, ...] | None:
-    start = text.index(_OFFERS_HEAD)
-    end = text.find(_TEAM_HEAD, start)
-    section = text[start : end if end >= 0 else len(text)]
+def _offers(section: str, pattern: re.Pattern[str]) -> tuple[TaskOffer, ...] | None:
     offers = tuple(
         TaskOffer(
             type=m["type"],
@@ -175,9 +204,9 @@ def _offers(text: str) -> tuple[TaskOffer, ...] | None:
             goal=_goal(m["cond"])[0],
             trophies=int(m["trophies"]),
         )
-        for m in _OFFER.finditer(section)
+        for m in pattern.finditer(section)
     )
-    # Экран — только целиком: каждый вариант личного задания должен разобраться.
+    # Экран — только целиком: каждый вариант задания должен разобраться.
     if not offers or len(offers) != section.count("⏳"):
         return None
     return offers
@@ -185,15 +214,25 @@ def _offers(text: str) -> tuple[TaskOffer, ...] | None:
 
 def _screen(text: str) -> list[Event]:
     team: ChosenTask | None = None
+    team_offers: tuple[TaskOffer, ...] = ()
     if (t := _TEAM.search(text)) is not None:
         team = _task(t, personal=False)
+    elif (start := text.find(_TEAM_OFFERS_HEAD)) >= 0:
+        parsed = _offers(text[start:], _TEAM_OFFER)
+        if parsed is None:
+            return []
+        team_offers = parsed
     elif _NO_TEAM not in text:
         return []
-    if _OFFERS_HEAD in text:
-        offers = _offers(text)
-        return [DailyTasksScreen(offers=offers, team=team)] if offers else []
+    if (start := text.find(_OFFERS_HEAD)) >= 0:
+        end = text.find(_TEAM_HEAD, start)
+        offers = _offers(text[start : end if end >= 0 else len(text)], _OFFER)
+        if offers is None:
+            return []
+        return [DailyTasksScreen(offers=offers, team=team, team_offers=team_offers)]
     if (p := _PERSONAL.search(text)) is not None:
-        return [DailyTasksScreen(chosen=_task(p, personal=True), team=team)]
+        chosen = _task(p, personal=True)
+        return [DailyTasksScreen(chosen=chosen, team=team, team_offers=team_offers)]
     return []
 
 
@@ -212,15 +251,34 @@ def _completed(text: str, trophies: int) -> TaskCompleted:
     return TaskCompleted(trophies=trophies, rewards=rewards)
 
 
+def _confirm(msg: IncomingMessage, button: re.Pattern[str], *, team: bool) -> list[Event]:
+    for b in msg.inline:
+        if b.data and (m := button.match(b.data)):
+            return [TaskConfirm(task=m["task"], team=team)]
+    return []
+
+
 def recognize_daily(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     if text.startswith(_HEAD):
         return _screen(text)
     if text.startswith(_CONFIRM):
-        for button in msg.inline:
-            if button.data and (m := _CONFIRM_BUTTON.match(button.data)):
-                return [TaskConfirm(task=m["task"])]
-        return []
+        return _confirm(msg, _CONFIRM_BUTTON, team=False)
+    if text.startswith(_TEAM_CONFIRM):
+        return _confirm(msg, _TEAM_CONFIRM_BUTTON, team=True)
+    if m := _TEAM_CHOSEN.match(text):
+        cond = m["cond"]
+        goal, res = _goal(cond)
+        team = ChosenTask(
+            type=None,
+            level=None,
+            goal=goal,
+            current=0,
+            done=False,
+            resource=res,
+            activities=_team_deeds(cond),
+        )
+        return [TaskChosen(chosen=team, team=True)]
     if m := _CHOSEN.match(text):
         cond = m["cond"]
         goal, res = _goal(cond)

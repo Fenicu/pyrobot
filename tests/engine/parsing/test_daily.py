@@ -14,6 +14,8 @@ from app.engine.parsing.daily import (
     personal_type,
     recognize_daily,
 )
+from tests.engine import daily_texts as d
+from tests.engine.artifact_texts import game_text
 from tests.fixtures import game_msg, game_versions
 
 
@@ -210,3 +212,109 @@ def test_partial_screen_gives_nothing(msg_id: int, drop: str) -> None:
     msg = game_msg("daily", msg_id)
     assert msg.text is not None and drop in msg.text
     assert recognize_daily(replace(msg, text=msg.text.replace(drop, "…"))) == []
+
+
+def team_offer(kind: str, level: str, goal: int) -> TaskOffer:
+    trophies = {"easy": 300, "medium": 600, "hard": 900}[level]
+    return TaskOffer(
+        type=kind, level=level, command=f"/ts_{kind}_{level}", goal=goal, trophies=trophies
+    )
+
+
+LEADER_TEAM_OFFERS = (
+    team_offer("materials", "easy", 40),
+    team_offer("convDets", "medium", 480),
+    team_offer("materials", "medium", 80),
+    team_offer("convDets", "hard", 720),
+    team_offer("walkMoney", "hard", 480),
+)
+
+
+def test_leader_screen_has_personal_and_team_offers() -> None:
+    assert recognize_daily(game_text(d.LEADER_OFFERS)) == [
+        DailyTasksScreen(
+            offers=(
+                offer("jobMoney", "easy", 50),
+                offer("robPro", "medium", 28),
+                offer("confKnows", "medium", 38),
+                offer("robPro", "hard", 39),
+                offer("learnKnows", "hard", 36),
+            ),
+            team_offers=LEADER_TEAM_OFFERS,
+        )
+    ]
+
+
+def test_leader_screen_with_chosen_personal_keeps_team_offers() -> None:
+    # Личное выбрано (блок живого экрана 3625786), командное лидер ещё не выбрал.
+    chosen = game_msg("daily", 3625786).text or ""
+    personal = chosen[chosen.index("Личное задание") : chosen.index("\nКомандное задание")]
+    team = d.LEADER_OFFERS[d.LEADER_OFFERS.index("Командные задания - выбери") :]
+    head = d.LEADER_OFFERS[: d.LEADER_OFFERS.index("Личные задания")]
+    [screen] = recognize_daily(game_text(f"{head}{personal}\n\n{team}"))
+    assert isinstance(screen, DailyTasksScreen)
+    assert screen.chosen is not None and screen.chosen.type == "jobMoney"
+    assert (screen.offers, screen.team, screen.team_offers) == ((), None, LEADER_TEAM_OFFERS)
+
+
+def test_after_team_choice_screen_is_unchanged() -> None:
+    [screen] = recognize_daily(game_text(d.AFTER_CHOICE))
+    assert isinstance(screen, DailyTasksScreen)
+    assert len(screen.offers) == 5 and screen.team_offers == ()
+    assert screen.team == team(720, 0, "⚙️", "dconv")
+
+
+@pytest.mark.parametrize(
+    "drop",
+    [
+        "Выбрать: /ts_materials_medium",
+        "🎖Награда: 900🏆.\nВыбрать: /ts_walkMoney_hard",
+        "Выбрать: /t_robPro_hard",
+        "\nКомандные задания - выбери одно из предложенных\n",
+    ],
+)
+def test_partial_leader_screen_gives_nothing(drop: str) -> None:
+    assert drop in d.LEADER_OFFERS
+    assert recognize_daily(game_text(d.LEADER_OFFERS.replace(drop, "…"))) == []
+
+
+def test_team_confirm_and_chosen_edit() -> None:
+    confirm = game_text(d.TEAM_CONFIRM, buttons=d.TEAM_CONFIRM_BUTTONS)
+    assert recognize_daily(confirm) == [TaskConfirm(task="convDets_hard", team=True)]
+    assert recognize_daily(game_text(d.TEAM_CONFIRM)) == []
+    # Кнопка личного задания под командным подтверждением — не подтверждение.
+    personal = (replace(d.TEAM_CONFIRM_BUTTONS[0], data="t_convDets_hard_confirm"),)
+    assert recognize_daily(game_text(d.TEAM_CONFIRM, buttons=personal)) == []
+    assert recognize_daily(game_text(d.TEAM_CHOSEN)) == [
+        TaskChosen(chosen=team(720, 0, "⚙️", "dconv"), team=True)
+    ]
+
+
+def test_personal_confirm_is_not_team() -> None:
+    [confirm] = _events(3625762)
+    assert isinstance(confirm, TaskConfirm) and not confirm.team
+    [chosen] = recognize_daily(game_versions("daily", 3625782)[1])
+    assert isinstance(chosen, TaskChosen) and not chosen.team
+
+
+@pytest.mark.parametrize(
+    ("condition", "activities"),
+    [
+        ("Переработать всей командой 720⚙️деталей в сырьё в Мастерской.", ("dconv",)),
+        ("Переработать всей командой 720⚙деталей в сырьё в Мастерской.", ("dconv",)),
+        ("Добыть силами команды на Работе или Прогулке 80🔩сырья.", ("job", "walk")),
+        ("Заработать силами команды на Прогулке $480💵.", ("walk",)),
+        ("Заработать всей командой на Работе $1 320💵.", ("job",)),
+        ("Получить на всю команду на Учёбе 360📚знаний.", ("learn",)),
+        ("Получить на всю команду на Конфе 360📚знаний.", ("confa",)),
+        ("Силами команды добыть с Продаванов 390⚙️.", ("gorbushka",)),
+        ("Вложить всей командой в лабораториях в разработку любого гаджета 300🔩сырья.", ()),
+    ],
+)
+def test_team_chosen_deeds_from_condition(condition: str, activities: tuple[str, ...]) -> None:
+    text = d.TEAM_CHOSEN.replace(
+        "Переработать всей командой 720⚙️деталей в сырьё в Мастерской.", condition
+    )
+    [chosen] = recognize_daily(game_text(text))
+    assert isinstance(chosen, TaskChosen) and chosen.team
+    assert chosen.chosen.activities == activities

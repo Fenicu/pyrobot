@@ -214,6 +214,13 @@ describe('строка пояснения', () => {
 		);
 	});
 
+	it('командное: глава видит варианты и ещё не выбрал', () => {
+		const seen = prod.state.team_task!;
+		const value = { ...seen.value, status: 'offers' as const, current: 0, goal: 0, resource: '' };
+		const text = explain(plan, { ...prod.state, team_task: { ...seen, value } }, NOW);
+		expect(text).toMatch(/, командное ещё не выбрано \(глава — этот персонаж\)\.$/);
+	});
+
 	it('следующее — доступное с бэкенда, даже если по счётчикам очередь другого', () => {
 		// Добыча 0, переработка 1, но на добычу нет 💵: следующей будет переработка, как и решение.
 		const poor: Outlook = {

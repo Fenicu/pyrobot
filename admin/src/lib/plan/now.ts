@@ -229,6 +229,7 @@ function teamText(state: PublicState, day: string): string {
 	const team = val(state, 'team_task');
 	if (!team || (team.day && team.day !== day)) return 'командное — нет данных за сегодня';
 	if (team.status === 'none') return 'командное глава ещё не выбрал';
+	if (team.status === 'offers') return 'командное ещё не выбрано (глава — этот персонаж)';
 	if (team.status === 'done') return 'командное выполнено';
 	return `командное: ${fmtNum(team.current)}/${fmtNum(team.goal)}${team.resource ? ` ${team.resource}` : ''}`;
 }

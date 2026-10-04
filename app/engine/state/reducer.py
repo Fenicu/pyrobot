@@ -33,6 +33,7 @@ from app.engine.parsing.daily import (
     DailyTasksScreen,
     TaskChosen,
     TaskCompleted,
+    TaskOffer,
 )
 from app.engine.parsing.food import FastfoodEaten, FoodMenu
 from app.engine.parsing.gorbushka import GorbushkaFight, GorbushkaScreen
@@ -202,7 +203,8 @@ _TASK_RANK = {"none": 0, "offers": 0, "active": 1, "done": 2}
 
 def _same_team(task: TeamTask, day: date, resource: str) -> bool:
     # Экранное задание с нераспознанным условием ресурса не знает: строка его дополняет.
-    return task.day == day and task.status != "none" and task.resource in (resource, "")
+    chosen = task.status not in ("none", "offers")
+    return task.day == day and chosen and task.resource in (resource, "")
 
 
 def _demotes(current: Obs[Any], value: Any, at: datetime) -> bool:
@@ -795,6 +797,13 @@ def _chosen(task: ChosenTask) -> ChosenTaskState:
     )
 
 
+def _offers(offers: tuple[TaskOffer, ...]) -> tuple[TaskOfferState, ...]:
+    return tuple(
+        TaskOfferState(type=o.type, level=o.level, goal=o.goal, trophies=o.trophies)
+        for o in offers
+    )
+
+
 @_on(DailyTasksScreen)
 def _daily_screen(p: _Patch, e: DailyTasksScreen) -> None:
     # Полный снимок обоих заданий за день экрана.
@@ -805,13 +814,18 @@ def _daily_screen(p: _Patch, e: DailyTasksScreen) -> None:
             day=day, status=status, chosen=_chosen(e.chosen), current=e.chosen.current
         )
     else:
-        offers = tuple(
-            TaskOfferState(type=o.type, level=o.level, goal=o.goal, trophies=o.trophies)
-            for o in e.offers
-        )
-        personal = PersonalTask(day=day, status="offers", offers=offers)
+        personal = PersonalTask(day=day, status="offers", offers=_offers(e.offers))
     p.snap("daily_personal", personal)
     team = TeamTask(current=0, goal=0, resource="", day=day, status="none")
+    if e.team_offers:
+        team = TeamTask(
+            current=0,
+            goal=0,
+            resource="",
+            day=day,
+            status="offers",
+            offers=_offers(e.team_offers),
+        )
     if e.team is not None:
         t = e.team
         team = TeamTask(
@@ -827,7 +841,16 @@ def _daily_screen(p: _Patch, e: DailyTasksScreen) -> None:
 
 @_on(TaskChosen)
 def _task_chosen(p: _Patch, e: TaskChosen) -> None:
-    task = PersonalTask(day=tasks_day(p.at), status="active", chosen=_chosen(e.chosen))
+    day = tasks_day(p.at)
+    if e.team:
+        t = e.chosen
+        team = TeamTask(
+            current=0, goal=t.goal, resource=t.resource, day=day, activities=t.activities
+        )
+        # Дела по условию неизвестны — план перечитает экран, где они в подсказке.
+        p.snap("team_task", team, src="screen" if t.activities else "derived")
+        return
+    task = PersonalTask(day=day, status="active", chosen=_chosen(e.chosen))
     p.snap("daily_personal", task)
 
 
