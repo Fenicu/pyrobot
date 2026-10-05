@@ -3635,12 +3635,15 @@ SWINFO сверкой истории прошло, `false` — чат недос
 latch не меняются. `POST /api/v1/accounts/{id}/engine/reconciled` (CSRF) — явное решение администратора: закрывает
 все открытые обязательства сверки и снимает блок трат без проверки свежести состояния (см. «Шлюз
 действий»); автоматическое снятие блока после проверки — задача сверщика. `GET
-/api/v1/accounts/{id}/tg/status` (сессия) и `POST /api/v1/accounts/{id}/tg/login/start {phone}`, `.../login/code {attempt_id,
-code}`, `.../login/password {attempt_id, password}`, `POST /api/v1/accounts/{id}/tg/logout` (все — CSRF)
-проксируют `TgAuthManager` и отвечают статусом входа `TgStatusOut` (`state` — `unauthorized`,
-`awaiting_code`, `awaiting_password`, `online`, `overload` (приём обновлений приостановлен, см.
-«Транспорт и вход в Telegram»), `error` и `stopped` (движок не запущен, только в API); `user_id`,
-`attempt_id`, `error`, `bound_user_id` — пользователь Telegram, к которому аккаунт привязан
+/api/v1/accounts/{id}/tg/status` (сессия) и `POST /api/v1/accounts/{id}/tg/login/start {phone}`,
+`.../login/code {attempt_id, code}`, `.../login/password {attempt_id, password}`, `.../login/resend {attempt_id}`,
+`.../login/email {attempt_id, email}`, `.../login/email-code {attempt_id, code}`, `POST /api/v1/accounts/{id}/tg/logout`
+(все — CSRF) проксируют `TgAuthManager` и отвечают статусом входа `TgStatusOut` (`state` — `unauthorized`,
+`awaiting_code`, `awaiting_password`, `awaiting_email` (нужна привязка почты к аккаунту Telegram),
+`awaiting_email_code` (код подтверждения почты), `online`, `overload` (приём обновлений приостановлен, см.
+«Транспорт и вход в Telegram»), `error` и `stopped` (движок не запущен, только в API); поля доставки
+`delivery_type`, `delivery_email_pattern`, `delivery_next_type`, `delivery_timeout`, `delivery_expires_at`;
+`user_id`, `attempt_id`, `error`, `bound_user_id` — пользователь Telegram, к которому аккаунт привязан
 навсегда); несовпадение попытки входа (`AttemptMismatch`) отдаёт 409. Отказ после входа — `error`
 в статусе: `unexpected_user`, `tg_user_taken`, `chat_is_self`, `bind_failed`. Неверный или
 истёкший код и неверный пароль 2FA — это 200 с полем `error` (`invalid_code`, `code_expired`,

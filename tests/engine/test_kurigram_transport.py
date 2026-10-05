@@ -25,6 +25,7 @@ from app.engine.tg_auth import (
     AttemptMismatch,
     InvalidPhone,
     SendCodeRejected,
+    SentCodeInfo,
     TgAuthManager,
     TgState,
 )
@@ -352,6 +353,93 @@ async def test_send_code_other_bad_request_rejected() -> None:
     with pytest.raises(SendCodeRejected) as info:
         await t.send_code("+1")
     assert info.value.code == "phone_number_banned"
+
+
+async def test_send_code_returns_sent_code_info() -> None:
+    t = FakeKurigram(authorized=False)
+    await t.connect()
+    info = await t.send_code("+1234567890")
+    assert isinstance(info, SentCodeInfo)
+    assert info.phone_code_hash == "hash"
+    assert info.type == "app"
+
+
+async def test_resend_code_invokes_rpc() -> None:
+    from pyrogram import raw
+
+    t = FakeKurigram(authorized=False)
+    await t.connect()
+    t.client.responses["ResendCode"] = raw.types.auth.SentCode(
+        type=raw.types.auth.SentCodeTypeSms(length=5),
+        phone_code_hash="new_hash",
+        next_type=None,
+        timeout=120,
+    )
+    info = await t.resend_code("+1234567890", "old_hash")
+    assert info.phone_code_hash == "new_hash"
+    assert info.type == "sms"
+    assert info.timeout == 120
+    assert ("ResendCode", {}) in t.client.invoked
+
+
+async def test_send_verify_email_code_invokes_rpc() -> None:
+    from pyrogram import raw
+
+    t = FakeKurigram(authorized=False)
+    await t.connect()
+    t.client.responses["SendVerifyEmailCode"] = raw.types.account.SentEmailCode(
+        email_pattern="f***n@g***.com",
+        length=6,
+    )
+    pattern = await t.send_verify_email_code("+1234567890", "h", "test@example.com")
+    assert pattern == "f***n@g***.com"
+    assert ("SendVerifyEmailCode", {}) in t.client.invoked
+
+
+async def test_verify_email_returns_user_or_sent_code() -> None:
+    from pyrogram import raw
+
+    t = FakeKurigram(authorized=False)
+    await t.connect()
+    # 1. returns SentCode
+    t.client.responses["VerifyEmail"] = raw.types.account.EmailVerifiedLogin(
+        email="test@example.com",
+        sent_code=raw.types.auth.SentCode(
+            type=raw.types.auth.SentCodeTypeApp(length=5),
+            phone_code_hash="after_email",
+        ),
+    )
+    res = await t.verify_email("+1234567890", "h", "12345")
+    assert isinstance(res, SentCodeInfo)
+    assert res.phone_code_hash == "after_email"
+    assert res.type == "app"
+
+    # 2. returns SentCodeSuccess
+    t.client.responses["VerifyEmail"] = raw.types.account.EmailVerifiedLogin(
+        email="test@example.com",
+        sent_code=raw.types.auth.SentCodeSuccess(
+            authorization=raw.types.auth.Authorization(
+                user=raw.types.User(id=EXPECTED),
+            )
+        ),
+    )
+    user_id = await t.verify_email("+1234567890", "h", "12345")
+    assert user_id == EXPECTED
+    assert await t.storage.user_id() == EXPECTED
+
+
+async def test_sign_in_email_invokes_rpc() -> None:
+    from pyrogram import raw
+
+    t = FakeKurigram(authorized=False)
+    await t.connect()
+    t.client.responses["SignIn"] = raw.types.auth.Authorization(
+        user=raw.types.User(id=EXPECTED),
+    )
+    user_id = await t.sign_in("+1234567890", "h", "12345", is_email=True)
+    assert user_id == EXPECTED
+    assert await t.storage.user_id() == EXPECTED
+    assert ("SignIn", {}) in t.client.invoked
 
 
 async def test_identify_unauthorized_resets_client_without_callback() -> None:

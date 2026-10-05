@@ -87,12 +87,23 @@ class TgState(StrEnum):
     UNAUTHORIZED = "unauthorized"
     AWAITING_CODE = "awaiting_code"
     AWAITING_PASSWORD = "awaiting_password"
+    AWAITING_EMAIL = "awaiting_email"
+    AWAITING_EMAIL_CODE = "awaiting_email_code"
     ONLINE = "online"
     # Перегрузка обновлениями: транспорт остановил приём и подключится сам, вход сохранён.
     OVERLOAD = "overload"
     ERROR = "error"
     # Движок аккаунта не запущен: состояние входа неизвестно (только в API).
     STOPPED = "stopped"
+
+
+@dataclass(frozen=True, slots=True)
+class SentCodeInfo:
+    phone_code_hash: str
+    type: str = "app"
+    email_pattern: str | None = None
+    next_type: str | None = None
+    timeout: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,18 +114,30 @@ class TgStatus:
     error: str | None = None
     # Пользователь Telegram, к которому привязан аккаунт (`accounts.tg_user_id`); выход не снимает.
     bound_user_id: int | None = None
+    delivery_type: str | None = None
+    delivery_email_pattern: str | None = None
+    delivery_next_type: str | None = None
+    delivery_timeout: int | None = None
+    delivery_expires_at: float | None = None
 
 
 class TgAuthBackend(Protocol):
     async def connect(self) -> bool: ...
-    async def send_code(self, phone: str) -> str: ...
-    async def sign_in(self, phone: str, code_hash: str, code: str) -> int: ...
+    async def send_code(self, phone: str) -> SentCodeInfo | str: ...
+    async def sign_in(
+        self, phone: str, code_hash: str, code: str, *, is_email: bool = False
+    ) -> int: ...
     async def check_password(self, password: str) -> int: ...
     async def identify(self) -> int: ...
     async def go_online(self) -> None: ...
     async def log_out(self) -> None: ...
     # Отключение без выхода: сессия остаётся, следующий `connect()` подключает заново.
     async def disconnect(self) -> None: ...
+    async def resend_code(self, phone: str, code_hash: str) -> SentCodeInfo: ...
+    async def send_verify_email_code(
+        self, phone: str, code_hash: str, email: str
+    ) -> str | None: ...
+    async def verify_email(self, phone: str, code_hash: str, code: str) -> int | SentCodeInfo: ...
 
 
 @dataclass
@@ -124,6 +147,11 @@ class _Attempt:
     phone: str
     code_hash: str
     expires: float
+    code_type: str = "app"
+    email_pattern: str | None = None
+    next_type: str | None = None
+    timeout: int | None = None
+    timeout_at: float | None = None
 
 
 class TgAuthManager:
@@ -161,8 +189,19 @@ class TgAuthManager:
         self._callbacks: list[Callable[[], Awaitable[None]]] = []
 
     def status(self) -> TgStatus:
-        attempt_id = self._attempt.id if self._attempt else None
-        return TgStatus(self._state, self._user_id, attempt_id, self._error, self._expected)
+        att = self._attempt
+        return TgStatus(
+            self._state,
+            self._user_id,
+            att.id if att is not None else None,
+            self._error,
+            self._expected,
+            delivery_type=att.code_type if att is not None else None,
+            delivery_email_pattern=att.email_pattern if att is not None else None,
+            delivery_next_type=att.next_type if att is not None else None,
+            delivery_timeout=att.timeout if att is not None else None,
+            delivery_expires_at=att.timeout_at if att is not None else None,
+        )
 
     def on_online(self, cb: Callable[[], Awaitable[None]]) -> None:
         self._callbacks.append(cb)
@@ -207,7 +246,7 @@ class TgAuthManager:
                     raise CodeRateLimited(wait)
             try:
                 await self._backend.connect()
-                code_hash = await self._backend.send_code(phone)
+                sent = await self._backend.send_code(phone)
             except TgAuthError as exc:
                 self._attempt = None
                 self._set(TgState.ERROR, error=exc.code)
@@ -221,17 +260,47 @@ class TgAuthManager:
                 self._attempt = None
                 self._set(TgState.ERROR, error="send_code_failed")
                 raise TgBackendError("send_code_failed") from exc
+
+            if isinstance(sent, SentCodeInfo):
+                code_hash = sent.phone_code_hash
+                code_type = sent.type
+                email_pattern = sent.email_pattern
+                next_type = sent.next_type
+                timeout = sent.timeout
+            else:
+                code_hash = str(sent)
+                code_type = "app"
+                email_pattern = None
+                next_type = None
+                timeout = None
+
+            timeout_at = time.time() + timeout if timeout is not None else None
             self._attempt = _Attempt(
-                uuid.uuid4().hex, owner, phone, code_hash, time.monotonic() + self._ttl
+                uuid.uuid4().hex,
+                owner,
+                phone,
+                code_hash,
+                time.monotonic() + self._ttl,
+                code_type=code_type,
+                email_pattern=email_pattern,
+                next_type=next_type,
+                timeout=timeout,
+                timeout_at=timeout_at,
             )
-            self._set(TgState.AWAITING_CODE)
+            if code_type == "setup_email":
+                self._set(TgState.AWAITING_EMAIL)
+            else:
+                self._set(TgState.AWAITING_CODE)
             return self.status()
 
     async def submit_code(self, attempt_id: str, owner: str, code: str) -> TgStatus:
         async with self._lock:
             attempt = self._check(attempt_id, owner, TgState.AWAITING_CODE)
+            is_email = attempt.code_type == "email"
             try:
-                user_id = await self._backend.sign_in(attempt.phone, attempt.code_hash, code)
+                user_id = await self._backend.sign_in(
+                    attempt.phone, attempt.code_hash, code, is_email=is_email
+                )
             except PasswordRequired:
                 self._set(TgState.AWAITING_PASSWORD)
                 return self.status()
@@ -253,6 +322,88 @@ class TgAuthManager:
                 raise TgBackendError("sign_in_failed") from exc
             self._attempt = None
             await self._accept(user_id)
+            return self.status()
+
+    async def resend_code(self, attempt_id: str, owner: str) -> TgStatus:
+        async with self._lock:
+            attempt = self._check(attempt_id, owner, TgState.AWAITING_CODE)
+            try:
+                sent = await self._backend.resend_code(attempt.phone, attempt.code_hash)
+            except FloodWait as exc:
+                raise exc
+            except TgAuthError as exc:
+                self._error = exc.code
+                return self.status()
+            except Exception as exc:
+                log.exception("telegram resend_code failed")
+                raise TgBackendError("resend_code_failed") from exc
+
+            timeout = sent.timeout
+            timeout_at = time.time() + timeout if timeout is not None else None
+            attempt.code_hash = sent.phone_code_hash
+            attempt.code_type = sent.type
+            attempt.email_pattern = sent.email_pattern
+            attempt.next_type = sent.next_type
+            attempt.timeout = timeout
+            attempt.timeout_at = timeout_at
+            self._error = None
+            return self.status()
+
+    async def send_email(self, attempt_id: str, owner: str, email: str) -> TgStatus:
+        async with self._lock:
+            attempt = self._check(attempt_id, owner, TgState.AWAITING_EMAIL)
+            try:
+                pattern = await self._backend.send_verify_email_code(
+                    attempt.phone, attempt.code_hash, email
+                )
+            except FloodWait as exc:
+                raise exc
+            except TgAuthError as exc:
+                self._error = exc.code
+                return self.status()
+            except Exception as exc:
+                log.exception("telegram send_verify_email_code failed")
+                raise TgBackendError("send_verify_email_code_failed") from exc
+
+            attempt.email_pattern = pattern or email
+            self._error = None
+            self._set(TgState.AWAITING_EMAIL_CODE)
+            return self.status()
+
+    async def submit_email_code(self, attempt_id: str, owner: str, code: str) -> TgStatus:
+        async with self._lock:
+            attempt = self._check(attempt_id, owner, TgState.AWAITING_EMAIL_CODE)
+            try:
+                res = await self._backend.verify_email(attempt.phone, attempt.code_hash, code)
+            except InvalidCode:
+                self._error = "invalid_code"
+                return self.status()
+            except CodeExpired:
+                self._attempt = None
+                self._set(TgState.UNAUTHORIZED, error="code_expired")
+                return self.status()
+            except TgAuthError as exc:
+                self._error = exc.code
+                return self.status()
+            except Exception as exc:
+                log.exception("telegram verify_email failed")
+                raise TgBackendError("verify_email_failed") from exc
+
+            if isinstance(res, int):
+                self._attempt = None
+                await self._accept(res)
+                return self.status()
+
+            timeout = res.timeout
+            timeout_at = time.monotonic() + timeout if timeout is not None else None
+            attempt.code_hash = res.phone_code_hash
+            attempt.code_type = res.type
+            attempt.email_pattern = res.email_pattern
+            attempt.next_type = res.next_type
+            attempt.timeout = timeout
+            attempt.timeout_at = timeout_at
+            self._error = None
+            self._set(TgState.AWAITING_CODE)
             return self.status()
 
     async def submit_password(self, attempt_id: str, owner: str, password: str) -> TgStatus:

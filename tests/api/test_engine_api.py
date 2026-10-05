@@ -8,7 +8,7 @@ from app.api.app import create_api
 from app.api.container import Container
 from app.db.base import Database
 from app.engine.host.codes import CodeLimiter
-from app.engine.tg_auth import InvalidPhone, SendCodeRejected
+from app.engine.tg_auth import InvalidPhone, SendCodeRejected, SentCodeInfo
 from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from app.logctx import current_account
@@ -75,6 +75,99 @@ async def test_tg_login_flow(with_facade: Container, api_client: AsyncClient) ->
         json={"attempt_id": attempt, "code": "12345"},
     )
     assert ok.json()["state"] == "online"
+
+
+async def test_tg_login_resend_code(container: Container, api_client: AsyncClient) -> None:
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h3", type="app", next_type="sms", timeout=60)
+    )
+    run_engine(container, build(authorized=False, backend=backend))
+    csrf = await login(api_client)
+    h = {"X-CSRF-Token": csrf}
+    start = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
+    attempt = start.json()["attempt_id"]
+    assert start.json()["delivery_type"] == "app"
+    assert start.json()["delivery_next_type"] == "sms"
+    assert start.json()["delivery_timeout"] == 60
+
+    wrong = await api_client.post(
+        "/api/v1/accounts/1/tg/login/resend", headers=h, json={"attempt_id": "nope"}
+    )
+    assert wrong.status_code == 409
+
+    res = await api_client.post(
+        "/api/v1/accounts/1/tg/login/resend", headers=h, json={"attempt_id": attempt}
+    )
+    assert res.status_code == 200
+    assert res.json()["delivery_type"] == "sms"
+    assert backend.resend_calls == [("+888", "h3")]
+
+
+async def test_tg_login_email_flow(container: Container, api_client: AsyncClient) -> None:
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email"),
+        email_code="54321",
+    )
+    run_engine(container, build(authorized=False, backend=backend))
+    csrf = await login(api_client)
+    h = {"X-CSRF-Token": csrf}
+
+    start = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
+    attempt = start.json()["attempt_id"]
+    assert start.json()["state"] == "awaiting_email"
+    assert start.json()["delivery_type"] == "setup_email"
+
+    wrong = await api_client.post(
+        "/api/v1/accounts/1/tg/login/email",
+        headers=h,
+        json={"attempt_id": "nope", "email": "test@example.com"},
+    )
+    assert wrong.status_code == 409
+
+    res_email = await api_client.post(
+        "/api/v1/accounts/1/tg/login/email",
+        headers=h,
+        json={"attempt_id": attempt, "email": "test@example.com"},
+    )
+    assert res_email.status_code == 200
+    assert res_email.json()["state"] == "awaiting_email_code"
+    assert res_email.json()["delivery_email_pattern"] == "t***@e***.com"
+
+    wrong_code = await api_client.post(
+        "/api/v1/accounts/1/tg/login/email-code",
+        headers=h,
+        json={"attempt_id": "nope", "code": "54321"},
+    )
+    assert wrong_code.status_code == 409
+
+    bad_code = await api_client.post(
+        "/api/v1/accounts/1/tg/login/email-code",
+        headers=h,
+        json={"attempt_id": attempt, "code": "00000"},
+    )
+    assert bad_code.status_code == 200
+    assert bad_code.json()["state"] == "awaiting_email_code"
+    assert bad_code.json()["error"] == "invalid_code"
+
+    ok_code = await api_client.post(
+        "/api/v1/accounts/1/tg/login/email-code",
+        headers=h,
+        json={"attempt_id": attempt, "code": "54321"},
+    )
+    assert ok_code.status_code == 200
+    assert ok_code.json()["state"] == "awaiting_code"
+
+    ok_login = await api_client.post(
+        "/api/v1/accounts/1/tg/login/code",
+        headers=h,
+        json={"attempt_id": attempt, "code": "12345"},
+    )
+    assert ok_login.status_code == 200
+    assert ok_login.json()["state"] == "online"
 
 
 async def test_readyz_is_process_readiness(container: Container, api_client: AsyncClient) -> None:

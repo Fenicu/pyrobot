@@ -54,6 +54,11 @@ class FakeStorage:
         self._user_id = value
         return None
 
+    async def is_bot(self, value: Any = object) -> bool | None:
+        if value is object:
+            return False
+        return None
+
     async def get_update_states(self, _id: int) -> list[Any]:
         return self.states
 

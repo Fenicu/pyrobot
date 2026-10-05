@@ -22,7 +22,19 @@ from tests.fixtures import game_msg
 
 pytestmark = pytest.mark.db
 ISO_UTC = re.compile(r"\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{6})?\+00:00\Z")
-TG_KEYS = ["state", "user_id", "attempt_id", "error", "bound_user_id", "app"]
+TG_KEYS = [
+    "state",
+    "user_id",
+    "attempt_id",
+    "error",
+    "bound_user_id",
+    "app",
+    "delivery_type",
+    "delivery_email_pattern",
+    "delivery_next_type",
+    "delivery_timeout",
+    "delivery_expires_at",
+]
 BOUND = 267519921
 
 
@@ -78,6 +90,11 @@ async def test_engine_status_shape(container: Container, api_client: AsyncClient
             "error": None,
             "bound_user_id": BOUND,
             "app": "server",
+            "delivery_type": None,
+            "delivery_email_pattern": None,
+            "delivery_next_type": None,
+            "delivery_timeout": None,
+            "delivery_expires_at": None,
         },
         "queue": 0,
         "in_flight": None,
@@ -112,6 +129,11 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
         "error": None,
         "bound_user_id": BOUND,
         "app": "server",
+        "delivery_type": None,
+        "delivery_email_pattern": None,
+        "delivery_next_type": None,
+        "delivery_timeout": None,
+        "delivery_expires_at": None,
     }
     start = (
         await api_client.post(
@@ -127,6 +149,11 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
         "error": None,
         "bound_user_id": BOUND,
         "app": "server",
+        "delivery_type": "app",
+        "delivery_email_pattern": None,
+        "delivery_next_type": None,
+        "delivery_timeout": None,
+        "delivery_expires_at": None,
     }
     code = (
         await api_client.post(
@@ -158,6 +185,11 @@ async def test_tg_shapes(container: Container, api_client: AsyncClient) -> None:
         "error": None,
         "bound_user_id": BOUND,
         "app": "server",
+        "delivery_type": None,
+        "delivery_email_pattern": None,
+        "delivery_next_type": None,
+        "delivery_timeout": None,
+        "delivery_expires_at": None,
     }
     out = (await api_client.post("/api/v1/accounts/1/tg/logout", headers=h)).json()
     assert list(out) == TG_KEYS and out["state"] == "unauthorized"

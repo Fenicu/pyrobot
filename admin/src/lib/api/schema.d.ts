@@ -707,6 +707,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{account_id}/tg/login/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tg Email */
+        post: operations["tg_email_api_v1_accounts__account_id__tg_login_email_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/tg/login/email-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tg Email Code */
+        post: operations["tg_email_code_api_v1_accounts__account_id__tg_login_email_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/tg/login/password": {
         parameters: {
             query?: never;
@@ -718,6 +752,23 @@ export interface paths {
         put?: never;
         /** Tg Password */
         post: operations["tg_password_api_v1_accounts__account_id__tg_login_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/tg/login/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Tg Resend */
+        post: operations["tg_resend_api_v1_accounts__account_id__tg_login_resend_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1764,6 +1815,11 @@ export interface components {
              */
             lottery_max: boolean;
         };
+        /** AttemptIn */
+        AttemptIn: {
+            /** Attempt Id */
+            attempt_id: string;
+        };
         /**
          * BalanceOut
          * @description Изменение наблюдаемого значения за сутки МСК; `delta = null` — нет данных (нет точки в
@@ -1972,6 +2028,13 @@ export interface components {
             scenario: string | null;
             /** Until */
             until: string | null;
+        };
+        /** EmailIn */
+        EmailIn: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Email */
+            email: string;
         };
         /** EngineStatusOut */
         EngineStatusOut: {
@@ -3513,7 +3576,7 @@ export interface components {
          * TgState
          * @enum {string}
          */
-        TgState: "unauthorized" | "awaiting_code" | "awaiting_password" | "online" | "overload" | "error" | "stopped";
+        TgState: "unauthorized" | "awaiting_code" | "awaiting_password" | "awaiting_email" | "awaiting_email_code" | "online" | "overload" | "error" | "stopped";
         /** TgStatusOut */
         TgStatusOut: {
             /**
@@ -3525,6 +3588,16 @@ export interface components {
             attempt_id: string | null;
             /** Bound User Id */
             bound_user_id: number | null;
+            /** Delivery Email Pattern */
+            delivery_email_pattern?: string | null;
+            /** Delivery Expires At */
+            delivery_expires_at?: number | null;
+            /** Delivery Next Type */
+            delivery_next_type?: string | null;
+            /** Delivery Timeout */
+            delivery_timeout?: number | null;
+            /** Delivery Type */
+            delivery_type?: string | null;
             /** Error */
             error: string | null;
             state: components["schemas"]["TgState"];
@@ -6396,6 +6469,224 @@ export interface operations {
             };
         };
     };
+    tg_email_api_v1_accounts__account_id__tg_login_email_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TgStatusOut"];
+                };
+            };
+            /** @description invalid_phone | password_required | <код TgAuthError> */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description already online | another login in progress | unknown attempt | state is … */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description flood_wait | tg_code_rate_limited */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description send_code_failed | sign_in_failed | check_password_failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    tg_email_code_api_v1_accounts__account_id__tg_login_email_code_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TgStatusOut"];
+                };
+            };
+            /** @description invalid_phone | password_required | <код TgAuthError> */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description already online | another login in progress | unknown attempt | state is … */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description flood_wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description send_code_failed | sign_in_failed | check_password_failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     tg_password_api_v1_accounts__account_id__tg_login_password_post: {
         parameters: {
             query?: never;
@@ -6477,6 +6768,115 @@ export interface operations {
                 };
             };
             /** @description flood_wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description send_code_failed | sign_in_failed | check_password_failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    tg_resend_api_v1_accounts__account_id__tg_login_resend_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AttemptIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TgStatusOut"];
+                };
+            };
+            /** @description invalid_phone | password_required | <код TgAuthError> */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description already online | another login in progress | unknown attempt | state is … */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description flood_wait | tg_code_rate_limited */
             429: {
                 headers: {
                     [name: string]: unknown;

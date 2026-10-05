@@ -6,7 +6,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from app.engine.tg_auth import InvalidCode, InvalidPassword, PasswordRequired
+from app.engine.tg_auth import (
+    InvalidCode,
+    InvalidPassword,
+    PasswordRequired,
+    SentCodeInfo,
+)
 from app.engine.transport.base import GroupCheck, GroupInfo, JoinStatus
 from app.engine.types import IncomingMessage
 
@@ -121,24 +126,51 @@ class FakeTgBackend:
         user_id: int = 267519921,
         password: str | None = None,
         code: str = "12345",
+        sent_code_info: SentCodeInfo | None = None,
+        email_code: str = "54321",
     ) -> None:
         self.authorized = authorized
         self.user_id = user_id
         self.password = password
         self.code = code
+        self.sent_code_info = sent_code_info
+        self.email_code = email_code
         self.logged_out = False
         self.online = False
         self.connected = False
         self._code_ok = False
+        self.resend_calls: list[tuple[str, str]] = []
+        self.send_email_calls: list[tuple[str, str, str]] = []
+        self.verify_email_calls: list[tuple[str, str, str]] = []
+        self.sign_in_calls: list[tuple[str, str, str, bool]] = []
 
     async def connect(self) -> bool:
         self.connected = True
         return self.authorized
 
-    async def send_code(self, phone: str) -> str:
-        return "hash"
+    async def send_code(self, phone: str) -> SentCodeInfo | str:
+        if self.sent_code_info is not None:
+            return self.sent_code_info
+        return SentCodeInfo(phone_code_hash="hash", type="app")
 
-    async def sign_in(self, phone: str, code_hash: str, code: str) -> int:
+    async def resend_code(self, phone: str, code_hash: str) -> SentCodeInfo:
+        self.resend_calls.append((phone, code_hash))
+        return SentCodeInfo(phone_code_hash="hash_resent", type="sms", timeout=60)
+
+    async def send_verify_email_code(self, phone: str, code_hash: str, email: str) -> str | None:
+        self.send_email_calls.append((phone, code_hash, email))
+        return "t***@e***.com"
+
+    async def verify_email(self, phone: str, code_hash: str, code: str) -> int | SentCodeInfo:
+        self.verify_email_calls.append((phone, code_hash, code))
+        if code != self.email_code:
+            raise InvalidCode
+        return SentCodeInfo(phone_code_hash="hash_after_email", type="app")
+
+    async def sign_in(
+        self, phone: str, code_hash: str, code: str, *, is_email: bool = False
+    ) -> int:
+        self.sign_in_calls.append((phone, code_hash, code, is_email))
         if code != self.code:
             raise InvalidCode
         self._code_ok = True

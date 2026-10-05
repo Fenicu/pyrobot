@@ -76,6 +76,8 @@ export const TG_STATE: Record<string, string> = {
 	unauthorized: 'не выполнен вход',
 	awaiting_code: 'ждёт код',
 	awaiting_password: 'ждёт пароль 2FA',
+	awaiting_email: 'ждёт почту',
+	awaiting_email_code: 'ждёт код из почты',
 	online: 'online',
 	overload: 'перегрузка',
 	error: 'ошибка',

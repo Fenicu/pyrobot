@@ -70,6 +70,15 @@ class CodeIn(BaseModel):
     code: str
 
 
+class AttemptIn(BaseModel):
+    attempt_id: str
+
+
+class EmailIn(BaseModel):
+    attempt_id: str
+    email: str
+
+
 class TgPasswordIn(BaseModel):
     attempt_id: str
     password: str
@@ -95,6 +104,11 @@ class TgStatusOut(BaseModel):
     # None — привязывает первый вход. Выход из Telegram привязку не снимает.
     bound_user_id: int | None
     app: Literal["server"] | TgAppOut = "server"
+    delivery_type: str | None = None
+    delivery_email_pattern: str | None = None
+    delivery_next_type: str | None = None
+    delivery_timeout: int | None = None
+    delivery_expires_at: float | None = None
 
 
 class EngineStatusOut(BaseModel):
@@ -138,6 +152,11 @@ def _tg(st: TgStatus, app: Literal["server"] | TgAppOut = "server") -> TgStatusO
         error=st.error,
         bound_user_id=st.bound_user_id,
         app=app,
+        delivery_type=st.delivery_type,
+        delivery_email_pattern=st.delivery_email_pattern,
+        delivery_next_type=st.delivery_next_type,
+        delivery_timeout=st.delivery_timeout,
+        delivery_expires_at=st.delivery_expires_at,
     )
 
 
@@ -422,6 +441,56 @@ async def tg_password(
 ) -> TgStatusOut:
     return await _guard(
         f.tg.submit_password(body.attempt_id, str(ctx.session_id), body.password),
+        await _app(c, scope.account.id),
+    )
+
+
+@router.post(
+    "/tg/login/resend",
+    response_model=TgStatusOut,
+    responses={**_TG_LOGIN, 429: error(FLOOD_WAIT, TG_CODE_RATE_LIMITED)},
+)
+async def tg_resend(
+    body: AttemptIn,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(running)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
+) -> TgStatusOut:
+    return await _guard(
+        f.tg.resend_code(body.attempt_id, str(ctx.session_id)),
+        await _app(c, scope.account.id),
+    )
+
+
+@router.post(
+    "/tg/login/email",
+    response_model=TgStatusOut,
+    responses={**_TG_LOGIN, 429: error(FLOOD_WAIT, TG_CODE_RATE_LIMITED)},
+)
+async def tg_email(
+    body: EmailIn,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(running)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
+) -> TgStatusOut:
+    return await _guard(
+        f.tg.send_email(body.attempt_id, str(ctx.session_id), body.email),
+        await _app(c, scope.account.id),
+    )
+
+
+@router.post("/tg/login/email-code", response_model=TgStatusOut, responses=_TG_LOGIN)
+async def tg_email_code(
+    body: CodeIn,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(running)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
+) -> TgStatusOut:
+    return await _guard(
+        f.tg.submit_email_code(body.attempt_id, str(ctx.session_id), body.code),
         await _app(c, scope.account.id),
     )
 

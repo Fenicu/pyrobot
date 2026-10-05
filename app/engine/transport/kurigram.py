@@ -20,7 +20,9 @@ from app.engine.tg_auth import (
     InvalidPhone,
     PasswordRequired,
     SendCodeRejected,
+    SentCodeInfo,
     SignUpRequired,
+    TgBackendError,
     TgLoggedIn,
 )
 from app.engine.transport.base import (
@@ -276,6 +278,81 @@ def _fenced[**P, T](
         return await self._fence.call(lambda: method(self, *args, **kwargs))
 
     return fenced
+
+
+def _patch_sent_code_parse() -> None:
+    try:
+        from pyrogram import types as tg_types
+
+        orig = tg_types.SentCode._parse
+        if getattr(orig, "_pyrobot_patched", False):
+            return
+
+        def patched(sent_code: Any) -> Any:
+            parsed = orig(sent_code)
+            try:
+                parsed._raw = sent_code  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            return parsed
+
+        patched._pyrobot_patched = True  # type: ignore[attr-defined]
+        tg_types.SentCode._parse = patched  # type: ignore[method-assign]
+    except Exception:
+        pass
+
+
+def _normalize_sent_code_type(kind: Any) -> str:
+    name = getattr(kind, "name", str(kind) if kind else "app").lower()
+    mapping = {
+        "app": "app",
+        "sms": "sms",
+        "email_code": "email",
+        "set_up_email_required": "setup_email",
+        "setup_email_required": "setup_email",
+        "fragment_sms": "fragment",
+        "call": "call",
+        "flash_call": "flash_call",
+        "missed_call": "missed_call",
+    }
+    return mapping.get(name, name)
+
+
+def _normalize_next_code_type(after: Any) -> str | None:
+    if not after:
+        return None
+    name = getattr(after, "name", str(after)).lower()
+    mapping = {
+        "sms": "sms",
+        "call": "call",
+        "flash_call": "flash_call",
+        "missed_call": "missed_call",
+        "fragment_sms": "fragment",
+    }
+    return mapping.get(name, name)
+
+
+def _to_sent_code_info(sent: Any) -> SentCodeInfo:
+    if isinstance(sent, SentCodeInfo):
+        return sent
+    hash_val = str(getattr(sent, "phone_code_hash", sent))
+    kind = getattr(sent, "type", None)
+    after = getattr(sent, "next_type", None)
+    timeout = getattr(sent, "timeout", None)
+    norm_type = _normalize_sent_code_type(kind)
+    norm_next = _normalize_next_code_type(after)
+
+    raw_obj = getattr(sent, "_raw", None)
+    raw_type = getattr(raw_obj, "type", None) if raw_obj is not None else None
+    email_pattern = getattr(raw_type, "email_pattern", None)
+
+    return SentCodeInfo(
+        phone_code_hash=hash_val,
+        type=norm_type,
+        email_pattern=email_pattern,
+        next_type=norm_next,
+        timeout=timeout,
+    )
 
 
 class KurigramTransport:
@@ -545,10 +622,10 @@ class KurigramTransport:
             raise TransportAuthLost(str(exc)) from exc
 
     @_fenced
-    async def send_code(self, phone: str) -> str:
+    async def send_code(self, phone: str) -> SentCodeInfo:
         from pyrogram import errors
 
-        # kurigram 2.2.x: метод называется send_phone_number_code (переименован из send_code).
+        _patch_sent_code_parse()
         try:
             sent = await self._client.send_phone_number_code(phone)
         except errors.PhoneNumberInvalid as exc:
@@ -558,27 +635,148 @@ class KurigramTransport:
         except errors.BadRequest as exc:
             log.warning("telegram send_code rejected: %s", exc.ID or type(exc).__name__)
             raise SendCodeRejected(str(exc.ID or exc).lower()) from exc
-        kind, after = getattr(sent, "type", None), getattr(sent, "next_type", None)
+
+        info = _to_sent_code_info(sent)
         log.info(
             "telegram code sent: type=%s next=%s timeout=%s",
-            getattr(kind, "name", kind),
-            getattr(after, "name", after),
-            getattr(sent, "timeout", None),
+            info.type,
+            info.next_type,
+            info.timeout,
         )
-        return str(sent.phone_code_hash)
+        return info
 
     @_fenced
-    async def sign_in(self, phone: str, code_hash: str, code: str) -> int:
-        from pyrogram import errors, types
+    async def resend_code(self, phone: str, code_hash: str) -> SentCodeInfo:
+        from pyrogram import errors, raw, types
+
+        _patch_sent_code_parse()
+        try:
+            r = await self._client.invoke(
+                raw.functions.auth.ResendCode(
+                    phone_number=re.sub(r"\D", "", phone),
+                    phone_code_hash=code_hash,
+                )
+            )
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.BadRequest as exc:
+            log.warning("telegram resend_code rejected: %s", exc.ID or type(exc).__name__)
+            raise SendCodeRejected(str(exc.ID or exc).lower()) from exc
+
+        parsed = types.SentCode._parse(r)
+        info = _to_sent_code_info(parsed)
+        log.info(
+            "telegram code resent: type=%s next=%s timeout=%s",
+            info.type,
+            info.next_type,
+            info.timeout,
+        )
+        return info
+
+    @_fenced
+    async def send_verify_email_code(self, phone: str, code_hash: str, email: str) -> str | None:
+        from pyrogram import errors, raw
 
         try:
+            r = await self._client.invoke(
+                raw.functions.account.SendVerifyEmailCode(
+                    purpose=raw.types.EmailVerifyPurposeLoginSetup(
+                        phone_number=re.sub(r"\D", "", phone),
+                        phone_code_hash=code_hash,
+                    ),
+                    email=email.strip(),
+                )
+            )
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.BadRequest as exc:
+            log.warning(
+                "telegram send_verify_email_code rejected: %s", exc.ID or type(exc).__name__
+            )
+            raise SendCodeRejected(str(exc.ID or exc).lower()) from exc
+
+        pattern = getattr(r, "email_pattern", None)
+        log.info("telegram verify email code sent: pattern=%s", pattern)
+        return str(pattern) if pattern is not None else None
+
+    @_fenced
+    async def verify_email(self, phone: str, code_hash: str, code: str) -> int | SentCodeInfo:
+        from pyrogram import errors, raw, types
+
+        _patch_sent_code_parse()
+        try:
+            r = await self._client.invoke(
+                raw.functions.account.VerifyEmail(
+                    purpose=raw.types.EmailVerifyPurposeLoginSetup(
+                        phone_number=re.sub(r"\D", "", phone),
+                        phone_code_hash=code_hash,
+                    ),
+                    verification=raw.types.EmailVerificationCode(code=code.strip()),
+                )
+            )
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except (errors.PhoneCodeInvalid, errors.CodeInvalid, errors.EmailCodeEmpty) as exc:
+            raise InvalidCode from exc
+        except (
+            errors.PhoneCodeExpired,
+            errors.EmailHashExpired,
+            errors.EmailVerifyExpired,
+        ) as exc:
+            raise CodeExpired from exc
+        except errors.BadRequest as exc:
+            log.warning("telegram verify_email rejected: %s", exc.ID or type(exc).__name__)
+            raise SendCodeRejected(str(exc.ID or exc).lower()) from exc
+
+        sent_code = getattr(r, "sent_code", None)
+        if isinstance(sent_code, raw.types.auth.SentCodeSuccess):
+            auth = sent_code.authorization
+            if isinstance(auth, raw.types.auth.AuthorizationSignUpRequired):
+                raise SignUpRequired
+            user = auth.user
+            await self._client.storage.user_id(user.id)
+            if hasattr(self._client.storage, "is_bot"):
+                await self._client.storage.is_bot(False)
+            return int(user.id)
+        if isinstance(sent_code, raw.types.auth.SentCode):
+            parsed = types.SentCode._parse(sent_code)
+            return _to_sent_code_info(parsed)
+        raise TgBackendError("unexpected_verify_email_result")
+
+    @_fenced
+    async def sign_in(
+        self, phone: str, code_hash: str, code: str, *, is_email: bool = False
+    ) -> int:
+        from pyrogram import errors, raw, types
+
+        try:
+            if is_email:
+                r = await self._client.invoke(
+                    raw.functions.auth.SignIn(
+                        phone_number=re.sub(r"\D", "", phone),
+                        phone_code_hash=code_hash,
+                        email_verification=raw.types.EmailVerificationCode(code=code.strip()),
+                    )
+                )
+                if isinstance(r, raw.types.auth.AuthorizationSignUpRequired):
+                    raise SignUpRequired
+                await self._client.storage.user_id(r.user.id)
+                if hasattr(self._client.storage, "is_bot"):
+                    await self._client.storage.is_bot(False)
+                return int(r.user.id)
             user = await self._client.sign_in(phone, code_hash, code)
         except errors.SessionPasswordNeeded as exc:
             raise PasswordRequired from exc
-        except errors.PhoneCodeInvalid as exc:
+        except (errors.PhoneCodeInvalid, errors.CodeInvalid, errors.EmailCodeEmpty) as exc:
             raise InvalidCode from exc
-        except errors.PhoneCodeExpired as exc:
+        except (
+            errors.PhoneCodeExpired,
+            errors.EmailHashExpired,
+            errors.EmailVerifyExpired,
+        ) as exc:
             raise CodeExpired from exc
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
         if not isinstance(user, types.User):
             raise SignUpRequired
         return int(user.id)

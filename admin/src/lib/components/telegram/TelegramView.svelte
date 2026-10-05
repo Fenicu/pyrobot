@@ -19,8 +19,11 @@
 	let phone = $state('');
 	let code = $state('');
 	let password = $state('');
+	let email = $state('');
+	let emailCode = $state('');
 	let busy = $state(false);
 	let message = $state('');
+	let resendCountdown = $state(0);
 	// Своё приложение Telegram: api_hash — секрет, после отправки не хранится.
 	let appId = $state('');
 	let appHash = $state('');
@@ -93,7 +96,18 @@
 		invalid_password: 'Неверный пароль 2FA — попробуйте ещё раз',
 		signup_required: 'Номер не зарегистрирован в Telegram',
 		invalid_phone: 'Неверный номер телефона',
+		phone_number_invalid: 'Неверный номер телефона',
+		phone_number_banned: 'Номер телефона заблокирован в Telegram',
+		phone_number_flood: 'Слишком много попыток — номер временно ограничен',
+		phone_password_flood: 'Слишком много попыток ввода пароля — попробуйте позже',
+		phone_password_protected: 'Нужен пароль 2FA',
 		password_required: 'Нужен пароль 2FA',
+		email_unconfirmed: 'Почта не подтверждена',
+		email_invalid: 'Некорректный адрес почты',
+		email_check_expired: 'Срок проверки почты истёк — начните заново',
+		phone_code_empty: 'Код не может быть пустым',
+		phone_code_expired: 'Код истёк — начните вход заново',
+		phone_code_invalid: 'Неверный код — попробуйте ещё раз',
 		unexpected_user: 'Аккаунт привязан к другому пользователю Telegram — сервис вышел из сессии',
 		tg_user_taken: 'Этот пользователь Telegram уже привязан к другому аккаунту — сервис вышел из сессии',
 		chat_is_self:
@@ -101,7 +115,9 @@
 		bind_failed: 'Привязка к пользователю Telegram не сохранилась — бот не вышел в сеть, повторите вход позже',
 		session_revoked: 'Сессия Telegram отозвана — войдите снова',
 		flood_wait: 'Telegram просит подождать',
+		tg_code_rate_limited: 'Слишком много запросов кода входа',
 		send_code_failed: 'Код не отправлен — Telegram недоступен',
+		resend_code_failed: 'Не удалось повторно отправить код — Telegram недоступен',
 		connect_failed: 'Нет соединения с Telegram',
 		online_failed: 'Не удалось выйти в сеть после входа',
 		logout_failed: 'Выход из Telegram не удался'
@@ -112,6 +128,12 @@
 		const bound = status?.bound_user_id;
 		if (code === 'unexpected_user' && bound) {
 			return `Аккаунт привязан к пользователю Telegram ${bound}, а вошёл другой — сервис вышел из сессии. Для другого персонажа создайте новый аккаунт`;
+		}
+		if (code.startsWith('send_code_rejected:')) {
+			const reason = code.slice('send_code_rejected:'.length);
+			return ERRORS[reason]
+				? `Telegram отклонил отправку кода: ${ERRORS[reason]}`
+				: `Telegram отклонил отправку кода (${reason})`;
 		}
 		return ERRORS[code] ?? code;
 	}
@@ -148,7 +170,9 @@
 			if (err.kind === 'conflict' || (err.kind === 'http' && err.status === 400) || err.kind === 'forbidden') {
 				attempt = null;
 				message =
-					err.status === 400 && ERRORS[err.code] ? ERRORS[err.code]! : 'Попытка входа устарела или начата в другой вкладке — начните заново';
+					err.status === 400 && err.code && (ERRORS[err.code] || err.code.startsWith('send_code_rejected:'))
+						? statusError(err.code)
+						: 'Попытка входа устарела или начата в другой вкладке — начните заново';
 			} else if (err.kind === 'rate_limited' && err.code !== 'flood_wait') {
 				message = errorText(err);
 			} else if (err.kind === 'rate_limited') {
@@ -163,8 +187,36 @@
 			busy = false;
 			code = '';
 			password = '';
+			emailCode = '';
 		}
 	}
+
+	$effect(() => {
+		if (status?.state !== 'awaiting_code') {
+			resendCountdown = 0;
+			return;
+		}
+		let targetMs: number | null = null;
+		if (typeof status.delivery_expires_at === 'number' && status.delivery_expires_at > 0) {
+			targetMs = status.delivery_expires_at * 1000;
+		} else if (typeof status.delivery_timeout === 'number' && status.delivery_timeout > 0) {
+			targetMs = Date.now() + status.delivery_timeout * 1000;
+		}
+		if (targetMs === null) {
+			resendCountdown = 0;
+			return;
+		}
+		const update = () => {
+			const rem = Math.max(0, Math.ceil((targetMs - Date.now()) / 1000));
+			resendCountdown = rem;
+			return rem;
+		};
+		if (update() <= 0) return;
+		const timer = setInterval(() => {
+			if (update() <= 0) clearInterval(timer);
+		}, 1000);
+		return () => clearInterval(timer);
+	});
 
 	const start = (e: SubmitEvent) => {
 		e.preventDefault();
@@ -182,6 +234,25 @@
 			call(api.POST('/tg/login/password', { body: { attempt_id: attempt ?? '', password: value } }))
 		);
 	};
+	const sendEmail = (e: SubmitEvent) => {
+		e.preventDefault();
+		const val = email.trim();
+		void step(() =>
+			call(api.POST('/tg/login/email', { body: { attempt_id: attempt ?? '', email: val } }))
+		);
+	};
+	const sendEmailCode = (e: SubmitEvent) => {
+		e.preventDefault();
+		const val = emailCode.trim();
+		void step(() =>
+			call(api.POST('/tg/login/email-code', { body: { attempt_id: attempt ?? '', code: val } }))
+		);
+	};
+	const resend = () => {
+		void step(() =>
+			call(api.POST('/tg/login/resend', { body: { attempt_id: attempt ?? '' } }))
+		);
+	};
 
 	async function logout() {
 		const ok = await dialogs.confirm({
@@ -193,8 +264,52 @@
 		if (ok) await step(() => call(api.POST('/tg/logout')));
 	}
 
+	function deliveryText(st: TgStatus | null): string | null {
+		if (!st) return null;
+		if (st.state === 'awaiting_email_code') {
+			return st.delivery_email_pattern
+				? `Код подтверждения отправлен на почту ${st.delivery_email_pattern}`
+				: 'Код подтверждения отправлен на почту';
+		}
+		if (st.state !== 'awaiting_code') return null;
+		switch (st.delivery_type) {
+			case 'app':
+				return 'Код отправлен в приложение Telegram';
+			case 'sms':
+				return 'Код отправлен по SMS';
+			case 'call':
+				return 'Telegram звонит на указанный номер для передачи кода';
+			case 'flash_call':
+				return 'Telegram совершает звонок-сброс для передачи кода';
+			case 'missed_call':
+				return 'Telegram звонит на номер (последние цифры номера звонящего — код)';
+			case 'email':
+				return st.delivery_email_pattern
+					? `Код отправлен на почту ${st.delivery_email_pattern}`
+					: 'Код отправлен на почту';
+			case 'fragment':
+				return 'Код отправлен через Fragment';
+			default:
+				return null;
+		}
+	}
+
+	function resendLabel(st: TgStatus | null): string {
+		const next = st?.delivery_next_type;
+		const method = next === 'sms' ? 'по SMS' : next === 'call' ? 'звонком' : 'другим способом';
+		if (resendCountdown > 0) {
+			return `Отправить код ${method} (${resendCountdown} с)`;
+		}
+		return `Отправить код ${method}`;
+	}
+
 	const phase = $derived(status?.state ?? null);
-	const waiting = $derived(phase === 'awaiting_code' || phase === 'awaiting_password');
+	const waiting = $derived(
+		phase === 'awaiting_code' ||
+		phase === 'awaiting_password' ||
+		phase === 'awaiting_email' ||
+		phase === 'awaiting_email_code'
+	);
 </script>
 
 <div class="max-w-lg space-y-3">
@@ -244,8 +359,52 @@
 				<button type="submit" class="btn btn-primary" disabled={busy || !phone.trim()}>Получить код</button>
 			</form>
 		</section>
+	{:else if phase === 'awaiting_email'}
+		<form class="card space-y-2" onsubmit={sendEmail}>
+			<p class="text-sm text-fg-muted">
+				Для этого номера Telegram требует привязать адрес электронной почты для входа.
+			</p>
+			<label class="block space-y-1">
+				<span class="label">Электронная почта</span>
+				<input
+					class="input"
+					type="email"
+					autocomplete="email"
+					name="tg-email"
+					placeholder="name@example.com"
+					bind:value={email}
+					required
+				/>
+			</label>
+			<button type="submit" class="btn btn-primary" disabled={busy || !email.trim()}>
+				Отправить код на почту
+			</button>
+		</form>
+	{:else if phase === 'awaiting_email_code'}
+		<form class="card space-y-2" onsubmit={sendEmailCode}>
+			{#if deliveryText(status)}
+				<p class="text-sm text-fg-muted">{deliveryText(status)}</p>
+			{/if}
+			<label class="block space-y-1">
+				<span class="label">Код из почты</span>
+				<input
+					class="input"
+					inputmode="numeric"
+					autocomplete="one-time-code"
+					name="tg-email-code"
+					bind:value={emailCode}
+					required
+				/>
+			</label>
+			<button type="submit" class="btn btn-primary" disabled={busy || !emailCode.trim()}>
+				Подтвердить почту
+			</button>
+		</form>
 	{:else if phase === 'awaiting_code'}
 		<form class="card space-y-2" onsubmit={sendCode}>
+			{#if deliveryText(status)}
+				<p class="text-sm text-fg-muted">{deliveryText(status)}</p>
+			{/if}
 			<label class="block space-y-1">
 				<span class="label">Код из Telegram</span>
 				<input
@@ -257,7 +416,19 @@
 					required
 				/>
 			</label>
-			<button type="submit" class="btn btn-primary" disabled={busy || !code.trim()}>Отправить код</button>
+			<div class="flex flex-wrap gap-2">
+				<button type="submit" class="btn btn-primary" disabled={busy || !code.trim()}>
+					Отправить код
+				</button>
+				<button
+					type="button"
+					class="btn"
+					disabled={busy || resendCountdown > 0}
+					onclick={resend}
+				>
+					{resendLabel(status)}
+				</button>
+			</div>
 		</form>
 	{:else if phase === 'awaiting_password'}
 		<form class="card space-y-2" onsubmit={sendPassword}>

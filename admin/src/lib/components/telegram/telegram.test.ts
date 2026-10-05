@@ -177,6 +177,149 @@ describe('Вход в Telegram', () => {
 		setup(() => json(status.value));
 		expect(await screen.findByText(/указан этот же пользователь Telegram/)).toBeInTheDocument();
 	});
+
+	it('вход через почту (setup_email → email_code → code → online)', async () => {
+		const user = userEvent.setup();
+		const fetch = setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(st('unauthorized'));
+			if (c.url === '/api/v1/accounts/1/tg/login/start')
+				return json(st('awaiting_email', { attempt_id: 'a1', delivery_type: 'setup_email' }));
+			if (c.url === '/api/v1/accounts/1/tg/login/email')
+				return json(
+					st('awaiting_email_code', {
+						attempt_id: 'a1',
+						delivery_email_pattern: 't***@e***.com'
+					})
+				);
+			if (c.url === '/api/v1/accounts/1/tg/login/email-code')
+				return json(st('awaiting_code', { attempt_id: 'a1', delivery_type: 'app' }));
+			if (c.url === '/api/v1/accounts/1/tg/login/code')
+				return json(st('online', { user_id: 267519921 }));
+			return json(st('unauthorized'));
+		});
+
+		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+79991234567');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+
+		expect(
+			await screen.findByText(/требует привязать адрес электронной почты/)
+		).toBeInTheDocument();
+		const emailInput = screen.getByLabelText('Электронная почта');
+		await user.type(emailInput, 'test@example.com');
+		await user.click(screen.getByRole('button', { name: 'Отправить код на почту' }));
+
+		expect(
+			await screen.findByText('Код подтверждения отправлен на почту t***@e***.com')
+		).toBeInTheDocument();
+		const emailCodeInput = screen.getByLabelText('Код из почты');
+		await user.type(emailCodeInput, '54321');
+		await user.click(screen.getByRole('button', { name: 'Подтвердить почту' }));
+
+		expect(await screen.findByText('Код отправлен в приложение Telegram')).toBeInTheDocument();
+		const codeInput = screen.getByLabelText('Код из Telegram');
+		await user.type(codeInput, '12345');
+		await user.click(screen.getByRole('button', { name: 'Отправить код' }));
+
+		expect(await screen.findByRole('button', { name: 'Выйти из Telegram' })).toBeInTheDocument();
+
+		const posts = fetch.calls.filter((c) => c.method === 'POST').map((c) => ({ url: c.url, body: JSON.parse(c.body) }));
+		expect(posts).toEqual([
+			{ url: '/api/v1/accounts/1/tg/login/start', body: { phone: '+79991234567' } },
+			{ url: '/api/v1/accounts/1/tg/login/email', body: { attempt_id: 'a1', email: 'test@example.com' } },
+			{ url: '/api/v1/accounts/1/tg/login/email-code', body: { attempt_id: 'a1', code: '54321' } },
+			{ url: '/api/v1/accounts/1/tg/login/code', body: { attempt_id: 'a1', code: '12345' } }
+		]);
+	});
+
+	it('повторная отправка кода (resend_code) и способы доставки кода', async () => {
+		const user = userEvent.setup();
+		let resent = false;
+		const fetch = setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(st('unauthorized'));
+			if (c.url === '/api/v1/accounts/1/tg/login/start')
+				return json(
+					st('awaiting_code', {
+						attempt_id: 'a1',
+						delivery_type: 'app',
+						delivery_next_type: 'sms',
+						delivery_timeout: 0
+					})
+				);
+			if (c.url === '/api/v1/accounts/1/tg/login/resend') {
+				resent = true;
+				return json(
+					st('awaiting_code', {
+						attempt_id: 'a1',
+						delivery_type: 'sms',
+						delivery_next_type: null
+					})
+				);
+			}
+			return json(st('unauthorized'));
+		});
+
+		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+79991234567');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+
+		expect(await screen.findByText('Код отправлен в приложение Telegram')).toBeInTheDocument();
+		const resendBtn = screen.getByRole('button', { name: 'Отправить код по SMS' });
+		expect(resendBtn).toBeEnabled();
+
+		await user.click(resendBtn);
+		expect(resent).toBe(true);
+		expect(await screen.findByText('Код отправлен по SMS')).toBeInTheDocument();
+
+		const resendCall = fetch.calls.find((c) => c.url === '/api/v1/accounts/1/tg/login/resend');
+		expect(JSON.parse(resendCall!.body)).toEqual({ attempt_id: 'a1' });
+	});
+
+	it('код отправлен на почту (delivery_type: email)', async () => {
+		const user = userEvent.setup();
+		setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(st('unauthorized'));
+			if (c.url === '/api/v1/accounts/1/tg/login/start')
+				return json(
+					st('awaiting_code', {
+						attempt_id: 'a1',
+						delivery_type: 'email',
+						delivery_email_pattern: 'f***n@g***.com'
+					})
+				);
+			return json(st('unauthorized'));
+		});
+
+		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+79991234567');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+
+		expect(await screen.findByText('Код отправлен на почту f***n@g***.com')).toBeInTheDocument();
+	});
+
+	it('перевод ошибок Telegram (phone_number_invalid, phone_password_flood, send_code_rejected)', async () => {
+		const user = userEvent.setup();
+		let error = 'phone_number_invalid';
+		setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(st('unauthorized'));
+			if (c.url === '/api/v1/accounts/1/tg/login/start')
+				return json({ detail: error }, 400);
+			return json(st('unauthorized'));
+		});
+
+		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+7999');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('Неверный номер телефона');
+
+		error = 'send_code_rejected:phone_number_banned';
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'Telegram отклонил отправку кода: Номер телефона заблокирован в Telegram'
+		);
+
+		error = 'phone_password_flood';
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent(
+			'Слишком много попыток ввода пароля — попробуйте позже'
+		);
+	});
 });
 
 describe('Своё приложение Telegram', () => {

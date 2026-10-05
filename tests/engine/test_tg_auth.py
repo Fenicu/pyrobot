@@ -8,6 +8,7 @@ from app.engine.tg_auth import (
     AttemptMismatch,
     CodeRateLimited,
     InvalidPhone,
+    SentCodeInfo,
     TgBackendError,
     TgState,
     TgUserTaken,
@@ -513,3 +514,75 @@ async def test_logout_after_self_chat_closes_telegram_session() -> None:
     assert "LogOut" in [name for c in rig.t.clients for name, _ in c.invoked]
     assert rig.t.storage.deleted and st.bound_user_id == EXPECTED
     await rig.t.stop()
+
+
+async def test_setup_email_flow() -> None:
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email"),
+        email_code="54321",
+    )
+    mgr = tg_auth(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+
+    st = await mgr.start("+79991234567", owner="s1")
+    assert st.state is TgState.AWAITING_EMAIL
+    assert st.delivery_type == "setup_email"
+    assert st.attempt_id is not None
+
+    with pytest.raises(AttemptMismatch):
+        await mgr.send_email(st.attempt_id, owner="other", email="test@example.com")
+
+    st_email = await mgr.send_email(st.attempt_id, owner="s1", email="test@example.com")
+    assert st_email.state is TgState.AWAITING_EMAIL_CODE
+    assert st_email.delivery_email_pattern == "t***@e***.com"
+
+    st_bad = await mgr.submit_email_code(st.attempt_id, owner="s1", code="00000")
+    assert st_bad.state is TgState.AWAITING_EMAIL_CODE
+    assert st_bad.error == "invalid_code"
+
+    st_ok = await mgr.submit_email_code(st.attempt_id, owner="s1", code="54321")
+    assert st_ok.state is TgState.AWAITING_CODE
+    assert st_ok.delivery_type == "app"
+
+    st_final = await mgr.submit_code(st.attempt_id, owner="s1", code="12345")
+    assert st_final.state is TgState.ONLINE
+    assert st_final.user_id == EXPECTED
+
+
+async def test_email_code_flow() -> None:
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(
+            phone_code_hash="h2", type="email", email_pattern="f***n@g***.com"
+        )
+    )
+    mgr = tg_auth(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+
+    st = await mgr.start("+79991234567", owner="s1")
+    assert st.state is TgState.AWAITING_CODE
+    assert st.delivery_type == "email"
+    assert st.delivery_email_pattern == "f***n@g***.com"
+
+    st_done = await mgr.submit_code(st.attempt_id or "", owner="s1", code="12345")
+    assert st_done.state is TgState.ONLINE
+    assert backend.sign_in_calls == [("+79991234567", "h2", "12345", True)]
+
+
+async def test_resend_code_flow() -> None:
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h3", type="app", next_type="sms", timeout=60)
+    )
+    mgr = tg_auth(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+
+    st = await mgr.start("+79991234567", owner="s1")
+    assert st.state is TgState.AWAITING_CODE
+    assert st.delivery_type == "app"
+    assert st.delivery_next_type == "sms"
+    assert st.delivery_timeout == 60
+    assert st.delivery_expires_at is not None
+
+    st_resent = await mgr.resend_code(st.attempt_id or "", owner="s1")
+    assert st_resent.state is TgState.AWAITING_CODE
+    assert st_resent.delivery_type == "sms"
+    assert backend.resend_calls == [("+79991234567", "h3")]
