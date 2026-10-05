@@ -6,6 +6,7 @@ import pytest
 from app.engine.gametime import MSK, tasks_day
 from app.engine.parsing.daily import PERSONAL_DEEDS
 from app.engine.planner.base import TIMER_MARGIN
+from app.engine.planner.daily import UNKNOWN_FIRE
 from app.engine.planner.decide import decide
 from app.engine.planner.types import Act, Decision, Wait
 from app.engine.scenarios.registry import CERTIFIED
@@ -769,14 +770,52 @@ def test_without_hard_team_offer_personal_is_picked() -> None:
 
 
 def test_unknown_team_types_are_skipped_when_others_are_known() -> None:
-    # Гаджеты в лабораториях делами не закрываются, Продаваны — бои Горбушки, а не 🔥.
-    leader = team_offers("labRaw_hard", "robPro_hard", "walkMoney_hard")
+    # Гаджеты в лабораториях делами не закрываются, дохода у них нет.
+    leader = team_offers("labRaw_hard", "labKnows_hard", "walkMoney_hard")
     decision = decide(tasks(offers("jobMoney_hard"), leader), DAILY, NOW)
     assert picked(decision)[1:] == ({"task": "walkMoney_hard"}, "team walkMoney 185🔥")
     assert team_verdicts(decision) == {
         "labRaw_hard": "team labRaw ?🔥",
-        "robPro_hard": "team robPro ?🔥",
+        "labKnows_hard": "team labKnows ?🔥",
     }
+
+
+def test_team_rob_pro_counts_fights_and_wins_when_cheaper() -> None:
+    # Продаваны 300⚙️ при 20⚙️ за победу: 15 боёв по 1🔥 против 185🔥 прогулки.
+    own = {"gorbushka": ActivityStat(count=30, details=20)}
+    leader = team_offers("walkMoney_hard", "robPro_hard")
+    state = tasks(offers("jobMoney_hard"), leader).model_copy(update={"activity_stats": own})
+    decision = decide(state, DAILY, NOW)
+    assert picked(decision) == ("team_pick", {"task": "robPro_hard"}, "team robPro 15🔥")
+    assert team_verdicts(decision) == {"walkMoney_hard": "team walkMoney 185🔥"}
+    # Без своих боёв — 12⚙️ за победу: 25 боёв.
+    prior = tasks(offers("jobMoney_hard"), leader)
+    assert picked(decide(prior, DAILY, NOW))[2] == "team robPro 25🔥"
+    # Дороже прогулки — прогулка.
+    dear = team_offers("walkMoney_hard", ("robPro_hard", 3000, 0))
+    state = tasks(offers("jobMoney_hard"), dear)
+    assert picked(decide(state, DAILY, NOW))[1] == {"task": "walkMoney_hard"}
+    assert team_verdicts(decide(state, DAILY, NOW)) == {"robPro_hard": "team robPro 250🔥"}
+
+
+def test_team_rob_pro_uses_known_fight_cost_and_ignores_feature() -> None:
+    # 🔥 за бой с экрана Горбушки: 15 боёв × 3🔥; фича Горбушки и лимит боёв на сегодня не важны.
+    own = {"gorbushka": ActivityStat(count=30, details=20)}
+    off = Settings.model_validate(
+        {"features": {**DAILY.features.model_dump(), "gorbushka": False}}
+    )
+    leader = team_offers("walkMoney_hard", "robPro_hard")
+    gorbushka = GorbushkaState(state="done", won=4, total=4, fight_cost=3)
+    state = tasks(offers("jobMoney_hard"), leader, gorbushka=gorbushka)
+    state = state.model_copy(update={"activity_stats": own})
+    assert picked(decide(state, off, NOW))[1:] == ({"task": "robPro_hard"}, "team robPro 45🔥")
+
+
+def test_team_only_rob_pro_is_not_blind() -> None:
+    leader = team_offers("robPro_hard")
+    decision = decide(tasks(offers("jobMoney_hard"), leader), DAILY, NOW)
+    assert picked(decision) == ("team_pick", {"task": "robPro_hard"}, "team robPro 25🔥")
+    assert not picked(decision)[2].endswith(UNKNOWN_FIRE)
 
 
 def test_all_hard_unknown_takes_first_on_screen() -> None:

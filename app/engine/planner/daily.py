@@ -192,7 +192,10 @@ class DailyTasks(Obligations):
 
     def team_motivation(self, kind: str, goal: int) -> int | None:
         """🔥 на командное задание силами одного главы: `ceil(цель / доход) × 🔥 за запуск` по
-        самому дешёвому делу типа; None — доход ни одного дела неизвестен."""
+        самому дешёвому делу типа; у `robPro` — бои Горбушки: `ceil(цель / ⚙️ за победу) × 🔥 за
+        бой` без учёта фичи, лимита боёв и кулдаунов. None — доход ни одного дела неизвестен."""
+        if kind == "robPro":
+            return math.ceil(goal / self.fight_details()) * self.fight_cost() if goal > 0 else None
         costs = [
             math.ceil(goal / income) * self.price(deed).motivation
             for deed in PERSONAL_DEEDS.get(kind, ())
@@ -208,11 +211,20 @@ class DailyTasks(Obligations):
         stat = self.s.activity_stats.get(deed) or DEED_PRIORS.get(deed) or ActivityStat()
         return float(getattr(stat, TASK_METRIC[kind])) if kind in TASK_METRIC else 0.0
 
+    def fight_details(self) -> float:
+        """⚙️ за победу — среднее по боям персонажа (с ⚫️VIP-сетом больше), до них — 12."""
+        stat = self.s.activity_stats.get("gorbushka") or DEED_PRIORS["gorbushka"]
+        return stat.details
+
+    def fight_cost(self) -> int:
+        g = self.gorbushka_state()
+        return g.fight_cost if g is not None and g.fight_cost is not None else 1
+
     def personal_feasible(self, kind: str, goal: int) -> bool:
         if kind == "robPro":
-            # ⚙️ за победу — среднее по боям персонажа (с ⚫️VIP-сетом больше), до них — 12.
-            stat = self.s.activity_stats.get("gorbushka") or DEED_PRIORS["gorbushka"]
-            return self.feature_on("gorbushka") and self.fights_today() * stat.details >= goal
+            return (
+                self.feature_on("gorbushka") and self.fights_today() * self.fight_details() >= goal
+            )
         return any(
             self.deed_allowed(deed) and self.fits_today(kind, goal, deed)
             for deed in PERSONAL_DEEDS.get(kind, ())
