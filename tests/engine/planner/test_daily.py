@@ -811,6 +811,26 @@ def test_team_rob_pro_uses_known_fight_cost_and_ignores_feature() -> None:
     assert picked(decide(state, off, NOW))[1:] == ({"task": "robPro_hard"}, "team robPro 45🔥")
 
 
+def test_team_rob_pro_keeps_known_fight_cost_when_gorbushka_is_stale() -> None:
+    # Цена боя не зависит от возраста экрана: устаревшее состояние Горбушки её не обнуляет.
+    own = {"gorbushka": ActivityStat(count=30, details=20)}
+    leader = team_offers("walkMoney_hard", "robPro_hard")
+    old = Obs(value=GorbushkaState(state="done", fight_cost=3), at=m(-600))
+    state = tasks(offers("jobMoney_hard"), leader, gorbushka=old)
+    state = state.model_copy(update={"activity_stats": own})
+    decision = decide(state, DAILY, NOW)
+    assert picked(decision)[1:] == ({"task": "robPro_hard"}, "team robPro 45🔥")
+
+
+def test_team_rob_pro_with_zero_details_is_unknown() -> None:
+    zero = {"gorbushka": ActivityStat(count=30, details=0)}
+    leader = team_offers("walkMoney_hard", "robPro_hard")
+    state = tasks(offers("jobMoney_hard"), leader).model_copy(update={"activity_stats": zero})
+    decision = decide(state, DAILY, NOW)
+    assert picked(decision)[1:] == ({"task": "walkMoney_hard"}, "team walkMoney 185🔥")
+    assert team_verdicts(decision) == {"robPro_hard": "team robPro ?🔥"}
+
+
 def test_team_only_rob_pro_is_not_blind() -> None:
     leader = team_offers("robPro_hard")
     decision = decide(tasks(offers("jobMoney_hard"), leader), DAILY, NOW)

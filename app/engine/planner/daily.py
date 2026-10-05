@@ -195,7 +195,10 @@ class DailyTasks(Obligations):
         самому дешёвому делу типа; у `robPro` — бои Горбушки: `ceil(цель / ⚙️ за победу) × 🔥 за
         бой` без учёта фичи, лимита боёв и кулдаунов. None — доход ни одного дела неизвестен."""
         if kind == "robPro":
-            return math.ceil(goal / self.fight_details()) * self.fight_cost() if goal > 0 else None
+            details = self.fight_details()
+            if goal <= 0 or details <= 0:
+                return None
+            return math.ceil(goal / details) * self.fight_cost()
         costs = [
             math.ceil(goal / income) * self.price(deed).motivation
             for deed in PERSONAL_DEEDS.get(kind, ())
@@ -217,7 +220,8 @@ class DailyTasks(Obligations):
         return stat.details
 
     def fight_cost(self) -> int:
-        g = self.gorbushka_state()
+        """🔥 за бой — последняя известная, от возраста экрана Горбушки не зависит."""
+        g = self.value("gorbushka")
         return g.fight_cost if g is not None and g.fight_cost is not None else 1
 
     def personal_feasible(self, kind: str, goal: int) -> bool:
