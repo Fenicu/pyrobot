@@ -556,7 +556,15 @@ class KurigramTransport:
         except errors.FloodWait as exc:
             raise FloodWait(float(exc.seconds or 0)) from exc
         except errors.BadRequest as exc:
+            log.warning("telegram send_code rejected: %s", exc.ID or type(exc).__name__)
             raise SendCodeRejected(str(exc.ID or exc).lower()) from exc
+        kind, after = getattr(sent, "type", None), getattr(sent, "next_type", None)
+        log.info(
+            "telegram code sent: type=%s next=%s timeout=%s",
+            getattr(kind, "name", kind),
+            getattr(after, "name", after),
+            getattr(sent, "timeout", None),
+        )
         return str(sent.phone_code_hash)
 
     @_fenced
