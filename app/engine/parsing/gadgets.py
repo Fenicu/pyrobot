@@ -152,8 +152,14 @@ class UpgradeAttempt(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class UpgradeConfirm(Event):
+    """Запрос подтверждения попытки: гаджет из шапки правки, вид улучшения из кнопки
+    `…_1_accept`, шанс."""
+
     kind: ClassVar[str] = "upgrade_confirm"
     up_slot: str
+    name: str
+    grade: str | None = None
+    level: int | None = None
     upgrade: str
     chance: int
 
@@ -320,7 +326,16 @@ def _confirm(msg: IncomingMessage, text: str) -> list[Event]:
         accept = _UP_BUTTON.match(button.data or "")
         if accept is not None and accept["n"] and accept["slot"] in SLOTS:
             kind = KIND_BY_CALLBACK[accept["kind"]]
-            return [UpgradeConfirm(up_slot=accept["slot"], upgrade=kind, chance=int(m["chance"]))]
+            return [
+                UpgradeConfirm(
+                    up_slot=accept["slot"],
+                    name=m["name"],
+                    grade=m["grade"],
+                    level=_level(m),
+                    upgrade=kind,
+                    chance=int(m["chance"]),
+                )
+            ]
     return []
 
 

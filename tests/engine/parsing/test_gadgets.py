@@ -191,7 +191,7 @@ def test_attempt_needs_upgrade_buttons() -> None:
 
 def test_confirm_and_decline() -> None:
     assert only(UpgradeConfirm, CONFIRM_2, buttons=CONFIRM_BUTTONS, edit=True) == UpgradeConfirm(
-        up_slot="right", upgrade="white", chance=65
+        up_slot="right", name="Китайская мобила", grade="⚪️", level=2, upgrade="white", chance=65
     )
     assert only(UpgradeConfirm, CONFIRM_3, buttons=CONFIRM_BUTTONS, edit=True).chance == 65
     d = only(UpgradeDeclined, DECLINED_3, buttons=UP_BUTTONS, edit=True)

@@ -433,11 +433,17 @@ def _upgrade_hold(ctx: ScenarioContext, task_id: int, slot: str, until: datetime
 
 
 async def _attempt(
-    ctx: ScenarioContext, frame: IncomingMessage, data: str, deadline: datetime | None, hold: Hold
+    ctx: ScenarioContext,
+    frame: IncomingMessage,
+    data: str,
+    deadline: datetime | None,
+    hold: Hold,
+    gadget: str,
 ) -> StepResult:
     """Попытка: клик вида с кадра `frame`; игра просит подтверждения — `…_1_accept` с кадра
-    правки-подтверждения после новой сверки. Итог принимается только правкой этого сообщения.
-    Запрет сверки — `refused <вердикт>` без доставки."""
+    правки-подтверждения, если в её шапке гаджет `gadget` и новая сверка прошла. Итог
+    принимается только правкой этого сообщения. Запрет сверки и другой гаджет — `refused
+    <вердикт>` без доставки."""
     message = frame.msg_id
     step = await ctx.click(
         message,
@@ -447,8 +453,11 @@ async def _attempt(
         content=frame.content_hash(),
         deadline=deadline,
     )
-    if step.step is not Step.OK or step.first(UpgradeConfirm) is None or step.delivery is None:
+    asked = step.first(UpgradeConfirm)
+    if step.step is not Step.OK or asked is None or step.delivery is None:
         return step
+    if asked.name != gadget:
+        return StepResult(Step.REFUSED, "gadget_changed")
     verdict, deadline = hold()
     if verdict is not None:
         return StepResult(Step.REFUSED, verdict)
@@ -461,6 +470,18 @@ async def _attempt(
         content=confirm.content_hash(),
         deadline=deadline,
     )
+
+
+def _click_failed(step: StepResult, hold: Hold) -> tuple[Status, str]:
+    """Неудачный клик заточки. Шлюз отклонил его из-за смены задачи (гонка «Стоп» или нового
+    старта с порцией) или по `deadline`, когда уже идёт окно-запрет, — штатная остановка
+    `nothing`, а не неудача с паузой повтора."""
+    if step.reason == "upgrade_task_changed":
+        return "nothing", "task_changed"
+    if step.reason == "deadline" and (verdict := hold()[0]) is not None:
+        return "nothing", verdict
+    failed = wrong_screen(step)
+    return failed.status, failed.reason
 
 
 def _of_slot(slot: str) -> Predicate:
@@ -516,12 +537,12 @@ async def gadget_upgrade(
             use = upgrade_kind(kind, level, _left(stocks), white_until)
             if use is None:
                 return batch.result("done", "exhausted")
-            step = await _attempt(ctx, frame, f"up_{slot}_{UPGRADE_KINDS[use][1]}", deadline, hold)
+            data = f"up_{slot}_{UPGRADE_KINDS[use][1]}"
+            step = await _attempt(ctx, frame, data, deadline, hold, gadget)
             if _local(step):
                 return batch.result("nothing", step.reason)
             if step.step is not Step.OK:
-                failed = wrong_screen(step)
-                return batch.result(failed.status, failed.reason)
+                return batch.result(*_click_failed(step, hold))
             attempt = step.first(UpgradeAttempt)
             if attempt is None or step.delivery is None:
                 return batch.result("stopped", "unexpected_screen")

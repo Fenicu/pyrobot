@@ -49,7 +49,15 @@ TASK = GadgetUpgradeSection(
 UPGRADING = LIVE.model_copy(update={"gadget_upgrade": TASK})
 # Итог 4-го уровня — по образцу `OK_3` (кадр 25) с уровнем на один выше.
 OK_4 = f"⚪️4\xa0📱{PHONE}\n\nПрименил ⚪️\n\n💪Успех! 4⚪️ (+12%).\n\nУспех: 5⚪️\nПровал: 4⚪️."
-UPGRADES_L2 = UPGRADES_CONFIRM_ON.replace(f"⚪️3\xa0📱{PHONE}", f"⚪️2\xa0📱{PHONE}")
+
+
+def swap(text: str, old: str, new: str) -> str:
+    """Производный кадр: замена обязана сработать, иначе тест молча проверял бы живой кадр."""
+    assert old in text
+    return text.replace(old, new)
+
+
+UPGRADES_L2 = swap(UPGRADES_CONFIRM_ON, f"⚪️3\xa0📱{PHONE}", f"⚪️2\xa0📱{PHONE}")
 StateFn = Callable[[], CharacterState]
 SettingsFn = Callable[[], Settings]
 
@@ -180,7 +188,7 @@ async def test_target_reached_by_screen(upgrading: World) -> None:
 
 @certifies("gadget_upgrade")
 async def test_exhausted_by_screen(upgrading: World) -> None:
-    empty = UPGRADES_P1.replace("⚪️ простые: 10340\xa0шт.", "⚪️ простые: 0\xa0шт.")
+    empty = swap(UPGRADES_P1, "⚪️ простые: 10340\xa0шт.", "⚪️ простые: 0\xa0шт.")
     screens(upgrading, empty)
     status, reason, d = await run(upgrading, target=5, kind="white", batch=20)
     assert (status, reason) == ("done", "exhausted")
@@ -192,7 +200,7 @@ async def test_exhausted_by_screen(upgrading: World) -> None:
 
 @certifies("gadget_upgrade")
 async def test_exhausted_mid_batch(upgrading: World) -> None:
-    last = UP_RIGHT_0.replace("⚪️ 10340\xa0шт.", "⚪️ 1\xa0шт.")
+    last = swap(UP_RIGHT_0, "⚪️ 10340\xa0шт.", "⚪️ 1\xa0шт.")
     screens(upgrading, up=last)
     clicks(upgrading, FAIL_0)
     status, reason, d = await run(upgrading, target=5, kind="white", batch=20)
@@ -213,7 +221,7 @@ async def test_gadget_changed_on_screen(upgrading: World) -> None:
 @certifies("gadget_upgrade")
 async def test_gadget_changed_mid_batch_stops_clicks(upgrading: World) -> None:
     screens(upgrading)
-    other = OK_1.replace(f"📱{PHONE}", "📱Hooli phone")
+    other = swap(OK_1, f"📱{PHONE}", "📱Hooli phone")
     clicks(upgrading, FAIL_0, other)
     status, reason, d = await run(upgrading, target=5, kind="white", batch=20)
     assert (status, reason) == ("nothing", "gadget_changed")
@@ -298,8 +306,68 @@ async def test_unclear_click_outcome_is_failed(upgrading: World) -> None:
 @certifies("gadget_upgrade")
 async def test_until_passed_sends_no_click(upgrading: World) -> None:
     screens(upgrading)
-    clicks(upgrading, FAIL_0)
     past = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
     status, reason, _ = await run(upgrading, target=5, kind="white", batch=20, until=past)
     assert (status, reason) == ("failed", "deadline")
+    assert upgrading.game.payloads() == ["/upgrades", "/up_right"]
+
+
+@certifies("gadget_upgrade")
+async def test_other_gadget_on_confirm_sends_no_accept(upgrading: World) -> None:
+    screens(upgrading, UPGRADES_L2, UP_RIGHT_2)
+    other = swap(CONFIRM_2, f"📱{PHONE}", "📱Hooli phone")
+    upgrading.game.on_click("up_right_low", edit=ref(other, CONFIRM_BUTTONS))
+    upgrading.game.on_click("up_right_low_1_accept", edit=ref(OK_3, UP_BUTTONS))
+    status, reason, d = await run(upgrading, target=5, kind="white", batch=20)
+    assert (status, reason, d["attempts"]) == ("nothing", "gadget_changed", 0)
+    assert upgrading.game.payloads() == ["/upgrades", "/up_right", "up_right_low"]
+
+
+@certifies("gadget_upgrade")
+async def test_gateway_task_change_is_nothing(upgrading: World) -> None:
+    # Задачу перезапустили, а сценарий ещё видит старую запись: клик отклоняет шлюз.
+    screens(upgrading)
+    clicks(upgrading, FAIL_0)
+    restarted = TASK.model_copy(update={"task_id": 4})
+    await upgrading.settings.update(
+        lambda s: s.model_copy(update={"gadget_upgrade": restarted}), changed_by="test"
+    )
+    status, reason, d = await run(
+        upgrading, settings=lambda: UPGRADING, target=5, kind="white", batch=20
+    )
+    assert (status, reason, d["attempts"]) == ("nothing", "task_changed", 0)
+    assert upgrading.game.payloads() == ["/upgrades", "/up_right"]
+
+
+class Calls:
+    """Часы: `first` на первом чтении, дальше `then`."""
+
+    def __init__(self, first: datetime, then: datetime) -> None:
+        self.first, self.then, self.calls = first, then, 0
+
+    def now(self) -> datetime:
+        self.calls += 1
+        return self.first if self.calls == 1 else self.then
+
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+
+@certifies("gadget_upgrade")
+async def test_gateway_deadline_in_guard_window_is_nothing(upgrading: World) -> None:
+    # Клик отклонён по `deadline`, и к этому моменту наступило окно битвы: итог — его вердикт.
+    screens(upgrading)
+    now = datetime.now(UTC)
+    battle = (now + timedelta(hours=2)).replace(minute=0, second=0, microsecond=0)
+    seen = Obs(value=battle, at=battle - timedelta(hours=1))
+
+    def state() -> CharacterState:
+        return upgrading.state.model_copy(update={"battle_at": seen})
+
+    past = (now - timedelta(seconds=1)).isoformat()
+    clock = Calls(now, battle - timedelta(minutes=5))
+    status, reason, _ = await run(
+        upgrading, state=state, clock=clock, target=5, kind="white", batch=20, until=past
+    )
+    assert (status, reason) == ("nothing", "battle_window")
     assert upgrading.game.payloads() == ["/upgrades", "/up_right"]
