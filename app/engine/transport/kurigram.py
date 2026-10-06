@@ -22,7 +22,6 @@ from app.engine.tg_auth import (
     SendCodeRejected,
     SentCodeInfo,
     SignUpRequired,
-    TgBackendError,
     TgLoggedIn,
 )
 from app.engine.transport.base import (
@@ -280,79 +279,86 @@ def _fenced[**P, T](
     return fenced
 
 
-def _patch_sent_code_parse() -> None:
-    try:
-        from pyrogram import types as tg_types
-
-        orig = tg_types.SentCode._parse
-        if getattr(orig, "_pyrobot_patched", False):
-            return
-
-        def patched(sent_code: Any) -> Any:
-            parsed = orig(sent_code)
-            try:
-                parsed._raw = sent_code  # type: ignore[attr-defined]
-            except Exception:
-                pass
-            return parsed
-
-        patched._pyrobot_patched = True  # type: ignore[attr-defined]
-        tg_types.SentCode._parse = patched  # type: ignore[method-assign]
-    except Exception:
-        pass
+# Способ доставки кода (`auth.SentCodeType*`, `auth.CodeType*`) — код API.
+_SENT_CODE_TYPES = {
+    "SentCodeTypeApp": "app",
+    "SentCodeTypeSms": "sms",
+    "SentCodeTypeCall": "call",
+    "SentCodeTypeFlashCall": "flash_call",
+    "SentCodeTypeMissedCall": "missed_call",
+    "SentCodeTypeEmailCode": "email",
+    "SentCodeTypeSetUpEmailRequired": "setup_email",
+    "SentCodeTypeFragmentSms": "fragment",
+}
+_NEXT_CODE_TYPES = {
+    "CodeTypeSms": "sms",
+    "CodeTypeCall": "call",
+    "CodeTypeFlashCall": "flash_call",
+    "CodeTypeMissedCall": "missed_call",
+    "CodeTypeFragmentSms": "fragment",
+}
 
 
-def _normalize_sent_code_type(kind: Any) -> str:
-    name = getattr(kind, "name", str(kind) if kind else "app").lower()
-    mapping = {
-        "app": "app",
-        "sms": "sms",
-        "email_code": "email",
-        "set_up_email_required": "setup_email",
-        "setup_email_required": "setup_email",
-        "fragment_sms": "fragment",
-        "call": "call",
-        "flash_call": "flash_call",
-        "missed_call": "missed_call",
-    }
-    return mapping.get(name, name)
+def _snake(name: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
-def _normalize_next_code_type(after: Any) -> str | None:
-    if not after:
-        return None
-    name = getattr(after, "name", str(after)).lower()
-    mapping = {
-        "sms": "sms",
-        "call": "call",
-        "flash_call": "flash_call",
-        "missed_call": "missed_call",
-        "fragment_sms": "fragment",
-    }
-    return mapping.get(name, name)
+class _UnsupportedSentCode(Exception):
+    """Ответ на запрос кода — не `auth.SentCode` (`auth.SentCodeSuccess`,
+    `auth.SentCodePaymentRequired`): вход по коду так не продолжить."""
+
+    def __init__(self, kind: str) -> None:
+        super().__init__(kind)
+        self.kind = kind
 
 
-def _to_sent_code_info(sent: Any) -> SentCodeInfo:
-    if isinstance(sent, SentCodeInfo):
-        return sent
-    hash_val = str(getattr(sent, "phone_code_hash", sent))
-    kind = getattr(sent, "type", None)
-    after = getattr(sent, "next_type", None)
-    timeout = getattr(sent, "timeout", None)
-    norm_type = _normalize_sent_code_type(kind)
-    norm_next = _normalize_next_code_type(after)
+def _keep_raw_sent_code() -> None:
+    """`send_phone_number_code` kurigram разбирает ответ `auth.SendCode` в `types.SentCode`:
+    маска почты теряется, а на другой конструктор ответа разбор падает AttributeError. Разбор
+    подменяется один раз: сырой ответ остаётся в `_raw`, другой конструктор —
+    `_UnsupportedSentCode`. Сам вызов остаётся у kurigram ради переезда на DC номера
+    (PHONE_MIGRATE)."""
+    from pyrogram import raw, types
 
-    raw_obj = getattr(sent, "_raw", None)
-    raw_type = getattr(raw_obj, "type", None) if raw_obj is not None else None
-    email_pattern = getattr(raw_type, "email_pattern", None)
+    orig = types.SentCode._parse
+    if getattr(orig, "_pyrobot_patched", False):
+        return
 
+    def parse(sent_code: Any) -> Any:
+        if not isinstance(sent_code, raw.types.auth.SentCode):
+            raise _UnsupportedSentCode(_snake(type(sent_code).__name__))
+        parsed = orig(sent_code)
+        parsed._raw = sent_code  # type: ignore[attr-defined]
+        return parsed
+
+    parse._pyrobot_patched = True  # type: ignore[attr-defined]
+    types.SentCode._parse = parse  # type: ignore[method-assign]
+
+
+def _sent_code_info(sent: Any) -> SentCodeInfo:
+    """Сырой ответ на запрос кода (`auth.SentCode`) — способ доставки для входа."""
+    from pyrogram import raw
+
+    if not isinstance(sent, raw.types.auth.SentCode):
+        raise _UnsupportedSentCode(_snake(type(sent).__name__))
+    kind = type(sent.type).__name__
+    after = sent.next_type
     return SentCodeInfo(
-        phone_code_hash=hash_val,
-        type=norm_type,
-        email_pattern=email_pattern,
-        next_type=norm_next,
-        timeout=timeout,
+        phone_code_hash=sent.phone_code_hash,
+        type=_SENT_CODE_TYPES.get(kind, _snake(kind)),
+        email_pattern=getattr(sent.type, "email_pattern", None),
+        next_type=(
+            None
+            if after is None
+            else _NEXT_CODE_TYPES.get(type(after).__name__, _snake(type(after).__name__))
+        ),
+        timeout=sent.timeout,
     )
+
+
+def _unsupported(call: str, exc: _UnsupportedSentCode) -> SendCodeRejected:
+    log.warning("telegram %s unsupported answer: %s", call, exc.kind)
+    return SendCodeRejected(f"send_code_unsupported:{exc.kind}")
 
 
 class KurigramTransport:
@@ -625,18 +631,20 @@ class KurigramTransport:
     async def send_code(self, phone: str) -> SentCodeInfo:
         from pyrogram import errors
 
-        _patch_sent_code_parse()
+        _keep_raw_sent_code()
         try:
             sent = await self._client.send_phone_number_code(phone)
         except errors.PhoneNumberInvalid as exc:
             raise InvalidPhone from exc
         except errors.FloodWait as exc:
             raise FloodWait(float(exc.seconds or 0)) from exc
-        except errors.BadRequest as exc:
+        except (errors.BadRequest, errors.NotAcceptable) as exc:
             log.warning("telegram send_code rejected: %s", exc.ID or type(exc).__name__)
             raise SendCodeRejected(str(exc.ID or exc).lower()) from exc
+        except _UnsupportedSentCode as exc:
+            raise _unsupported("send_code", exc) from exc
 
-        info = _to_sent_code_info(sent)
+        info = _sent_code_info(sent._raw)
         log.info(
             "telegram code sent: type=%s next=%s timeout=%s",
             info.type,
@@ -647,9 +655,8 @@ class KurigramTransport:
 
     @_fenced
     async def resend_code(self, phone: str, code_hash: str) -> SentCodeInfo:
-        from pyrogram import errors, raw, types
+        from pyrogram import errors, raw
 
-        _patch_sent_code_parse()
         try:
             r = await self._client.invoke(
                 raw.functions.auth.ResendCode(
@@ -659,12 +666,14 @@ class KurigramTransport:
             )
         except errors.FloodWait as exc:
             raise FloodWait(float(exc.seconds or 0)) from exc
-        except errors.BadRequest as exc:
+        except (errors.BadRequest, errors.NotAcceptable) as exc:
+            # SEND_CODE_UNAVAILABLE (406): других способов доставки у номера не осталось.
             log.warning("telegram resend_code rejected: %s", exc.ID or type(exc).__name__)
             raise SendCodeRejected(str(exc.ID or exc).lower()) from exc
-
-        parsed = types.SentCode._parse(r)
-        info = _to_sent_code_info(parsed)
+        try:
+            info = _sent_code_info(r)
+        except _UnsupportedSentCode as exc:
+            raise _unsupported("resend_code", exc) from exc
         log.info(
             "telegram code resent: type=%s next=%s timeout=%s",
             info.type,
@@ -701,9 +710,8 @@ class KurigramTransport:
 
     @_fenced
     async def verify_email(self, phone: str, code_hash: str, code: str) -> int | SentCodeInfo:
-        from pyrogram import errors, raw, types
+        from pyrogram import errors, raw
 
-        _patch_sent_code_parse()
         try:
             r = await self._client.invoke(
                 raw.functions.account.VerifyEmail(
@@ -738,10 +746,10 @@ class KurigramTransport:
             if hasattr(self._client.storage, "is_bot"):
                 await self._client.storage.is_bot(False)
             return int(user.id)
-        if isinstance(sent_code, raw.types.auth.SentCode):
-            parsed = types.SentCode._parse(sent_code)
-            return _to_sent_code_info(parsed)
-        raise TgBackendError("unexpected_verify_email_result")
+        try:
+            return _sent_code_info(sent_code)
+        except _UnsupportedSentCode as exc:
+            raise _unsupported("verify_email", exc) from exc
 
     @_fenced
     async def sign_in(

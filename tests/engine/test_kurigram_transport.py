@@ -356,12 +356,74 @@ async def test_send_code_other_bad_request_rejected() -> None:
 
 
 async def test_send_code_returns_sent_code_info() -> None:
+    from pyrogram import raw
+
     t = FakeKurigram(authorized=False)
     await t.connect()
     info = await t.send_code("+1234567890")
-    assert isinstance(info, SentCodeInfo)
-    assert info.phone_code_hash == "hash"
-    assert info.type == "app"
+    assert info == SentCodeInfo(phone_code_hash="hash", type="app")
+
+    t.client.responses["SendCode"] = raw.types.auth.SentCode(
+        type=raw.types.auth.SentCodeTypeEmailCode(email_pattern="f***n@g***.com", length=6),
+        phone_code_hash="h_email",
+        next_type=raw.types.auth.CodeTypeSms(),
+        timeout=90,
+    )
+    assert await t.send_code("+1234567890") == SentCodeInfo(
+        phone_code_hash="h_email",
+        type="email",
+        email_pattern="f***n@g***.com",
+        next_type="sms",
+        timeout=90,
+    )
+
+    t.client.responses["SendCode"] = raw.types.auth.SentCode(
+        type=raw.types.auth.SentCodeTypeSetUpEmailRequired(), phone_code_hash="h_setup"
+    )
+    assert await t.send_code("+1234567890") == SentCodeInfo(
+        phone_code_hash="h_setup", type="setup_email"
+    )
+
+
+async def test_send_code_unavailable_is_rejected_not_failed() -> None:
+    t = FakeKurigram(authorized=False)
+    await t.connect()
+    t.client.errors["SendCode"] = rpc_error("SendCodeUnavailable")
+    with pytest.raises(SendCodeRejected) as info:
+        await t.send_code("+1")
+    assert info.value.code == "send_code_unavailable"
+
+
+@pytest.mark.parametrize("kind", ["success", "payment_required"])
+async def test_send_code_unsupported_answer(kind: str, caplog: pytest.LogCaptureFixture) -> None:
+    from pyrogram import raw
+
+    answer: Any = (
+        raw.types.auth.SentCodeSuccess(
+            authorization=raw.types.auth.Authorization(user=_user_raw())
+        )
+        if kind == "success"
+        else raw.types.auth.SentCodePaymentRequired(
+            store_product="p",
+            phone_code_hash="h",
+            support_email_address="s@example.com",
+            support_email_subject="s",
+            premium_days=7,
+            currency="USD",
+            amount=100,
+        )
+    )
+    t = FakeKurigram(authorized=False)
+    await t.connect()
+    t.client.responses["SendCode"] = answer
+    with pytest.raises(SendCodeRejected) as info:
+        await t.send_code("+1")
+    assert info.value.code == f"send_code_unsupported:sent_code_{kind}"
+    assert f"sent_code_{kind}" in caplog.text
+    t.client.responses["ResendCode"] = answer
+    with pytest.raises(SendCodeRejected) as info:
+        await t.resend_code("+1", "h")
+    assert info.value.code == f"send_code_unsupported:sent_code_{kind}"
 
 
 async def test_resend_code_invokes_rpc() -> None:
@@ -372,14 +434,25 @@ async def test_resend_code_invokes_rpc() -> None:
     t.client.responses["ResendCode"] = raw.types.auth.SentCode(
         type=raw.types.auth.SentCodeTypeSms(length=5),
         phone_code_hash="new_hash",
-        next_type=None,
+        next_type=raw.types.auth.CodeTypeCall(),
         timeout=120,
     )
-    info = await t.resend_code("+1234567890", "old_hash")
-    assert info.phone_code_hash == "new_hash"
-    assert info.type == "sms"
-    assert info.timeout == 120
-    assert ("ResendCode", {}) in t.client.invoked
+    info = await t.resend_code("+1 (234) 567-890", "old_hash")
+    assert info == SentCodeInfo(
+        phone_code_hash="new_hash", type="sms", next_type="call", timeout=120
+    )
+    query = t.client.queries[-1]
+    assert isinstance(query, raw.functions.auth.ResendCode)
+    assert (query.phone_number, query.phone_code_hash) == ("1234567890", "old_hash")
+
+
+async def test_resend_code_unavailable_is_rejected_not_failed() -> None:
+    t = FakeKurigram(authorized=False)
+    await t.connect()
+    t.client.errors["ResendCode"] = rpc_error("SendCodeUnavailable")
+    with pytest.raises(SendCodeRejected) as info:
+        await t.resend_code("+1", "h")
+    assert info.value.code == "send_code_unavailable"
 
 
 async def test_send_verify_email_code_invokes_rpc() -> None:
@@ -391,9 +464,16 @@ async def test_send_verify_email_code_invokes_rpc() -> None:
         email_pattern="f***n@g***.com",
         length=6,
     )
-    pattern = await t.send_verify_email_code("+1234567890", "h", "test@example.com")
+    pattern = await t.send_verify_email_code("+1234567890", "h", " test@example.com ")
     assert pattern == "f***n@g***.com"
-    assert ("SendVerifyEmailCode", {}) in t.client.invoked
+    query = t.client.queries[-1]
+    assert isinstance(query, raw.functions.account.SendVerifyEmailCode)
+    assert isinstance(query.purpose, raw.types.EmailVerifyPurposeLoginSetup)
+    assert (query.purpose.phone_number, query.purpose.phone_code_hash, query.email) == (
+        "1234567890",
+        "h",
+        "test@example.com",
+    )
 
 
 async def test_verify_email_returns_user_or_sent_code() -> None:
@@ -407,20 +487,22 @@ async def test_verify_email_returns_user_or_sent_code() -> None:
         sent_code=raw.types.auth.SentCode(
             type=raw.types.auth.SentCodeTypeApp(length=5),
             phone_code_hash="after_email",
+            timeout=60,
         ),
     )
-    res = await t.verify_email("+1234567890", "h", "12345")
-    assert isinstance(res, SentCodeInfo)
-    assert res.phone_code_hash == "after_email"
-    assert res.type == "app"
+    res = await t.verify_email("+1234567890", "h", " 12345 ")
+    assert res == SentCodeInfo(phone_code_hash="after_email", type="app", timeout=60)
+    query = t.client.queries[-1]
+    assert isinstance(query, raw.functions.account.VerifyEmail)
+    assert isinstance(query.purpose, raw.types.EmailVerifyPurposeLoginSetup)
+    assert (query.purpose.phone_number, query.purpose.phone_code_hash) == ("1234567890", "h")
+    assert query.verification == raw.types.EmailVerificationCode(code="12345")
 
     # 2. returns SentCodeSuccess
     t.client.responses["VerifyEmail"] = raw.types.account.EmailVerifiedLogin(
         email="test@example.com",
         sent_code=raw.types.auth.SentCodeSuccess(
-            authorization=raw.types.auth.Authorization(
-                user=raw.types.User(id=EXPECTED),
-            )
+            authorization=raw.types.auth.Authorization(user=_user_raw())
         ),
     )
     user_id = await t.verify_email("+1234567890", "h", "12345")
@@ -433,13 +515,24 @@ async def test_sign_in_email_invokes_rpc() -> None:
 
     t = FakeKurigram(authorized=False)
     await t.connect()
-    t.client.responses["SignIn"] = raw.types.auth.Authorization(
-        user=raw.types.User(id=EXPECTED),
-    )
-    user_id = await t.sign_in("+1234567890", "h", "12345", is_email=True)
+    t.client.responses["SignIn"] = raw.types.auth.Authorization(user=_user_raw())
+    user_id = await t.sign_in("+1234567890", "h", " 12345 ", is_email=True)
     assert user_id == EXPECTED
     assert await t.storage.user_id() == EXPECTED
-    assert ("SignIn", {}) in t.client.invoked
+    query = t.client.queries[-1]
+    assert isinstance(query, raw.functions.auth.SignIn)
+    assert (query.phone_number, query.phone_code_hash, query.phone_code) == (
+        "1234567890",
+        "h",
+        None,
+    )
+    assert query.email_verification == raw.types.EmailVerificationCode(code="12345")
+
+
+def _user_raw() -> Any:
+    from pyrogram import raw
+
+    return raw.types.User(id=EXPECTED)
 
 
 async def test_identify_unauthorized_resets_client_without_callback() -> None:

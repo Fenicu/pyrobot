@@ -105,6 +105,29 @@ async def test_tg_login_resend_code(container: Container, api_client: AsyncClien
     assert backend.resend_calls == [("+888", "h3")]
 
 
+async def test_tg_login_resend_unavailable_is_200_with_error(
+    container: Container, api_client: AsyncClient
+) -> None:
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h3", type="app", next_type="sms")
+    )
+    backend.errors["resend_code"] = SendCodeRejected("send_code_unavailable")
+    run_engine(container, build(authorized=False, backend=backend))
+    h = {"X-CSRF-Token": await login(api_client)}
+    start = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
+    res = await api_client.post(
+        "/api/v1/accounts/1/tg/login/resend",
+        headers=h,
+        json={"attempt_id": start.json()["attempt_id"]},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["state"] == "awaiting_code" and body["error"] == "send_code_unavailable"
+    assert body["delivery_next_type"] is None
+
+
 async def test_tg_login_email_flow(container: Container, api_client: AsyncClient) -> None:
     backend = FakeTgBackend(
         sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email"),

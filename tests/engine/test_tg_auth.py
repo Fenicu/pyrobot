@@ -8,6 +8,7 @@ from app.engine.tg_auth import (
     AttemptMismatch,
     CodeRateLimited,
     InvalidPhone,
+    SendCodeRejected,
     SentCodeInfo,
     TgBackendError,
     TgState,
@@ -641,3 +642,18 @@ async def test_delivery_expires_at_is_unix_time_after_email() -> None:
     assert st.delivery_timeout == 60
     assert st.delivery_expires_at is not None
     assert before + 60 <= st.delivery_expires_at <= time.time() + 60
+
+
+async def test_resend_unavailable_keeps_attempt_without_next_type() -> None:
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h3", type="app", next_type="sms")
+    )
+    backend.errors["resend_code"] = SendCodeRejected("send_code_unavailable")
+    mgr = tg_auth(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    st = await mgr.resend_code(st.attempt_id or "", "s1")
+    assert st.state is TgState.AWAITING_CODE and st.error == "send_code_unavailable"
+    # Других способов доставки у Telegram нет: повторять нечего, код ждётся прежний.
+    assert st.delivery_type == "app" and st.delivery_next_type is None
+    assert (await mgr.submit_code(st.attempt_id or "", "s1", "12345")).state is TgState.ONLINE

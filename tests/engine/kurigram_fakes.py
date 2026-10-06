@@ -262,11 +262,18 @@ class FakeClient:
             yield item
 
     async def send_phone_number_code(self, phone: str) -> Any:
+        # Как kurigram: ответ auth.SendCode разбирает SentCode._parse (его подменяет транспорт).
+        from pyrogram import raw, types
+
         self.invoked.append(("SendCode", {}))
+        self.queries.append(NS(phone_number=phone))
         err = self.errors.pop("SendCode", None)
         if err is not None:
             raise err
-        return NS(phone_code_hash="hash")
+        sent = self.responses.get("SendCode") or raw.types.auth.SentCode(
+            type=raw.types.auth.SentCodeTypeApp(length=5), phone_code_hash="hash"
+        )
+        return types.SentCode._parse(sent)
 
     async def sign_in(self, phone: str, code_hash: str, code: str) -> Any:
         await self.storage.user_id(EXPECTED)

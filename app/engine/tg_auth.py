@@ -330,6 +330,10 @@ class TgAuthManager:
             except FloodWait as exc:
                 raise exc
             except TgAuthError as exc:
+                if exc.code == "send_code_unavailable":
+                    # Других способов доставки нет: ждётся код, отправленный раньше.
+                    attempt.next_type = None
+                    attempt.timeout = attempt.timeout_at = None
                 self._error = exc.code
                 return self.status()
             except Exception as exc:
