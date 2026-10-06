@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from app.engine.artifact import ArtifactConflict, ArtifactRuns
 from app.engine.clock import SystemClock
+from app.engine.gadgets import GadgetConflict, GadgetRuns
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import ActionRequest, ActionResult
 from app.engine.manual import Fingerprint, KeyReused, fingerprint, manual_key
@@ -22,6 +23,8 @@ from app.engine.settings import (
     Settings,
     SettingsPatch,
     SettingsProvider,
+    UpgradeChoice,
+    UpSlotKey,
     settings_diff,
 )
 from app.engine.state.model import company_of, load_state
@@ -114,6 +117,7 @@ class EngineFacade:
         transport: Transport | None = None,
         history: Callable[[], GameChatWatch | None] = _no_watch,
         artifacts: ArtifactRuns | None = None,
+        gadgets: GadgetRuns | None = None,
         bounds: Callable[[], EngineBounds] | None = None,
     ) -> None:
         self.settings = settings
@@ -137,6 +141,12 @@ class EngineFacade:
         self._bounds = bounds
         self._outlook: tuple[tuple[int, int, int], float, datetime, Outlook] | None = None
         self.artifacts = artifacts or ArtifactRuns(
+            settings=settings,
+            state=lambda: load_state(pipeline.state),
+            notifier=notifier or LogNotifier(),
+            clock=SystemClock(),
+        )
+        self.gadgets = gadgets or GadgetRuns(
             settings=settings,
             state=lambda: load_state(pipeline.state),
             notifier=notifier or LogNotifier(),
@@ -273,6 +283,21 @@ class EngineFacade:
 
     async def artifact_adopt(self, *, by: str) -> None:
         await self.artifacts.adopt(by=by)
+        self._wake_planner()
+
+    async def gadget_upgrade_start(
+        self, slot: UpSlotKey, target: int, kind: UpgradeChoice, *, by: str
+    ) -> None:
+        """Задача заточки: только с Telegram в сети и в live, иначе клики не уйдут в игру."""
+        if self.tg.status().state is not TgState.ONLINE:
+            raise GadgetConflict("tg_not_online")
+        if self.settings.current.engine.mode != "live":
+            raise GadgetConflict("dry_run")
+        await self.gadgets.start(slot, target, kind, by=by)
+        self._wake_planner()
+
+    async def gadget_upgrade_stop(self, *, by: str) -> None:
+        await self.gadgets.stop(by=by)
         self._wake_planner()
 
     def _wake_planner(self) -> None:

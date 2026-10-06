@@ -180,17 +180,7 @@ def test_unused_settings_are_exactly_the_unread_ones() -> None:
 
 # Новые поля гаджетов ждут кода, который их читает: пометку снимает задача с чтением. У
 # `gadgets.sets` пометки нет: `e.gadgets.sets` в редьюсере проверка засчитывает как чтение.
-_GADGETS = {
-    "features.gadgets_buy",
-    "gadgets.keep_money",
-    "gadgets.white_until",
-    *(
-        f"gadget_upgrade.{name}"
-        for name in (
-            "task_id gadget kind target start_level end_level started_at ended_at end_reason"
-        ).split()
-    ),
-}
+_GADGETS = {"gadgets.keep_money"}
 _UNREAD = {"features.casino", "features.arena", "levelup.policy"} | _GADGETS
 
 

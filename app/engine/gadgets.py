@@ -1,13 +1,16 @@
 """Гаджеты: деньги на покупку с акциями чужих компаний, правило крафтового сета, план покупки, вид
-заточки и окна-запреты смены снаряжения — чистые функции над состоянием и настройками."""
+заточки и окна-запреты смены снаряжения — чистые функции над состоянием и настройками; задача
+заточки (`GadgetRuns`) и уведомления по итогам сценариев гаджетов."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
+from app.engine.artifact import ENGINE_BY
+from app.engine.clock import Clock
 from app.engine.gadget_catalog import (
     SET_MIN_SLOTS,
     SETS,
@@ -23,10 +26,21 @@ from app.engine.gadget_catalog import (
     shop_item,
     slot_of_icon,
 )
+from app.engine.notify import NotifierPort
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE, battle_hour
 from app.engine.planner.obligations import DUMP_SPAN, TARGET_LAST_CALL, metro_inside
-from app.engine.settings import Settings
+from app.engine.settings import (
+    GadgetUpgradeSection,
+    Settings,
+    SettingsProvider,
+    UpgradeChoice,
+    UpgradeStatus,
+    UpSlotKey,
+)
 from app.engine.state.model import CharacterState, GadgetsState, GadgetState, Obs, Upgrades
+
+if TYPE_CHECKING:
+    from app.engine.scenarios.library import ScenarioResult
 
 UPGRADE_BATCH = 20
 GORBUSHKA_GUARD = timedelta(minutes=2)
@@ -433,3 +447,310 @@ def gear_until(state: CharacterState, now: datetime) -> datetime | None:
     if battle is not None and battle - BATTLE_BEFORE > now:
         starts.append(battle - BATTLE_BEFORE)
     return min(starts, default=None)
+
+
+# --- задача заточки
+
+
+class GadgetConflict(Exception):
+    """Переход задачи заточки сейчас невозможен; `code` — код ответа API: `upgrade_in_progress`,
+    `not_worn`, `target_reached`, `no_task`, `tg_not_online`, `dry_run`."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def worn_on(state: CharacterState, slot: str) -> GadgetState | None:
+    seen = state.gadgets
+    if seen is None:
+        return None
+    return next((g for g in seen.value.items if up_slot(g) == slot), None)
+
+
+def _task_gadget(task: GadgetUpgradeSection, state: CharacterState) -> GadgetState | None:
+    """Гаджет задачи на её слоте; на слоте другой или пусто — None."""
+    item = None if task.slot is None else worn_on(state, task.slot)
+    return item if item is not None and item.name == task.gadget else None
+
+
+def _with_task(settings: Settings, task: GadgetUpgradeSection) -> Settings:
+    return settings.model_copy(update={"gadget_upgrade": task})
+
+
+def _active(settings: Settings) -> GadgetUpgradeSection:
+    task = settings.gadget_upgrade
+    if task.status != "active":
+        raise GadgetConflict("no_task")
+    return task
+
+
+def start_upgrade(
+    settings: Settings,
+    state: CharacterState,
+    slot: UpSlotKey,
+    target: int,
+    kind: UpgradeChoice,
+    now: datetime,
+) -> Settings:
+    task = settings.gadget_upgrade
+    if task.status == "active":
+        raise GadgetConflict("upgrade_in_progress")
+    item = worn_on(state, slot)
+    if item is None:
+        raise GadgetConflict("not_worn")
+    level = item.level or 0
+    if target <= level:
+        raise GadgetConflict("target_reached")
+    started = GadgetUpgradeSection(
+        status="active",
+        task_id=task.task_id + 1,
+        slot=slot,
+        gadget=item.name,
+        kind=kind,
+        target=target,
+        start_level=level,
+        started_at=now,
+    )
+    return _with_task(settings, started)
+
+
+def end_upgrade(
+    settings: Settings, status: UpgradeStatus, reason: str, level: int | None, now: datetime
+) -> Settings:
+    update = {"status": status, "end_reason": reason, "end_level": level, "ended_at": now}
+    return _with_task(settings, _active(settings).model_copy(update=update))
+
+
+def stop_upgrade(settings: Settings, now: datetime) -> Settings:
+    return end_upgrade(settings, "stopped", "stopped", None, now)
+
+
+@dataclass(frozen=True)
+class UpgradeTaskView:
+    """Задача заточки для API: поля записи и текущий уровень гаджета задачи по состоянию."""
+
+    status: UpgradeStatus
+    task_id: int
+    slot: UpSlotKey | None
+    gadget: str | None
+    kind: UpgradeChoice | None
+    target: int | None
+    start_level: int | None
+    end_level: int | None
+    started_at: datetime | None
+    ended_at: datetime | None
+    end_reason: str | None
+    level: int | None
+
+
+def task_view(settings: Settings, state: CharacterState) -> UpgradeTaskView:
+    task = settings.gadget_upgrade
+    item = _task_gadget(task, state)
+    return UpgradeTaskView(
+        status=task.status,
+        task_id=task.task_id,
+        slot=task.slot,
+        gadget=task.gadget,
+        kind=task.kind,
+        target=task.target,
+        start_level=task.start_level,
+        end_level=task.end_level,
+        started_at=task.started_at,
+        ended_at=task.ended_at,
+        end_reason=task.end_reason,
+        level=None if item is None else item.level or 0,
+    )
+
+
+def upgrades_exhausted(
+    task: GadgetUpgradeSection, state: CharacterState, white_until: int
+) -> bool:
+    """Улучшений вида задачи нет по экрану `/upgrades`, снятому после старта; производные запасы
+    (после попыток), экраны `/up_` и снимки до старта не в счёт."""
+    info, stocks = state.upgrade_info, state.upgrades
+    item = _task_gadget(task, state)
+    if info is None or info.src == "doubtful" or stocks is None or stocks.src != "screen":
+        return False
+    if task.started_at is None or info.at < task.started_at or stocks.at != info.at:
+        return False
+    level = (item.level or 0) if item is not None else (task.start_level or 0)
+    return upgrade_kind(task.kind or "auto", level, stocks.value, white_until) is None
+
+
+def _bag_full(state: CharacterState) -> bool | None:
+    used, cap = state.bag, state.bag_cap
+    if used is None or cap is None or "doubtful" in (used.src, cap.src):
+        return None
+    return used.value >= cap.value
+
+
+# Итоги порции, закрывающие задачу; прочие (конец порции, занят, пауза) её не трогают.
+_UPGRADE_RESULTS = {
+    ("done", "target_reached"),
+    ("done", "exhausted"),
+    ("nothing", "gadget_changed"),
+}
+_UPGRADE_ENDS: dict[str, tuple[UpgradeStatus, Literal["info", "warn"], str]] = {
+    "target_reached": ("done", "info", "gadget_upgrade_done"),
+    "exhausted": ("exhausted", "warn", "gadget_upgrade_exhausted"),
+    "gadget_changed": ("failed", "warn", "gadget_upgrade_failed"),
+}
+
+
+def _int(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+class GadgetRuns:
+    """Задача заточки в движке аккаунта: переходы записи `gadget_upgrade` через настройки движка
+    (атомарно с другими правками, как `ArtifactRuns`) и уведомления по итогам сценариев
+    гаджетов."""
+
+    def __init__(
+        self,
+        *,
+        settings: SettingsProvider,
+        state: Callable[[], CharacterState],
+        notifier: NotifierPort,
+        clock: Clock,
+    ) -> None:
+        self._settings = settings
+        self._state = state
+        self._notifier = notifier
+        self._clock = clock
+        # О полном рюкзаке уже сказали: снова — после `bag < bag_cap`.
+        self._bag_told = False
+
+    def view(self) -> UpgradeTaskView:
+        return task_view(self._settings.current, self._state())
+
+    async def _apply(self, change: Callable[[Settings], Settings], by: str) -> Settings:
+        new, _ = await self._settings.update(change, changed_by=by)
+        return new
+
+    async def start(self, slot: UpSlotKey, target: int, kind: UpgradeChoice, *, by: str) -> None:
+        now, state = self._clock.now(), self._state()
+        await self._apply(lambda s: start_upgrade(s, state, slot, target, kind, now), by)
+
+    async def stop(self, *, by: str) -> None:
+        now = self._clock.now()
+        await self._apply(lambda s: stop_upgrade(s, now), by)
+
+    async def _end(
+        self, task_id: int, status: UpgradeStatus, reason: str, level: int | None
+    ) -> GadgetUpgradeSection | None:
+        """Переход движка по задаче `task_id`: её уже закрыли или запустили новую — ничего."""
+        now = self._clock.now()
+
+        def change(s: Settings) -> Settings:
+            if s.gadget_upgrade.task_id != task_id:
+                raise GadgetConflict("no_task")
+            return end_upgrade(s, status, reason, level, now)
+
+        try:
+            new = await self._apply(change, ENGINE_BY)
+        except GadgetConflict:
+            return None
+        return new.gadget_upgrade
+
+    async def _ended(self, task_id: int, reason: str, level: int | None) -> None:
+        status, severity, code = _UPGRADE_ENDS[reason]
+        task = await self._end(task_id, status, reason, level)
+        if task is None:
+            return
+        shown = "?" if level is None else level
+        where = f"{task.gadget} ({task.slot})"
+        texts = {
+            "target_reached": f"{where}: level {shown}, target {task.target} reached",
+            "exhausted": f"{where}: no {task.kind} upgrades left at level {shown}, "
+            f"target {task.target}",
+            "gadget_changed": f"{task.slot}: {task.gadget} is no longer worn; upgrade stopped",
+        }
+        await self._notifier.notify(severity, code, texts[reason])
+
+    async def after(
+        self, scenario: str, params: Mapping[str, Any], result: ScenarioResult
+    ) -> None:
+        """Итог сценария гаджетов: конец задачи заточки и уведомления покупки и надевания."""
+        details = result.details or {}
+        if scenario == "gadget_upgrade":
+            await self._upgrade_result(params, result, details)
+        elif scenario == "gadget_buy":
+            await self._buy_result(result, details)
+        elif scenario == "gadget_wear_set" and result.status == "done":
+            await self._wear_result(details)
+
+    async def _upgrade_result(
+        self, params: Mapping[str, Any], result: ScenarioResult, details: Mapping[str, Any]
+    ) -> None:
+        if (result.status, result.reason) not in _UPGRADE_RESULTS:
+            return
+        task_id = _int(details.get("task_id", params.get("task_id")))
+        task = self._settings.current.gadget_upgrade
+        if task_id is None or task_id != task.task_id or task.status != "active":
+            return
+        await self._ended(task_id, result.reason, _int(details.get("level")))
+
+    async def _buy_result(self, result: ScenarioResult, d: Mapping[str, Any]) -> None:
+        if result.status == "done":
+            text = f"bought {d.get('bought')} for ${d.get('price')} ({d.get('rule')})"
+            sold = sum(_int(s.get("n")) or 0 for s in d.get("sold") or ())
+            if sold:
+                text += f", sold {sold} shares"
+            await self._notifier.notify("info", "gadget_bought", text)
+        elif (result.status, result.reason) == ("nothing", "shop_mismatch"):
+            seen = d.get("seen") or {}
+            shown = f"{seen.get('name')} ${seen.get('price')} level {seen.get('level')}"
+            text = f"shop {d.get('slot')} tier {d.get('tier')} differs from catalog: {shown}"
+            await self._notifier.notify("warn", "gadget_shop_mismatch", text)
+
+    async def _wear_result(self, d: Mapping[str, Any]) -> None:
+        name, active = d.get("set"), d.get("active")
+        if active is True:
+            await self._notifier.notify("info", "gadget_set_worn", f"set {name} worn and active")
+        elif active is False:
+            await self._notifier.notify(
+                "warn", "gadget_set_inactive", f"set {name} worn but its line is not in /inv"
+            )
+        else:
+            before = ", ".join(d.get("sets_before") or ()) or "-"
+            after = ", ".join(d.get("sets") or ()) or "-"
+            await self._notifier.notify(
+                "info",
+                "gadget_set_unconfirmed",
+                f"set {name} worn; set lines before: {before}; after: {after}",
+            )
+
+    async def tick(self) -> None:
+        """Полный рюкзак при покупке гаджетов и сверка задачи заточки по состоянию: цель
+        достигнута вручную, на слоте другой гаджет, улучшения кончились."""
+        settings, state = self._settings.current, self._state()
+        await self._bag_check(settings, state)
+        task = settings.gadget_upgrade
+        if task.status != "active" or task.slot is None:
+            return
+        item = _task_gadget(task, state)
+        seen = state.gadgets
+        if item is not None and task.target is not None and (item.level or 0) >= task.target:
+            await self._ended(task.task_id, "target_reached", item.level or 0)
+        elif item is None and seen is not None and seen.src != "doubtful":
+            await self._ended(task.task_id, "gadget_changed", None)
+        elif upgrades_exhausted(task, state, settings.gadgets.white_until):
+            level = (item.level or 0) if item is not None else task.start_level
+            await self._ended(task.task_id, "exhausted", level)
+
+    async def _bag_check(self, settings: Settings, state: CharacterState) -> None:
+        full = _bag_full(state)
+        if full is False:
+            self._bag_told = False
+        if not full or not settings.features.gadgets_buy or self._bag_told:
+            return
+        self._bag_told = True
+        used, cap = state.bag, state.bag_cap
+        assert used is not None and cap is not None
+        await self._notifier.notify(
+            "warn",
+            "gadget_bag_full",
+            f"bag full: {used.value} of {cap.value}; gadget purchase paused",
+        )

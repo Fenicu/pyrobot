@@ -101,7 +101,7 @@ class FeaturesSection(BaseModel):
     paid_info: bool = False
     seasonal: bool = False
     trips: bool = True
-    gadgets_buy: bool = Field(default=False, json_schema_extra=UNUSED)
+    gadgets_buy: bool = False
 
 
 Deed = Literal["harvest", "job", "learn", "dconv", "walk", "confa", "rob"]
@@ -318,7 +318,7 @@ class GadgetsSection(BaseModel):
 
     sets: tuple[GadgetSetKey, ...] = ()
     keep_money: int = Field(default=0, ge=0, json_schema_extra=UNUSED)
-    white_until: int = Field(default=7, ge=1, le=25, json_schema_extra=UNUSED)
+    white_until: int = Field(default=7, ge=1, le=25)
 
     @field_validator("sets")
     @classmethod
@@ -328,23 +328,20 @@ class GadgetsSection(BaseModel):
         return value
 
 
-_GADGET_RO = {**READ_ONLY, **UNUSED}
-
-
 class GadgetUpgradeSection(BaseModel):
     """Текущая задача заточки: меняют эндпоинты `/gadgets/upgrade*` и движок, не PATCH."""
 
     status: UpgradeStatus = Field(default="idle", json_schema_extra=READ_ONLY)
-    task_id: int = Field(default=0, ge=0, json_schema_extra=_GADGET_RO)
+    task_id: int = Field(default=0, ge=0, json_schema_extra=READ_ONLY)
     slot: UpSlotKey | None = Field(default=None, json_schema_extra=READ_ONLY)
-    gadget: str | None = Field(default=None, json_schema_extra=_GADGET_RO)
-    kind: UpgradeChoice | None = Field(default=None, json_schema_extra=_GADGET_RO)
-    target: int | None = Field(default=None, ge=1, le=60, json_schema_extra=_GADGET_RO)
-    start_level: int | None = Field(default=None, ge=0, json_schema_extra=_GADGET_RO)
-    end_level: int | None = Field(default=None, ge=0, json_schema_extra=_GADGET_RO)
-    started_at: datetime | None = Field(default=None, json_schema_extra=_GADGET_RO)
-    ended_at: datetime | None = Field(default=None, json_schema_extra=_GADGET_RO)
-    end_reason: str | None = Field(default=None, json_schema_extra=_GADGET_RO)
+    gadget: str | None = Field(default=None, json_schema_extra=READ_ONLY)
+    kind: UpgradeChoice | None = Field(default=None, json_schema_extra=READ_ONLY)
+    target: int | None = Field(default=None, ge=1, le=60, json_schema_extra=READ_ONLY)
+    start_level: int | None = Field(default=None, ge=0, json_schema_extra=READ_ONLY)
+    end_level: int | None = Field(default=None, ge=0, json_schema_extra=READ_ONLY)
+    started_at: datetime | None = Field(default=None, json_schema_extra=READ_ONLY)
+    ended_at: datetime | None = Field(default=None, json_schema_extra=READ_ONLY)
+    end_reason: str | None = Field(default=None, json_schema_extra=READ_ONLY)
 
 
 class Settings(BaseModel):

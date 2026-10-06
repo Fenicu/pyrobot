@@ -528,8 +528,7 @@
     "gadgets_buy": {
      "default": false,
      "title": "Gadgets Buy",
-     "type": "boolean",
-     "x-unused": true
+     "type": "boolean"
     },
     "gorbushka": {
      "default": true,
@@ -650,8 +649,7 @@
      ],
      "default": null,
      "readOnly": true,
-     "title": "End Level",
-     "x-unused": true
+     "title": "End Level"
     },
     "end_reason": {
      "anyOf": [
@@ -664,8 +662,7 @@
      ],
      "default": null,
      "readOnly": true,
-     "title": "End Reason",
-     "x-unused": true
+     "title": "End Reason"
     },
     "ended_at": {
      "anyOf": [
@@ -679,8 +676,7 @@
      ],
      "default": null,
      "readOnly": true,
-     "title": "Ended At",
-     "x-unused": true
+     "title": "Ended At"
     },
     "gadget": {
      "anyOf": [
@@ -693,8 +689,7 @@
      ],
      "default": null,
      "readOnly": true,
-     "title": "Gadget",
-     "x-unused": true
+     "title": "Gadget"
     },
     "kind": {
      "anyOf": [
@@ -713,8 +708,7 @@
      ],
      "default": null,
      "readOnly": true,
-     "title": "Kind",
-     "x-unused": true
+     "title": "Kind"
     },
     "slot": {
      "anyOf": [
@@ -753,8 +747,7 @@
      ],
      "default": null,
      "readOnly": true,
-     "title": "Start Level",
-     "x-unused": true
+     "title": "Start Level"
     },
     "started_at": {
      "anyOf": [
@@ -768,8 +761,7 @@
      ],
      "default": null,
      "readOnly": true,
-     "title": "Started At",
-     "x-unused": true
+     "title": "Started At"
     },
     "status": {
      "default": "idle",
@@ -798,16 +790,14 @@
      ],
      "default": null,
      "readOnly": true,
-     "title": "Target",
-     "x-unused": true
+     "title": "Target"
     },
     "task_id": {
      "default": 0,
      "minimum": 0,
      "readOnly": true,
      "title": "Task Id",
-     "type": "integer",
-     "x-unused": true
+     "type": "integer"
     }
    },
    "title": "GadgetUpgradeSection",
@@ -842,8 +832,7 @@
      "maximum": 25,
      "minimum": 1,
      "title": "White Until",
-     "type": "integer",
-     "x-unused": true
+     "type": "integer"
     }
    },
    "title": "GadgetsSection",

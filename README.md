@@ -1411,6 +1411,19 @@ live не запускается); задания — `convDets` (перераб
   игре уже идёт сбор другого артефакта), `artifact_completed` (собран до 100), `artifact_finished`
   (10 суток прошли), `artifact_collect_external` (сбор начат в игре без бота — «Вести сбор»),
   `artifact_tactic_mismatch` (warn: по «Сбор начат!» части падают не в делах тактики).
+  Коды гаджетов: `gadget_bought` (info: что куплено, за сколько, по какому правилу — `empty`,
+  `set`, `replace` — и сколько продано акций), `gadget_shop_mismatch` (warn: витрина разошлась с
+  каталогом — покупка этого тира на паузе), `gadget_bag_full` (warn: рюкзак полон при включённой
+  покупке; одно на эпизод — снова только после освобождения места), `gadget_set_worn` (info: сет
+  надет и его строка есть в `/inv`), `gadget_set_inactive` (warn: сет надет, а строки нет),
+  `gadget_set_unconfirmed` (info: строка сета неизвестна — строки сетов до и после надевания),
+  `gadget_upgrade_done` (info: цель заточки достигнута — ботом или вручную), `gadget_upgrade_exhausted`
+  (warn: кончились улучшения выбранного вида), `gadget_upgrade_failed` (warn: на слоте сменили гаджет).
+  Повторные неудачи сценариев гаджетов — общий `scenario_failed`. Задача заточки — запись
+  `gadget_upgrade` в настройках: `idle` → `active` (старт) → `done`, `exhausted`, `stopped` («Стоп»)
+  или `failed`; каждый старт получает новый `task_id`, поэтому поздний итог порции прошлой задачи
+  новую не закрывает. Запись в настройках переживает рестарт: после него заточка продолжается той
+  же задачей.
 
 ### Сверка истории и перегрузка
 
@@ -2804,6 +2817,24 @@ unknown`); занятость устарела, но известна — то �
 навыков (`gear_guard`): метро, встреча на Горбушке и ожидание боя ближе 2 минут или уже наступившего
 при действующем билете, битва от 6 минут до и минута после; `gear_until` — начало ближайшего окна.
 
+**Задача заточки** (`GadgetRuns` в `app/engine/gadgets.py`, фасад — `gadget_upgrade_start`,
+`gadget_upgrade_stop`). Переходы записи `gadget_upgrade` — функции над настройками внутри
+`settings.update`, как у сбора артефакта: старт (Telegram в сети и `live`, иначе `tg_not_online` /
+`dry_run`) — из любого статуса, кроме `active` (`upgrade_in_progress`), гаджет на слоте надет
+(`not_worn`), цель выше его уровня (`target_reached`): `task_id + 1`, `gadget` и `start_level` — по
+надетому, `started_at`; «Стоп» — `stopped` (без задачи — `no_task`). Итог сценария `gadget_upgrade`
+применяется, только если его `details.task_id` — текущий и задача `active`: `done target_reached` →
+`done`, `done exhausted` → `exhausted`, `nothing gadget_changed` → `failed`, прочие итоги задачу не
+трогают. Сверка по состоянию (`tick`): уровень гаджета задачи дошёл до цели → `done`; несомнительный
+`/inv` показывает на слоте другой гаджет или пусто → `failed`; `exhausted` — только по экрану
+`/upgrades`, снятому после `started_at` (запасы и `upgrade_info` из одного снимка, не сомнительные),
+если `upgrade_kind` по нему не находит вида; производные запасы после попыток, экраны `/up_` и снимки до
+старта задачу не закрывают. Уведомления покупки и надевания сета `GadgetRuns.after` шлёт по `details`
+итога: `gadget_buy` — `{bought, price, rule, slot, tier, worn, sold: [{company, n, price}]}`
+(`shop_mismatch` — `{slot, tier, seen: {name, price, level}}`), `gadget_wear_set` — `{set, active,
+sets_before, sets}`, `gadget_upgrade` — `{task_id, level, attempts, ok, fail, spent: {white, blue,
+red}}`.
+
 ### Цикл
 
 **Цикл** (`app/engine/planner/loop.py`, `PlannerLoop`, фоновая задача `planner`) просыпается по каждой
@@ -3971,8 +4002,7 @@ tools/outlook_fixture.py` строит её из снимка с прода `tes
 `engine.paused` помечены `readOnly` — их меняют только `/engine/kill|unkill|pause|resume` с latch
 шлюза, проверкой аренды аккаунта и аудитом; поля, которые код не читает, — `x-unused`
 (`UNUSED` в `app/engine/settings.py`: `features.casino`, `features.arena`, `levelup.policy`, а до кода
-покупки и заточки гаджетов — `features.gadgets_buy`, `gadgets.keep_money`, `gadgets.white_until` и
-поля `gadget_upgrade`, кроме `status` и `slot`): PATCH
+покупки гаджетов — `gadgets.keep_money`): PATCH
 их принимает, но ни на что это не влияет; `tests/engine/test_settings_unused.py` сверяет пометку с кодом
 `app/**` в обе стороны — помечены ровно те листья, которые нигде не читаются; обращения ищутся по
 AST полным путём — чтения (`Load`, присваивание полю не в счёт) цепочек атрибутов и `getattr` с

@@ -1,6 +1,7 @@
 import asyncio
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -9,6 +10,7 @@ from app.engine.artifact import ArtifactConflict
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade, GameChatWatch, LockLostError, TgNotOnline
+from app.engine.gadgets import GadgetConflict
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.store import ActionStore
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
@@ -29,7 +31,14 @@ from app.engine.settings import (
     StaticSettings,
     self_chat_fields,
 )
-from app.engine.state.model import company_of
+from app.engine.state.model import (
+    CharacterState,
+    GadgetsState,
+    GadgetState,
+    Obs,
+    company_of,
+    dump_state,
+)
 from app.engine.tg_auth import TgAuthBackend, TgState
 from app.engine.transport.base import TransportRejected
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
@@ -313,3 +322,41 @@ async def test_artifact_start_needs_online_tg_and_live_mode() -> None:
     assert planner.woken == 1
     await f.artifact_cancel(by="alice")
     assert f.settings.current.artifact_run.status == "idle" and planner.woken == 2
+
+
+async def test_gadget_upgrade_start_requires_online_and_live() -> None:
+    phone = GadgetState(grade="⚪️", level=3, slot="📱", name="Китайская мобила", code="p1")
+    seen = Obs(value=GadgetsState(items=(phone,)), at=datetime.now(UTC))
+    snapshot = dump_state(CharacterState(gadgets=seen))
+    live = StaticSettings(Settings(engine=EngineSection(mode="live")))
+    planner = _Planner()
+    f = build(settings=live, planner=planner, snapshot=snapshot)
+    await f.pipeline.load()
+    with pytest.raises(GadgetConflict) as offline:
+        await f.gadget_upgrade_start("right", 10, "auto", by="alice")
+    assert offline.value.code == "tg_not_online"
+    dry = build(snapshot=snapshot)
+    await dry.pipeline.load()
+    await dry.tg.boot()
+    with pytest.raises(GadgetConflict) as err:
+        await dry.gadget_upgrade_start("right", 10, "auto", by="alice")
+    assert err.value.code == "dry_run"
+    assert planner.woken == 0
+    await f.tg.boot()
+    with pytest.raises(GadgetConflict) as empty:
+        await f.gadget_upgrade_start("left", 10, "auto", by="alice")
+    assert empty.value.code == "not_worn"
+    await f.gadget_upgrade_start("right", 10, "auto", by="alice")
+    task = f.settings.current.gadget_upgrade
+    assert (task.status, task.task_id, task.gadget, task.start_level) == (
+        "active",
+        1,
+        "Китайская мобила",
+        3,
+    )
+    assert planner.woken == 1
+    await f.gadget_upgrade_stop(by="alice")
+    assert f.settings.current.gadget_upgrade.status == "stopped" and planner.woken == 2
+    with pytest.raises(GadgetConflict) as idle:
+        await f.gadget_upgrade_stop(by="alice")
+    assert idle.value.code == "no_task"
