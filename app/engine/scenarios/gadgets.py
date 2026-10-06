@@ -172,16 +172,18 @@ def _worn(name: str) -> Predicate:
     return expect_events(GadgetWorn, accept=lambda e: isinstance(e, GadgetWorn) and e.name == name)
 
 
-async def _wear(
-    ctx: ScenarioContext, pick: Pick, until: datetime | None
-) -> tuple[StepResult, Inventory | None]:
-    """`/inv` → гаджет рюкзака по `pick` → `/wear_<N>_<код>` с `deadline`: надевание игра
-    принимает только сразу после `/inv`, а номера рюкзака сдвигаются после каждой смены. Заглушка
-    «неизвестная команда» — один повтор с `/inv`. Второе — рюкзак, с которого надевали; нужного
-    в нём нет — шаг `refused missing_item`."""
+async def _wear(ctx: ScenarioContext, pick: Pick) -> tuple[StepResult, Inventory | None]:
+    """Окно-запрет по свежему состоянию → `/inv` → гаджет рюкзака по `pick` → `/wear_<N>_<код>`
+    с `deadline`: надевание игра принимает только сразу после `/inv`, а номера рюкзака
+    сдвигаются после каждой смены. Заглушка «неизвестная команда» — один повтор (снова запрет и
+    `/inv`). Второе — рюкзак, с которого надевали. Запрет (`refused <вердикт>`) и нет нужного
+    (`refused missing_item`) — шаги без ответа игры (`_local`)."""
     step = StepResult(Step.FAILED, "not_sent")
     inventory: Inventory | None = None
     for _ in range(2):
+        verdict, until = _guard(ctx)
+        if verdict is not None:
+            return StepResult(Step.REFUSED, verdict), inventory
         opened = await ctx.send(INV, expect_events(Inventory))
         inventory = opened.first(Inventory)
         if opened.step is not Step.OK or inventory is None:
@@ -194,6 +196,11 @@ async def _wear(
         if (step.step, step.reason) != (Step.REFUSED, "unknown_command"):
             break
     return step, inventory
+
+
+def _local(step: StepResult) -> bool:
+    """Отказ самого сценария (окно-запрет, нет в рюкзаке), а не игры: у него нет ответа."""
+    return step.step is Step.REFUSED and step.delivery is None
 
 
 def _guard(ctx: ScenarioContext) -> tuple[str | None, datetime | None]:
@@ -282,22 +289,14 @@ async def gadget_buy(
 
 async def _wear_bought(ctx: ScenarioContext, item: ShopItem) -> str | None:
     """Надеть только что купленное; None — надето, иначе почему нет."""
-    verdict, until = _guard(ctx)
-    if verdict is not None:
-        return verdict
-    step, _ = await _wear(ctx, _fresh_copy(item.code), until)
+    step, _ = await _wear(ctx, _fresh_copy(item.code))
     if step.step is Step.OK:
         return None
-    if step.reason == MISSING:
-        return MISSING
-    return wrong_screen(step).reason
+    return step.reason if _local(step) else wrong_screen(step).reason
 
 
 async def _wear_copy(ctx: ScenarioContext, item: ShopItem, rule: str) -> ScenarioResult:
-    verdict, until = _guard(ctx)
-    if verdict is not None:
-        return ScenarioResult("nothing", verdict)
-    step, _ = await _wear(ctx, _fresh_copy(item.code), until)
+    step, _ = await _wear(ctx, _fresh_copy(item.code))
     if step.step is Step.OK:
         details = {
             "gadget": item.name,
@@ -307,8 +306,8 @@ async def _wear_copy(ctx: ScenarioContext, item: ShopItem, rule: str) -> Scenari
             "worn": True,
         }
         return ScenarioResult("done", "worn", details)
-    if step.reason == MISSING:
-        return ScenarioResult("nothing", MISSING)
+    if _local(step):
+        return ScenarioResult("nothing", step.reason)
     return wrong_screen(step)
 
 
@@ -333,15 +332,12 @@ async def gadget_wear_set(
         for i, slot in enumerate(slots):
             if i:
                 await ctx.safe_point()
-            verdict, until = _guard(ctx)
-            if verdict is not None:
-                return ScenarioResult("nothing", verdict)
-            step, inventory = await _wear(ctx, _set_part(key, slot), until)
+            step, inventory = await _wear(ctx, _set_part(key, slot))
             if before is None and inventory is not None:
                 before = inventory.gadgets.sets
             if step.step is not Step.OK:
-                if step.reason == MISSING:
-                    return ScenarioResult("nothing", MISSING)
+                if _local(step):
+                    return ScenarioResult("nothing", step.reason)
                 return wrong_screen(step)
             answer = step.first(Inventory)
             after = answer.gadgets.sets if answer is not None else ()

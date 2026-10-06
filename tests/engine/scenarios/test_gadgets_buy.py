@@ -15,7 +15,7 @@ from app.engine.scenarios.gadgets import gadget_buy, gadget_wear_set
 from app.engine.scenarios.library import ScenarioFn, run_scenario
 from app.engine.state.model import CharacterState, GorbushkaState, Obs
 from app.engine.types import IncomingMessage
-from tests.engine.fakegame import GAME, LIVE, World, running_world
+from tests.engine.fakegame import GAME, LIVE, Ref, World, running_world
 from tests.engine.gadget_texts import (
     BOUGHT_RIGHT1,
     INV_BOUGHT,
@@ -35,7 +35,9 @@ BUYING = LIVE.model_copy(
     update={"features": LIVE.features.model_copy(update={"gadgets_buy": True})}
 )
 NAV = ["🕸Сеть", "🏪Магазин", "📱Правая рука"]
-NEW_P1 = "📱Китайская мобила (+1🔨) /wear_11_p1"
+P1 = "📱Китайская мобила (+1🔨)"
+P1_UPGRADED = f"⚪️3\xa0{P1}"
+NEW_P1 = f"{P1} /wear_11_p1"
 BLACKM = "⚫️25\xa0📱iBlackM (+100🔨, +51🎓, 💎)"
 StateFn = Callable[[], CharacterState]
 
@@ -221,14 +223,26 @@ async def test_showcase_mismatch_stops_before_selling(live_buying: World) -> Non
     assert live_buying.game.payloads() == NAV
 
 
+def own_dearest() -> IncomingMessage:
+    """Биржа 3624065, где своя ☣️ дороже всех продаваемых чужих (50 при лимите 80)."""
+    msg = game_msg("stocks", 3624065)
+    text = (msg.text or "").replace("☣️Black Mesa - 10 💵 за шт.", "☣️Black Mesa - 50 💵 за шт.")
+    assert text != msg.text
+    return replace(msg, text=text)
+
+
 @certifies("gadget_buy")
-async def test_sells_foreign_stock_then_reopens_showcase(live_buying: World) -> None:
-    # Витрина: $555 на Hooli phone за $4 449. Биржа (открыта): $2 364, чужие до $80 — ⚡️ по 31 и
-    # три по 10 (своя ☣️ и ☂️ по 100 не продаются). Нехватка $2 085: ⚡️ вся (51 шт., +$1 530),
-    # остаток $555 — 📯 ⌈555 / 9⌉ = 62 шт.
+@pytest.mark.parametrize(
+    "stock", [("stocks", 3624065), own_dearest()], ids=["live", "own_dearest"]
+)
+async def test_sells_foreign_stock_then_reopens_showcase(live_buying: World, stock: Ref) -> None:
+    # Витрина: $555 на Hooli phone за $4 449. Биржа (открыта): $2 364, лимит продажи $80; ☂️ по
+    # 100 выше лимита, своя ☣️ не продаётся ни по 10, ни дороже всех (по 50). Чужие: ⚡️ по 31 и
+    # 📯, 🤖, 🎩 по 10. Нехватка $2 085: ⚡️ вся (51 шт., +$1 530), остаток $555 — 📯
+    # ⌈555 / 9⌉ = 62 шт.
     shop(live_buying)
     live_buying.game.on_text("📱Правая рука", game_text(with_money("4\xa0452")))
-    live_buying.game.on_text("/stock", ("stocks", 3624065))
+    live_buying.game.on_text("/stock", stock)
     live_buying.game.on_text("/sells_stark_51", sold("⚡️Stark Ind.", 31, 3894, 0, 51))
     live_buying.game.on_text("/sells_piper_62", sold("📯Pied Piper", 10, 4452, 3701, 62))
     bought = BOUGHT_RIGHT1.replace("Китайская мобила (+1🔨)", "Hooli phone (+17🔨, +7🎓)")
@@ -254,7 +268,8 @@ async def test_sells_foreign_stock_then_reopens_showcase(live_buying: World) -> 
 
 @certifies("gadget_buy")
 async def test_whole_portfolio_short_sells_nothing(live_buying: World) -> None:
-    # Тир 14 ($59 999): $2 364 и чужие акции (без комиссии) на $52 614 — не хватит.
+    # Тир 14 ($59 999): $2 364 и выручка за чужие акции до лимита за вычетом комиссии $1/шт. —
+    # $52 614 (⚡️ 51 × 30, 📯 3 763 × 9, 🤖 1 838 × 9, 🎩 75 × 9) — не хватит.
     shop(live_buying)
     live_buying.game.on_text("/stock", ("stocks", 3624065))
     status, reason, _ = await run(
@@ -329,21 +344,26 @@ async def test_wear_skipped_in_gear_window(live_buying: World) -> None:
 
 
 @certifies("gadget_buy")
-async def test_wear_picks_ungraded_of_same_code(live_buying: World) -> None:
+@pytest.mark.parametrize(
+    ("lines", "sent"),
+    [
+        ((f"{P1_UPGRADED} /wear_12_p1", f"{P1} /wear_13_p1"), "/wear_13_p1"),
+        ((f"{P1} /wear_12_p1", f"{P1_UPGRADED} /wear_13_p1"), "/wear_12_p1"),
+    ],
+    ids=["fresh_last", "upgraded_last"],
+)
+async def test_wear_picks_ungraded_of_same_code(
+    live_buying: World, lines: tuple[str, str], sent: str
+) -> None:
     shop(live_buying)
     live_buying.game.on_text("/buy_right1", game_text(BOUGHT_RIGHT1))
-    inv = bag_of(
-        f"{BLACKM} /wear_11_p18",
-        "⚪️3\xa0📱Китайская мобила (+1🔨) /wear_12_p1",
-        "📱Китайская мобила (+1🔨) /wear_13_p1",
-    )
-    live_buying.game.on_text("/inv", game_text(inv))
-    live_buying.game.on_text("/wear_13_p1", game_text(WEAR_P1))
+    live_buying.game.on_text("/inv", game_text(bag_of(f"{BLACKM} /wear_11_p18", *lines)))
+    live_buying.game.on_text(sent, game_text(WEAR_P1))
     status, reason, details = await run(
         live_buying, rule="empty", slot="right", tier=1, price=3, reserve=0, wear=True
     )
     assert (status, reason, details["worn"]) == ("done", "bought", True)
-    assert live_buying.game.payloads()[-2:] == ["/inv", "/wear_13_p1"]
+    assert live_buying.game.payloads()[-2:] == ["/inv", sent]
 
 
 @certifies("gadget_buy")
@@ -365,6 +385,27 @@ async def test_unknown_command_on_wear_retries_inv_once(live_buying: World) -> N
         "/inv",
         "/wear_11_p1",
     ]
+
+
+@certifies("gadget_buy")
+async def test_retry_after_unknown_command_checks_gear_guard(live_buying: World) -> None:
+    shop(live_buying)
+    live_buying.game.on_text("/buy_right1", game_text(BOUGHT_RIGHT1))
+    live_buying.game.on_text("/inv", game_text(INV_BOUGHT))
+    live_buying.game.on_text("/wear_11_p1", game_text(UNKNOWN))
+    status, reason, details = await run(
+        live_buying,
+        state=guarded_after(live_buying, "/wear_11_p1"),
+        rule="empty",
+        slot="right",
+        tier=1,
+        price=3,
+        reserve=0,
+        wear=True,
+    )
+    assert (status, reason) == ("done", "bought")
+    assert (details["worn"], details["wear"]) == (False, "gorbushka_meeting")
+    assert live_buying.game.payloads() == [*NAV, "/buy_right1", "/inv", "/wear_11_p1"]
 
 
 @certifies("gadget_buy")
