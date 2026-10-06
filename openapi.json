@@ -2062,6 +2062,8 @@
             "type": "string"
           },
           "email": {
+            "maxLength": 254,
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
             "title": "Email",
             "type": "string"
           }
@@ -11033,7 +11035,7 @@
                 }
               }
             },
-            "description": "send_code_failed | sign_in_failed | check_password_failed"
+            "description": "send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed"
           },
           "503": {
             "content": {
@@ -11181,7 +11183,7 @@
                 }
               }
             },
-            "description": "send_code_failed | sign_in_failed | check_password_failed"
+            "description": "send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed"
           },
           "503": {
             "content": {
@@ -11329,7 +11331,7 @@
                 }
               }
             },
-            "description": "send_code_failed | sign_in_failed | check_password_failed"
+            "description": "send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed"
           },
           "503": {
             "content": {
@@ -11477,7 +11479,7 @@
                 }
               }
             },
-            "description": "send_code_failed | sign_in_failed | check_password_failed"
+            "description": "send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed"
           },
           "503": {
             "content": {
@@ -11625,7 +11627,7 @@
                 }
               }
             },
-            "description": "send_code_failed | sign_in_failed | check_password_failed"
+            "description": "send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed"
           },
           "503": {
             "content": {
@@ -11774,7 +11776,7 @@
                 }
               }
             },
-            "description": "send_code_failed | sign_in_failed | check_password_failed"
+            "description": "send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed"
           },
           "503": {
             "content": {

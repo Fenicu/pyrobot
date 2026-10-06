@@ -193,6 +193,54 @@ async def test_tg_login_email_flow(container: Container, api_client: AsyncClient
     assert ok_login.json()["state"] == "online"
 
 
+@pytest.mark.parametrize(
+    "email",
+    [
+        "",
+        "no-at.example.com",
+        "a@b",
+        "two@@example.com",
+        "a b@example.com",
+        f"{'a' * 245}@example.com",
+    ],
+)
+async def test_tg_login_email_validated(
+    container: Container, api_client: AsyncClient, email: str
+) -> None:
+    backend = FakeTgBackend(sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email"))
+    run_engine(container, build(authorized=False, backend=backend))
+    h = {"X-CSRF-Token": await login(api_client)}
+    start = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
+    r = await api_client.post(
+        "/api/v1/accounts/1/tg/login/email",
+        headers=h,
+        json={"attempt_id": start.json()["attempt_id"], "email": email},
+    )
+    assert r.status_code == 422
+    assert backend.send_email_calls == []
+
+
+async def test_tg_login_code_flood_wait_is_429(
+    container: Container, api_client: AsyncClient
+) -> None:
+    backend = FakeTgBackend()
+    backend.errors["sign_in"] = FloodWait(30)
+    run_engine(container, build(authorized=False, backend=backend))
+    h = {"X-CSRF-Token": await login(api_client)}
+    start = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
+    r = await api_client.post(
+        "/api/v1/accounts/1/tg/login/code",
+        headers=h,
+        json={"attempt_id": start.json()["attempt_id"], "code": "12345"},
+    )
+    assert r.status_code == 429 and r.json() == {"detail": "flood_wait"}
+    assert r.headers["retry-after"] == "31"
+
+
 async def test_readyz_is_process_readiness(container: Container, api_client: AsyncClient) -> None:
     # Ни движков, ни Telegram: процесс готов, пока база отвечает и соединение блокировок живо.
     ready = await api_client.get("/readyz")

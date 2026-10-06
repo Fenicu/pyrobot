@@ -312,7 +312,7 @@ class TgAuthManager:
                 self._attempt = None
                 self._set(TgState.ERROR, error="signup_required")
                 return self.status()
-            except TgAuthError:
+            except (TgAuthError, FloodWait):
                 raise
             except Exception as exc:
                 log.exception("telegram sign_in failed")
@@ -368,7 +368,8 @@ class TgAuthManager:
                 log.exception("telegram send_verify_email_code failed")
                 raise TgBackendError("send_verify_email_code_failed") from exc
 
-            attempt.email_pattern = pattern or email
+            # Без маски от Telegram адрес не показывается: статус видят все сессии аккаунта.
+            attempt.email_pattern = pattern
             self._error = None
             self._set(TgState.AWAITING_EMAIL_CODE)
             return self.status()
@@ -385,9 +386,15 @@ class TgAuthManager:
                 self._attempt = None
                 self._set(TgState.UNAUTHORIZED, error="code_expired")
                 return self.status()
+            except SignUpRequired:
+                self._attempt = None
+                self._set(TgState.ERROR, error="signup_required")
+                return self.status()
             except TgAuthError as exc:
                 self._error = exc.code
                 return self.status()
+            except FloodWait:
+                raise
             except Exception as exc:
                 log.exception("telegram verify_email failed")
                 raise TgBackendError("verify_email_failed") from exc

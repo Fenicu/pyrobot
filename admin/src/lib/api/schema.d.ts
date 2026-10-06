@@ -6449,7 +6449,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description send_code_failed | sign_in_failed | check_password_failed */
+            /** @description send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -6558,7 +6558,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description send_code_failed | sign_in_failed | check_password_failed */
+            /** @description send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -6667,7 +6667,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description send_code_failed | sign_in_failed | check_password_failed */
+            /** @description send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -6776,7 +6776,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description send_code_failed | sign_in_failed | check_password_failed */
+            /** @description send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -6885,7 +6885,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description send_code_failed | sign_in_failed | check_password_failed */
+            /** @description send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -6994,7 +6994,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description send_code_failed | sign_in_failed | check_password_failed */
+            /** @description send_code_failed | sign_in_failed | check_password_failed | resend_code_failed | send_verify_email_code_failed | verify_email_failed */
             502: {
                 headers: {
                     [name: string]: unknown;

@@ -3649,13 +3649,23 @@ latch не меняются. `POST /api/v1/accounts/{id}/engine/reconciled` (CSR
 истёкший код и неверный пароль 2FA — это 200 с полем `error` (`invalid_code`, `code_expired`,
 `invalid_password`). Прочие ошибки входа — наследники `TgAuthError` с кодом: распознанные (например,
 `invalid_phone`) — 400 `{"detail": "<код>"}`, сбой Telegram или сети (`TgBackendError`:
-`send_code_failed`, `sign_in_failed`, `check_password_failed`) — 502. Отдельно для `send_code`:
-`FloodWait` от Telegram — 429 `{"detail": "flood_wait"}` с заголовком `Retry-After`, лимит
-собственных запросов кода (`limits.tg_codes_per_hour` на процесс, `limits.tg_codes_per_account_hour` в час на аккаунт) — 429
-`{"detail": "tg_code_rate_limited"}` с `Retry-After`, прочий
-`BadRequest` (кроме `invalid_phone`) — 400 с кодом в нижнем регистре из RPC ID Telegram (например
-`phone_number_banned`). Сбой `send_code` переводит статус Telegram в `ERROR` с тем же кодом, сбой
-`sign_in`/`check_password` оставляет попытку, чтобы код можно было отправить повторно.
+`send_code_failed`, `sign_in_failed`, `check_password_failed`, `resend_code_failed`,
+`send_verify_email_code_failed`, `verify_email_failed`) — 502. `FloodWait` от Telegram на любом шаге
+входа — 429 `{"detail": "flood_wait"}` с заголовком `Retry-After`. Лимит собственных запросов кода
+(`limits.tg_codes_per_hour` на процесс, `limits.tg_codes_per_account_hour` в час на аккаунт) берут
+`start`, `resend` и `email` (письмо с кодом — тоже запрос кода): сверх — 429
+`{"detail": "tg_code_rate_limited"}` с `Retry-After`. Прочий отказ Telegram на запрос кода
+(`BadRequest`, `NotAcceptable`, кроме `invalid_phone`) — код в нижнем регистре из RPC ID Telegram
+(например `phone_number_banned`): у `start` — 400, у `resend` и `email` — 200 с `error` при той же
+попытке. `send_code_unavailable` у `resend` — других способов доставки нет: `delivery_next_type`
+сбрасывается, ждётся уже отправленный код. Ответ Telegram на запрос кода другого вида
+(`auth.SentCodeSuccess`, `auth.SentCodePaymentRequired`) — `send_code_unsupported:<тип>` (например
+`send_code_unsupported:sent_code_payment_required`), с записью в лог. Адрес почты в `.../login/email`
+— не длиннее 254 символов и вида `имя@домен.зона`, иначе 422; без маски от Telegram
+`delivery_email_pattern` пуст, сам адрес в статус не попадает. Сбой `send_code` переводит статус
+Telegram в `ERROR` с тем же кодом, сбой `sign_in`/`check_password` оставляет попытку, чтобы код
+можно было отправить повторно; `signup_required` (номер не зарегистрирован), в том числе после
+подтверждения почты, — `ERROR`.
 
 `POST /api/v1/accounts/{id}/tg/game-chat/join` (CSRF, без тела) — вступление аккаунта в общий чат
 игры @startupwarschat (`EngineFacade.join_game_chat`, вне шлюза команд, как выход из Telegram):

@@ -53,7 +53,14 @@ _TG_LOGIN: Responses = {
     400: error("invalid_phone", "password_required", "<код TgAuthError>"),
     409: error("already online", "another login in progress", "unknown attempt", "state is …"),
     429: error(FLOOD_WAIT),
-    502: error("send_code_failed", "sign_in_failed", "check_password_failed"),
+    502: error(
+        "send_code_failed",
+        "sign_in_failed",
+        "check_password_failed",
+        "resend_code_failed",
+        "send_verify_email_code_failed",
+        "verify_email_failed",
+    ),
 }
 
 
@@ -76,7 +83,8 @@ class AttemptIn(BaseModel):
 
 class EmailIn(BaseModel):
     attempt_id: str
-    email: str
+    # Простая проверка формы: остальное проверяет Telegram (`email_invalid`).
+    email: str = Field(max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class TgPasswordIn(BaseModel):

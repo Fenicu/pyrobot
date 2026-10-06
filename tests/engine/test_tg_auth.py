@@ -10,11 +10,13 @@ from app.engine.tg_auth import (
     InvalidPhone,
     SendCodeRejected,
     SentCodeInfo,
+    SignUpRequired,
+    TgAuthManager,
     TgBackendError,
     TgState,
     TgUserTaken,
 )
-from app.engine.transport.base import TransportAuthLost
+from app.engine.transport.base import FloodWait, TransportAuthLost
 from app.engine.transport.fake import FakeTgBackend
 from app.engine.types import IncomingMessage
 from tests.engine.helpers import GAME, tg_auth, until
@@ -657,3 +659,46 @@ async def test_resend_unavailable_keeps_attempt_without_next_type() -> None:
     # Других способов доставки у Telegram нет: повторять нечего, код ждётся прежний.
     assert st.delivery_type == "app" and st.delivery_next_type is None
     assert (await mgr.submit_code(st.attempt_id or "", "s1", "12345")).state is TgState.ONLINE
+
+
+async def _email_code_step(backend: FakeTgBackend) -> tuple[TgAuthManager, str]:
+    mgr = tg_auth(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    await mgr.send_email(st.attempt_id or "", "s1", "test@example.com")
+    return mgr, st.attempt_id or ""
+
+
+async def test_flood_wait_on_code_submit_is_raised_and_attempt_kept() -> None:
+    backend = FakeTgBackend()
+    backend.errors["sign_in"] = FloodWait(30)
+    mgr = tg_auth(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    with pytest.raises(FloodWait):
+        await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    assert mgr.status().state is TgState.AWAITING_CODE
+
+    backend = FakeTgBackend(sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email"))
+    backend.errors["verify_email"] = FloodWait(30)
+    mgr, attempt = await _email_code_step(backend)
+    with pytest.raises(FloodWait):
+        await mgr.submit_email_code(attempt, "s1", "54321")
+    assert mgr.status().state is TgState.AWAITING_EMAIL_CODE
+
+
+async def test_signup_required_after_email_is_error() -> None:
+    backend = FakeTgBackend(sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email"))
+    backend.errors["verify_email"] = SignUpRequired()
+    mgr, attempt = await _email_code_step(backend)
+    st = await mgr.submit_email_code(attempt, "s1", "54321")
+    assert st.state is TgState.ERROR and st.error == "signup_required"
+    assert st.attempt_id is None
+
+
+async def test_email_without_pattern_not_echoed() -> None:
+    backend = FakeTgBackend(sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email"))
+    backend.email_pattern = None
+    mgr, _ = await _email_code_step(backend)
+    st = mgr.status()
+    assert st.state is TgState.AWAITING_EMAIL_CODE and st.delivery_email_pattern is None
