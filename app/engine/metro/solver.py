@@ -7,11 +7,12 @@ from typing import Any
 
 from app.engine.events import Event
 from app.engine.metro.budget import FRONTIER_AT, LATE_AT, RECENT_MOVES, ROUTE_SAFETY, Budget
-from app.engine.metro.grid import DIRS, Grid, Pos, step
+from app.engine.metro.grid import DIRS, RADIUS, Grid, Pos, step
 from app.engine.metro.plan import Mode, exit_route, explore_step, reach, reachable_exit, targets
 from app.engine.parsing.metro import (
     EXIT,
     FLOOR,
+    NPC,
     OTHER,
     MetroChest,
     MetroChestOpened,
@@ -127,6 +128,8 @@ class MetroSolver:
     _last: str | None = None
     _target: Pos | None = None
     _screen: Event | None = None
+    # Ход закончился экраном NPC: клетка до хода и была ли клетка NPC посещена раньше.
+    _npc_from: tuple[Pos, bool] | None = None
 
     def __post_init__(self) -> None:
         if not self.path:
@@ -142,7 +145,10 @@ class MetroSolver:
         if isinstance(event, MetroExit) and self._pending is None:
             self._exit_unawaited()
         elif isinstance(event, _ON_CELL) and self._pending is not None:
+            origin = self.pos
             self._arrive(self._pending)
+            if isinstance(event, MetroNpc):
+                self._npc_from = (origin, self.pos in self.grid.visited)
             self.grid.visited.add(self.pos)
             if isinstance(event, MetroExit):
                 self.grid.cells[self.pos] = EXIT
@@ -207,6 +213,8 @@ class MetroSolver:
                 # Наш ход в проход по карте, а игра видит там стену: карта разошлась с игрой.
                 self._surprise = "unexpected_wall"
         self._pending = None
+        if self._npc_from is not None:
+            self._npc_stays(frame.window, *self._npc_from)
         if self.grid.conflicts(frame.window, self.pos):
             located = self.grid.locate(frame.window, self.pos, far=self._far)
             if located is None:
@@ -227,6 +235,21 @@ class MetroSolver:
             self.packs = frame.packs
         vitals = {"stamina": self.stamina, "packs": self.packs}
         self.vitals.append({"step": self.steps, "pos": list(self.pos), **vitals})
+
+    def _npc_stays(self, window: tuple[str, ...], origin: Pos, seen: bool) -> None:
+        """После боя с NPC персонаж на его клетке, но если там остался ещё 👨 (окно не сдвинулось,
+        👨 на клетке хода) — шаг не состоялся: персонаж на клетке до хода."""
+        self._npc_from = None
+        cell = self.pos
+        ahead = window[RADIUS + cell[0] - origin[0]][RADIUS + cell[1] - origin[1]]
+        if ahead != NPC or self.grid.conflicts(window, origin):
+            return
+        self.pos = origin
+        self.steps -= 1
+        self.path.pop()
+        if not seen:
+            self.grid.visited.discard(cell)
+        self._note_kind("npc_stays", at=list(cell))
 
     def _note(self, event: Event) -> None:
         if isinstance(event, (MetroMap, MetroFirstAid)):

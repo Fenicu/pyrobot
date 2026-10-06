@@ -637,3 +637,16 @@ def test_npc_on_the_map_kept_until_its_cell_shows_floor() -> None:
     s = iko_solver(len(IKO_RUN))
     assert (s.pos, s.lost, s.alerts) == ((3, 0), False, [])
     assert s.grid.get((3, 0)) == "." and "N" not in s.grid.cells.values()
+
+
+def test_won_npc_fight_with_npc_left_on_the_cell_is_not_a_step() -> None:
+    # Победа над 👨Михаилом, а на клетке хода - ещё 👨: окно «Ждёшь» не сдвинулось.
+    s = iko_solver(7)
+    assert (s.pos, s.steps, s.path[-1]) == ((2, 0), 2, (2, 0))
+    assert (3, 0) not in s.grid.visited
+    assert all(e["kind"] != "relocated" for e in s.events)
+    # Второй бой проигран - персонаж на клетке NPC (как после любого боя без 👨 в окне).
+    s = iko_solver(len(IKO_RUN))
+    assert (s.pos, s.steps, s.path[-2:]) == ((3, 0), 3, [(2, 0), (3, 0)])
+    assert (3, 0) in s.grid.visited
+    assert all(e["kind"] != "relocated" for e in s.events)
