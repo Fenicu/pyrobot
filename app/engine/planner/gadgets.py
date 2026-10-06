@@ -121,7 +121,7 @@ class GadgetSteps(Obligations):
             battle = self.battle_time()
             self.wake(None if battle is None else battle + BATTLE_AFTER, "battle")
             return None
-        if action.wear and self.gear_blocked(name, params):
+        if self.gear_blocked(name, params):
             return None
         return self.act(name, params, f"{action.rule} {action.slot}{action.tier}")
 

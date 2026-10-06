@@ -326,6 +326,24 @@ async def test_gear_window_before_buy(live_buying: World) -> None:
 
 
 @certifies("gadget_buy")
+async def test_gear_window_before_selling(live_buying: World) -> None:
+    # Покупка в рюкзак с нехваткой наличных: окно-запрет — до продажи акций, а не после неё.
+    shop(live_buying)
+    live_buying.game.on_text("/stock", ("stocks", 3624065))
+    status, reason, details = await run(
+        live_buying,
+        state=lambda: meeting(live_buying.state),
+        rule="set",
+        slot="right",
+        tier=8,
+        price=4449,
+        reserve=0,
+    )
+    assert (status, reason, details) == ("nothing", "gorbushka_meeting", {})
+    assert live_buying.game.payloads() == NAV
+
+
+@certifies("gadget_buy")
 async def test_wear_skipped_in_gear_window(live_buying: World) -> None:
     shop(live_buying)
     live_buying.game.on_text("/buy_right1", game_text(BOUGHT_RIGHT1))

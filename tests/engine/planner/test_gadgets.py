@@ -311,21 +311,14 @@ def test_gear_guard_rejects_and_wakes_after_battle() -> None:
     assert p.gadget_buy(None) is None
     assert gadget_verdicts(p.wait()) == {"gadget_buy": "battle_window"}
     assert Wakeup(AFTER_BATTLE, "gear_guard") in p.wakeups
-    # Покупка в рюкзак (цель-сет) навыков не меняет — разрешена.
+    # Покупка в рюкзак (цель-сет) тоже ждёт: сценарий откажет в окне, а продажа акций до отказа
+    # унесла бы наличные в битву.
     worn = [*weak(), part("summer", "ring"), part("summer", "book")]
     state = gear(worn, level=45, money=40_000, **battle_in(5))
-    assert act(planner(state, flags(["summer"]), now=before_battle(5)).gadget_buy(None)) == (
-        "gadget_buy",
-        {
-            "rule": "set",
-            "slot": "right",
-            "tier": 11,
-            "price": 31_999,
-            "reserve": 0,
-            "wear": False,
-            "in_bag": False,
-        },
-    )
+    p = planner(state, flags(["summer"]), now=before_battle(5))
+    assert p.gadget_buy(None) is None
+    assert gadget_verdicts(p.wait()) == {"gadget_buy": "battle_window"}
+    assert Wakeup(AFTER_BATTLE, "gear_guard") in p.wakeups
 
 
 def test_gorbushka_meeting_rejects_without_past_wakeup() -> None:

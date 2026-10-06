@@ -230,6 +230,13 @@ def _guard(ctx: ScenarioContext) -> tuple[str | None, datetime | None]:
     return (guard[0] if guard is not None else None), gear_until(state, now)
 
 
+def _windows(ctx: ScenarioContext) -> str | None:
+    """Окно слива налички или окно-запрет по свежему состоянию: и продажа акций, и покупка ждут."""
+    if in_dump_window(ctx.state(), ctx.settings(), ctx.clock.now()):
+        return "dump_window"
+    return _guard(ctx)[0]
+
+
 def _before_buy(
     ctx: ScenarioContext, screen: ShopScreen, item: ShopItem, reserve: int
 ) -> str | None:
@@ -237,9 +244,7 @@ def _before_buy(
         return "shop_mismatch"
     if screen.money < item.price + reserve:
         return "cant_afford"
-    if in_dump_window(ctx.state(), ctx.settings(), ctx.clock.now()):
-        return "dump_window"
-    return _guard(ctx)[0]
+    return _windows(ctx)
 
 
 async def gadget_buy(
@@ -247,8 +252,9 @@ async def gadget_buy(
 ) -> ScenarioResult:
     """Покупка тира `tier` слота `slot` по правилу `rule`: сначала товар, потом деньги — витрина
     сверяется с каталогом до продажи акций (комиссия $1/шт. не платится зря), на нехватку
-    продаются чужие акции, витрина открывается снова (контекст `/buy_` и свежие деньги), перед
-    `/buy_` — позиция, деньги с резервом `reserve`, окно слива и окно-запрет. `wear` — надеть
+    продаются чужие акции, витрина открывается снова (контекст `/buy_` и свежие деньги). Окно
+    слива и окно-запрет — и до продажи, и перед `/buy_` (там же позиция и деньги с резервом
+    `reserve`). `wear` — надеть
     купленное; `in_bag` — неулучшенный экземпляр уже в рюкзаке: только надеть."""
     rule, slot = str(params["rule"]), params["slot"]
     item = SHOP[slot][int(params["tier"]) - 1]
@@ -261,8 +267,8 @@ async def gadget_buy(
             return ScenarioResult("nothing", "shop_mismatch", mismatch)
         sold: list[dict[str, Any]] = []
         if screen.money - reserve < item.price:
-            if in_dump_window(ctx.state(), ctx.settings(), ctx.clock.now()):
-                return ScenarioResult("nothing", "dump_window")
+            if (verdict := _windows(ctx)) is not None:
+                return ScenarioResult("nothing", verdict)
             await ctx.safe_point()
             if (failed := await _sell(ctx, item.price + reserve, sold)) is not None:
                 return failed
