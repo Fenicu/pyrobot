@@ -218,8 +218,26 @@ async def test_tg_login_email_validated(
         headers=h,
         json={"attempt_id": start.json()["attempt_id"], "email": email},
     )
-    assert r.status_code == 422
+    # Введённый адрес не возвращается в ответе.
+    assert r.status_code == 422 and r.json() == {"detail": "invalid_email"}
     assert backend.send_email_calls == []
+
+
+async def test_tg_login_email_bad_body_is_422_without_echo(
+    container: Container, api_client: AsyncClient
+) -> None:
+    run_engine(container, build(authorized=False))
+    h = {"X-CSRF-Token": await login(api_client)}
+    r = await api_client.post(
+        "/api/v1/accounts/1/tg/login/email", headers=h, json={"email": "secret@example.com"}
+    )
+    assert r.status_code == 422 and r.json() == {"detail": "invalid_body"}
+    r = await api_client.post(
+        "/api/v1/accounts/1/tg/login/email",
+        headers={**h, "Content-Type": "application/json"},
+        content=b"{",
+    )
+    assert r.status_code == 422 and r.json() == {"detail": "invalid_body"}
 
 
 async def test_tg_login_code_flood_wait_is_429(

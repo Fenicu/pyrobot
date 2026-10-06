@@ -177,7 +177,7 @@
 			} else if (err.kind === 'conflict' || (err.kind === 'http' && err.status === 400) || err.kind === 'forbidden') {
 				attempt = null;
 				message = 'Попытка входа устарела или начата в другой вкладке — начните заново';
-			} else if (err.kind === 'validation') {
+			} else if (err.kind === 'validation' || (err.kind === 'invalid' && err.code === 'invalid_email')) {
 				message = 'Некорректный адрес почты';
 			} else if (err.kind === 'rate_limited' && err.code !== 'flood_wait') {
 				message = errorText(err);

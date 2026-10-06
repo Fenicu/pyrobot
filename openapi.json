@@ -2055,26 +2055,6 @@
         "title": "DecisionOut",
         "type": "object"
       },
-      "EmailIn": {
-        "properties": {
-          "attempt_id": {
-            "title": "Attempt Id",
-            "type": "string"
-          },
-          "email": {
-            "maxLength": 254,
-            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
-            "title": "Email",
-            "type": "string"
-          }
-        },
-        "required": [
-          "attempt_id",
-          "email"
-        ],
-        "title": "EmailIn",
-        "type": "object"
-      },
       "EngineStatusOut": {
         "properties": {
           "game_chat_member": {
@@ -11187,7 +11167,24 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EmailIn"
+                "properties": {
+                  "attempt_id": {
+                    "title": "Attempt Id",
+                    "type": "string"
+                  },
+                  "email": {
+                    "maxLength": 254,
+                    "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+                    "title": "Email",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "attempt_id",
+                  "email"
+                ],
+                "title": "EmailIn",
+                "type": "object"
               }
             }
           },
@@ -11258,11 +11255,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorOut"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "invalid_email | invalid_body"
           },
           "429": {
             "content": {

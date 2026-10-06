@@ -183,6 +183,23 @@ describe('Вход в Telegram', () => {
 		expect(await screen.findByText(/указан этот же пользователь Telegram/)).toBeInTheDocument();
 	});
 
+	it('адрес почты отклонён сервером (422 invalid_email) — тот же шаг', async () => {
+		const user = userEvent.setup();
+		let started = false;
+		setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/login/email') return json({ detail: 'invalid_email' }, 422);
+			if (c.url === '/api/v1/accounts/1/tg/status' && !started) return json(st('unauthorized'));
+			started = true;
+			return json(st('awaiting_email', { attempt_id: 'a1', delivery_type: 'setup_email' }));
+		});
+		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+79991234567');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+		await user.type(await screen.findByLabelText('Электронная почта'), 'a@b');
+		await user.click(screen.getByRole('button', { name: 'Отправить код на почту' }));
+		expect(await screen.findByText('Некорректный адрес почты')).toBeInTheDocument();
+		expect(screen.getByLabelText('Электронная почта')).toBeInTheDocument();
+	});
+
 	it('вход через почту (setup_email → email_code → code → online)', async () => {
 		const user = userEvent.setup();
 		const fetch = setup((c) => {

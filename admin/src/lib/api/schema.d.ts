@@ -2050,13 +2050,6 @@ export interface components {
             /** Until */
             until: string | null;
         };
-        /** EmailIn */
-        EmailIn: {
-            /** Attempt Id */
-            attempt_id: string;
-            /** Email */
-            email: string;
-        };
         /** EngineStatusOut */
         EngineStatusOut: {
             /** Game Chat Member */
@@ -6572,7 +6565,12 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["EmailIn"];
+                "application/json": {
+                    /** Attempt Id */
+                    attempt_id: string;
+                    /** Email */
+                    email: string;
+                };
             };
         };
         responses: {
@@ -6630,13 +6628,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description Validation Error */
+            /** @description invalid_email | invalid_body */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
             /** @description flood_wait | tg_code_rate_limited */

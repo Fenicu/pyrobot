@@ -3707,7 +3707,8 @@ latch не меняются. `POST /api/v1/accounts/{id}/engine/reconciled` (CSR
 сбрасывается, ждётся уже отправленный код. Ответ Telegram на запрос кода другого вида
 (`auth.SentCodeSuccess`, `auth.SentCodePaymentRequired`) — `send_code_unsupported:<тип>` (например
 `send_code_unsupported:sent_code_payment_required`), с записью в лог. Адрес почты в `.../login/email`
-— не длиннее 254 символов и вида `имя@домен.зона`, иначе 422; без маски от Telegram
+— не длиннее 254 символов и вида `имя@домен.зона`, иначе 422 `invalid_email` (тело без
+`attempt_id` или не JSON — 422 `invalid_body`); введённый адрес в ответ не возвращается; без маски от Telegram
 `delivery_email_pattern` пуст, сам адрес в статус не попадает. Сбой `send_code` переводит статус
 Telegram в `ERROR` с тем же кодом, сбой `sign_in`/`check_password` оставляет попытку, чтобы код
 можно было отправить повторно; `signup_required` (номер не зарегистрирован), в том числе после

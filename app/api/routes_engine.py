@@ -474,15 +474,34 @@ async def tg_resend(
 @router.post(
     "/tg/login/email",
     response_model=TgStatusOut,
-    responses={**_TG_LOGIN, 429: error(FLOOD_WAIT, TG_CODE_RATE_LIMITED)},
+    responses={
+        **_TG_LOGIN,
+        422: error("invalid_email", "invalid_body"),
+        429: error(FLOOD_WAIT, TG_CODE_RATE_LIMITED),
+    },
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": EmailIn.model_json_schema()}},
+        }
+    },
 )
 async def tg_email(
-    body: EmailIn,
+    request: Request,
     ctx: Annotated[SessionContext, Depends(require_csrf)],
     f: Annotated[EngineFacade, Depends(running)],
     scope: Annotated[AccountScope, Depends(account_scope)],
     c: Annotated[Container, Depends(container)],
 ) -> TgStatusOut:
+    # Тело разбирается здесь: стандартный 422 вернул бы введённый адрес в `input`.
+    try:
+        body = EmailIn.model_validate(await request.json())
+    except ValidationError as exc:
+        bad_email = any(e["loc"][:1] == ("email",) for e in exc.errors())
+        code = "invalid_email" if bad_email else "invalid_body"
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, code) from None
+    except ValueError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_body") from None
     return await _guard(
         f.tg.send_email(body.attempt_id, str(ctx.session_id), body.email),
         await _app(c, scope.account.id),
