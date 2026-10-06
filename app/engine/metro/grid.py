@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 
-from app.engine.parsing.metro import EXIT, FLOOR, ME, OTHER, WALL, WINDOW
+from app.engine.parsing.metro import EXIT, FLOOR, ME, NPC, OTHER, WALL, WINDOW
 
 Pos = tuple[int, int]
 DIRS: dict[str, Pos] = {"up": (-1, 0), "down": (1, 0), "left": (0, -1), "right": (0, 1)}
@@ -18,6 +18,11 @@ def step(pos: Pos, direction: str) -> Pos:
     return pos[0] + dr, pos[1] + dc
 
 
+def terrain(sym: str | None) -> str | None:
+    """Клетка без NPC: 👨 стоит на проходе и уходит после боя."""
+    return FLOOR if sym == NPC else sym
+
+
 def window_cells(window: Sequence[str], at: Pos) -> Iterator[tuple[Pos, str]]:
     """Клетки окна в координатах карты; игрок и незнакомые символы не отдаются."""
     for i, row in enumerate(window):
@@ -29,7 +34,7 @@ def window_cells(window: Sequence[str], at: Pos) -> Iterator[tuple[Pos, str]]:
 
 @dataclass
 class Grid:
-    """Глобальная карта: известные клетки (стена, проход, выход) и посещённые."""
+    """Глобальная карта: известные клетки (стена, проход, выход, NPC на проходе) и посещённые."""
 
     cells: dict[Pos, str] = field(default_factory=dict)
     visited: set[Pos] = field(default_factory=set)
@@ -38,7 +43,7 @@ class Grid:
         return self.cells.get(pos)
 
     def passable(self, pos: Pos) -> bool:
-        return self.cells.get(pos) in (FLOOR, EXIT)
+        return self.cells.get(pos) in (FLOOR, EXIT, NPC)
 
     def neighbors(self, pos: Pos) -> Iterator[tuple[str, Pos]]:
         for direction in DIRS:
@@ -53,10 +58,14 @@ class Grid:
         if self.cells.get(at) == WALL:
             return WINDOW * WINDOW
         known = self.cells
-        return sum(1 for p, sym in window_cells(window, at) if known.get(p, sym) != sym)
+        return sum(
+            1 for p, sym in window_cells(window, at) if terrain(known.get(p, sym)) != terrain(sym)
+        )
 
     def overlap(self, window: Sequence[str], at: Pos) -> int:
-        return sum(1 for p, sym in window_cells(window, at) if self.cells.get(p) == sym)
+        return sum(
+            1 for p, sym in window_cells(window, at) if terrain(self.cells.get(p)) == terrain(sym)
+        )
 
     def merge(self, window: Sequence[str], at: Pos) -> None:
         for p, sym in window_cells(window, at):

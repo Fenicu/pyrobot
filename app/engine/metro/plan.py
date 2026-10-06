@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.engine.metro.grid import DIRS, RADIUS, Grid, Pos
-from app.engine.parsing.metro import EXIT, FLOOR
+from app.engine.parsing.metro import EXIT, FLOOR, NPC
 
 Mode = Literal["explore", "frontier", "leave"]
 # Лишний шаг через клетку выхода стоит ещё и диалога «Выходишь?» → «Остаться».
@@ -57,8 +57,8 @@ def unknown_near(grid: Grid, pos: Pos) -> bool:
 
 
 def targets(grid: Grid, r: Reach) -> list[Pos]:
-    """Непосещённые достижимые проходы; выход — не цель обхода, в него идут последним."""
-    return [p for p in r.cost if p not in grid.visited and grid.get(p) == FLOOR]
+    """Непосещённые достижимые проходы (и с 👨); выход — не цель обхода, в него идут последним."""
+    return [p for p in r.cost if p not in grid.visited and grid.get(p) in (FLOOR, NPC)]
 
 
 def explore_step(

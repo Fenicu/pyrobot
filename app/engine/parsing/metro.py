@@ -10,9 +10,9 @@ from app.engine.parsing.common import DURATION, NUM, dur, num
 from app.engine.parsing.refusals import Refused
 from app.engine.types import IncomingMessage
 
-# Клетки окна карты: стена, проход, игрок, выход; незнакомый символ — «?».
-WALL, FLOOR, ME, EXIT, OTHER = "#", ".", "@", "E", "?"
-_CELLS = {"⬛": WALL, "⬜": FLOOR, "😎": ME, "🚪": EXIT}
+# Клетки окна карты: стена, проход, игрок, выход, 👨Продаван на проходе; незнакомый символ — «?».
+WALL, FLOOR, ME, EXIT, NPC, OTHER = "#", ".", "@", "E", "N", "?"
+_CELLS = {"⬛": WALL, "⬜": FLOOR, "😎": ME, "🚪": EXIT, "👨": NPC}
 WINDOW = 5
 VS16 = "\ufe0f"
 DIRECTIONS = {"Вверх": "up", "Вниз": "down", "Влево": "left", "Вправо": "right"}

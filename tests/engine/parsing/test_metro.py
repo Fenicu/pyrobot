@@ -5,6 +5,7 @@ import pytest
 
 from app.engine.parsing import game_recognizers
 from app.engine.parsing.metro import (
+    OTHER,
     MetroBuffs,
     MetroChest,
     MetroChestOpened,
@@ -387,3 +388,121 @@ def test_no_stamina_screen() -> None:
     msg = replace(frame(49), text=NO_STAMINA, inline=CONTINUE)
     assert recognize_metro(msg) == [MetroNoStamina()]
     assert [r.__name__ for r in game_recognizers() if r(msg)] == ["recognize_metro"]
+
+
+# Забег 06.10 (аккаунт 4): на карте виден 👨Продаван; бот вошёл в его клетку, проиграл бой
+# и вышел досрочно. Кадры — как пришли от игры.
+IKO_START = (
+    "🔋135%\n"
+    "⬛️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️😎⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬛️⬛️⬜️⬛️⬛️               \n"
+    "Не открываешь"
+)
+IKO_DOWN1 = (
+    "🔋135%\n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️😎⬛️⬛️               \n"
+    "⬛️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "Вниз"
+)
+IKO_DOWN2 = (
+    "🔋135%\n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬛️⬛️😎⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "Вниз"
+)
+IKO_GOING = (
+    "🔋135%\n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬛️⬛️😎⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "Идёшь Вниз."
+)
+IKO_NPC = (
+    "Ты нашёл 👨Продавана в подземке. Что он тут делает ты выяснять не стал.\nБудешь сражаться?"
+)
+IKO_WON = (
+    "Ты сразился с 👨Продаваном 👨Михаил (54)\n\n"
+    "👍Битва была жаркой, но тебе удалось победить!\n\n"
+    "Получено\n💵Деньги: 55\n⚙️Детали: 7\n⚪️Улучшения: 1\n🔋Осталось выносливости: 88%"
+)
+IKO_SEEN = (
+    "🔋88%\n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬛️⬛️😎⬛️⬛️               \n"
+    "⬜️⬛️👨⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "Ждёшь"
+)
+IKO_SEEN_GOING = (
+    "🔋88%\n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬛️⬛️😎⬛️⬛️               \n"
+    "⬜️⬛️👨⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "Идёшь Вниз"
+)
+IKO_LOST = (
+    "Ты сразился с 👨Продаваном 👨Дарья (54)\n\n"
+    "👎Ты сражался до последнего, но увы, сегодня не твой день - ты проиграл.\n\n"
+    "🔋Осталось выносливости: 0%"
+)
+IKO_AFTER = (
+    "🔋0%\n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬛️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️😎⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "⬜️⬛️⬜️⬛️⬛️               \n"
+    "Ждёшь"
+)
+NPC_LOW_BUTTONS = (
+    Button("⚔Сразиться", 0, 0, data="maze_npc_low_accept"),
+    Button("🚶Постоять рядом", 0, 1, data="maze_npc_low_decline"),
+)
+CONTINUE_BUTTON = (Button("Продолжить", 0, 0, data="maze_continue"),)
+# Кадры забега 06.10 подряд: от отказа от сундука до карты после проигранного боя.
+IKO_RUN = (
+    (IKO_START, MAP_BUTTONS),
+    (IKO_DOWN1, MAP_BUTTONS),
+    (IKO_DOWN2, MAP_BUTTONS),
+    (IKO_GOING, MAP_BUTTONS),
+    (IKO_NPC, NPC_LOW_BUTTONS),
+    (IKO_WON, CONTINUE_BUTTON),
+    (IKO_SEEN, MAP_BUTTONS),
+    (IKO_SEEN_GOING, MAP_BUTTONS),
+    (IKO_NPC, NPC_LOW_BUTTONS),
+    (IKO_LOST, CONTINUE_BUTTON),
+    (IKO_AFTER, MAP_BUTTONS),
+)
+
+
+def iko(text: str, buttons: tuple[Button, ...] = MAP_BUTTONS) -> IncomingMessage:
+    return replace(frame(7), text=text, inline=buttons)
+
+
+def test_npc_on_the_map_is_a_known_cell() -> None:
+    assert recognize_metro(iko(IKO_SEEN)) == [
+        MetroMap(
+            stamina=88,
+            window=(".#.##", ".#.##", "##@##", ".#N##", ".#.##"),
+            footer="waiting",
+            packs=None,
+        )
+    ]
+    for text, buttons in IKO_RUN:
+        for event in recognize_metro(iko(text, buttons)):
+            if isinstance(event, MetroMap):
+                assert OTHER not in "".join(event.window)

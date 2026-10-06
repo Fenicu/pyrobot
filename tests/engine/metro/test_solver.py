@@ -33,7 +33,7 @@ from tests.engine.metro.helpers import (
     policy_with,
     window_at,
 )
-from tests.engine.parsing.test_metro import CANCELLED_MOVE, MAP_BUTTONS
+from tests.engine.parsing.test_metro import CANCELLED_MOVE, IKO_RUN, MAP_BUTTONS, iko
 from tests.fixtures import game_versions
 
 RUN1 = Path(__file__).parents[2] / "fixtures" / "metro" / "run1.json"
@@ -618,3 +618,22 @@ def test_policy_comes_from_metro_settings() -> None:
         npc_high=True,
         npc_min_stamina=30,
     )
+
+
+def iko_solver(frames: int) -> MetroSolver:
+    """Решатель после первых `frames` кадров забега 06.10 (старт — клетка (0, 0))."""
+    s = MetroSolver(policy_with(), budget())
+    for text, buttons in IKO_RUN[:frames]:
+        for event in recognize_metro(iko(text, buttons)):
+            s.observe(event)
+    return s
+
+
+def test_npc_on_the_map_kept_until_its_cell_shows_floor() -> None:
+    s = iko_solver(7)
+    assert (s.pos, s.lost) == ((2, 0), False)
+    assert s.grid.get((3, 0)) == "N"
+    assert s.alerts == [] and all(e["kind"] != "unknown_cell" for e in s.events)
+    s = iko_solver(len(IKO_RUN))
+    assert (s.pos, s.lost, s.alerts) == ((3, 0), False, [])
+    assert s.grid.get((3, 0)) == "." and "N" not in s.grid.cells.values()

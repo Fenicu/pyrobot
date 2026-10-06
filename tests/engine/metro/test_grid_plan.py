@@ -169,3 +169,29 @@ def test_chosen_target_kept_until_reached() -> None:
     assert explore_step(grid, (1, 4), None, "explore", keep=(1, 1)) == ("left", (1, 1))
     grid.visited.add((1, 1))
     assert explore_step(grid, (1, 4), None, "explore", keep=(1, 1)) == ("down", (2, 4))
+
+
+# Окна кадров забега 06.10: 👨 под игроком, затем на той же клетке снова проход.
+NPC_SEEN = (".#.##", ".#.##", "##@##", ".#N##", ".#.##")
+NPC_GONE = (".#.##", ".#.##", "##@##", ".#.##", ".#.##")
+
+
+def test_npc_cell_is_floor_with_npc_until_window_shows_floor() -> None:
+    grid = Grid()
+    grid.merge(NPC_GONE, (0, 0))
+    # Появившийся 👨 на известном проходе — не противоречие карте.
+    assert grid.conflicts(NPC_SEEN, (0, 0)) == 0
+    assert grid.overlap(NPC_SEEN, (0, 0)) == grid.overlap(NPC_GONE, (0, 0))
+    grid.merge(NPC_SEEN, (0, 0))
+    assert grid.get((1, 0)) == "N" and grid.passable((1, 0))
+    assert grid.conflicts(NPC_GONE, (0, 0)) == 0
+    grid.merge(NPC_GONE, (0, 0))
+    assert grid.get((1, 0)) == "."
+
+
+def test_npc_cell_is_an_ordinary_target_and_passage() -> None:
+    # Сила NPC на карте не видна, а обход по коридору только откладывает тот же бой.
+    grid = grid_of(["#####", "#vN.#", "#####"])
+    assert explore_step(grid, (1, 1), None, "explore") == ("right", (1, 2))
+    assert (1, 2) in targets(grid, reach(grid, (1, 1)))
+    assert exit_route(grid_of(["#####", "#vNE#", "#####"]), (1, 1), (1, 3)) == ("right", 2)
