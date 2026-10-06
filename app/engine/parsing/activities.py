@@ -86,6 +86,8 @@ _CANCEL_OK = "👍Задание отменено.\n\nТебе вернулос�
 _CANCEL_REFUND = re.compile(r"^(?:🔥Мотивация: (?P<mot>\d+)|💵Деньги: \$(?P<money>\d+))$", re.M)
 _CANCEL_LATE = "❌Задание можно отменить только в первые"
 _CANCEL_NONE = "❌Задания уже нет. Нечего отменять."
+# Ответ на /decline без возврата: отмена та же, вернуть нечего.
+_CANCEL_PLAIN = "Действие отменено."
 _MOT_FULL = "Поздравляю! Твоя 🔥Мотивация полностью восстановлена"
 _MAGNET = "Сработал 🧲Магнит!"
 _REQ = re.compile(r"(\d+)\s?(🔥|💵|⚙️|⚪️|🔵|⏰)")
@@ -265,6 +267,8 @@ def recognize_cancel(msg: IncomingMessage) -> list[Event]:
         return [ActivityCancelled(result="too_late")]
     if text.startswith(_CANCEL_NONE):
         return [ActivityCancelled(result="nothing")]
+    if text == _CANCEL_PLAIN:
+        return [ActivityCancelled(result="ok")]
     return []
 
 

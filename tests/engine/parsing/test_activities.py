@@ -76,6 +76,9 @@ LEARN_LIGHT = (
 )
 
 
+DECLINED = "Действие отменено."
+
+
 def _text_events(text: str) -> list[Event]:
     msg = replace(game_msg("activities", 3625686), text=text)
     return [e for recognize in RECOGNIZERS for e in recognize(msg)]
@@ -203,6 +206,8 @@ def test_cancel_variants() -> None:
     assert _events(3618769) == [ActivityCancelled(result="ok", money=30, motivation=1)]
     assert _events(3517930) == [ActivityCancelled(result="too_late")]
     assert _events(3529038) == [ActivityCancelled(result="nothing")]
+    # Живой 05.10.2026: ответ на /decline без возврата.
+    assert _text_events(DECLINED) == [ActivityCancelled(result="ok")]
 
 
 def test_motivation_full_and_magnet() -> None:

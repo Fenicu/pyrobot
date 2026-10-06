@@ -2,6 +2,7 @@ from dataclasses import replace
 
 from app.engine.events import AntiFlood
 from app.engine.state.reducer import StateReducer
+from tests.engine.parsing.test_activities import DECLINED
 from tests.engine.state.helpers import PARSER, feed, fixture_at, value
 
 PROFILE = 3624478  # 💵867 🔋100% 🔥72/85 (49 мин.), свободен, «🛌 Через 2д. 11ч.», цель 📯
@@ -113,6 +114,18 @@ def test_cancel_and_motivation_full() -> None:
     assert (value(state, "busy"), value(state, "motivation")) == (None, 72)
     state = feed(reducer, state, "activities", 3517795, 2)
     assert (value(state, "motivation"), state["motivation"]["src"]) == (85, "derived")
+
+
+def test_plain_decline_frees_without_refund() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "activities", 3517276, 1)
+    msg = replace(fixture_at("activities", 3517963, 1.1), text=DECLINED)
+    state = reducer.apply(state, msg, PARSER.parse(msg))
+    assert (value(state, "busy"), value(state, "motivation"), value(state, "money")) == (
+        None,
+        71,
+        837,
+    )
 
 
 def test_busy_keeps_known_activity() -> None:
