@@ -157,16 +157,20 @@ jobs:
           docker buildx create --name "$B" --driver docker-container 2>/dev/null || true
           # Без тега результат остаётся только в кэше builder'а: проверка, что образ собирается.
           OUTPUT=(--output type=cacheonly)
+          # Версия в админке (окно «Что нового», /changes) — тег без «v»; без тега — 0.0.0-dev.
+          VERSION=0.0.0-dev
           if [ "$PUBLISH" = "true" ]; then
             [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag $TAG is not vX.Y.Z"; exit 1; }
             echo "$REGISTRY_TOKEN" | docker login git.fenicu.com -u "$REGISTRY_USER" --password-stdin
             OUTPUT=(--push -t "$IMAGE:$TAG" -t "$IMAGE:latest")
+            VERSION="${TAG#v}"
           fi
           # Прокси apt, verdaccio и devpi хоумлаба; без них образ собирается из публичных источников.
           docker buildx build --builder "$B" --platform linux/amd64 --provenance=false \
             --build-arg APT_PROXY=http://10.10.40.23:3142 \
             --build-arg NPM_REGISTRY=http://10.10.40.8:4873/ \
             --build-arg PYPI_INDEX=http://10.10.40.8:3141/root/pypi/+simple/ \
+            --build-arg PYROBOT_VERSION="$VERSION" \
             "${OUTPUT[@]}" .
 
   # Выкатка на apps по тегу: compose.yml, .env из секретов и скрипт выкатки по ssh, дальше на apps

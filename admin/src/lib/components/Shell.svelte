@@ -2,12 +2,15 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import LogOut from '@lucide/svelte/icons/log-out';
 	import type { Snippet } from 'svelte';
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { accounts, current, session } from '$lib/app.svelte';
 	import { signOutWithRetry } from '$lib/logout';
 	import { isActive, lastAccount, mainNav, moreNav, parseAccount, pickAccount, type NavItem } from '$lib/nav';
 	import { dialogs } from '$lib/stores/confirm.svelte';
+	import { APP_VERSION, whatsNew } from '$lib/stores/whatsnew.svelte';
 	import AccountSwitcher from './AccountSwitcher.svelte';
+	import WhatsNewDialog from './changes/WhatsNewDialog.svelte';
 	import ConnectionDot from './ConnectionDot.svelte';
 	import Modal from './Modal.svelte';
 	import ThemeSwitch from './ThemeSwitch.svelte';
@@ -32,6 +35,8 @@
 	const moreActive = $derived(more.some((i) => isActive(path, i.href)));
 	const unread = $derived(opened?.unread.count ?? 0);
 
+	onMount(() => whatsNew.check());
+
 	function badge(item: NavItem): number {
 		return item.badge === 'unread' ? unread : 0;
 	}
@@ -43,6 +48,12 @@
 		}
 	}
 </script>
+
+{#snippet version(onclick?: () => void)}
+	<a href="/changes" {onclick} class="block font-mono text-xs text-fg-faint hover:text-fg-muted" title="История изменений"
+		>v{APP_VERSION}</a
+	>
+{/snippet}
 
 {#snippet link(item: NavItem, onclick?: () => void)}
 	<a
@@ -87,6 +98,7 @@
 					<LogOut class="size-4" aria-hidden="true" /> Выйти
 				</button>
 			</div>
+			{@render version()}
 		</div>
 	</aside>
 
@@ -160,5 +172,10 @@
 				<LogOut class="size-4" aria-hidden="true" /> Выйти ({session.login})
 			</button>
 		</nav>
+		<div class="mt-3 px-3">{@render version(() => (moreOpen = false))}</div>
 	</Modal>
+{/if}
+
+{#if whatsNew.open}
+	<WhatsNewDialog entries={whatsNew.entries} onclose={() => whatsNew.dismiss()} />
 {/if}

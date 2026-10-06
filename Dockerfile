@@ -27,14 +27,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Админка: SvelteKit собирается в статику строго по package-lock.json; пакеты — из NPM_REGISTRY (по
 # умолчанию npmjs, свой реестр npm подставит вместо registry.npmjs.org из lock-файла). TS-типы API —
-# закоммиченный schema.d.ts, openapi.json в контекст не входит.
+# закоммиченный schema.d.ts, openapi.json в контекст не входит. CHANGES.rst из корня репозитория —
+# окно «Что нового» и /changes; PYROBOT_VERSION — версия сборки (тег без «v», CI).
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS admin
 ARG NPM_REGISTRY=https://registry.npmjs.org/
-WORKDIR /admin
+WORKDIR /src/admin
 COPY admin/package.json admin/package-lock.json admin/.npmrc ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund --registry "$NPM_REGISTRY"
+COPY CHANGES.rst /src/
 COPY admin/ ./
+ARG PYROBOT_VERSION=0.0.0-dev
 RUN npm run build
 
 # Рантайм: тот же Python, что у сборки (venv ссылается на /usr/local/bin/python3.13), без uv и
@@ -48,7 +51,7 @@ WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY alembic.ini ./
 COPY app ./app
-COPY --from=admin /admin/build ./admin
+COPY --from=admin /src/admin/build ./admin
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

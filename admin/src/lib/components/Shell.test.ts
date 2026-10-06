@@ -3,6 +3,7 @@ import { createRawSnippet } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { accounts, current } from '$lib/app.svelte';
 import type { AccountOut } from '$lib/api/types';
+import { whatsNew } from '$lib/stores/whatsnew.svelte';
 import { page } from '$lib/test/page.svelte';
 import Shell from './Shell.svelte';
 
@@ -48,6 +49,7 @@ afterEach(() => {
 	localStorage.clear();
 	accounts.list = null;
 	current.ctx = null;
+	whatsNew.dismiss();
 });
 
 describe('меню оболочки и список аккаунтов', () => {
@@ -96,5 +98,21 @@ describe('точка связи', () => {
 		current.ctx = opened(true) as unknown as typeof current.ctx;
 		open('/a/1', { account: '1' });
 		expect(screen.getByTitle('нет связи · повтор через 4 с')).toBeInTheDocument();
+	});
+});
+
+describe('версия и «Что нового»', () => {
+	it('номер версии в меню ведёт на историю изменений', () => {
+		open('/accounts', {});
+		expect(screen.getByRole('link', { name: /^v0\.0\.0-dev$/ })).toHaveAttribute('href', '/changes');
+	});
+
+	it('окно «Что нового» открыто — показано поверх экрана', async () => {
+		whatsNew.entries = [
+			{ version: '0.18.0', date: '07.10.2026', sections: [{ title: 'Добавлено', items: ['Гаджеты'] }], preamble: [] }
+		];
+		whatsNew.open = true;
+		open('/accounts', {});
+		expect(await screen.findByRole('dialog', { name: 'Что нового' })).toHaveTextContent('Гаджеты');
 	});
 });
