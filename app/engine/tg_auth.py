@@ -155,6 +155,9 @@ class _Attempt:
     timeout_at: float | None = None
     # Код принят Telegram (вход или шаг пароля).
     code_used: bool = False
+    # Попытку заменил новый start: её ожидание кода молчит.
+    superseded: bool = False
+    watched: bool = False
 
 
 # Код через серверное приложение не введён за это время — уведомление владельцу сервера.
@@ -300,13 +303,14 @@ class TgAuthManager:
                 timeout=timeout,
                 timeout_at=timeout_at,
             )
+            if self._attempt is not None:
+                self._attempt.superseded = True
             self._attempt = attempt
             if code_type == "setup_email":
                 self._set(TgState.AWAITING_EMAIL)
             else:
                 self._set(TgState.AWAITING_CODE)
-            if code_type == "app" and self._server_notifier is not None and self._server_app():
-                self._watch_unused(attempt)
+            self._watch_unused(attempt)
             return self.status()
 
     async def submit_code(self, attempt_id: str, owner: str, code: str) -> TgStatus:
@@ -435,6 +439,7 @@ class TgAuthManager:
             attempt.timeout_at = timeout_at
             self._error = None
             self._set(TgState.AWAITING_CODE)
+            self._watch_unused(attempt)
             return self.status()
 
     async def submit_password(self, attempt_id: str, owner: str, password: str) -> TgStatus:
@@ -526,6 +531,12 @@ class TgAuthManager:
         await asyncio.gather(*watches, return_exceptions=True)
 
     def _watch_unused(self, attempt: _Attempt) -> None:
+        """Ожидание кода в приложение Telegram через серверное приложение — одно на попытку."""
+        if attempt.watched or attempt.code_type != "app" or self._server_notifier is None:
+            return
+        if not self._server_app():
+            return
+        attempt.watched = True
         task = asyncio.create_task(
             self._report_unused(attempt, datetime.now(UTC)),
             name=f"tg-code-unused-{self._account_id}",
@@ -535,7 +546,7 @@ class TgAuthManager:
 
     async def _report_unused(self, attempt: _Attempt, requested: datetime) -> None:
         await asyncio.sleep(self._unused_code_s)
-        if attempt.code_used or self._server_notifier is None:
+        if attempt.code_used or attempt.superseded or self._server_notifier is None:
             return
         try:
             await self._server_notifier.notify(

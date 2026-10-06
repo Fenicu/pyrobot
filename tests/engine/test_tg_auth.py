@@ -801,3 +801,29 @@ async def test_close_cancels_unused_code_watch() -> None:
     await mgr.close()
     await asyncio.sleep(0.1)
     assert server.items == []
+
+
+async def test_server_app_code_after_email_is_watched() -> None:
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email"),
+        email_code="54321",
+    )
+    mgr, server = _watched(backend)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    await mgr.send_email(st.attempt_id or "", "s1", "test@example.com")
+    st = await mgr.submit_email_code(st.attempt_id or "", "s1", "54321")
+    assert st.state is TgState.AWAITING_CODE and st.delivery_type == "app"
+    await until(lambda: len(server.items) == 1)
+    await asyncio.sleep(0.1)
+    assert [code for _, code, _ in server.items] == ["tg_code_not_used"]
+
+
+async def test_restarted_attempt_supersedes_previous_watch() -> None:
+    mgr, server = _watched(FakeTgBackend())
+    await mgr.boot()
+    await mgr.start("+888", owner="s1")
+    await mgr.start("+888", owner="s1")
+    await until(lambda: len(server.items) == 1)
+    await asyncio.sleep(0.1)
+    assert len(server.items) == 1
