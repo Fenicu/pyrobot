@@ -3,6 +3,22 @@ import { parseChangelog } from '$lib/changelog';
 import { SEEN_VERSION_KEY, WhatsNew } from './whatsnew.svelte';
 
 const entries = parseChangelog(`
+0.18.0 — 07.10.2026
+-------------------
+
+Добавлено
+~~~~~~~~~
+
+- Гаджеты.
+
+0.17.3 — 06.10.2026
+-------------------
+
+Добавлено
+~~~~~~~~~
+
+- Вход.
+
 0.3.0 — 03.10.2026
 ------------------
 
@@ -34,7 +50,15 @@ afterEach(() => {
 });
 
 describe('окно «Что нового»', () => {
-	it('первый визит: окна нет, версия запомнена', () => {
+	it('первый визит: виденной считается 0.17.3 — окно с тем, что вышло после неё', () => {
+		const w = new WhatsNew('0.18.0', entries);
+		w.check();
+		expect(w.open).toBe(true);
+		expect(w.entries.map((e) => e.version)).toEqual(['0.18.0']);
+		expect(localStorage.getItem(SEEN_VERSION_KEY)).toBe('0.18.0');
+	});
+
+	it('первый визит на версии до окна — окна нет, версия запомнена', () => {
 		const w = new WhatsNew('0.3.0', entries);
 		w.check();
 		expect(w.open).toBe(false);

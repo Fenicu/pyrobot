@@ -4,6 +4,8 @@ import { entriesSince, parseChangelog, type ChangelogEntry } from '$lib/changelo
 export const APP_VERSION: string = __APP_VERSION__;
 
 export const SEEN_VERSION_KEY = 'pyrobot.seen-version';
+/** Версия до окна «Что нового»: браузер без записи видел её или раньше. */
+export const BEFORE_WHATSNEW = '0.17.3';
 const RELEASE = /^\d+\.\d+\.\d+$/;
 
 function readSeen(): string | null {
@@ -36,12 +38,13 @@ export class WhatsNew {
 		this.#all = all;
 	}
 
-	/** Первый визит только запоминает версию. Версия отмечается виденной сразу, а не по «Понятно»:
-	 * иначе окно возвращалось бы после каждой перезагрузки. Сборка без тега и браузер без
-	 * localStorage окна не показывают. */
+	/** Браузер без записи считается видевшим `BEFORE_WHATSNEW`: окно появилось в 0.18.0, и
+	 * тот, кто пользовался админкой раньше, увидит новое один раз. Версия отмечается виденной
+	 * сразу, а не по «Понятно»: иначе окно возвращалось бы после каждой перезагрузки. Сборка без
+	 * тега и браузер без localStorage окна не показывают. */
 	check(): void {
 		if (!RELEASE.test(this.#version)) return;
-		const seen = readSeen();
+		const seen = readSeen() ?? BEFORE_WHATSNEW;
 		if (seen === this.#version || !writeSeen(this.#version)) return;
 		this.entries = entriesSince(seen, this.#version, this.#all);
 		this.open = this.entries.length > 0;
