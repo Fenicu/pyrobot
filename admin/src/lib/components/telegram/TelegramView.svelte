@@ -289,7 +289,12 @@
 			case 'app':
 				return 'Код отправлен в приложение Telegram — сообщение от «Telegram» с синей галочкой на ваших устройствах; может быть в архиве';
 			case 'sms':
+			case 'firebase_sms':
 				return 'Код отправлен по SMS';
+			case 'sms_word':
+				return 'Код отправлен по SMS — секретное слово из сообщения';
+			case 'sms_phrase':
+				return 'Код отправлен по SMS — секретная фраза из сообщения';
 			case 'call':
 				return 'Telegram звонит на указанный номер для передачи кода';
 			case 'flash_call':

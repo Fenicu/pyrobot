@@ -319,6 +319,23 @@ describe('Вход в Telegram', () => {
 		expect(await screen.findByText('Код отправлен на почту f***n@g***.com')).toBeInTheDocument();
 	});
 
+	it.each([
+		['firebase_sms', 'Код отправлен по SMS'],
+		['sms_word', 'Код отправлен по SMS — секретное слово из сообщения'],
+		['sms_phrase', 'Код отправлен по SMS — секретная фраза из сообщения']
+	])('код по SMS (delivery_type: %s)', async (type, text) => {
+		const user = userEvent.setup();
+		setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(st('unauthorized'));
+			if (c.url === '/api/v1/accounts/1/tg/login/start')
+				return json(st('awaiting_code', { attempt_id: 'a1', delivery_type: type }));
+			return json(st('unauthorized'));
+		});
+		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+79991234567');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+		expect(await screen.findByText(text)).toBeInTheDocument();
+	});
+
 	it('перевод ошибок Telegram: RPC ID, send_code_unsupported, неизвестный отказ, 502 почты', async () => {
 		const user = userEvent.setup();
 		let error = 'phone_number_invalid';

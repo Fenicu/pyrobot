@@ -289,6 +289,9 @@ _SENT_CODE_TYPES = {
     "SentCodeTypeEmailCode": "email",
     "SentCodeTypeSetUpEmailRequired": "setup_email",
     "SentCodeTypeFragmentSms": "fragment",
+    "SentCodeTypeFirebaseSms": "firebase_sms",
+    "SentCodeTypeSmsWord": "sms_word",
+    "SentCodeTypeSmsPhrase": "sms_phrase",
 }
 _NEXT_CODE_TYPES = {
     "CodeTypeSms": "sms",
@@ -300,6 +303,8 @@ _NEXT_CODE_TYPES = {
 
 
 def _snake(name: str) -> str:
+    """Имя конструктора — код API; у незнакомого способа доставки без префикса типа."""
+    name = re.sub(r"^(SentCodeType|CodeType)(?=[A-Z])", "", name)
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 

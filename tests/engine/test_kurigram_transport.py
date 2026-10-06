@@ -385,6 +385,32 @@ async def test_send_code_returns_sent_code_info() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("make", "expected"),
+    [
+        (lambda raw: raw.types.auth.SentCodeTypeFirebaseSms(length=6), "firebase_sms"),
+        (lambda raw: raw.types.auth.SentCodeTypeSmsWord(beginning="A"), "sms_word"),
+        (lambda raw: raw.types.auth.SentCodeTypeSmsPhrase(), "sms_phrase"),
+    ],
+    ids=["firebase_sms", "sms_word", "sms_phrase"],
+)
+async def test_send_code_sms_variants(make: Any, expected: str) -> None:
+    from pyrogram import raw
+
+    t = FakeKurigram(authorized=False)
+    await t.connect()
+    t.client.responses["SendCode"] = raw.types.auth.SentCode(type=make(raw), phone_code_hash="h")
+    assert await t.send_code("+1") == SentCodeInfo(phone_code_hash="h", type=expected)
+
+
+def test_unknown_code_type_falls_back_without_prefix() -> None:
+    from app.engine.transport.kurigram import _snake
+
+    assert _snake("SentCodeTypeSomethingNew") == "something_new"
+    assert _snake("CodeTypeSomethingNew") == "something_new"
+    assert _snake("SentCodeSuccess") == "sent_code_success"
+
+
 async def test_send_code_unavailable_is_rejected_not_failed() -> None:
     t = FakeKurigram(authorized=False)
     await t.connect()
