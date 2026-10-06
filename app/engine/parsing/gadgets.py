@@ -243,7 +243,8 @@ def _upgrades(text: str) -> list[Event]:
         kind = KIND_BY_ICON[m["icon"]]
         stocks[kind] = int(m["n"])
         chances[kind] = int(m["chance"])
-    if not items or len(stocks) != 3:
+    # Ничего не надето — строк гаджетов нет; экран узнаётся по полному блоку запасов.
+    if len(stocks) != 3:
         return []
     man = _UPGRADEMAN.search(text)
     return [

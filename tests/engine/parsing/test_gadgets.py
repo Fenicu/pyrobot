@@ -146,6 +146,18 @@ def test_upgrades_screen_stocks() -> None:
     assert (item.grade, item.level) == ("⚪️", 3)
 
 
+def test_upgrades_screen_without_worn_gadgets() -> None:
+    # Ничего не надето: строк гаджетов нет, запасы и шансы на месте.
+    lines = UPGRADES.split("\n")
+    bare = "\n".join(line for line in lines if "/up_" not in line)
+    e = only(UpgradesScreen, bare)
+    assert e.items == ()
+    assert e.stocks == {"white": 10340, "blue": 4840, "red": 2532}
+    # Без полного блока запасов — не этот экран.
+    cut = bare.replace("🔴 уникальные: 2532\xa0шт. (85%)\n", "")
+    assert [e for e in events(cut) if isinstance(e, UpgradesScreen)] == []
+
+
 def test_up_screen() -> None:
     e = only(UpgradeScreen, UP_RIGHT_2, buttons=UP_BUTTONS_AUTO)
     assert (e.up_slot, e.grade, e.level, e.name) == ("right", "⚪️", 2, "Китайская мобила")
