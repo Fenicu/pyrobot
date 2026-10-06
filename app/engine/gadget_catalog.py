@@ -346,6 +346,24 @@ def set_by_name(name: str) -> tuple[CraftedSet, UpSlot] | None:
     return _SET_BY_NAME.get(name.casefold())
 
 
+_SET_BY_TIER = {s.shop_tier: s for s in SETS.values() if s.shop_tier is not None}
+
+
+def set_part(icon: str, name: str, code: str | None) -> CraftedSet | None:
+    """Сет гаджета на слоте значка `icon`: по названию, а магазинной части сета — и по коду
+    (`/inv` может назвать её иначе, чем витрина)."""
+    info = slot_of_icon(icon)
+    if info is None:
+        return None
+    found = set_by_name(name)
+    if found is not None and found[1] == info.up:
+        return found[0]
+    item = None if code is None else shop_item(code)
+    if item is None or item.slot != info.shop:
+        return None
+    return _SET_BY_TIER.get(item.tier)
+
+
 UPGRADE_KINDS: dict[UpgradeKind, tuple[str, str]] = {
     "white": ("⚪️", "low"),
     "blue": ("🔵", "middle"),

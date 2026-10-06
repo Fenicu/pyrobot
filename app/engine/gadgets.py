@@ -22,7 +22,7 @@ from app.engine.gadget_catalog import (
     ShopSlot,
     UpgradeKind,
     UpSlot,
-    set_by_name,
+    set_part,
     shop_item,
     slot_of_icon,
 )
@@ -64,10 +64,7 @@ def up_slot(item: GadgetState) -> UpSlot | None:
 
 
 def set_of(item: GadgetState) -> CraftedSet | None:
-    found = set_by_name(item.name)
-    if found is None or found[1] != up_slot(item):
-        return None
-    return found[0]
+    return set_part(item.slot, item.name, item.code)
 
 
 def shop_of(item: GadgetState) -> ShopItem | None:

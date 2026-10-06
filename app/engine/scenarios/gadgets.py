@@ -17,7 +17,7 @@ from app.engine.gadget_catalog import (
     ShopItem,
     ShopSlot,
     UpSlot,
-    set_by_name,
+    set_part,
     slot_of_icon,
 )
 from app.engine.gadgets import gear_guard, gear_until, in_dump_window, upgrade_kind
@@ -178,7 +178,9 @@ def _set_part(key: SetKey, slot: UpSlot) -> Pick:
 
     def part(g: Gadget) -> bool:
         info = slot_of_icon(g.slot)
-        return info is not None and info.up == slot and set_by_name(g.name) == (SETS[key], slot)
+        return (
+            info is not None and info.up == slot and set_part(g.slot, g.name, g.code) is SETS[key]
+        )
 
     def pick(gadgets: Gadgets) -> Gadget | None:
         found = [(g.level or 0, i, g) for i, g in enumerate(gadgets.bag) if part(g)]
@@ -280,7 +282,10 @@ async def gadget_buy(
         bought = await ctx.send(
             f"/buy_{slot}{item.tier}",
             expect_events(
-                GadgetBought, accept=lambda e: isinstance(e, GadgetBought) and e.name == item.name
+                GadgetBought,
+                accept=lambda e: (
+                    isinstance(e, GadgetBought) and e.name.casefold() == item.name.casefold()
+                ),
             ),
             deadline=_guard(ctx)[1],
         )

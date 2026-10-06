@@ -148,6 +148,28 @@ def test_set_of_by_name_and_shop_of_by_code_of_plain_item() -> None:
     assert shop_of(shop("l2", grade="⚪️", level=3)) is None and shop_of(LORAT) is None
 
 
+def renamed(item: GadgetState) -> GadgetState:
+    """Часть сета под другим названием в `/inv` (регистр, бренд), код тот же."""
+    return item.model_copy(update={"name": f"Samsung {item.name.upper()}"})
+
+
+def test_set_part_by_shop_code_when_name_differs() -> None:
+    assert set_of(renamed(shop("p11"))) is SETS["summer"]
+    assert set_of(renamed(shop("t14"))) is SETS["pig"]
+    assert set_of(renamed(shop("p6"))) is None
+    # Код чужого слота не в счёт: 📱 с кодом часов — не часть сета.
+    assert set_of(renamed(shop("p11")).model_copy(update={"code": "w11"})) is None
+
+
+def test_bought_part_with_other_name_is_not_bought_again() -> None:
+    worn = [*weak("p"), renamed(shop("p11")), part("summer", "ring"), part("summer", "book")]
+    bag = [renamed(shop("w11"))]
+    plan = buy_plan(char(worn, bag, level=45, money=50_000), on_settings(["summer"]), 0, "x", NOW)
+    assert plan.target is not None
+    assert (plan.target.worn, plan.target.in_bag) == (("right",), ("left",))
+    assert plan.action == BuyAction("set", "legs", 11, 44_499, False, 0)
+
+
 def test_higher_rank_items_count_for_lower_set() -> None:
     # Ariah: Свинтус 3 + 2020 4 = 7, LoRat не засчитывается.
     y2020: list[UpSlot] = ["book", "ring", "left", "right"]

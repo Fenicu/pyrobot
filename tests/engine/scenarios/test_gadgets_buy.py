@@ -196,6 +196,18 @@ async def test_buy_without_wear(live_buying: World) -> None:
 
 
 @certifies("gadget_buy")
+async def test_bought_name_compared_ignoring_case(live_buying: World) -> None:
+    shop(live_buying)
+    answer = BOUGHT_RIGHT1.replace("Китайская мобила", "китайская Мобила")
+    assert answer != BOUGHT_RIGHT1
+    live_buying.game.on_text("/buy_right1", game_text(answer))
+    status, reason, _ = await run(
+        live_buying, rule="set", slot="right", tier=1, price=3, reserve=0
+    )
+    assert (status, reason) == ("done", "bought")
+
+
+@certifies("gadget_buy")
 async def test_not_enough_answer_is_cant_afford(live_buying: World) -> None:
     # Витрина показала деньги на тир 14, а игра ответила «не хватает всего-то».
     shop(live_buying, with_money("59\xa0999"))
@@ -512,6 +524,16 @@ async def test_wear_set_active_by_set_line(live_buying: World, tail: str, active
     live_buying.game.on_text("/wear_11_p11", game_text(worn_answer(s_mart, tail)))
     status, reason, details = await run_set(live_buying, set="summer", slots=["right"])
     assert (status, reason, details["active"], details["sets"]) == ("done", "worn", active, [tail])
+
+
+@certifies("gadget_wear_set")
+async def test_wear_set_part_by_code_when_name_differs(live_buying: World) -> None:
+    s_mart = "📱Samsung S-MART (+29🔨, +15🎓)"
+    live_buying.game.on_text("/inv", game_text(bag_of(f"{s_mart} /wear_11_p11")))
+    live_buying.game.on_text("/wear_11_p11", game_text(worn_answer(s_mart, "🌞Сет Летний")))
+    status, reason, details = await run_set(live_buying, set="summer", slots=["right"])
+    assert (status, reason, details["active"]) == ("done", "worn", True)
+    assert live_buying.game.payloads() == ["/inv", "/wear_11_p11"]
 
 
 @certifies("gadget_wear_set")
