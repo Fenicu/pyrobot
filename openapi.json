@@ -1507,6 +1507,38 @@
         "title": "AttemptIn",
         "type": "object"
       },
+      "BagOut": {
+        "properties": {
+          "cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap"
+          },
+          "used": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used"
+          }
+        },
+        "required": [
+          "used",
+          "cap"
+        ],
+        "title": "BagOut",
+        "type": "object"
+      },
       "BalanceOut": {
         "description": "Изменение наблюдаемого значения за сутки МСК; `delta = null` — нет данных (нет точки в\nсутках или точки предыдущих суток).",
         "properties": {
@@ -1578,6 +1610,161 @@
           "until"
         ],
         "title": "BusyState",
+        "type": "object"
+      },
+      "BuyActionOut": {
+        "properties": {
+          "in_bag": {
+            "title": "In Bag",
+            "type": "boolean"
+          },
+          "price": {
+            "title": "Price",
+            "type": "integer"
+          },
+          "rule": {
+            "enum": [
+              "empty",
+              "set",
+              "replace"
+            ],
+            "title": "Rule",
+            "type": "string"
+          },
+          "sell_needed": {
+            "title": "Sell Needed",
+            "type": "integer"
+          },
+          "slot": {
+            "enum": [
+              "right",
+              "left",
+              "legs",
+              "head",
+              "chest",
+              "torso"
+            ],
+            "title": "Slot",
+            "type": "string"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "integer"
+          },
+          "type": {
+            "const": "buy",
+            "default": "buy",
+            "title": "Type",
+            "type": "string"
+          },
+          "wear": {
+            "title": "Wear",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rule",
+          "slot",
+          "tier",
+          "price",
+          "wear",
+          "sell_needed",
+          "in_bag"
+        ],
+        "title": "BuyActionOut",
+        "type": "object"
+      },
+      "BuyOut": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "money": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuyPlanOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "enabled",
+          "plan",
+          "money"
+        ],
+        "title": "BuyOut",
+        "type": "object"
+      },
+      "BuyPlanOut": {
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "buy": "#/components/schemas/BuyActionOut",
+                    "wear_set": "#/components/schemas/WearSetOut"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BuyActionOut"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WearSetOut"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/TargetOut"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TargetOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verdict": {
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "verdict",
+          "target",
+          "candidates"
+        ],
+        "title": "BuyPlanOut",
         "type": "object"
       },
       "ChatIsSelfOut": {
@@ -2261,6 +2448,137 @@
         "title": "FoodStockState",
         "type": "object"
       },
+      "GadgetOut": {
+        "properties": {
+          "bonuses": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Bonuses",
+            "type": "object"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "mark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mark"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "set": {
+            "anyOf": [
+              {
+                "enum": [
+                  "summer",
+                  "autumn",
+                  "um",
+                  "pig",
+                  "y2020",
+                  "spring",
+                  "logistic"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set"
+          },
+          "shop_tier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shop Tier"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          },
+          "up_slot": {
+            "anyOf": [
+              {
+                "enum": [
+                  "right",
+                  "left",
+                  "legs",
+                  "head",
+                  "chest",
+                  "torso",
+                  "ring",
+                  "book",
+                  "pbank",
+                  "pants"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Up Slot"
+          }
+        },
+        "required": [
+          "slot",
+          "up_slot",
+          "code",
+          "name",
+          "grade",
+          "level",
+          "bonuses",
+          "mark",
+          "set",
+          "shop_tier"
+        ],
+        "title": "GadgetOut",
+        "type": "object"
+      },
       "GadgetState": {
         "description": "Надетый гаджет с экрана `/inv`: значок редкости и уровень (у неулучшенного их нет), значок\nслота, название, бонусы по навыкам (`practice`, `theory`, `cunning`, `wisdom`) и метка\n(🧶, 📿, 💎).",
         "properties": {
@@ -2341,6 +2659,81 @@
           "name"
         ],
         "title": "GadgetState",
+        "type": "object"
+      },
+      "GadgetsOut": {
+        "properties": {
+          "bag": {
+            "$ref": "#/components/schemas/BagOut"
+          },
+          "buy": {
+            "$ref": "#/components/schemas/BuyOut"
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProgressOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sets": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sets",
+            "type": "array"
+          },
+          "task": {
+            "$ref": "#/components/schemas/UpgradeTaskOut"
+          },
+          "upgrade_info": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpgradeInfoOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "upgrades": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpgradesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "worn": {
+            "items": {
+              "$ref": "#/components/schemas/GadgetOut"
+            },
+            "title": "Worn",
+            "type": "array"
+          }
+        },
+        "required": [
+          "now",
+          "worn",
+          "sets",
+          "bag",
+          "upgrades",
+          "upgrade_info",
+          "buy",
+          "task",
+          "progress"
+        ],
+        "title": "GadgetsOut",
         "type": "object"
       },
       "GadgetsState": {
@@ -3309,6 +3702,79 @@
           "next_before"
         ],
         "title": "MetroRunsPage",
+        "type": "object"
+      },
+      "MissingPartOut": {
+        "properties": {
+          "price": {
+            "title": "Price",
+            "type": "integer"
+          },
+          "slot": {
+            "enum": [
+              "right",
+              "left",
+              "legs",
+              "head",
+              "chest",
+              "torso"
+            ],
+            "title": "Slot",
+            "type": "string"
+          },
+          "tier": {
+            "title": "Tier",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "tier",
+          "price"
+        ],
+        "title": "MissingPartOut",
+        "type": "object"
+      },
+      "MoneyOut": {
+        "properties": {
+          "available": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available"
+          },
+          "cash": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cash"
+          },
+          "reserve": {
+            "title": "Reserve",
+            "type": "integer"
+          },
+          "stocks": {
+            "title": "Stocks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cash",
+          "stocks",
+          "reserve",
+          "available"
+        ],
+        "title": "MoneyOut",
         "type": "object"
       },
       "NotificationOut": {
@@ -4944,6 +5410,45 @@
         "title": "PriceState",
         "type": "object"
       },
+      "ProgressOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "fail": {
+            "title": "Fail",
+            "type": "integer"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "integer"
+          },
+          "spent": {
+            "$ref": "#/components/schemas/UpgradeSpentOut"
+          }
+        },
+        "required": [
+          "attempts",
+          "ok",
+          "fail",
+          "spent",
+          "level"
+        ],
+        "title": "ProgressOut",
+        "type": "object"
+      },
       "PublicState": {
         "additionalProperties": false,
         "description": "Снимок персонажа (`CharacterState` без служебного `applied`).",
@@ -6353,6 +6858,115 @@
         "title": "StockLimits",
         "type": "object"
       },
+      "TargetOut": {
+        "properties": {
+          "blocked_by": {
+            "items": {
+              "enum": [
+                "right",
+                "left",
+                "legs",
+                "head",
+                "chest",
+                "torso",
+                "ring",
+                "book",
+                "pbank",
+                "pants"
+              ],
+              "type": "string"
+            },
+            "title": "Blocked By",
+            "type": "array"
+          },
+          "in_bag": {
+            "items": {
+              "enum": [
+                "right",
+                "left",
+                "legs",
+                "head",
+                "chest",
+                "torso",
+                "ring",
+                "book",
+                "pbank",
+                "pants"
+              ],
+              "type": "string"
+            },
+            "title": "In Bag",
+            "type": "array"
+          },
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/MissingPartOut"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "need_money": {
+            "title": "Need Money",
+            "type": "integer"
+          },
+          "set": {
+            "enum": [
+              "summer",
+              "autumn",
+              "um",
+              "pig",
+              "y2020",
+              "spring",
+              "logistic"
+            ],
+            "title": "Set",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "saving",
+              "ready",
+              "wearing",
+              "blocked",
+              "worn_inactive",
+              "unconfirmed",
+              "level"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "worn": {
+            "items": {
+              "enum": [
+                "right",
+                "left",
+                "legs",
+                "head",
+                "chest",
+                "torso",
+                "ring",
+                "book",
+                "pbank",
+                "pants"
+              ],
+              "type": "string"
+            },
+            "title": "Worn",
+            "type": "array"
+          }
+        },
+        "required": [
+          "set",
+          "status",
+          "missing",
+          "in_bag",
+          "worn",
+          "blocked_by",
+          "need_money"
+        ],
+        "title": "TargetOut",
+        "type": "object"
+      },
       "TargetSet": {
         "properties": {
           "battle_at": {
@@ -6845,6 +7459,278 @@
         "title": "UpgradeInfo",
         "type": "object"
       },
+      "UpgradeInfoOut": {
+        "properties": {
+          "chances": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Chances",
+            "type": "object"
+          },
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          },
+          "upgrademan_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upgrademan Pct"
+          }
+        },
+        "required": [
+          "chances",
+          "upgrademan_pct",
+          "confirm"
+        ],
+        "title": "UpgradeInfoOut",
+        "type": "object"
+      },
+      "UpgradeSpentOut": {
+        "properties": {
+          "blue": {
+            "title": "Blue",
+            "type": "integer"
+          },
+          "red": {
+            "title": "Red",
+            "type": "integer"
+          },
+          "white": {
+            "title": "White",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "white",
+          "blue",
+          "red"
+        ],
+        "title": "UpgradeSpentOut",
+        "type": "object"
+      },
+      "UpgradeStartIn": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "white",
+              "blue",
+              "red",
+              "auto"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "slot": {
+            "enum": [
+              "right",
+              "left",
+              "legs",
+              "head",
+              "chest",
+              "torso",
+              "ring",
+              "book",
+              "pbank",
+              "pants"
+            ],
+            "title": "Slot",
+            "type": "string"
+          },
+          "target": {
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Target",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot",
+          "target",
+          "kind"
+        ],
+        "title": "UpgradeStartIn",
+        "type": "object"
+      },
+      "UpgradeTaskOut": {
+        "properties": {
+          "end_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Level"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Reason"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "gadget": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gadget"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "white",
+                  "blue",
+                  "red",
+                  "auto"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "slot": {
+            "anyOf": [
+              {
+                "enum": [
+                  "right",
+                  "left",
+                  "legs",
+                  "head",
+                  "chest",
+                  "torso",
+                  "ring",
+                  "book",
+                  "pbank",
+                  "pants"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot"
+          },
+          "start_level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Level"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "active",
+              "done",
+              "exhausted",
+              "stopped",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "task_id",
+          "slot",
+          "gadget",
+          "kind",
+          "target",
+          "start_level",
+          "end_level",
+          "started_at",
+          "ended_at",
+          "end_reason",
+          "level"
+        ],
+        "title": "UpgradeTaskOut",
+        "type": "object"
+      },
       "Upgrades": {
         "properties": {
           "blue": {
@@ -6866,6 +7752,29 @@
           "red"
         ],
         "title": "Upgrades",
+        "type": "object"
+      },
+      "UpgradesOut": {
+        "properties": {
+          "blue": {
+            "title": "Blue",
+            "type": "integer"
+          },
+          "red": {
+            "title": "Red",
+            "type": "integer"
+          },
+          "white": {
+            "title": "White",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "white",
+          "blue",
+          "red"
+        ],
+        "title": "UpgradesOut",
         "type": "object"
       },
       "ValidationError": {
@@ -7052,6 +7961,54 @@
           "detail"
         ],
         "title": "VersionConflictOut",
+        "type": "object"
+      },
+      "WearSetOut": {
+        "properties": {
+          "set": {
+            "enum": [
+              "summer",
+              "autumn",
+              "um",
+              "pig",
+              "y2020",
+              "spring",
+              "logistic"
+            ],
+            "title": "Set",
+            "type": "string"
+          },
+          "slots": {
+            "items": {
+              "enum": [
+                "right",
+                "left",
+                "legs",
+                "head",
+                "chest",
+                "torso",
+                "ring",
+                "book",
+                "pbank",
+                "pants"
+              ],
+              "type": "string"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "type": {
+            "const": "wear_set",
+            "default": "wear_set",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "set",
+          "slots"
+        ],
+        "title": "WearSetOut",
         "type": "object"
       }
     }
@@ -9186,6 +10143,297 @@
         "summary": "Events",
         "tags": [
           "events"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/gadgets": {
+      "get": {
+        "description": "Гаджеты при персонаже: с движком — из него, без — из настроек и снимка состояния в базе.",
+        "operationId": "get_gadgets_api_v1_accounts__account_id__gadgets_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GadgetsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Gadgets",
+        "tags": [
+          "gadgets"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/gadgets/upgrade": {
+      "post": {
+        "description": "Задача заточки гаджета на слоте до уровня `target`: порции по 20 попыток идут шагом\nпланировщика вне окон-запретов (метро, Горбушка, битва).",
+        "operationId": "start_upgrade_api_v1_accounts__account_id__gadgets_upgrade_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpgradeStartIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GadgetsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "tg_not_online | dry_run | upgrade_in_progress | not_worn | target_reached"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not running"
+          }
+        },
+        "summary": "Start Upgrade",
+        "tags": [
+          "gadgets"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/gadgets/upgrade/stop": {
+      "post": {
+        "description": "Остановить задачу заточки: следующая попытка идущей порции уже не уйдёт.",
+        "operationId": "stop_upgrade_api_v1_accounts__account_id__gadgets_upgrade_stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GadgetsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "no_task"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not running"
+          }
+        },
+        "summary": "Stop Upgrade",
+        "tags": [
+          "gadgets"
         ]
       }
     },

@@ -11,6 +11,7 @@
 	import StatusHeader from '$lib/components/home/StatusHeader.svelte';
 	import TodayCard from '$lib/components/home/TodayCard.svelte';
 	import { DailyStore } from '$lib/daily/store.svelte';
+	import { GadgetsStore } from '$lib/gadgets/store.svelte';
 	import { PlanStore } from '$lib/plan/store.svelte';
 
 	const { api, live, engine, character } = current.get();
@@ -23,6 +24,8 @@
 	const daily = new DailyStore(api, 8);
 	// «Сбор артефакта» — тоже только пока открыта главная.
 	const artifact = new ArtifactStore(api);
+	// «Гаджеты при тебе»: план покупки, задача заточки и её ход.
+	const gadgets = new GadgetsStore(api);
 
 	// Готовность цикла (tg_offline, spending_blocked, lock_lost, pipeline_unhealthy) не шлёт своего
 	// кадра потока — её доходит только опрос статуса движка (раз в 15 с). Пауза и kill уже приходят
@@ -42,10 +45,12 @@
 		plan.start();
 		daily.start();
 		artifact.start();
+		gadgets.start();
 		const off = live.subscribe((e) => {
 			plan.onEvent(e);
 			daily.onEvent(e);
 			artifact.onEvent(e);
+			gadgets.onEvent(e);
 		});
 		return () => {
 			clearInterval(t);
@@ -53,6 +58,7 @@
 			plan.stop();
 			daily.stop();
 			artifact.stop();
+			gadgets.stop();
 		};
 	});
 </script>
@@ -76,7 +82,15 @@
 	<div class="grid gap-3 md:grid-cols-2">
 		<div class="space-y-3">
 			<CharacterCard state={character.state} stale={character.stale} {now} days={daily.data?.days ?? []} />
-			<GadgetsCard state={character.state} stale={character.stale} />
+			<GadgetsCard
+				{api}
+				state={character.state}
+				stale={character.stale}
+				gadgets={gadgets.data}
+				error={gadgets.error}
+				status={engine.status}
+				onchange={(out) => gadgets.set(out)}
+			/>
 		</div>
 		<TodayCard state={character.state} stale={character.stale} {now} />
 	</div>

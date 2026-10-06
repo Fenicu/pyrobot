@@ -409,6 +409,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{account_id}/gadgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Gadgets
+         * @description Гаджеты при персонаже: с движком — из него, без — из настроек и снимка состояния в базе.
+         */
+        get: operations["get_gadgets_api_v1_accounts__account_id__gadgets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/gadgets/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Upgrade
+         * @description Задача заточки гаджета на слоте до уровня `target`: порции по 20 попыток идут шагом
+         *     планировщика вне окон-запретов (метро, Горбушка, битва).
+         */
+        post: operations["start_upgrade_api_v1_accounts__account_id__gadgets_upgrade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/gadgets/upgrade/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Upgrade
+         * @description Остановить задачу заточки: следующая попытка идущей порции уже не уйдёт.
+         */
+        post: operations["stop_upgrade_api_v1_accounts__account_id__gadgets_upgrade_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/journal": {
         parameters: {
             query?: never;
@@ -1841,6 +1902,13 @@ export interface components {
             /** Attempt Id */
             attempt_id: string;
         };
+        /** BagOut */
+        BagOut: {
+            /** Cap */
+            cap: number | null;
+            /** Used */
+            used: number | null;
+        };
         /**
          * BalanceOut
          * @description Изменение наблюдаемого значения за сутки МСК; `delta = null` — нет данных (нет точки в
@@ -1868,6 +1936,51 @@ export interface components {
              * Format: date-time
              */
             until: string;
+        };
+        /** BuyActionOut */
+        BuyActionOut: {
+            /** In Bag */
+            in_bag: boolean;
+            /** Price */
+            price: number;
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "empty" | "set" | "replace";
+            /** Sell Needed */
+            sell_needed: number;
+            /**
+             * Slot
+             * @enum {string}
+             */
+            slot: "right" | "left" | "legs" | "head" | "chest" | "torso";
+            /** Tier */
+            tier: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "buy";
+            /** Wear */
+            wear: boolean;
+        };
+        /** BuyOut */
+        BuyOut: {
+            /** Enabled */
+            enabled: boolean;
+            money: components["schemas"]["MoneyOut"] | null;
+            plan: components["schemas"]["BuyPlanOut"] | null;
+        };
+        /** BuyPlanOut */
+        BuyPlanOut: {
+            /** Action */
+            action: (components["schemas"]["BuyActionOut"] | components["schemas"]["WearSetOut"]) | null;
+            /** Candidates */
+            candidates: components["schemas"]["TargetOut"][];
+            target: components["schemas"]["TargetOut"] | null;
+            /** Verdict */
+            verdict: string;
         };
         /**
          * ChatIsSelfOut
@@ -2113,6 +2226,31 @@ export interface components {
             /** Low */
             low: number;
         };
+        /** GadgetOut */
+        GadgetOut: {
+            /** Bonuses */
+            bonuses: {
+                [key: string]: number;
+            };
+            /** Code */
+            code: string | null;
+            /** Grade */
+            grade: string | null;
+            /** Level */
+            level: number | null;
+            /** Mark */
+            mark: string | null;
+            /** Name */
+            name: string;
+            /** Set */
+            set: ("summer" | "autumn" | "um" | "pig" | "y2020" | "spring" | "logistic") | null;
+            /** Shop Tier */
+            shop_tier: number | null;
+            /** Slot */
+            slot: string;
+            /** Up Slot */
+            up_slot: ("right" | "left" | "legs" | "head" | "chest" | "torso" | "ring" | "book" | "pbank" | "pants") | null;
+        };
         /**
          * GadgetState
          * @description Надетый гаджет с экрана `/inv`: значок редкости и уровень (у неулучшенного их нет), значок
@@ -2141,6 +2279,24 @@ export interface components {
             name: string;
             /** Slot */
             slot: string;
+        };
+        /** GadgetsOut */
+        GadgetsOut: {
+            bag: components["schemas"]["BagOut"];
+            buy: components["schemas"]["BuyOut"];
+            /**
+             * Now
+             * Format: date-time
+             */
+            now: string;
+            progress: components["schemas"]["ProgressOut"] | null;
+            /** Sets */
+            sets: string[];
+            task: components["schemas"]["UpgradeTaskOut"];
+            upgrade_info: components["schemas"]["UpgradeInfoOut"] | null;
+            upgrades: components["schemas"]["UpgradesOut"] | null;
+            /** Worn */
+            worn: components["schemas"]["GadgetOut"][];
         };
         /**
          * GadgetsState
@@ -2496,6 +2652,29 @@ export interface components {
             items: components["schemas"]["MetroRunSummary"][];
             /** Next Before */
             next_before: number | null;
+        };
+        /** MissingPartOut */
+        MissingPartOut: {
+            /** Price */
+            price: number;
+            /**
+             * Slot
+             * @enum {string}
+             */
+            slot: "right" | "left" | "legs" | "head" | "chest" | "torso";
+            /** Tier */
+            tier: number;
+        };
+        /** MoneyOut */
+        MoneyOut: {
+            /** Available */
+            available: number | null;
+            /** Cash */
+            cash: number | null;
+            /** Reserve */
+            reserve: number;
+            /** Stocks */
+            stocks: number;
         };
         /** NotificationOut */
         NotificationOut: {
@@ -3199,6 +3378,18 @@ export interface components {
              */
             white: number;
         };
+        /** ProgressOut */
+        ProgressOut: {
+            /** Attempts */
+            attempts: number;
+            /** Fail */
+            fail: number;
+            /** Level */
+            level: number | null;
+            /** Ok */
+            ok: number;
+            spent: components["schemas"]["UpgradeSpentOut"];
+        };
         /**
          * PublicState
          * @description Снимок персонажа (`CharacterState` без служебного `applied`).
@@ -3543,6 +3734,29 @@ export interface components {
             /** Reserve */
             reserve: number;
         };
+        /** TargetOut */
+        TargetOut: {
+            /** Blocked By */
+            blocked_by: ("right" | "left" | "legs" | "head" | "chest" | "torso" | "ring" | "book" | "pbank" | "pants")[];
+            /** In Bag */
+            in_bag: ("right" | "left" | "legs" | "head" | "chest" | "torso" | "ring" | "book" | "pbank" | "pants")[];
+            /** Missing */
+            missing: components["schemas"]["MissingPartOut"][];
+            /** Need Money */
+            need_money: number;
+            /**
+             * Set
+             * @enum {string}
+             */
+            set: "summer" | "autumn" | "um" | "pig" | "y2020" | "spring" | "logistic";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "saving" | "ready" | "wearing" | "blocked" | "worn_inactive" | "unconfirmed" | "level";
+            /** Worn */
+            worn: ("right" | "left" | "legs" | "head" | "chest" | "torso" | "ring" | "book" | "pbank" | "pants")[];
+        };
         /** TargetSet */
         TargetSet: {
             /**
@@ -3732,8 +3946,82 @@ export interface components {
             /** Upgrademan Pct */
             upgrademan_pct?: number | null;
         };
+        /** UpgradeInfoOut */
+        UpgradeInfoOut: {
+            /** Chances */
+            chances: {
+                [key: string]: number;
+            };
+            /** Confirm */
+            confirm: boolean | null;
+            /** Upgrademan Pct */
+            upgrademan_pct: number | null;
+        };
+        /** UpgradeSpentOut */
+        UpgradeSpentOut: {
+            /** Blue */
+            blue: number;
+            /** Red */
+            red: number;
+            /** White */
+            white: number;
+        };
+        /** UpgradeStartIn */
+        UpgradeStartIn: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "white" | "blue" | "red" | "auto";
+            /**
+             * Slot
+             * @enum {string}
+             */
+            slot: "right" | "left" | "legs" | "head" | "chest" | "torso" | "ring" | "book" | "pbank" | "pants";
+            /** Target */
+            target: number;
+        };
+        /** UpgradeTaskOut */
+        UpgradeTaskOut: {
+            /** End Level */
+            end_level: number | null;
+            /** End Reason */
+            end_reason: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /** Gadget */
+            gadget: string | null;
+            /** Kind */
+            kind: ("white" | "blue" | "red" | "auto") | null;
+            /** Level */
+            level: number | null;
+            /** Slot */
+            slot: ("right" | "left" | "legs" | "head" | "chest" | "torso" | "ring" | "book" | "pbank" | "pants") | null;
+            /** Start Level */
+            start_level: number | null;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "idle" | "active" | "done" | "exhausted" | "stopped" | "failed";
+            /** Target */
+            target: number | null;
+            /** Task Id */
+            task_id: number;
+        };
         /** Upgrades */
         Upgrades: {
+            /** Blue */
+            blue: number;
+            /** Red */
+            red: number;
+            /** White */
+            white: number;
+        };
+        /** UpgradesOut */
+        UpgradesOut: {
             /** Blue */
             blue: number;
             /** Red */
@@ -3807,6 +4095,21 @@ export interface components {
         /** VersionConflictOut */
         VersionConflictOut: {
             detail: components["schemas"]["VersionConflict"];
+        };
+        /** WearSetOut */
+        WearSetOut: {
+            /**
+             * Set
+             * @enum {string}
+             */
+            set: "summer" | "autumn" | "um" | "pig" | "y2020" | "spring" | "logistic";
+            /** Slots */
+            slots: ("right" | "left" | "legs" | "head" | "chest" | "torso" | "ring" | "book" | "pbank" | "pants")[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "wear_set";
         };
     };
     responses: never;
@@ -5342,6 +5645,215 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_gadgets_api_v1_accounts__account_id__gadgets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GadgetsOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_upgrade_api_v1_accounts__account_id__gadgets_upgrade_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeStartIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GadgetsOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description tg_not_online | dry_run | upgrade_in_progress | not_worn | target_reached */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    stop_upgrade_api_v1_accounts__account_id__gadgets_upgrade_stop_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GadgetsOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description no_task */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description engine not running */

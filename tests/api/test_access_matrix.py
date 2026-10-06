@@ -31,6 +31,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "/unrecognized/ack": {"ids": [1]},
     "/notifications/read": {"up_to_id": 1},
     "/artifact/start": {"artifact": "light"},
+    "/gadgets/upgrade": {"slot": "right", "target": 25, "kind": "auto"},
 }
 
 
@@ -74,6 +75,9 @@ def test_matrix_covers_spec_table(app: FastAPI) -> None:
         "/events",
         "/artifact",
         "/artifact/start",
+        "/gadgets",
+        "/gadgets/upgrade",
+        "/gadgets/upgrade/stop",
     ):
         assert f"{PREFIX}{tail}" in paths
     # Каталог сценариев общий.

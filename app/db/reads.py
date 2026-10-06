@@ -97,6 +97,19 @@ class SettingsVersion:
     changes: dict[str, list[Any]]
 
 
+@dataclass(frozen=True, slots=True)
+class UpgradeProgress:
+    """Попытки заточки слота по журналу прихода: удачные, провалы, потрачено улучшений по видам."""
+
+    attempts: int
+    ok: int
+    fail: int
+    spent: dict[str, int]
+
+
+_UPGRADE_KINDS = ("white", "blue", "red")
+
+
 class DbReads:
     """Выборки для админки: журнал, справочное, история настроек (только чтение и ack)."""
 
@@ -316,6 +329,26 @@ class DbReads:
             started = await session.scalar(select(func.min(LedgerRow.recorded_at)).where(own))
         since = tasks_day(started) if started is not None else None
         return [LedgerEntry(d, kind, amounts, items) for d, kind, amounts, items in rows], since
+
+    async def upgrade_progress(self, slot: str, since: datetime) -> UpgradeProgress:
+        """Попытки заточки слота `slot` с момента `since` (старт задачи) по эффектам
+        `gadget_upgrade` журнала прихода."""
+        query = select(LedgerRow.amounts, LedgerRow.items).where(
+            LedgerRow.account_id == self._account_id,
+            LedgerRow.kind == "gadget_upgrade",
+            LedgerRow.at >= since,
+            LedgerRow.items.has_key(f"up:{slot}"),
+        )
+        async with self._db.sessions() as session:
+            rows = (await session.execute(query)).all()
+        spent = dict.fromkeys(_UPGRADE_KINDS, 0)
+        ok = fail = 0
+        for amounts, items in rows:
+            ok += "ok" in items
+            fail += "fail" in items
+            for kind in _UPGRADE_KINDS:
+                spent[kind] -= amounts.get(f"upgrades_{kind}", 0)
+        return UpgradeProgress(len(rows), ok, fail, spent)
 
     async def metro_runs(self, limit: int, before: int | None) -> list[MetroRunRow]:
         query = (

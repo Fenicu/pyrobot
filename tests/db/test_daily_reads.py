@@ -4,7 +4,7 @@ import pytest
 
 from app.db.base import Database
 from app.db.models import LedgerRow, MetricRow
-from app.db.reads import DbReads
+from app.db.reads import DbReads, UpgradeProgress
 from app.engine.daily import LedgerEntry, last_by_day
 from app.engine.gametime import MSK
 
@@ -89,3 +89,55 @@ async def test_ledger_since_is_first_recording_not_effect_day(clean_db: Database
     entries, since = await DbReads(clean_db, 1).ledger_entries(date(2026, 9, 1))
     assert [e.day for e in entries] == [date(2026, 9, 9), date(2026, 9, 12)]
     assert since == date(2026, 9, 12)
+
+
+async def test_upgrade_progress_by_slot_since_start(clean_db: Database) -> None:
+    start = msk(28, 12)
+    effects = [
+        (start - timedelta(minutes=5), "right", "red", "ok"),
+        (start, "right", "red", "ok"),
+        (start + timedelta(minutes=1), "right", "red", "fail"),
+        (start + timedelta(minutes=2), "right", "white", "ok"),
+        (start + timedelta(minutes=3), "left", "blue", "ok"),
+    ]
+    async with clean_db.sessions() as s, s.begin():
+        s.add_all(
+            LedgerRow(
+                account_id=1,
+                at=at,
+                recorded_at=at,
+                day=at.astimezone(MSK).date(),
+                kind="gadget_upgrade",
+                amounts={f"upgrades_{used}": -1},
+                items={f"up:{slot}": 1, result: 1},
+                chat_id=1,
+                msg_id=i,
+                revision=0,
+                content_hash="h",
+                seq=0,
+            )
+            for i, (at, slot, used, result) in enumerate(effects)
+        )
+        s.add(
+            LedgerRow(
+                account_id=1,
+                at=start,
+                recorded_at=start,
+                day=start.astimezone(MSK).date(),
+                kind="gadget_buy",
+                amounts={"money": -9},
+                items={"up:right": 1},
+                chat_id=1,
+                msg_id=99,
+                revision=0,
+                content_hash="h",
+                seq=0,
+            )
+        )
+    reads = DbReads(clean_db, 1)
+    assert await reads.upgrade_progress("right", start) == UpgradeProgress(
+        attempts=3, ok=2, fail=1, spent={"white": 1, "blue": 0, "red": 2}
+    )
+    assert await DbReads(clean_db, 2).upgrade_progress("right", start) == UpgradeProgress(
+        attempts=0, ok=0, fail=0, spent={"white": 0, "blue": 0, "red": 0}
+    )

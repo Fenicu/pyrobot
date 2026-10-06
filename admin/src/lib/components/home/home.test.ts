@@ -219,6 +219,13 @@ describe('компания и команда в карточке персона�
 });
 
 describe('карточка гаджетов', () => {
+	const api = createAccountApi(
+		{ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} },
+		1,
+		mockFetch(() => json({}))
+	);
+	const show = (state: StateOut['state'], stale: string[]) =>
+		render(GadgetsCard, { api, state, stale, gadgets: null, error: null, status: null, onchange: () => {} });
 	const gadgets = (over: Partial<GadgetsState> = {}): Observed<GadgetsState> => ({
 		at: prod.now,
 		src: 'screen',
@@ -247,8 +254,8 @@ describe('карточка гаджетов', () => {
 	});
 
 	it('строка на гаджет, сеты одной строкой', () => {
-		render(GadgetsCard, { state: { ...prod.state, gadgets: gadgets() }, stale: [] });
-		const card = screen.getByRole('region', { name: 'Гаджеты' });
+		show({ ...prod.state, gadgets: gadgets() }, []);
+		const card = screen.getByRole('region', { name: 'Гаджеты при тебе' });
 		const items = within(card).getAllByRole('listitem');
 		expect(items.map((li) => li.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
 			'🕶 Хиджаб ⚫️26 · +85🎓 +55🐢 +30🔨 🧶',
@@ -277,11 +284,8 @@ describe('карточка гаджетов', () => {
 				mark: null
 			}
 		];
-		render(GadgetsCard, {
-			state: { ...prod.state, gadgets: gadgets({ items, sets: [] }) },
-			stale: []
-		});
-		const card = screen.getByRole('region', { name: 'Гаджеты' });
+		show({ ...prod.state, gadgets: gadgets({ items, sets: [] }) }, []);
+		const card = screen.getByRole('region', { name: 'Гаджеты при тебе' });
 		const rows = within(card).getAllByRole('listitem');
 		expect(rows.map((li) => li.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
 			'👔 Жилетка LoRat · +63🐢 +23🎓',
@@ -291,24 +295,24 @@ describe('карточка гаджетов', () => {
 	});
 
 	it('без сетов строки сетов нет', () => {
-		render(GadgetsCard, { state: { ...prod.state, gadgets: gadgets({ sets: [] }) }, stale: [] });
-		expect(screen.getByRole('region', { name: 'Гаджеты' })).not.toHaveTextContent('Сет');
+		show({ ...prod.state, gadgets: gadgets({ sets: [] }) }, []);
+		expect(screen.getByRole('region', { name: 'Гаджеты при тебе' })).not.toHaveTextContent('Сет');
 	});
 
 	it('пустой список — «ничего не надето»', () => {
-		render(GadgetsCard, { state: { ...prod.state, gadgets: gadgets({ items: [], sets: [] }) }, stale: [] });
-		expect(screen.getByRole('region', { name: 'Гаджеты' })).toHaveTextContent('ничего не надето');
+		show({ ...prod.state, gadgets: gadgets({ items: [], sets: [] }) }, []);
+		expect(screen.getByRole('region', { name: 'Гаджеты при тебе' })).toHaveTextContent('ничего не надето');
 		expect(screen.queryByRole('listitem')).toBeNull();
 	});
 
 	it('данных нет — «нет данных»', () => {
-		render(GadgetsCard, { state: { ...prod.state, gadgets: null }, stale: [] });
-		expect(screen.getByRole('region', { name: 'Гаджеты' })).toHaveTextContent('нет данных');
+		show({ ...prod.state, gadgets: null }, []);
+		expect(screen.getByRole('region', { name: 'Гаджеты при тебе' })).toHaveTextContent('нет данных');
 	});
 
 	it('устаревшее — с пометкой', () => {
-		render(GadgetsCard, { state: { ...prod.state, gadgets: gadgets() }, stale: ['gadgets'] });
-		expect(screen.getByRole('region', { name: 'Гаджеты' })).toHaveTextContent('(устарело)');
+		show({ ...prod.state, gadgets: gadgets() }, ['gadgets']);
+		expect(screen.getByRole('region', { name: 'Гаджеты при тебе' })).toHaveTextContent('(устарело)');
 	});
 });
 
