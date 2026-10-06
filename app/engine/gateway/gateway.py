@@ -13,6 +13,10 @@ from typing import Any, Literal
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
 from app.engine.commands import (
+    GADGET_BUY,
+    GADGET_WEAR,
+    STOCK_SELL,
+    UPGRADE_CLICK,
     CommandClass,
     classify_callback,
     classify_text,
@@ -64,6 +68,7 @@ STORE_FAILED = "store_failed"
 SOURCE_READ_TIMEOUT_S = 10.0
 # Клик «👍Стартуем!» экрана пересборки артефакта.
 ARTIFACT_ACCEPT = re.compile(r"artr_(book|fax|light)_accept\Z")
+GADGET_SCENARIOS = frozenset({"gadget_buy", "gadget_wear_set", "gadget_upgrade"})
 
 
 class NotSent(Exception):
@@ -141,7 +146,11 @@ def command_feature(req: ActionRequest) -> str | None:
     if req.kind is ActionKind.FORWARD:
         return None
     if req.kind is ActionKind.SEND:
-        return feature_of_text(req.text or "")
+        text = req.text or ""
+        # Продажа акций на покупку гаджета — под флагом покупки, а не слива.
+        if req.scenario == "gadget_buy" and STOCK_SELL.match(text.strip()):
+            return "gadgets_buy"
+        return feature_of_text(text)
     return feature_of_callback(req.data or "")
 
 
@@ -434,7 +443,9 @@ class ActionGateway:
         if cls is CommandClass.RISKY and not (
             (req.source is Source.MANUAL and req.risky_confirmed) or self._artifact_start(req)
         ):
-            return ActionStatus.REJECTED, "risky_requires_confirm"
+            refused = self._gadget_step(req)
+            if refused is not None:
+                return ActionStatus.REJECTED, refused
         if self._confirm_stale(req):
             return ActionStatus.REJECTED, "confirm_stale"
         if cls is not CommandClass.NAV and req.expect is None:
@@ -499,6 +510,27 @@ class ActionGateway:
         m = ARTIFACT_ACCEPT.match(req.data or "")
         run = self._settings.current.artifact_run
         return m is not None and run.status == "starting" and run.artifact == m[1]
+
+    def _gadget_step(self, req: ActionRequest) -> str | None:
+        """Risky-шаг сценария гаджетов без ручного подтверждения: только от планировщика
+        (`Source.SCENARIO`) и только своя команда сценария. Клик заточки — пока задача, порцию
+        которой он исполняет, текущая, и только с кадра (ревизия и хеш), на котором принято
+        решение. None — допущен, иначе причина отказа."""
+        if req.source is not Source.SCENARIO or req.scenario not in GADGET_SCENARIOS:
+            return "risky_requires_confirm"
+        if req.scenario == "gadget_upgrade":
+            m = UPGRADE_CLICK.match(req.data or "") if req.kind is ActionKind.CLICK else None
+            if m is None:
+                return "risky_requires_confirm"
+            task = self._settings.current.gadget_upgrade
+            if task.status != "active" or task.slot != m["slot"] or req.task_id != task.task_id:
+                return "upgrade_task_changed"
+            if req.expect_revision is None or req.expect_content is None:
+                return "stale_frame_required"
+            return None
+        allowed = (GADGET_BUY, GADGET_WEAR) if req.scenario == "gadget_buy" else (GADGET_WEAR,)
+        text = (req.text or "").strip() if req.kind is ActionKind.SEND else ""
+        return None if any(p.match(text) for p in allowed) else "risky_requires_confirm"
 
     def _policy_checks(self, req: ActionRequest) -> Blocked | None:
         current = self._settings.current

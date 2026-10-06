@@ -57,11 +57,11 @@ N, A, R, F, D = (
         ("/changecompany", F),
         ("/profreset", F),
         ("/setfullprofile", F),
-        ("/buy_right3", F),
+        ("/buy_right3", R),
         ("/sell_1_t501", F),
         ("/sells_all", F),
-        ("/up_head", F),
-        ("/wear_1_t501", F),
+        ("/up_head", N),
+        ("/wear_1_t501", R),
         ("🎯 Дартс", F),
         ("/main", F),
         ("/fullt", F),
@@ -360,3 +360,55 @@ def test_vehicle_buttons_are_trips_actions(text: str) -> None:
 def test_other_vehicle_texts_stay_forbidden(text: str) -> None:
     assert classify_text(text) is F
     assert feature_of_text(text) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "cls"),
+    [
+        ("/buy_right14", R),
+        ("/buy_torso1", R),
+        ("/buy_right15", F),
+        ("/buy_right0", F),
+        ("/buy_ring1", F),
+        ("/wear_11_p1", R),
+        ("/wear_6_t501", R),
+        ("/wear_11", F),
+        ("/unwear_p1", R),
+        ("/unwear_all", F),
+        ("/up_right", N),
+        ("/up_pbank", N),
+        ("/up_auto_right", F),
+        ("/up_hand", F),
+        ("/sell_11_p1", F),
+        ("/ucon", R),
+        ("/ucoff", F),
+    ],
+)
+def test_gadget_text_classes(text: str, cls: CommandClass) -> None:
+    assert classify_text(text) is cls
+
+
+@pytest.mark.parametrize(
+    ("data", "cls"),
+    [
+        ("up_right_low", R),
+        ("up_pants_middle", R),
+        ("up_right_high_1_accept", R),
+        ("up_right_low_decline", N),
+        ("up_right_top", F),
+        ("up_hand_low", F),
+        ("up_auto_right", F),
+        ("take_up_low_money_1", F),
+        ("sell_all", F),
+    ],
+)
+def test_gadget_callback_classes(data: str, cls: CommandClass) -> None:
+    assert classify_callback(data) is cls
+
+
+def test_gadget_feature() -> None:
+    assert feature_of_text("/buy_right1") == feature_of_text("/wear_3_p1") == "gadgets_buy"
+    assert feature_of_text("/unwear_p1") == "gadgets_buy"
+    assert feature_of_text("/up_right") is None
+    assert feature_of_callback("up_right_low") is None
+    assert feature_of_callback("up_right_low_1_accept") is None

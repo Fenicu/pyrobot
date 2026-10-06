@@ -5915,6 +5915,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
+            /** @description scenario_not_manual */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
             /** @description invalid body, params contradicting fixed scenario params, missing or invalid required params, or idempotency_key reused with other parameters */
             422: {
                 headers: {

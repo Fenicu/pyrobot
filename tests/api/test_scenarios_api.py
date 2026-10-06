@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -10,6 +11,8 @@ from app.db.planner import DbPlannerStore
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade
 from app.engine.planner.loop import PlannerLoop
+from app.engine.scenarios.library import ScenarioResult
+from app.engine.scenarios.registry import SCENARIOS, ScenarioSpec
 from app.engine.transport.fake import FakeTgBackend
 from tests.api.conftest import login, run_engine
 from tests.engine.fakegame import World, running_world
@@ -157,3 +160,21 @@ async def test_run_without_planner(container: Container, api_client: AsyncClient
     h = {"X-CSRF-Token": await login(api_client)}
     code, _ = await _run(api_client, h, "book", "s1")
     assert code == 503
+
+
+async def test_not_manual_scenario_is_409_and_hidden(
+    world: World, api_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fn(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        return ScenarioResult("done", "ran")
+
+    monkeypatch.setitem(SCENARIOS, "x", ScenarioSpec("x", fn, True, manual=False))
+    h = {"X-CSRF-Token": await login(api_client)}
+    code, body = await _run(api_client, h, "x", "nm1")
+    assert (code, body) == (409, {"detail": "scenario_not_manual"})
+    names = {i["name"] for i in (await api_client.get("/api/v1/scenarios")).json()}
+    assert "x" not in names and "book" in names
+    # Флаг читается при запросе: тот же сценарий, открытый для ручного запуска, проходит.
+    monkeypatch.setitem(SCENARIOS, "x", ScenarioSpec("x", fn, True))
+    code, _ = await _run(api_client, h, "x", "nm2")
+    assert code == 202

@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 import tests.engine.scenarios as package
-from app.engine.scenarios.registry import CERTIFIED, SCENARIOS, Param
+from app.engine.scenarios.registry import CERTIFIED, SCENARIOS, Param, ScenarioSpec
 
 
 def _certified_by_tests() -> set[str]:
@@ -99,7 +99,16 @@ def test_catalog_specs() -> None:
     assert required("tangerine", "reply_to").spec() == {"type": "int"}
     assert required("refresh", "source").spec() == {
         "type": "enum",
-        "values": ["artifacts", "food", "gifts", "gorbushka", "inventory", "profile"],
+        "values": [
+            "artifacts",
+            "food",
+            "gifts",
+            "gorbushka",
+            "inventory",
+            "profile",
+            "stocks",
+            "upgrades",
+        ],
     }
     assert required("daily_pick", "task").spec() == {
         "type": "string",
@@ -131,3 +140,17 @@ def test_trip_scenarios() -> None:
     assert SCENARIOS["trip"].invalid({}) == ["vehicle"]
     assert SCENARIOS["trips_refresh"].required == {}
     assert {"trip", "trips_refresh"} <= CERTIFIED
+
+
+def test_manual_flag_defaults_true() -> None:
+    async def fn(ctx: Any, state: Any, params: Any) -> Any:
+        return None
+
+    assert ScenarioSpec("x", fn, True).manual is True
+    assert ScenarioSpec("x", fn, True, manual=False).manual is False
+    assert all(spec.manual for spec in SCENARIOS.values() if not spec.name.startswith("gadget_"))
+
+
+@pytest.mark.parametrize("source", ["upgrades", "stocks"])
+def test_refresh_gadget_sources(source: str) -> None:
+    assert SCENARIOS["refresh"].invalid({"source": source}) == []

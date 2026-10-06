@@ -23,6 +23,7 @@ def context(
     paused: bool = False,
     notifier: NotifierPort | None = None,
     scenario: str | None = None,
+    task_id: int | None = None,
 ) -> ScenarioContext:
     return ScenarioContext(
         world.gateway,
@@ -32,6 +33,9 @@ def context(
         timeout_s=0.3,
         notifier=notifier,
         scenario=scenario,
+        state=lambda: world.state,
+        settings=lambda: world.settings.current,
+        task_id=task_id,
     )
 
 

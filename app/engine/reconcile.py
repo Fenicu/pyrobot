@@ -24,9 +24,11 @@ from app.engine.gateway.types import (
 from app.engine.notify import NotifierPort
 from app.engine.parsing.artifacts import ArtifactsScreen
 from app.engine.parsing.food import FoodMenu
+from app.engine.parsing.gadgets import UpgradesScreen
 from app.engine.parsing.gorbushka import GorbushkaScreen
 from app.engine.parsing.items import GiftsScreen, Inventory
 from app.engine.parsing.profile import ProfileCompact
+from app.engine.parsing.stocks import StockScreen
 from app.engine.planner.obligations import metro_live
 from app.engine.settings import SettingsProvider
 from app.engine.state.model import MetroRunRef, load_state
@@ -50,14 +52,21 @@ class RefreshSource:
 
 PROFILE = RefreshSource("profile", "/compact", ProfileCompact, ("money", "motivation", "stamina"))
 FOOD = RefreshSource("food", "/to_eat", FoodMenu, ("food_stock",))
-INVENTORY = RefreshSource("inventory", "/inv", Inventory, ("books", "cards"))
+INVENTORY = RefreshSource(
+    "inventory", "/inv", Inventory, ("books", "cards", "gadgets", "bag", "bag_cap")
+)
 GIFTS = RefreshSource("gifts", "/gifts", GiftsScreen, ("containers_small", "containers_medium"))
 GORBUSHKA = RefreshSource("gorbushka", "/gorbushka", GorbushkaScreen, ("gorbushka",))
 ARTIFACTS = RefreshSource(
     "artifacts", "/artefacts", ArtifactsScreen, ("artifacts", "artifact_collect")
 )
+UPGRADES = RefreshSource("upgrades", "/upgrades", UpgradesScreen, ("upgrades", "upgrade_info"))
+STOCKS = RefreshSource(
+    "stocks", "/stock", StockScreen, ("stock_holdings", "stock_quotes", "stock_limits")
+)
 _FOOD_COMMANDS = frozenset({"🌭Хот-дог", "🍕Пицца", "🍔Бургер", "🍌Банан", "/eat", "🍴Есть"})
 _INVENTORY_COMMANDS = frozenset({"/read_exp", "/use_card", "/unbox"})
+_GADGET_COMMANDS = ("/buy_", "/wear_", "/unwear_")
 
 
 def sources_for(obligation: Obligation) -> tuple[RefreshSource, ...]:
@@ -71,6 +80,10 @@ def sources_for(obligation: Obligation) -> tuple[RefreshSource, ...]:
         return (PROFILE, GIFTS)
     if data.startswith("gorbushka_"):
         return (PROFILE, GORBUSHKA)
+    if text.startswith(_GADGET_COMMANDS):
+        return (PROFILE, INVENTORY)
+    if data.startswith("up_"):
+        return (PROFILE, UPGRADES)
     return (PROFILE,)
 
 

@@ -29,6 +29,8 @@ from app.engine.reconcile import (
     GORBUSHKA,
     INVENTORY,
     PROFILE,
+    STOCKS,
+    UPGRADES,
     Reconciler,
     sources_for,
 )
@@ -144,6 +146,23 @@ def test_sources_mapping() -> None:
     assert sources_for(ob("/read_exp")) == (PROFILE, INVENTORY)
     assert sources_for(ob("/unbox_ls")) == (PROFILE, GIFTS)
     assert sources_for(ob(data="gorbushka_fight")) == (PROFILE, GORBUSHKA)
+
+
+def test_sources_for_gadget_actions() -> None:
+    def ob(text: str | None = None, data: str | None = None) -> Obligation:
+        return Obligation(1, "click" if data else "send", text, data)
+
+    for text in ("/buy_right1", "/wear_12_p1", "/unwear_p1"):
+        assert sources_for(ob(text)) == (PROFILE, INVENTORY)
+    assert sources_for(ob("/sells_hooli_5")) == (PROFILE,)
+    for data in ("up_right_low", "up_pants_high_1_accept"):
+        assert sources_for(ob(data=data)) == (PROFILE, UPGRADES)
+    assert {"gadgets", "bag", "bag_cap"} <= set(INVENTORY.fields)
+    assert (UPGRADES.command, UPGRADES.fields) == ("/upgrades", ("upgrades", "upgrade_info"))
+    assert (STOCKS.command, STOCKS.fields) == (
+        "/stock",
+        ("stock_holdings", "stock_quotes", "stock_limits"),
+    )
 
 
 async def test_uncertain_spending_blocks_until_sources_refreshed(world: World) -> None:

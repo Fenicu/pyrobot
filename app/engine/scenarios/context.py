@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 
 from app.engine.bus import Delivery
@@ -20,6 +21,8 @@ from app.engine.gateway.types import (
 )
 from app.engine.notify import Level, NotifierPort
 from app.engine.parsing.refusals import Busy, Refused
+from app.engine.settings import Settings
+from app.engine.state.model import CharacterState
 from app.engine.types import IncomingMessage
 
 Predicate = Callable[[Delivery], Match | None]
@@ -77,6 +80,21 @@ def expect_events(
     return predicate
 
 
+def expect_edit(
+    message_id: int,
+    *confirm: type[Event],
+    refuse: tuple[type[Event], ...] = (Refused, Busy),
+) -> Predicate:
+    """Как `expect_events`, но только по сообщению `message_id`: ответ на клик — правка его
+    сообщения, а не другое сообщение игры, пришедшее тем временем."""
+    events = expect_events(*confirm, refuse=refuse)
+
+    def predicate(delivery: Delivery) -> Match | None:
+        return events(delivery) if delivery.msg.msg_id == message_id else None
+
+    return predicate
+
+
 def expect_button(data: str, *, refuse: tuple[type[Event], ...] = ()) -> Predicate:
     """Подтверждает сообщение (или правку) с кнопкой `data`, отклоняет — событием из `refuse`."""
 
@@ -115,8 +133,16 @@ class ScenarioContext:
         source: Source = Source.SCENARIO,
         run_id: int | None = None,
         scenario: str | None = None,
+        state: Callable[[], CharacterState] | None = None,
+        settings: Callable[[], Settings] | None = None,
+        task_id: int | None = None,
     ) -> None:
         self._gateway = gateway
+        # Свежие состояние и настройки между шагами: снимок на старте устаревает за порцию.
+        self._state = state
+        self._settings = settings
+        # Задача заточки, порцию которой исполняет запуск: уходит в каждое действие шага.
+        self.task_id = task_id
         # Запуск сценария: его id уходит в каждое действие шага (`actions.scenario_run_id`).
         self.run_id = run_id
         self.scenario = scenario
@@ -137,6 +163,12 @@ class ScenarioContext:
     @property
     def timeout_s(self) -> float:
         return self._timeout_s
+
+    def state(self) -> CharacterState:
+        return self._state() if self._state is not None else CharacterState()
+
+    def settings(self) -> Settings:
+        return self._settings() if self._settings is not None else Settings()
 
     async def notify(self, level: Level, code: str, text: str) -> None:
         if self._notifier is not None:
@@ -183,8 +215,10 @@ class ScenarioContext:
         chat_id: int | None = None,
         reply_to: int | None = None,
         silence_confirms: bool = False,
+        deadline: datetime | None = None,
     ) -> StepResult:
-        """`silence_confirms` — игра отвечает только на ошибку: тишина — `Step.OK "silence"`."""
+        """`silence_confirms` — игра отвечает только на ошибку: тишина — `Step.OK "silence"`.
+        `deadline` — с этого момента шлюз команду не отправит."""
         return await self._submit(
             ActionKind.SEND,
             expect,
@@ -192,6 +226,7 @@ class ScenarioContext:
             chat_id=chat_id,
             reply_to=reply_to,
             silence_confirms=silence_confirms,
+            deadline=deadline,
         )
 
     async def click(
@@ -203,6 +238,7 @@ class ScenarioContext:
         *,
         content: str | None = None,
         timeout_s: float | None = None,
+        deadline: datetime | None = None,
     ) -> StepResult:
         """`revision`/`content` — ревизия и хеш кадра, на котором принято решение: шлюз не
         отправит клик, если последняя правка сообщения уже другая."""
@@ -214,6 +250,7 @@ class ScenarioContext:
             expect_revision=revision,
             expect_content=content,
             timeout_s=timeout_s,
+            deadline=deadline,
         )
 
     async def _submit(
@@ -230,6 +267,7 @@ class ScenarioContext:
         reply_to: int | None = None,
         silence_confirms: bool = False,
         timeout_s: float | None = None,
+        deadline: datetime | None = None,
     ) -> StepResult:
         matched: list[Delivery] = []
         timeout = timeout_s if timeout_s is not None else self._timeout_s
@@ -261,6 +299,8 @@ class ScenarioContext:
                 dry_run=self.dry_run,
                 scenario_run_id=self.run_id,
                 scenario=self.scenario,
+                deadline=deadline,
+                task_id=self.task_id,
             )
         )
         step = _STEP_OF.get(result.status, Step.FAILED)

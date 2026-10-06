@@ -21,7 +21,7 @@ from app.api.errors import (
 from app.api.scope import AccountScope, account_router, account_scope, running
 from app.db.models import ActionRow
 from app.engine.commands import CommandClass, classify_callback, classify_text
-from app.engine.facade import EngineFacade, PlannerUnavailable
+from app.engine.facade import EngineFacade, PlannerUnavailable, ScenarioNotManual
 from app.engine.gateway.gateway import STORE_FAILED
 from app.engine.gateway.types import ActionRequest, ActionStatus
 from app.engine.manual import (
@@ -291,6 +291,7 @@ async def scenarios(_: Annotated[SessionContext, Depends(current_session)]) -> l
             required={k: ParamSpec(**p.spec()) for k, p in s.required.items()},
         )
         for s in SCENARIOS.values()
+        if s.manual
     ]
 
 
@@ -302,6 +303,7 @@ async def scenarios(_: Annotated[SessionContext, Depends(current_session)]) -> l
         200: {"model": ScenarioRunAccepted, "description": "Key already used: existing run"},
         **CSRF,
         404: error(ACCOUNT_NOT_FOUND, "unknown scenario", "scenario run not found"),
+        409: error("scenario_not_manual"),
         422: {
             "description": "invalid body, params contradicting fixed scenario params, "
             "missing or invalid required params, or idempotency_key reused with other parameters"
@@ -325,6 +327,8 @@ async def scenario_run(
         run_id, created = await f.run_scenario(
             name, body.params, key=body.idempotency_key, by=ctx.login
         )
+    except ScenarioNotManual as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "scenario_not_manual") from exc
     except PlannerUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "planner not started") from exc
     except FixedParams as exc:

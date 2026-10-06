@@ -1,12 +1,14 @@
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
 from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Expectation, Source
-from app.engine.settings import ArtifactRunSection, Settings
+from app.engine.settings import ArtifactRunSection, GadgetUpgradeSection, Settings
 from app.engine.transport.fake import Sent
 from app.engine.types import Button, IncomingMessage
 from tests.engine.gateway_rig import LIVE, Rig, expect_text, running_rig, send
@@ -345,3 +347,216 @@ async def test_unknown_message_reread_only_for_click_that_may_be_sent(rig: Rig) 
     unknown = await rig.gw.submit(click(GAME))
     assert (unknown.status, unknown.reason) == (ActionStatus.REJECTED, "stale_button")
     assert reads == [(GAME, 5)]
+
+
+async def _features(rig: Rig, **flags: bool) -> None:
+    await rig.settings.update(
+        lambda s: s.model_copy(update={"features": s.features.model_copy(update=flags)}),
+        changed_by="test",
+    )
+
+
+def _gadget_send(text: str, scenario: str | None, **kw: Any) -> ActionRequest:
+    kw.setdefault("source", Source.SCENARIO)
+    return send(text, scenario=scenario, expect=expect_text("Готово"), **kw)
+
+
+async def test_buy_from_gadget_buy_scenario_passes_without_confirm(rig: Rig) -> None:
+    await _features(rig, gadgets_buy=True)
+    rig.reply_with("Готово")
+    for text in ("/buy_right1", "/wear_12_p1"):
+        res = await rig.gw.submit(_gadget_send(text, "gadget_buy"))
+        assert res.status is ActionStatus.CONFIRMED
+    unwear = await rig.gw.submit(_gadget_send("/unwear_p1", "gadget_buy"))
+    assert (unwear.status, unwear.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    assert [s.payload for s in rig.transport.sent] == ["/buy_right1", "/wear_12_p1"]
+
+
+async def test_buy_from_manual_scenario_run_needs_confirm(rig: Rig) -> None:
+    # Ручной запуск сценария идёт от MANUAL: без токена — как любой risky.
+    await _features(rig, gadgets_buy=True)
+    res = await rig.gw.submit(_gadget_send("/buy_right1", "gadget_buy", source=Source.MANUAL))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    assert rig.transport.sent == []
+
+
+async def test_buy_with_feature_off_rejected(rig: Rig) -> None:
+    res = await rig.gw.submit(_gadget_send("/buy_right1", "gadget_buy"))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "feature_off:gadgets_buy")
+    assert rig.transport.sent == []
+
+
+@pytest.mark.parametrize(
+    ("text", "scenario", "source"),
+    [
+        ("/wear_3_p1", "deed:walk", Source.SCENARIO),
+        ("/wear_3_p1", None, Source.SCENARIO),
+        ("/wear_3_p1", "gadget_wear_set", Source.PLANNER),
+        ("/buy_right1", "gadget_wear_set", Source.SCENARIO),
+        ("/buy_right1", "gadget_upgrade", Source.SCENARIO),
+        ("/unwear_p1", "gadget_wear_set", Source.SCENARIO),
+    ],
+)
+async def test_wear_from_other_scenario_needs_confirm(
+    rig: Rig, text: str, scenario: str | None, source: Source
+) -> None:
+    await _features(rig, gadgets_buy=True)
+    res = await rig.gw.submit(_gadget_send(text, scenario, source=source))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    assert rig.transport.sent == []
+
+
+async def test_wear_from_wear_set_scenario_passes(rig: Rig) -> None:
+    await _features(rig, gadgets_buy=True)
+    rig.reply_with("Готово")
+    res = await rig.gw.submit(_gadget_send("/wear_3_p1", "gadget_wear_set"))
+    assert res.status is ActionStatus.CONFIRMED
+
+
+async def _upgrade_task(rig: Rig, **task: Any) -> None:
+    section = GadgetUpgradeSection.model_validate(task)
+    await rig.settings.update(
+        lambda s: s.model_copy(update={"gadget_upgrade": section}), changed_by="test"
+    )
+
+
+def _up_click(
+    rig: Rig,
+    data: str = "up_right_low",
+    *,
+    task_id: int | None = 2,
+    revision: bool = True,
+    content: bool = True,
+    **kw: Any,
+) -> ActionRequest:
+    button = (Button("⚪️", 0, 0, data=data),)
+    msg = make_msg("Апгрейд 📱Китайская мобила", msg_id=88, revision=3, buttons=button)
+    rig.latest[(GAME, 88)] = msg
+    return ActionRequest(
+        kind=ActionKind.CLICK,
+        chat_id=GAME,
+        message_id=88,
+        data=data,
+        source=kw.pop("source", Source.SCENARIO),
+        scenario=kw.pop("scenario", "gadget_upgrade"),
+        task_id=task_id,
+        expect_revision=3 if revision else None,
+        expect_content=msg.content_hash() if content else None,
+        expect=expect_text("Успех"),
+        **kw,
+    )
+
+
+ACTIVE = {"status": "active", "task_id": 2, "slot": "right"}
+
+
+@pytest.mark.parametrize(
+    ("task", "data", "task_id"),
+    [
+        ({}, "up_right_low", 2),
+        ({**ACTIVE, "status": "stopped"}, "up_right_low", 2),
+        ({**ACTIVE, "status": "done"}, "up_right_high_1_accept", 2),
+        ({**ACTIVE, "slot": "left"}, "up_right_low", 2),
+        (ACTIVE, "up_left_low", 2),
+        (ACTIVE, "up_right_low", 1),
+        (ACTIVE, "up_right_low", None),
+    ],
+)
+async def test_upgrade_click_needs_active_task_slot_and_task_id(
+    rig: Rig, task: dict[str, Any], data: str, task_id: int | None
+) -> None:
+    await _upgrade_task(rig, **task)
+    res = await rig.gw.submit(_up_click(rig, data, task_id=task_id))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "upgrade_task_changed")
+    assert rig.transport.sent == []
+
+
+@pytest.mark.parametrize("data", ["up_right_low", "up_right_middle_1_accept"])
+async def test_upgrade_click_of_active_task_passes(rig: Rig, data: str) -> None:
+    await _upgrade_task(rig, **ACTIVE)
+    rig.reply_with("Успех")
+    res = await rig.gw.submit(_up_click(rig, data))
+    assert res.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == [data]
+
+
+@pytest.mark.parametrize(
+    ("source", "scenario"),
+    [
+        (Source.MANUAL, "gadget_upgrade"),
+        (Source.PLANNER, "gadget_upgrade"),
+        (Source.SCENARIO, "gadget_buy"),
+        (Source.SCENARIO, None),
+    ],
+)
+async def test_upgrade_click_outside_its_scenario_needs_confirm(
+    rig: Rig, source: Source, scenario: str | None
+) -> None:
+    await _upgrade_task(rig, **ACTIVE)
+    res = await rig.gw.submit(_up_click(rig, source=source, scenario=scenario))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+
+
+@pytest.mark.parametrize(("revision", "content"), [(False, True), (True, False), (False, False)])
+async def test_upgrade_click_without_frame_rejected(
+    rig: Rig, revision: bool, content: bool
+) -> None:
+    await _upgrade_task(rig, **ACTIVE)
+    res = await rig.gw.submit(_up_click(rig, revision=revision, content=content))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "stale_frame_required")
+    assert rig.transport.sent == []
+
+
+async def test_upgrade_decline_is_nav(rig: Rig) -> None:
+    rig.reply_with("Успех")
+    decline = _up_click(rig, "up_right_low_decline", revision=False, content=False)
+    res = await rig.gw.submit(decline)
+    assert res.status is ActionStatus.CONFIRMED
+
+
+async def test_stop_rejects_next_click_of_old_batch(rig: Rig) -> None:
+    await _upgrade_task(rig, **{**ACTIVE, "task_id": 1})
+    rig.reply_with("Успех")
+    first = await rig.gw.submit(_up_click(rig, task_id=1))
+    assert first.status is ActionStatus.CONFIRMED
+    await _upgrade_task(rig, **{**ACTIVE, "task_id": 1, "status": "stopped"})
+    second = await rig.gw.submit(_up_click(rig, task_id=1))
+    assert (second.status, second.reason) == (ActionStatus.REJECTED, "upgrade_task_changed")
+    assert [s.payload for s in rig.transport.sent] == ["up_right_low"]
+
+
+async def test_stop_while_click_queued_rejects_it(rig: Rig) -> None:
+    # Клик ждал очереди, а задачу остановили: перед отправкой — по текущей задаче.
+    await _upgrade_task(rig, **ACTIVE)
+    lease = await rig.gw.acquire_lease("other")
+    pending = asyncio.create_task(rig.gw.submit(_up_click(rig)))
+    await asyncio.sleep(0.02)
+    await _upgrade_task(rig, **{**ACTIVE, "status": "stopped"})
+    await rig.gw.release_lease(lease)
+    res = await pending
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "upgrade_task_changed")
+    assert rig.transport.sent == []
+
+
+async def test_sells_from_gadget_buy_ignores_stocks_dump_flag(rig: Rig) -> None:
+    await _features(rig, stocks_dump=False, gadgets_buy=True)
+    rig.reply_with("Готово")
+    res = await rig.gw.submit(_gadget_send("/sells_hooli_5", "gadget_buy"))
+    assert res.status is ActionStatus.CONFIRMED
+    dump = await rig.gw.submit(_gadget_send("/sells_hooli_5", "stocks_dump"))
+    assert (dump.status, dump.reason) == (ActionStatus.REJECTED, "feature_off:stocks_dump")
+    # Своя компания — по-прежнему только вручную с подтверждением.
+    own = await rig.gw.submit(_gadget_send("/sells_bmesa_5", "gadget_buy"))
+    assert (own.status, own.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    await _features(rig, stocks_dump=True, gadgets_buy=False)
+    off = await rig.gw.submit(_gadget_send("/sells_hooli_5", "gadget_buy"))
+    assert (off.status, off.reason) == (ActionStatus.REJECTED, "feature_off:gadgets_buy")
+    assert [s.payload for s in rig.transport.sent] == ["/sells_hooli_5"]
+
+
+async def test_deadline_passed_rejects(rig: Rig) -> None:
+    await _features(rig, gadgets_buy=True)
+    past = datetime.now(UTC) - timedelta(seconds=1)
+    res = await rig.gw.submit(_gadget_send("/buy_right1", "gadget_buy", deadline=past))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "deadline")
+    assert rig.transport.sent == []

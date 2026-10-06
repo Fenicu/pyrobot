@@ -1194,3 +1194,29 @@ async def test_metro_run_resumed_under_reconcile_block(
     await rig.loop.step()
     assert [p.get("resume") for p in seen] == ([run_in(now).value.message_id] if resumed else [])
     assert [r.scenario for r in rig.store.runs] == (["metro"] if resumed else [])
+
+
+@pytest.mark.parametrize(("scenario", "task_id"), [("gadget_upgrade", 3), ("gadget_buy", None)])
+async def test_perform_passes_task_id_state_and_settings(
+    world: World, monkeypatch: pytest.MonkeyPatch, scenario: str, task_id: int | None
+) -> None:
+    seen: list[tuple[int | None, bool, bool]] = []
+
+    async def fake(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        before = ctx.settings().features.gadgets_buy
+        await world.settings.update(
+            lambda s: s.model_copy(
+                update={"features": s.features.model_copy(update={"gadgets_buy": True})}
+            ),
+            changed_by="test",
+        )
+        await world.feed("profile", 3624478)
+        fresh = ctx.settings().features.gadgets_buy and not before
+        seen.append((ctx.task_id, fresh, ctx.state() == world.state != state))
+        return ScenarioResult("done", "ok")
+
+    monkeypatch.setitem(loop_module.SCENARIOS, scenario, ScenarioSpec(scenario, fake, True))
+    rig = Rig(world)
+    act = Act(scenario, {"task_id": 3}, "test")
+    await rig.loop._execute(act, await rig.store.record(datetime.now(UTC), act), dry_run=False)
+    assert seen == [(task_id, True, True)]

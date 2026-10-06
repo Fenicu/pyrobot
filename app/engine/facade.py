@@ -18,6 +18,7 @@ from app.engine.notify import LogNotifier, NotifierPort
 from app.engine.pipeline import Pipeline
 from app.engine.planner.decide import Outlook
 from app.engine.planner.loop import PlanView
+from app.engine.scenarios.registry import SCENARIOS
 from app.engine.settings import (
     ArtifactKey,
     Settings,
@@ -56,6 +57,10 @@ class PlannerUnavailable(Exception):
 
 class TgNotOnline(Exception):
     pass
+
+
+class ScenarioNotManual(Exception):
+    """Сценарий запускает только планировщик (`ScenarioSpec.manual`)."""
 
 
 def _no_watch() -> GameChatWatch | None:
@@ -328,6 +333,9 @@ class EngineFacade:
         self, name: str, params: Mapping[str, Any], *, key: str, by: str
     ) -> tuple[int, bool]:
         """Ручной запуск сценария через очередь планировщика; KeyError — нет такого сценария."""
+        spec = SCENARIOS.get(name)
+        if spec is not None and not spec.manual:
+            raise ScenarioNotManual(name)
         if self._planner is None:
             raise PlannerUnavailable
         return await self._planner.request(name, params, key=key, by=by)

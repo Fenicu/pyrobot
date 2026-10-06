@@ -10271,6 +10271,16 @@
             },
             "description": "account not found | unknown scenario | scenario run not found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "scenario_not_manual"
+          },
           "422": {
             "description": "invalid body, params contradicting fixed scenario params, missing or invalid required params, or idempotency_key reused with other parameters"
           },

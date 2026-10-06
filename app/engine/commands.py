@@ -44,8 +44,21 @@ _COMPANIES = "(?:" + "|".join(COMPANIES.values()) + ")"
 # чужие — обычное действие. Своя неизвестна — любая может ей оказаться.
 _STOCK_TEXT = re.compile(rf"/(?:buys|sells)_(?P<company>{_COMPANIES})_\d+\Z")
 _STOCK_CALLBACK = re.compile(rf"buys_(?P<company>{_COMPANIES})\Z")
+STOCK_SELL = re.compile(rf"/sells_{_COMPANIES}_\d+\Z")
+
+_UP_SLOTS = "right|left|legs|head|chest|torso|ring|book|pbank|pants"
+# Гаджеты: магазин (тиры 1–14 шести слотов), надевание и снятие по коду, экран заточки слота.
+# Покупку и надевание без подтверждения шлюз пропускает только шагами сценариев гаджетов.
+GADGET_BUY = re.compile(r"/buy_(?:right|left|legs|head|chest|torso)(?:1[0-4]|[1-9])\Z")
+GADGET_WEAR = re.compile(r"/wear_\d+_[a-z]\d+\Z")
+GADGET_UNWEAR = re.compile(r"/unwear_[a-z]\d+\Z")
+UPGRADE_CLICK = re.compile(rf"up_(?P<slot>{_UP_SLOTS})_(?P<grade>low|middle|high)(?:_1_accept)?\Z")
 
 TEXT_RULES: tuple[Rule, ...] = (
+    Rule(GADGET_BUY, _R),
+    Rule(GADGET_WEAR, _R),
+    Rule(GADGET_UNWEAR, _R),
+    *_re(_N, rf"/up_(?:{_UP_SLOTS})\Z"),
     *_re(
         _F,
         r"/changecompany\b",
@@ -295,6 +308,8 @@ TEXT_RULES: tuple[Rule, ...] = (
 )
 
 CALLBACK_RULES: tuple[Rule, ...] = (
+    Rule(UPGRADE_CLICK, _R),
+    *_re(_N, rf"up_(?:{_UP_SLOTS})_(?:low|middle|high)_decline\Z"),
     *_re(
         _F,
         r"buy_mercenaries_",
@@ -398,6 +413,7 @@ _FEATURE_TEXT: tuple[tuple[re.Pattern[str], str], ...] = tuple(
             "battle",
         ),
         (rf"/(buys|sells)_{_COMPANIES}_\d+\Z", "stocks_dump"),
+        (r"(/buy_\w+|/wear_\w+|/unwear_\w+)\Z", "gadgets_buy"),
     )
 )
 _FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(

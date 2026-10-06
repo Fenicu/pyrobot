@@ -484,6 +484,9 @@ class PlannerLoop:
             source=Source.MANUAL if manual else Source.SCENARIO,
             run_id=run_id,
             scenario=act.scenario,
+            state=self._state,
+            settings=lambda: self._settings.current,
+            task_id=act.params.get("task_id") if act.scenario == "gadget_upgrade" else None,
         )
         self.current = act.scenario
         self.current_params = dict(act.params)

@@ -100,6 +100,7 @@ const CODE_TEXT: Record<string, string> = {
 	lock_lost: 'Движок потерял аренду аккаунта и перезапускается — повторите позже',
 	'idempotency_key reused': 'Этот ключ уже использован с другими параметрами',
 	'unknown scenario': 'Нет такого сценария',
+	scenario_not_manual: 'Этот сценарий запускает только бот',
 	'account not found': 'Аккаунт не найден',
 	account_deleting: 'Аккаунт удаляется',
 	name_taken: 'Аккаунт с таким именем уже есть',
