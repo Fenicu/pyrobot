@@ -124,6 +124,11 @@ describe('Вход в Telegram', () => {
 		expect(await screen.findByLabelText('Телефон аккаунта')).toBeInTheDocument();
 	});
 
+	it('неизвестный код ошибки в статусе — тот же текст, что у неизвестного отказа 400', async () => {
+		setup(() => json(st('error', { error: 'auth_restart' })));
+		expect(await screen.findByText('Telegram отклонил запрос (auth_restart)')).toBeInTheDocument();
+	});
+
 	it('лимит кодов входа — 429 со своим текстом; свой чат в настройках — пояснение', async () => {
 		const user = userEvent.setup();
 		setup((c) => {

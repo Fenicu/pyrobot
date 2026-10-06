@@ -138,7 +138,7 @@
 		if (code.startsWith(unsupported)) {
 			return `Telegram ответил на запрос кода способом, который бот не поддерживает (${code.slice(unsupported.length)})`;
 		}
-		return ERRORS[code] ?? code;
+		return ERRORS[code] ?? `Telegram отклонил запрос (${code})`;
 	}
 
 	async function refresh() {
@@ -173,10 +173,7 @@
 			if (err.kind === 'http' && err.status === 400 && err.code) {
 				// 400 — отказ Telegram с кодом (RPC ID в нижнем регистре или код входа).
 				attempt = null;
-				message =
-					ERRORS[err.code] || err.code.startsWith('send_code_unsupported:')
-						? statusError(err.code)
-						: `Telegram отклонил запрос (${err.code})`;
+				message = statusError(err.code);
 			} else if (err.kind === 'conflict' || (err.kind === 'http' && err.status === 400) || err.kind === 'forbidden') {
 				attempt = null;
 				message = 'Попытка входа устарела или начата в другой вкладке — начните заново';
