@@ -143,6 +143,18 @@ class FakeTgBackend:
         self.send_email_calls: list[tuple[str, str, str]] = []
         self.verify_email_calls: list[tuple[str, str, str]] = []
         self.sign_in_calls: list[tuple[str, str, str, bool]] = []
+        # Ответ на подтверждение почты и маска адреса, которую вернёт Telegram.
+        self.after_email: int | SentCodeInfo = SentCodeInfo(
+            phone_code_hash="hash_after_email", type="app"
+        )
+        self.email_pattern: str | None = "t***@e***.com"
+        # Сбой очередного вызова по имени метода (`resend_code`, `sign_in`, …).
+        self.errors: dict[str, BaseException] = {}
+
+    def _fail(self, name: str) -> None:
+        err = self.errors.pop(name, None)
+        if err is not None:
+            raise err
 
     async def connect(self) -> bool:
         self.connected = True
@@ -155,22 +167,26 @@ class FakeTgBackend:
 
     async def resend_code(self, phone: str, code_hash: str) -> SentCodeInfo:
         self.resend_calls.append((phone, code_hash))
+        self._fail("resend_code")
         return SentCodeInfo(phone_code_hash="hash_resent", type="sms", timeout=60)
 
     async def send_verify_email_code(self, phone: str, code_hash: str, email: str) -> str | None:
         self.send_email_calls.append((phone, code_hash, email))
-        return "t***@e***.com"
+        self._fail("send_verify_email_code")
+        return self.email_pattern
 
     async def verify_email(self, phone: str, code_hash: str, code: str) -> int | SentCodeInfo:
         self.verify_email_calls.append((phone, code_hash, code))
+        self._fail("verify_email")
         if code != self.email_code:
             raise InvalidCode
-        return SentCodeInfo(phone_code_hash="hash_after_email", type="app")
+        return self.after_email
 
     async def sign_in(
         self, phone: str, code_hash: str, code: str, *, is_email: bool = False
     ) -> int:
         self.sign_in_calls.append((phone, code_hash, code, is_email))
+        self._fail("sign_in")
         if code != self.code:
             raise InvalidCode
         self._code_ok = True

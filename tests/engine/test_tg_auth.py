@@ -586,3 +586,58 @@ async def test_resend_code_flow() -> None:
     assert st_resent.state is TgState.AWAITING_CODE
     assert st_resent.delivery_type == "sms"
     assert backend.resend_calls == [("+79991234567", "h3")]
+
+
+async def test_resend_and_email_take_code_limit() -> None:
+    clock = FakeMonotonic(0.0)
+    codes = CodeLimiter(10, per_account=2, monotonic=clock)
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h3", type="app", next_type="sms")
+    )
+    mgr = tg_auth(backend, codes=codes, account_id=7)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    assert (await mgr.resend_code(st.attempt_id or "", "s1")).delivery_type == "sms"
+    with pytest.raises(CodeRateLimited) as info:
+        await mgr.resend_code(st.attempt_id or "", "s1")
+    assert info.value.retry_after_s == 3600.0
+    # Отказ квоту не тратит и Telegram не трогает.
+    assert len(backend.resend_calls) == 1
+
+    # Письмо с кодом — тоже запрос кода: при исчерпанном лимите Telegram не зовётся.
+    email_clock = FakeMonotonic(0.0)
+    email_codes = CodeLimiter(10, per_account=1, monotonic=email_clock)
+    email_backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email")
+    )
+    email_mgr = tg_auth(email_backend, codes=email_codes, account_id=8)
+    await email_mgr.boot()
+    st = await email_mgr.start("+888", owner="s1")
+    email_clock.now = 3000.0
+    with pytest.raises(CodeRateLimited) as info:
+        await email_mgr.send_email(st.attempt_id or "", "s1", "test@example.com")
+    assert info.value.retry_after_s == 600.0
+    assert email_backend.send_email_calls == []
+    email_clock.now = 3600.0
+    st = await email_mgr.send_email(st.attempt_id or "", "s1", "test@example.com")
+    assert st.state is TgState.AWAITING_EMAIL_CODE
+    assert len(email_backend.send_email_calls) == 1
+
+
+async def test_delivery_expires_at_is_unix_time_after_email() -> None:
+    import time
+
+    backend = FakeTgBackend(
+        sent_code_info=SentCodeInfo(phone_code_hash="h1", type="setup_email"),
+        email_code="54321",
+    )
+    backend.after_email = SentCodeInfo(phone_code_hash="h2", type="app", timeout=60)
+    mgr = tg_auth(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    await mgr.send_email(st.attempt_id or "", "s1", "test@example.com")
+    before = time.time()
+    st = await mgr.submit_email_code(st.attempt_id or "", "s1", "54321")
+    assert st.delivery_timeout == 60
+    assert st.delivery_expires_at is not None
+    assert before + 60 <= st.delivery_expires_at <= time.time() + 60

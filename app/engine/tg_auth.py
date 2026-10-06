@@ -240,10 +240,7 @@ class TgAuthManager:
             active = self._attempt
             if active is not None and active.owner != owner and active.expires > time.monotonic():
                 raise AttemptMismatch("another login in progress")
-            if self._codes is not None:
-                wait = self._codes.take(self._account_id)
-                if wait is not None:
-                    raise CodeRateLimited(wait)
+            self._take_code()
             try:
                 await self._backend.connect()
                 sent = await self._backend.send_code(phone)
@@ -327,6 +324,7 @@ class TgAuthManager:
     async def resend_code(self, attempt_id: str, owner: str) -> TgStatus:
         async with self._lock:
             attempt = self._check(attempt_id, owner, TgState.AWAITING_CODE)
+            self._take_code()
             try:
                 sent = await self._backend.resend_code(attempt.phone, attempt.code_hash)
             except FloodWait as exc:
@@ -352,6 +350,7 @@ class TgAuthManager:
     async def send_email(self, attempt_id: str, owner: str, email: str) -> TgStatus:
         async with self._lock:
             attempt = self._check(attempt_id, owner, TgState.AWAITING_EMAIL)
+            self._take_code()
             try:
                 pattern = await self._backend.send_verify_email_code(
                     attempt.phone, attempt.code_hash, email
@@ -395,7 +394,7 @@ class TgAuthManager:
                 return self.status()
 
             timeout = res.timeout
-            timeout_at = time.monotonic() + timeout if timeout is not None else None
+            timeout_at = time.time() + timeout if timeout is not None else None
             attempt.code_hash = res.phone_code_hash
             attempt.code_type = res.type
             attempt.email_pattern = res.email_pattern
@@ -472,6 +471,13 @@ class TgAuthManager:
         async with self._lock:
             if self._state is TgState.OVERLOAD:
                 self._set(TgState.ONLINE)
+
+    def _take_code(self) -> None:
+        """Запрос кода (SMS, звонок, письмо) — через общий лимит: сверх — `CodeRateLimited`."""
+        if self._codes is not None:
+            wait = self._codes.take(self._account_id)
+            if wait is not None:
+                raise CodeRateLimited(wait)
 
     def _check(self, attempt_id: str, owner: str, state: TgState) -> _Attempt:
         attempt = self._attempt
