@@ -187,6 +187,8 @@ def test_inventory_gadgets_snapshot() -> None:
         "name": "Хиджаб",
         "bonuses": {"theory": 85, "wisdom": 55, "practice": 30},
         "mark": "🧶",
+        "code": "h18",
+        "index": None,
     }
     assert gadgets["sets"] == ["⚫️Сет VIP", "🗳Сет Логистик", "🗺Сет Кладоискатель", "🦉Сет Сова"]
     assert state["gadgets"]["src"] == "screen"

@@ -39,6 +39,17 @@ def test_empty_and_incompatible_snapshots() -> None:
     assert load_state(snapshot) == CharacterState()
 
 
+def test_snapshot_before_gadget_fields_loads() -> None:
+    """Снимок прошлой сборки: гаджеты без `code`/`index`, без рюкзака и без `upgrade_info`."""
+    worn = {"grade": None, "level": None, "slot": "📱", "name": "Китайская мобила"}
+    gadgets = {"value": {"items": [worn], "sets": []}, "at": "2026-09-26T12:00:00Z"}
+    state = load_state({"schema_version": SCHEMA_VERSION, "gadgets": gadgets})
+    assert state.gadgets is not None and state.upgrade_info is None
+    assert state.gadgets.value.bag == ()
+    item = state.gadgets.value.items[0]
+    assert (item.code, item.index, item.name) == (None, None, "Китайская мобила")
+
+
 def test_freshness() -> None:
     obs = Obs(value=1, at=NOW)
     assert is_fresh(obs, NOW + timedelta(minutes=14), timedelta(minutes=15))

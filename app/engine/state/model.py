@@ -4,7 +4,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 log = logging.getLogger(__name__)
 Src = Literal["screen", "derived", "doubtful"]
@@ -201,13 +201,27 @@ class GadgetState(_Frozen):
     name: str
     bonuses: dict[str, int] = {}
     mark: str | None = None
+    # Код из `/unwear_<код>`, `/wear_<N>_<код>` («p18») и номер N у гаджета в рюкзаке.
+    code: str | None = None
+    index: int | None = None
 
 
 class GadgetsState(_Frozen):
-    """Надетые гаджеты в порядке экрана и строки сетов («⚫️Сет VIP»)."""
+    """Надетые гаджеты в порядке экрана, строки сетов («⚫️Сет VIP») и рюкзак в порядке экрана."""
 
     items: tuple[GadgetState, ...] = ()
     sets: tuple[str, ...] = ()
+    # Без default в схеме: в снимке прошлой сборки ключа нет.
+    bag: tuple[GadgetState, ...] = Field(default_factory=tuple)
+
+
+class UpgradeInfo(_Frozen):
+    """Экран апгрейдов: шансы по видам (`white`, `blue`, `red`), бонус Апгрейдмэна и режим
+    подтверждения (None — неизвестен)."""
+
+    chances: dict[str, int] = {}
+    upgrademan_pct: int | None = None
+    confirm: bool | None = None
 
 
 class ActivityStat(_Frozen):
@@ -283,6 +297,7 @@ class CharacterState(_Frozen):
     containers_small: Obs[int] | None = None
     containers_medium: Obs[int] | None = None
     upgrades: Obs[Upgrades] | None = None
+    upgrade_info: Obs[UpgradeInfo] | None = None
     gorbushka: Obs[GorbushkaState] | None = None
     last_refusal: Obs[RefusalState] | None = None
     team_task: Obs[TeamTask] | None = None
@@ -324,8 +339,8 @@ class CharacterState(_Frozen):
     # Надетые гаджеты и сеты с экрана `/inv`.
     gadgets: Obs[GadgetsState] | None = None
     activity_stats: dict[str, ActivityStat] = {}
-    # Ключи «чат:сообщение:вид» применённых итогов → время создания сообщения:
-    # правка итога не начисляет повторно (горизонт хранения — в редьюсере).
+    # Ключи «чат:сообщение:вид» применённых итогов (у итога на ревизию — «…:вид:ревизия») →
+    # время создания сообщения: правка итога не начисляет повторно (горизонт — в редьюсере).
     applied: dict[str, datetime] = {}
 
 

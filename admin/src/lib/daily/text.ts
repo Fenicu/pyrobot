@@ -16,6 +16,8 @@ export const KIND: Record<string, KindLabel> = {
 	hotel: { icon: '🛏', label: 'отель' },
 	lottery_tickets: { icon: '🎟', label: 'билеты лотереи' },
 	gorbushka_ticket: { icon: '🎟', label: 'билет Горбушки' },
+	gadget_buy: { icon: '🛒', label: 'гаджеты' },
+	gadget_upgrade: { icon: '🗜', label: 'заточка' },
 	robbery: { icon: '🥷', label: 'ограбление' },
 	book: { icon: '📒', label: 'книги' },
 	card: { icon: '💳', label: 'карты' },

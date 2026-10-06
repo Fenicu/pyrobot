@@ -27,6 +27,7 @@ from app.engine.state.model import (
     TargetSet,
     TeamTask,
     TripsState,
+    UpgradeInfo,
     Upgrades,
 )
 
@@ -87,6 +88,7 @@ class PublicState(BaseModel):
     containers_small: Observed[int] | None = None
     containers_medium: Observed[int] | None = None
     upgrades: Observed[Upgrades] | None = None
+    upgrade_info: Observed[UpgradeInfo] | None = None
     gorbushka: Observed[GorbushkaState] | None = None
     last_refusal: Observed[RefusalState] | None = None
     team_task: Observed[TeamTask] | None = None

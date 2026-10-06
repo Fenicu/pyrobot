@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
 from app.engine.events import Event, Unrecognized
+from app.engine.gadget_catalog import SHOP, slot_of_icon
 from app.engine.gametime import MSK, tasks_day, to_msk
 from app.engine.parsing.activities import (
     ActivityCancelled,
@@ -36,6 +37,13 @@ from app.engine.parsing.daily import (
     TaskOffer,
 )
 from app.engine.parsing.food import FastfoodEaten, FoodMenu
+from app.engine.parsing.gadgets import (
+    GadgetBought,
+    UpgradeAttempt,
+    UpgradeConfirmSet,
+    UpgradeScreen,
+    UpgradesScreen,
+)
 from app.engine.parsing.gorbushka import GorbushkaFight, GorbushkaScreen
 from app.engine.parsing.items import (
     BookRead,
@@ -133,6 +141,7 @@ from app.engine.state.model import (
     TeamTask,
     TripRef,
     TripsState,
+    UpgradeInfo,
     Upgrades,
     VehicleState,
     dump_state,
@@ -188,6 +197,12 @@ _PROFILE_FIELDS = (
     "bag",
     "bag_cap",
 )
+# Цена гаджета магазина по (названию без регистра, бонусам): в ответе покупки слота и тира нет.
+_SHOP_PRICES = {
+    (item.name.casefold(), frozenset(item.bonuses.items())): item.price
+    for items in SHOP.values()
+    for item in items
+}
 _REFUSAL_TIMERS = {
     "card_cooldown": "card_ready_at",
     "prizebox_locked": "prizebox_ready_at",
@@ -295,6 +310,18 @@ class _Patch:
         if mode == "doubt":
             # Значение не трогаем, но не доверяем ему.
             self.updates[name] = current.model_copy(update={"src": "doubtful"})
+            return
+        src: Src = "doubtful" if current.src == "doubtful" else "derived"
+        self.updates[name] = Obs(value=fn(current.value), at=self.at, src=src)
+
+    def sequential(self, name: str, fn: Callable[[Any], Any]) -> None:
+        """Приращение по серии правок одного сообщения: сравнение с моментом этой правки, а не
+        создания сообщения (`change`), — снимок после прошлой правки той же серии не мешает."""
+        current: Obs[Any] | None = self.get(name)
+        if current is None or current.at > self.at:
+            return
+        if current.at == self.at and name not in self.updates:
+            self.doubt(name)
             return
         src: Src = "doubtful" if current.src == "doubtful" else "derived"
         self.updates[name] = Obs(value=fn(current.value), at=self.at, src=src)
@@ -632,17 +659,96 @@ def _fastfood(p: _Patch, e: FastfoodEaten) -> None:
 
 @_on(Inventory)
 def _inventory(p: _Patch, e: Inventory) -> None:
-    for name in ("books", "cards", "bag", "bag_cap", "prizebox"):
+    for name in ("books", "cards", "bag_cap", "prizebox"):
         p.snap(name, getattr(e, name))
+    # В ответе на /wear_ и /unwear_ «Занято N из M» — ещё до смены.
+    if e.after_change:
+        p.doubt("bag")
+    else:
+        p.snap("bag", e.bag)
     p.snap("book_ready_at", p.later(e.books_in_s or 0))
     p.snap("card_ready_at", p.later(e.cards_in_s or 0))
     p.snap("prizebox_ready_at", p.later(e.prizebox_in_s or 0) if e.prizebox else None)
     p.snap(
         "gadgets",
         GadgetsState(
-            items=tuple(GadgetState(**asdict(g)) for g in e.gadgets.items), sets=e.gadgets.sets
+            items=tuple(GadgetState(**asdict(g)) for g in e.gadgets.items),
+            sets=e.gadgets.sets,
+            bag=tuple(GadgetState(**asdict(g)) for g in e.gadgets.bag),
         ),
     )
+
+
+@_on(GadgetBought)
+def _gadget_bought(p: _Patch, e: GadgetBought) -> None:
+    price = _SHOP_PRICES.get((e.name.casefold(), frozenset(e.bonuses.items())))
+    if price is None:
+        p.doubt("money")
+    else:
+        p.delta("money", -price)
+        p.effect("gadget_buy", amounts(money=-price), {e.name: 1})
+    p.delta("bag", 1)
+    # Код купленного появится только в /inv: до него список рюкзака неполон.
+    p.doubt("gadgets")
+
+
+def _gadget_levels(p: _Patch, seen: Mapping[str, tuple[str, dict[str, Any]]]) -> None:
+    """Грейд, уровень (и бонусы) надетых по up-слоту из экранов апгрейдов и правок заточки, если
+    правка не старше снимка `/inv`. Момент и источник снимка прежние: рюкзак эти экраны не видят.
+    На слоте другой гаджет — список устарел, `doubt`."""
+    known: Obs[GadgetsState] | None = p.get("gadgets")
+    if known is None or p.at < known.at:
+        return
+    items = list(known.value.items)
+    for up, (name, update) in seen.items():
+        i = next((i for i, g in enumerate(items) if _up_slot_of(g) == up), None)
+        if i is None or items[i].name != name:
+            p.doubt("gadgets")
+            return
+        items[i] = items[i].model_copy(update=update)
+    value = known.value.model_copy(update={"items": tuple(items)})
+    p.updates["gadgets"] = known.model_copy(update={"value": value})
+
+
+def _up_slot_of(g: GadgetState) -> str | None:
+    info = slot_of_icon(g.slot)
+    return info.up if info is not None else None
+
+
+@_on(UpgradesScreen)
+def _upgrades_screen(p: _Patch, e: UpgradesScreen) -> None:
+    p.snap("upgrades", Upgrades(**e.stocks))
+    info = UpgradeInfo(chances=e.chances, upgrademan_pct=e.upgrademan_pct, confirm=e.confirm)
+    p.snap("upgrade_info", info)
+    _gadget_levels(
+        p,
+        {
+            up: (g.name, {"grade": g.grade, "level": g.level, "bonuses": g.bonuses})
+            for up, g in e.items
+        },
+    )
+
+
+@_on(UpgradeScreen)
+def _upgrade_screen(p: _Patch, e: UpgradeScreen) -> None:
+    p.snap("upgrades", Upgrades(**e.stocks))
+    _gadget_levels(p, {e.up_slot: (e.name, {"grade": e.grade, "level": e.level})})
+
+
+@_on(UpgradeAttempt)
+def _upgrade_attempt(p: _Patch, e: UpgradeAttempt) -> None:
+    # Шапка правки — уровень уже после попытки; у провала до первого уровня грейда нет.
+    _gadget_levels(p, {e.up_slot: (e.name, {"grade": e.grade, "level": e.level or None})})
+    p.sequential("upgrades", lambda u: u.model_copy(update={e.used: getattr(u, e.used) - 1}))
+    items = {f"up:{e.up_slot}": 1, "ok" if e.success else "fail": 1}
+    p.effect("gadget_upgrade", amounts(**{f"upgrades_{e.used}": -1}), items)
+
+
+@_on(UpgradeConfirmSet)
+def _upgrade_confirm_set(p: _Patch, e: UpgradeConfirmSet) -> None:
+    known: Obs[UpgradeInfo] | None = p.get("upgrade_info")
+    if known is not None:
+        p.snap("upgrade_info", known.value.model_copy(update={"confirm": e.on}), src=known.src)
 
 
 @_on(BookRead)
@@ -1395,6 +1501,15 @@ def _rewards_only(p: _Patch, e: RewardsOnly) -> None:
     p.snap("trips", state.model_copy(update={"last": done}), src=src)
 
 
+def _revision_key(applied: dict[str, datetime], base: str, revision: int) -> str:
+    """Ключ итога ревизии; ключи более ранних ревизий того же сообщения удаляются — за порцию
+    заточки их были бы десятки на 14 дней. Повтор ранней ревизии отсекает журнал сообщений."""
+    for old in [k for k in applied if k.rpartition(":")[0] == base]:
+        if int(old.rpartition(":")[2]) < revision:
+            del applied[old]
+    return f"{base}:{revision}"
+
+
 class StateReducer:
     def __init__(self) -> None:
         # Конвейер передаёт обратно тот же словарь, что вернул apply: не разбираем его заново.
@@ -1424,6 +1539,8 @@ class StateReducer:
                 continue
             if event.outcome:
                 key = f"{msg.chat_id}:{msg.msg_id}:{event.kind}"
+                if event.per_revision:
+                    key = _revision_key(applied, key, msg.revision)
                 if key in applied or patch.origin < horizon:
                     continue
                 applied[key] = patch.origin

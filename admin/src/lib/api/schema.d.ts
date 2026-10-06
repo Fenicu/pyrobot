@@ -2127,8 +2127,12 @@ export interface components {
             bonuses: {
                 [key: string]: number;
             };
+            /** Code */
+            code?: string | null;
             /** Grade */
             grade?: string | null;
+            /** Index */
+            index?: number | null;
             /** Level */
             level?: number | null;
             /** Mark */
@@ -2140,9 +2144,11 @@ export interface components {
         };
         /**
          * GadgetsState
-         * @description Надетые гаджеты в порядке экрана и строки сетов («⚫️Сет VIP»).
+         * @description Надетые гаджеты в порядке экрана, строки сетов («⚫️Сет VIP») и рюкзак в порядке экрана.
          */
         GadgetsState: {
+            /** Bag */
+            bag?: components["schemas"]["GadgetState"][];
             /**
              * Items
              * @default []
@@ -2760,6 +2766,20 @@ export interface components {
             /** Value */
             value: string | null;
         };
+        /** Observed[UpgradeInfo] */
+        Observed_UpgradeInfo_: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Src
+             * @enum {string}
+             */
+            src: "screen" | "derived" | "doubtful";
+            value: components["schemas"]["UpgradeInfo"];
+        };
         /** Observed[Upgrades] */
         Observed_Upgrades_: {
             /**
@@ -3256,6 +3276,7 @@ export interface components {
             team_tag?: components["schemas"]["Observed_Union_str__NoneType__"] | null;
             team_task?: components["schemas"]["Observed_TeamTask_"] | null;
             trips?: components["schemas"]["Observed_TripsState_"] | null;
+            upgrade_info?: components["schemas"]["Observed_UpgradeInfo_"] | null;
             upgrades?: components["schemas"]["Observed_Upgrades_"] | null;
             woke_at?: components["schemas"]["Observed_datetime_"] | null;
         };
@@ -3692,6 +3713,24 @@ export interface components {
             items: components["schemas"]["UnrecognizedOut"][];
             /** Next Before */
             next_before: number | null;
+        };
+        /**
+         * UpgradeInfo
+         * @description Экран апгрейдов: шансы по видам (`white`, `blue`, `red`), бонус Апгрейдмэна и режим
+         *     подтверждения (None — неизвестен).
+         */
+        UpgradeInfo: {
+            /**
+             * Chances
+             * @default {}
+             */
+            chances: {
+                [key: string]: number;
+            };
+            /** Confirm */
+            confirm?: boolean | null;
+            /** Upgrademan Pct */
+            upgrademan_pct?: number | null;
         };
         /** Upgrades */
         Upgrades: {

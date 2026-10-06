@@ -2272,6 +2272,17 @@
             "title": "Bonuses",
             "type": "object"
           },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
           "grade": {
             "anyOf": [
               {
@@ -2282,6 +2293,17 @@
               }
             ],
             "title": "Grade"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
           },
           "level": {
             "anyOf": [
@@ -2322,8 +2344,15 @@
         "type": "object"
       },
       "GadgetsState": {
-        "description": "Надетые гаджеты в порядке экрана и строки сетов («⚫️Сет VIP»).",
+        "description": "Надетые гаджеты в порядке экрана, строки сетов («⚫️Сет VIP») и рюкзак в порядке экрана.",
         "properties": {
+          "bag": {
+            "items": {
+              "$ref": "#/components/schemas/GadgetState"
+            },
+            "title": "Bag",
+            "type": "array"
+          },
           "items": {
             "default": [],
             "items": {
@@ -3888,6 +3917,35 @@
           "src"
         ],
         "title": "Observed[Union[str, NoneType]]",
+        "type": "object"
+      },
+      "Observed_UpgradeInfo_": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/UpgradeInfo"
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[UpgradeInfo]",
         "type": "object"
       },
       "Observed_Upgrades_": {
@@ -5526,6 +5584,16 @@
               }
             ]
           },
+          "upgrade_info": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_UpgradeInfo_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "upgrades": {
             "anyOf": [
               {
@@ -6736,6 +6804,43 @@
           "next_before"
         ],
         "title": "UnrecognizedPage",
+        "type": "object"
+      },
+      "UpgradeInfo": {
+        "description": "Экран апгрейдов: шансы по видам (`white`, `blue`, `red`), бонус Апгрейдмэна и режим\nподтверждения (None — неизвестен).",
+        "properties": {
+          "chances": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Chances",
+            "type": "object"
+          },
+          "confirm": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirm"
+          },
+          "upgrademan_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upgrademan Pct"
+          }
+        },
+        "title": "UpgradeInfo",
         "type": "object"
       },
       "Upgrades": {

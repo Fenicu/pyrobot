@@ -137,6 +137,24 @@ def test_ledger_row_without_amounts_counts_as_event() -> None:
     assert day.items == {"Флюс": 1}
 
 
+def test_gadget_rows_are_losses_without_craft_items() -> None:
+    """Покупка и заточка гаджетов — траты; их предметы (название, `up:<слот>`, `ok`/`fail`) не
+    предметы крафта."""
+    ledger = [
+        LedgerEntry(TODAY, "gadget_buy", {"money": -3}, {"Китайская мобила": 1}),
+        LedgerEntry(TODAY, "gadget_upgrade", {"upgrades_white": -1}, {"up:right": 1, "ok": 1}),
+        LedgerEntry(TODAY, "gadget_upgrade", {"upgrades_white": -1}, {"up:right": 1, "fail": 1}),
+        LedgerEntry(TODAY, "deed", {"exp": 158}, {"Пуговица": 1}),
+    ]
+    [day] = summarize(**one(ledger=ledger))  # type: ignore[arg-type]
+    assert day.items == {"Пуговица": 1}
+    assert day.income == ()
+    assert day.losses == (
+        KindSum("gadget_buy", 1, {"money": -3}),
+        KindSum("gadget_upgrade", 2, {"upgrades_white": -2}),
+    )
+
+
 def test_days_today_first_and_partial() -> None:
     since = date(2026, 9, 26)
     out = summarize(**one(days=4, ledger_since=since))  # type: ignore[arg-type]

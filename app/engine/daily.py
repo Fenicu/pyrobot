@@ -21,7 +21,11 @@ LOSS_ORDER = (
     "hotel",
     "lottery_tickets",
     "gorbushka_ticket",
+    "gadget_buy",
+    "gadget_upgrade",
 )
+# Предметы этих видов — не крафт (купленный гаджет, слот и исход заточки): в предметы дня не идут.
+NOT_CRAFT = frozenset({"gadget_buy", "gadget_upgrade"})
 # Разовое (объясняющие события): порядок показа, незнакомые виды — после, по имени.
 INCOME_ORDER = (
     "book",
@@ -164,6 +168,8 @@ def summarize(
         trophies = 0
         for e in entries:
             trophies += e.amounts.get("trophies", 0)
+            if e.kind in NOT_CRAFT:
+                continue
             for name, n in e.items.items():
                 items[name] = items.get(name, 0) + n
         partial = day == today or ledger_since is None or day <= ledger_since

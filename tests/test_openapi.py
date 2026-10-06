@@ -88,6 +88,7 @@ def test_state_schema_has_gadgets() -> None:
     gadgets = schemas["GadgetsState"]["properties"]
     assert gadgets["items"]["items"] == {"$ref": "#/components/schemas/GadgetState"}
     assert gadgets["sets"]["items"] == {"type": "string"}
+    assert gadgets["bag"]["items"] == {"$ref": "#/components/schemas/GadgetState"}
     assert set(schemas["GadgetState"]["properties"]) == {
         "grade",
         "level",
@@ -95,7 +96,14 @@ def test_state_schema_has_gadgets() -> None:
         "name",
         "bonuses",
         "mark",
+        "code",
+        "index",
     }
+    assert public["properties"]["upgrade_info"]["anyOf"] == [
+        {"$ref": "#/components/schemas/Observed_UpgradeInfo_"},
+        {"type": "null"},
+    ]
+    assert set(schemas["UpgradeInfo"]["properties"]) == {"chances", "upgrademan_pct", "confirm"}
 
 
 def _error_ref(schema: dict[str, Any], path: str, method: str, code: str) -> Any:
