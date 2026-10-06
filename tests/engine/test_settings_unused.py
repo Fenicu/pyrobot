@@ -187,8 +187,7 @@ _GADGETS = {
     *(
         f"gadget_upgrade.{name}"
         for name in (
-            "status task_id slot gadget kind target start_level end_level started_at ended_at"
-            " end_reason"
+            "task_id gadget kind target start_level end_level started_at ended_at end_reason"
         ).split()
     ),
 }

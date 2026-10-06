@@ -334,9 +334,9 @@ _GADGET_RO = {**READ_ONLY, **UNUSED}
 class GadgetUpgradeSection(BaseModel):
     """Текущая задача заточки: меняют эндпоинты `/gadgets/upgrade*` и движок, не PATCH."""
 
-    status: UpgradeStatus = Field(default="idle", json_schema_extra=_GADGET_RO)
+    status: UpgradeStatus = Field(default="idle", json_schema_extra=READ_ONLY)
     task_id: int = Field(default=0, ge=0, json_schema_extra=_GADGET_RO)
-    slot: UpSlotKey | None = Field(default=None, json_schema_extra=_GADGET_RO)
+    slot: UpSlotKey | None = Field(default=None, json_schema_extra=READ_ONLY)
     gadget: str | None = Field(default=None, json_schema_extra=_GADGET_RO)
     kind: UpgradeChoice | None = Field(default=None, json_schema_extra=_GADGET_RO)
     target: int | None = Field(default=None, ge=1, le=60, json_schema_extra=_GADGET_RO)

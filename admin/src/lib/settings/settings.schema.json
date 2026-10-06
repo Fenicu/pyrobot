@@ -739,8 +739,7 @@
      ],
      "default": null,
      "readOnly": true,
-     "title": "Slot",
-     "x-unused": true
+     "title": "Slot"
     },
     "start_level": {
      "anyOf": [
@@ -784,8 +783,7 @@
      ],
      "readOnly": true,
      "title": "Status",
-     "type": "string",
-     "x-unused": true
+     "type": "string"
     },
     "target": {
      "anyOf": [
