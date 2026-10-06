@@ -64,6 +64,8 @@ def gear(
         "bag": len(bag) + 1 if used is None else used,
         "bag_cap": cap,
         "company": "bmesa",
+        # Биржа свежая: иначе шаг покупки сначала открыл бы /stock.
+        **market(),
     }
     return awake(**{**fields, **over})
 
@@ -197,7 +199,8 @@ def test_unknown_reserve_refreshes_gorbushka_or_profile() -> None:
 def test_buy_view_uses_planner_reserve() -> None:
     view = buy_view(newbie(money=1000), flags(gadgets={"keep_money": 950}), NOW)
     assert view is not None and view.money.reserve == 950
-    assert view.action is not None and view.action.price == 9
+    # $50 наличных сверх резерва и акции piper на $100: тир 2 за $79.
+    assert view.action is not None and view.action.price == 79
 
 
 def test_sale_needed_with_stale_stocks_refreshes_stocks() -> None:
@@ -209,6 +212,27 @@ def test_sale_needed_with_stale_stocks_refreshes_stocks() -> None:
     # Свежие акции: продажа piper ($100) покрывает нехватку и до тира 2.
     decision = decide(newbie(money=5, **market()), flags(), NOW)
     assert act(decision) == ("gadget_buy", LEGS2)
+
+
+def test_stale_stocks_are_read_before_spending_cash() -> None:
+    # Наличных хватает на тир 1, но с акциями мог бы выйти тир получше: сначала /stock.
+    old = market(m(-600))
+    decision = decide(newbie(money=10, **old), flags(), NOW)
+    assert act(decision) == ("refresh", {"source": "stocks"})
+    assert verdicts(decision)["gadget_buy"] == "stale:stock_holdings"
+    tier1 = ("gadget_buy", {**LEGS2, "tier": 1, "price": 9})
+    # /stock уже открывали после битвы, а поля не обновились — покупка на наличные.
+    p = planner(newbie(money=10, **old), flags(), last_refresh={"stocks": m(-30)})
+    assert act(p.gadget_buy(None)) == tier1
+    # Биржа закрыта — покупка на наличные идёт и ночью, без /stock.
+    closed = LIMITS.model_copy(update={"open_hour": 14})
+    shut = newbie(money=10, **{**old, "stock_limits": Obs(value=closed, at=m(-600))})
+    p = planner(shut, flags())
+    assert act(p.gadget_buy(None)) == tier1
+    assert p.wakeups == []
+    # Надеть экземпляр из рюкзака денег не тратит: биржа не нужна.
+    bag = gear(NEWBIE, [shop("l2")], level=14, money=0, used=2, cap=12, **old)
+    assert act(planner(bag, flags()).gadget_buy(None))[1]["in_bag"] is True
 
 
 def test_saving_with_stale_stocks_refreshes_stocks() -> None:

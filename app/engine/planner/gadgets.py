@@ -84,12 +84,26 @@ class GadgetSteps(Obligations):
         if (field := self.stale_of(*BUY_FIELDS) or self.reserve_unknown()) is not None:
             return self.refresh(name, field)
         plan = self.gadget_plan()
-        assert plan is not None
+        if plan is None:
+            return None
         action = plan.action
         if isinstance(action, WearSet):
             return None
+        spends = action is not None and not action.in_bag
+        stale = plan.money.stale
+        if stale is not None and not self.stocks_reread():
+            # Устаревшие акции не считаются в доступное: тир по одним наличным был бы хуже, а
+            # правило (c) потом заменило бы его — деньги ушли бы дважды.
+            if spends or plan.verdict in _PLAN_SHORT:
+                opens = self.market_opens()
+                if opens is None:
+                    return self.refresh(name, stale)
+                if action is None:
+                    self.wait_market(name, {}, opens)
+                    return None
         if action is None:
-            return self.no_buy(plan)
+            self.reject(name, {}, plan.verdict)
+            return None
         params: dict[str, Any] = {
             "rule": action.rule,
             "slot": action.slot,
@@ -99,7 +113,8 @@ class GadgetSteps(Obligations):
             "wear": action.wear,
             "in_bag": action.in_bag,
         }
-        if action.sell_needed > 0 and self.market_closed(name, params):
+        if action.sell_needed > 0 and (opens := self.market_opens()) is not None:
+            self.wait_market(name, params, opens)
             return None
         if not action.in_bag and in_dump_window(self.s, self.cfg, self.now):
             self.reject(name, params, "dump_window")
@@ -110,39 +125,30 @@ class GadgetSteps(Obligations):
             return None
         return self.act(name, params, f"{action.rule} {action.slot}{action.tier}")
 
-    def no_buy(self, plan: BuyPlan) -> Decision | None:
-        """Покупки нет. Нехватку денег при устаревших акциях сначала проверить по свежему /stock:
-        биржа закрыта — ждать её открытия; экран уже открывали после прошлой битвы, а поля не
-        обновились, — второй раз не поможет."""
-        name = "gadget_buy"
-        stale = plan.money.stale
-        if plan.verdict in _PLAN_SHORT and stale is not None:
-            if self.market_closed(name, {}):
-                return None
-            if not self.stocks_reread():
-                return self.refresh(name, stale)
-        self.reject(name, {}, plan.verdict)
-        return None
-
     def stocks_reread(self) -> bool:
+        """/stock уже открывали после границы годности биржевых полей, а они устарели: экран
+        (закрытой биржи) их не дал — второй раз не поможет."""
         last = self.last_refresh.get("stocks")
         if last is None:
             return False
         since = stocks_since(self.s, self.now)
         return since is None or last >= since
 
-    def market_closed(self, scenario: str, params: dict[str, Any]) -> bool:
-        """Биржа закрыта по часам лимитов: отказ `market_closed` и пробуждение к открытию."""
+    def market_opens(self) -> datetime | None:
+        """Когда откроется закрытая сейчас биржа (по часам `stock_limits`); None — открыта или
+        часы неизвестны."""
         seen = self.s.stock_limits
         if seen is None or seen.src == "doubtful":
-            return False
+            return None
         limits = seen.value
         if limits.open_hour <= to_msk(self.now).hour < limits.close_hour:
-            return False
-        self.reject(scenario, params, "market_closed")
+            return None
         opens = msk_at(self.now, time(limits.open_hour))
-        self.wake(opens if opens > self.now else opens + timedelta(days=1), "market_open")
-        return True
+        return opens if opens > self.now else opens + timedelta(days=1)
+
+    def wait_market(self, scenario: str, params: dict[str, Any], opens: datetime) -> None:
+        self.reject(scenario, params, "market_closed")
+        self.wake(opens, "market_open")
 
     def gadget_upgrade(self, busy: BusyState | None) -> Decision | None:
         """Порция задачи заточки — и во время дела; запасы по снимку шаг не проверяет: сценарий
