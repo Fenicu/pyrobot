@@ -458,10 +458,14 @@
 							<li>
 								откройте
 								<a class="underline" href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org</a>
-								и войдите по номеру телефона;
+								и войдите по номеру телефона — код придёт в приложение Telegram;
 							</li>
 							<li>выберите «API development tools»;</li>
-							<li>App title и Short name — любые, создайте приложение;</li>
+							<li>
+								заполните форму: App title — любое, Short name — 5–32 латинских букв или цифр, Platform — любая
+								(например, Desktop);
+							</li>
+							<li>нажмите «Create application»;</li>
 							<li>скопируйте api_id и api_hash;</li>
 							<li>
 								нажмите «Отменить вход», впишите их в блоке «Своё приложение Telegram» ниже и запросите код
@@ -524,8 +528,9 @@
 					<p class="mt-1 text-sm">
 						Если код входа не приходит, создайте своё приложение: войдите на
 						<a class="underline" href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org</a>
-						по номеру телефона → «API development tools» → App title и Short name любые → скопируйте api_id и
-						api_hash сюда и запросите код снова.
+						по номеру телефона (код придёт в приложение Telegram) → «API development tools» → App title любое,
+						Short name — 5–32 латинских букв или цифр, Platform любая → «Create application» → скопируйте api_id
+						и api_hash сюда и запросите код снова.
 					</p>
 				{/if}
 				<p class="mt-1 text-sm text-fg-muted">

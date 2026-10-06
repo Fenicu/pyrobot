@@ -397,7 +397,12 @@ describe('Код не пришёл', () => {
 		const details = hint.closest('details')!;
 		expect(details).toHaveTextContent('Telegram иногда не доставляет коды для общего приложения сервера');
 		expect(details).toHaveTextContent('API development tools');
-		expect(details).toHaveTextContent('api_hash');
+		expect(details).toHaveTextContent('код придёт в приложение Telegram');
+		expect(details).toHaveTextContent('App title — любое');
+		expect(details).toHaveTextContent('Short name — 5–32 латинских букв или цифр');
+		expect(details).toHaveTextContent('Platform — любая (например, Desktop)');
+		expect(details).toHaveTextContent('«Create application»');
+		expect(details).toHaveTextContent('скопируйте api_id и api_hash');
 		const link = details.querySelector('a[href="https://my.telegram.org"]');
 		expect(link).not.toBeNull();
 		expect(link).toHaveAttribute('target', '_blank');
@@ -436,6 +441,8 @@ describe('Код не пришёл', () => {
 		const block = screen.getByRole('heading', { name: 'Своё приложение Telegram' }).closest('section')!;
 		expect(block).toHaveTextContent('Если код входа не приходит');
 		expect(block).toHaveTextContent('API development tools');
+		expect(block).toHaveTextContent('Short name — 5–32 латинских букв или цифр');
+		expect(block).toHaveTextContent('«Create application»');
 		expect(block.querySelector('a[href="https://my.telegram.org"]')).not.toBeNull();
 	});
 });
