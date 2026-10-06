@@ -702,3 +702,24 @@ async def test_email_without_pattern_not_echoed() -> None:
     mgr, _ = await _email_code_step(backend)
     st = mgr.status()
     assert st.state is TgState.AWAITING_EMAIL_CODE and st.delivery_email_pattern is None
+
+
+async def test_cancel_drops_attempt_only_while_logging_in() -> None:
+    backend = FakeTgBackend(password="pw")
+    mgr = tg_auth(backend, expected_user_id=EXPECTED)
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    st = await mgr.cancel()
+    assert st.state is TgState.UNAUTHORIZED and st.attempt_id is None and st.error is None
+    assert st.delivery_type is None
+    with pytest.raises(AttemptMismatch):
+        await mgr.submit_code(st.attempt_id or "", "s1", "12345")
+    # Попытку из другой вкладки тоже можно отменить; шаг пароля — тоже вход.
+    st = await mgr.start("+888", owner="s2")
+    st = await mgr.submit_code(st.attempt_id or "", "s2", "12345")
+    assert st.state is TgState.AWAITING_PASSWORD
+    assert (await mgr.cancel()).state is TgState.UNAUTHORIZED
+
+    online = tg_auth(FakeTgBackend(authorized=True), expected_user_id=EXPECTED)
+    await online.boot()
+    assert (await online.cancel()).state is TgState.ONLINE

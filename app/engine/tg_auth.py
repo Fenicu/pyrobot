@@ -446,6 +446,20 @@ class TgAuthManager:
             self._set(TgState.UNAUTHORIZED)
             return self.status()
 
+    async def cancel(self) -> TgStatus:
+        """Отмена начатого входа (любой вкладки): попытка сбрасывается, статус — `unauthorized`,
+        можно сменить приложение Telegram и запросить код заново. Вне входа ничего не меняет."""
+        async with self._lock:
+            if self._state in (
+                TgState.AWAITING_CODE,
+                TgState.AWAITING_PASSWORD,
+                TgState.AWAITING_EMAIL,
+                TgState.AWAITING_EMAIL_CODE,
+            ):
+                self._attempt = None
+                self._set(TgState.UNAUTHORIZED)
+            return self.status()
+
     async def drop_attempt(self) -> None:
         async with self._lock:
             self._attempt = None

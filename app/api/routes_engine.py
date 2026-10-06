@@ -503,6 +503,18 @@ async def tg_email_code(
     )
 
 
+@router.post("/tg/login/cancel", response_model=TgStatusOut, responses=_WRITE)
+async def tg_cancel(
+    _: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(running)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
+) -> TgStatusOut:
+    """Отмена начатого входа (в том числе из другой вкладки): статус `unauthorized`, после
+    неё можно задать своё приложение Telegram и запросить код снова. Вне входа — без изменений."""
+    return _tg(await f.tg.cancel(), await _app(c, scope.account.id))
+
+
 @router.post("/tg/logout", response_model=TgStatusOut, responses=_WRITE)
 async def tg_logout(
     _: Annotated[SessionContext, Depends(require_csrf)],

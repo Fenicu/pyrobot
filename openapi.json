@@ -10906,6 +10906,105 @@
         ]
       }
     },
+    "/api/v1/accounts/{account_id}/tg/login/cancel": {
+      "post": {
+        "description": "Отмена начатого входа (в том числе из другой вкладки): статус `unauthorized`, после\nнеё можно задать своё приложение Telegram и запросить код снова. Вне входа — без изменений.",
+        "operationId": "tg_cancel_api_v1_accounts__account_id__tg_login_cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TgStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not running"
+          }
+        },
+        "summary": "Tg Cancel",
+        "tags": [
+          "engine"
+        ]
+      }
+    },
     "/api/v1/accounts/{account_id}/tg/login/code": {
       "post": {
         "operationId": "tg_code_api_v1_accounts__account_id__tg_login_code_post",

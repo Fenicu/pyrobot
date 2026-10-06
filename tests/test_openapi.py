@@ -43,6 +43,7 @@ def test_engine_tg_and_state_are_typed() -> None:
         (f"{A}/tg/login/start", "post"): "TgStatusOut",
         (f"{A}/tg/login/code", "post"): "TgStatusOut",
         (f"{A}/tg/login/password", "post"): "TgStatusOut",
+        (f"{A}/tg/login/cancel", "post"): "TgStatusOut",
         (f"{A}/tg/logout", "post"): "TgStatusOut",
         (f"{A}/state", "get"): "StateOut",
         (f"{A}/planner/outlook", "get"): "OutlookOut",

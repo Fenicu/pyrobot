@@ -3637,8 +3637,9 @@ latch не меняются. `POST /api/v1/accounts/{id}/engine/reconciled` (CSR
 действий»); автоматическое снятие блока после проверки — задача сверщика. `GET
 /api/v1/accounts/{id}/tg/status` (сессия) и `POST /api/v1/accounts/{id}/tg/login/start {phone}`,
 `.../login/code {attempt_id, code}`, `.../login/password {attempt_id, password}`, `.../login/resend {attempt_id}`,
-`.../login/email {attempt_id, email}`, `.../login/email-code {attempt_id, code}`, `POST /api/v1/accounts/{id}/tg/logout`
-(все — CSRF) проксируют `TgAuthManager` и отвечают статусом входа `TgStatusOut` (`state` — `unauthorized`,
+`.../login/email {attempt_id, email}`, `.../login/email-code {attempt_id, code}`, `.../login/cancel` (без тела:
+отмена начатого входа, в том числе из другой вкладки, — статус `unauthorized`; вне входа ничего не меняет),
+`POST /api/v1/accounts/{id}/tg/logout` (все — CSRF) проксируют `TgAuthManager` и отвечают статусом входа `TgStatusOut` (`state` — `unauthorized`,
 `awaiting_code`, `awaiting_password`, `awaiting_email` (нужна привязка почты к аккаунту Telegram),
 `awaiting_email_code` (код подтверждения почты), `online`, `overload` (приём обновлений приостановлен, см.
 «Транспорт и вход в Telegram»), `error` и `stopped` (движок не запущен, только в API); поля доставки

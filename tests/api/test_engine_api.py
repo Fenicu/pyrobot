@@ -241,6 +241,25 @@ async def test_tg_login_code_flood_wait_is_429(
     assert r.headers["retry-after"] == "31"
 
 
+async def test_tg_login_cancel(container: Container, api_client: AsyncClient) -> None:
+    run_engine(container, build(authorized=False))
+    h = {"X-CSRF-Token": await login(api_client)}
+    start = await api_client.post(
+        "/api/v1/accounts/1/tg/login/start", headers=h, json={"phone": "+888"}
+    )
+    assert start.json()["state"] == "awaiting_code"
+    assert (await api_client.post("/api/v1/accounts/1/tg/login/cancel")).status_code == 403
+    r = await api_client.post("/api/v1/accounts/1/tg/login/cancel", headers=h)
+    assert r.status_code == 200
+    assert r.json()["state"] == "unauthorized" and r.json()["attempt_id"] is None
+    code = await api_client.post(
+        "/api/v1/accounts/1/tg/login/code",
+        headers=h,
+        json={"attempt_id": start.json()["attempt_id"], "code": "12345"},
+    )
+    assert code.status_code == 409
+
+
 async def test_readyz_is_process_readiness(container: Container, api_client: AsyncClient) -> None:
     # Ни движков, ни Telegram: процесс готов, пока база отвечает и соединение блокировок живо.
     ready = await api_client.get("/readyz")
