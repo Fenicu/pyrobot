@@ -169,6 +169,7 @@ def test_gadgets_prod_1_field_by_field() -> None:
         name="Хиджаб",
         bonuses={"theory": 85, "wisdom": 55, "practice": 30},
         mark="🧶",
+        code="h18",
     )
     assert gadgets.items[7] == Gadget(
         grade="⚫️",
@@ -177,6 +178,7 @@ def test_gadgets_prod_1_field_by_field() -> None:
         name="SM-art",
         bonuses={"theory": 100, "practice": 51},
         mark="💎",
+        code="w18",
     )
     slots = [g.slot for g in gadgets.items]
     assert slots == ["🕶", "👞", "👖", "👕", "📱", "💻", "💍", "⌚️", "🪫", "👔"]
@@ -193,6 +195,7 @@ def test_gadgets_prod_4_without_mark_and_with_spaced_name() -> None:
         name="MAC-адрес ноута",
         bonuses={"theory": 31, "cunning": 31},
         mark=None,
+        code="b12",
     )
     assert all(g.mark is None for g in gadgets.items)
     assert gadgets.sets == ("🔴Сет Уникальный", "🌞Сет Летний")
@@ -211,11 +214,12 @@ def test_gadgets_prod_5_and_6() -> None:
         name="Жилетка LoRat",
         bonuses={"wisdom": 110, "theory": 40},
         mark=None,
+        code="t501",
     )
     assert six.sets == ("⚫️Сет VIP", "🐷Сет Свинтус")
 
 
-def test_gadgets_history_sample_and_backpack_not_parsed() -> None:
+def test_gadgets_history_sample_and_backpack_kept_apart() -> None:
     inventory = _inventory(INV_HISTORY)
     assert len(inventory.gadgets.items) == 10
     assert inventory.gadgets.items[2].slot == "👖"
@@ -226,6 +230,22 @@ def test_gadgets_history_sample_and_backpack_not_parsed() -> None:
         11,
         24,
     )
+    assert [g.index for g in inventory.gadgets.bag] == list(range(1, 11))
+    assert all("LoRat" in g.name for g in inventory.gadgets.bag)
+
+
+def test_no_backpack_block_means_empty_bag() -> None:
+    text = INV_PROD_1.split("Гаджеты в рюкзаке: (надеть)\n")[0] + "Занято 0 из 24"
+    inventory = _inventory(text)
+    assert inventory.gadgets.bag == () and not inventory.after_change
+    assert len(inventory.gadgets.items) == 10
+
+
+def test_backpack_lines_keep_index_and_code() -> None:
+    bag = _inventory(INV_PROD_1).gadgets.bag
+    assert len(bag) == 10
+    assert (bag[0].index, bag[0].code, bag[0].slot, bag[0].grade) == (1, "t501", "👔", None)
+    assert (bag[5].index, bag[5].grade, bag[5].level) == (6, "⚫️", 25)
 
 
 def test_gadgets_separator_may_be_plain_space() -> None:
@@ -237,7 +257,7 @@ def test_gadgets_separator_may_be_plain_space() -> None:
 def test_gadgets_none_worn_and_no_sets() -> None:
     text = "Гаджеты при тебе: (снять)\n\nБонусы - /bonuses\n\n" + INV_PROD_4.split("\n\n", 2)[2]
     inventory = _inventory(text)
-    assert inventory.gadgets == Gadgets()
+    assert (inventory.gadgets.items, inventory.gadgets.sets) == ((), ())
     assert (inventory.books, inventory.bag_cap) == (131, 20)
 
 
@@ -293,6 +313,7 @@ def test_worn_gadget_without_grade_and_level() -> None:
         slot="👔",
         name="Жилетка LoRat",
         bonuses={"wisdom": 63, "theory": 23},
+        code="t501",
     )
     assert (second.grade, second.level, second.slot, second.name) == (
         None,

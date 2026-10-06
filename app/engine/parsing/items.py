@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import itertools
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 from app.engine.events import Event
+from app.engine.gadget_catalog import SLOTS
 from app.engine.parsing.common import DURATION, NUM, SKILLS, Rewards, dur, num, parse_rewards
 from app.engine.types import IncomingMessage
 
@@ -14,12 +16,16 @@ _BOOKS = re.compile(r"^📒Книга опыта: (?P<n>\d+)(?: \((?P<t>" + DURA
 _CARDS = re.compile(r"^💳Подарочная карта: (?P<n>\d+)(?: \((?P<t>" + DURATION + r")\))?", re.M)
 _VS16 = "\ufe0f"
 _SET = re.compile(r"^\S+?Сет ")
-# Строка надетого гаджета: «⚫️26 🕶Хиджаб (+85🎓, 🧶) /unwear_h18»; значок слота слитно с названием,
+# Строка гаджета: «⚫️26 🕶Хиджаб (+85🎓, 🧶) /unwear_h18»; значок слота слитно с названием,
 # у неулучшенного гаджета редкости и уровня нет: «👔Жилетка LoRat (+63🐢, +23🎓) /unwear_t501».
+# Хвост: надетый — /unwear_<код>, рюкзак — /wear_<N>_<код>, экран апгрейдов — /up_<слот>.
 _GADGET = re.compile(
     r"^(?:(?P<grade>[^\d\s]+)(?P<level>\d+)[ \xa0])?(?P<slot>[^\w\s]\ufe0f?)(?P<name>.+?)"
-    r" \((?P<stats>[^()]*)\) /unwear_\w+$"
+    r" \((?P<stats>[^()]*)\) "
+    r"(?:/unwear_(?P<code>\w+)|/wear_(?P<index>\d+)_(?P<wcode>\w+)|/up_(?P<up>\w+))$"
 )
+_BAG_HEADER = "Гаджеты в рюкзаке: (надеть)"
+_CHANGED = re.compile(r"^👍Ты (?:надел|снял) ", re.M)
 _BONUS = re.compile(r"^\+(?P<n>\d+)(?P<icon>\S+)$")
 _SKILL_BY_ICON = {name[0]: code for name, code in SKILLS.items()}
 _PRIZEBOX = re.compile(
@@ -58,14 +64,19 @@ class Gadget:
     name: str
     bonuses: dict[str, int]
     mark: str | None = None
+    # Код из `/unwear_<код>` или `/wear_<N>_<код>` («p18») и номер N у гаджета в рюкзаке.
+    code: str | None = None
+    index: int | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Gadgets:
-    """Надетые гаджеты в порядке экрана и строки сетов как есть («⚫️Сет VIP»)."""
+    """Надетые гаджеты в порядке экрана, строки сетов как есть («⚫️Сет VIP») и рюкзак в порядке
+    экрана (у каждого `index` и `code`)."""
 
     items: tuple[Gadget, ...] = ()
     sets: tuple[str, ...] = ()
+    bag: tuple[Gadget, ...] = ()
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -80,6 +91,8 @@ class Inventory(Event):
     bag: int
     bag_cap: int
     gadgets: Gadgets = field(default_factory=Gadgets)
+    # Ответ на /wear_ и /unwear_: тот же экран уже после смены, в конце — «👍Ты надел …».
+    after_change: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -133,13 +146,11 @@ def _count(m: re.Match[str] | None) -> tuple[int, int | None]:
     return int(m["n"]), dur(m["t"]) if m["t"] else None
 
 
-def _gadget(line: str) -> Gadget | None:
-    m = _GADGET.match(line)
-    if m is None:
-        return None
+def gadget_stats(stats: str) -> tuple[dict[str, int], str | None] | None:
+    """Бонусы и метка из скобок («+85🎓, +55🐢, 🧶»); неизвестный значок навыка — None."""
     bonuses: dict[str, int] = {}
     mark: str | None = None
-    for part in m["stats"].split(", "):
+    for part in stats.split(", "):
         bonus = _BONUS.match(part)
         if bonus is None:
             mark = part or None
@@ -148,27 +159,58 @@ def _gadget(line: str) -> Gadget | None:
         if code is None:
             return None
         bonuses[code] = int(bonus["n"])
-    return Gadget(
+    return bonuses, mark
+
+
+def gadget_line(line: str) -> tuple[Gadget, str | None] | None:
+    """Строка гаджета с хвостом `/unwear_<код>`, `/wear_<N>_<код>` или `/up_<слот>`; второе в
+    паре — up-слот у `/up_`."""
+    m = _GADGET.match(line)
+    if m is None:
+        return None
+    up = m["up"]
+    if up is not None and up not in SLOTS:
+        return None
+    parsed = gadget_stats(m["stats"])
+    if parsed is None:
+        return None
+    bonuses, mark = parsed
+    gadget = Gadget(
         grade=m["grade"],
         level=int(m["level"]) if m["level"] else None,
         slot=m["slot"],
         name=m["name"],
         bonuses=bonuses,
         mark=mark,
+        code=m["code"] or m["wcode"],
+        index=int(m["index"]) if m["index"] else None,
     )
+    return gadget, up
 
 
-def _gadgets(text: str) -> Gadgets:
+def _gadgets_of(lines: Iterable[str]) -> tuple[Gadget, ...]:
+    parsed = (gadget_line(line) for line in lines)
+    return tuple(p[0] for p in parsed if p is not None)
+
+
+def _gadgets(text: str, *, changed: bool) -> Gadgets:
     """Блок «Гаджеты при тебе»: строки гаджетов до пустой, затем строки сетов до первой строки не
-    сета; блок рюкзака не читается. Нераспознанная строка гаджета пропускается."""
+    сета; рюкзак — строки после «Гаджеты в рюкзаке: (надеть)» до пустой. В ответе на `/wear_` и
+    `/unwear_` сеты стоят в хвосте после строки «👍Ты надел …». Нераспознанная строка гаджета
+    пропускается."""
     lines = text.split("\n")[1:]
     worn = list(itertools.takewhile(str.strip, lines))
     rest = lines[len(worn) + 1 :]
-    sets = itertools.takewhile(_SET.match, rest)
-    items = (_gadget(line) for line in worn)
-    return Gadgets(
-        items=tuple(g for g in items if g is not None), sets=tuple(s.strip() for s in sets)
-    )
+    sets_from = rest
+    if changed:
+        marker = next(i for i, line in enumerate(lines) if _CHANGED.match(line))
+        sets_from = list(itertools.dropwhile(lambda line: not line.strip(), lines[marker + 1 :]))
+    sets = itertools.takewhile(_SET.match, sets_from)
+    bag: tuple[Gadget, ...] = ()
+    if _BAG_HEADER in lines:
+        start = lines.index(_BAG_HEADER) + 1
+        bag = _gadgets_of(itertools.takewhile(str.strip, lines[start:]))
+    return Gadgets(items=_gadgets_of(worn), sets=tuple(s.strip() for s in sets), bag=bag)
 
 
 def _inventory(text: str) -> list[Event]:
@@ -179,6 +221,7 @@ def _inventory(text: str) -> list[Event]:
     books, books_in_s = _count(_BOOKS.search(text))
     cards, cards_in_s = _count(_CARDS.search(text))
     box = _PRIZEBOX.search(text)
+    changed = _CHANGED.search(text) is not None
     return [
         Inventory(
             books=books,
@@ -189,7 +232,8 @@ def _inventory(text: str) -> list[Event]:
             prizebox_in_s=dur(box["t"]) if box and box["t"] else None,
             bag=int(slots["used"]),
             bag_cap=int(slots["cap"]),
-            gadgets=_gadgets(text),
+            gadgets=_gadgets(text, changed=changed),
+            after_change=changed,
         )
     ]
 

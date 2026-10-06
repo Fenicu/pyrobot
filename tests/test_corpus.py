@@ -6,10 +6,12 @@ from pathlib import Path
 import pytest
 
 from app.engine.events import Unrecognized
+from app.engine.gadget_catalog import SHOP
 from app.engine.parsing import default_parser
 from app.engine.parsing.activities import ActivityFinished
 from app.engine.parsing.common import parse_rewards
 from app.engine.parsing.daily import DailyTasksScreen, TaskCompleted, recognize_daily
+from app.engine.parsing.gadgets import ShopScreen
 from app.engine.parsing.items import ContainerOpened
 from app.engine.parsing.lottery import (
     LotteryBought,
@@ -32,6 +34,7 @@ HISTORY = RESEARCH / "raw" / "history" / "startup_bot.jsonl"
 SWINFO = RESEARCH / "raw" / "history" / "startup_main_swinfo.jsonl"
 CHANNEL = RESEARCH / "raw" / "history" / "smoothie_channel.jsonl"
 SEARCH = RESEARCH / "raw" / "search" / "game.jsonl"
+LIVE_0925 = RESEARCH / "raw" / "live" / "2026-09-25.jsonl"
 no_research = pytest.mark.skipif(not HISTORY.exists(), reason="no ~/pyrobot-research")
 MIN_RATIO = 0.999
 
@@ -216,3 +219,37 @@ def test_every_trip_message_in_search_parsed() -> None:
     assert kinds["trips_screen"] > 150 and kinds["trip_started"] > 80
     assert kinds["trip_refused"] >= 10
     assert kinds["priced"] > 500 and kinds["placeholder"] >= 3
+
+
+# Витрины шести слотов магазина 25.09.2026: цены с неразрывным пробелом («$82\xa0999»).
+_SHOWCASES = {
+    3624887: "right",
+    3624895: "legs",
+    3624903: "chest",
+    3624911: "left",
+    3624919: "head",
+    3624927: "torso",
+}
+
+
+@pytest.mark.skipif(not LIVE_0925.exists(), reason="no live shoot 25.09 in ~/pyrobot-research")
+def test_live_showcases_match_catalog() -> None:
+    parser = default_parser(ChatsSection())
+    found: dict[int, ShopScreen] = {}
+    for rec in _records(LIVE_0925):
+        if rec.get("id") in _SHOWCASES and not rec.get("out"):
+            shops = [e for e in parser.parse(record_message(rec)) if isinstance(e, ShopScreen)]
+            assert len(shops) == 1, rec["id"]
+            found[rec["id"]] = shops[0]
+    assert sorted(found) == sorted(_SHOWCASES)
+    for msg_id, slot in _SHOWCASES.items():
+        shop = found[msg_id]
+        assert (shop.slot, len(shop.offers), shop.money) == (slot, 14, 862), msg_id
+        for offer in shop.offers:
+            item = SHOP[shop.slot][offer.tier - 1]
+            assert offer.name.casefold() == item.name.casefold(), (slot, offer.tier)
+            assert (offer.bonuses, offer.level, offer.price) == (
+                dict(item.bonuses),
+                item.level,
+                item.price,
+            ), (slot, offer.tier)

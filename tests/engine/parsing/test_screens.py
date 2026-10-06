@@ -17,6 +17,7 @@ from app.engine.parsing.screens import (
     recognize_screens,
 )
 from tests.engine.artifact_texts import game_text
+from tests.engine.gadget_texts import SHOP_MENU, UPGRADES
 from tests.engine.scenarios.test_deeds import FULL_PROFILE
 from tests.fixtures import game_msg
 
@@ -59,6 +60,14 @@ def test_screens(msg_id: int, expected: Event) -> None:
 def test_full_profile_with_ceo_message() -> None:
     # Сообщение CEO игра ставит и перед полным профилем (прод 04.10.2026).
     assert recognize_screens(game_text(FULL_PROFILE)) == [InfoScreen(name="full_profile")]
+
+
+def test_upgrades_screen_is_not_info_anymore() -> None:
+    assert recognize_screens(game_text(UPGRADES)) == []
+
+
+def test_shop_menu_is_info() -> None:
+    assert recognize_screens(game_text(SHOP_MENU)) == [InfoScreen(name="shop")]
 
 
 def test_gadgets_screen_without_sale_line_has_no_money() -> None:

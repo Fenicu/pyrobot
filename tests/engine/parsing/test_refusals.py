@@ -3,6 +3,7 @@ from dataclasses import replace
 import pytest
 
 from app.engine.parsing.refusals import Busy, Refused, recognize_refusals
+from tests.engine.gadget_texts import NO_MONEY_RIGHT14, game_text
 from tests.fixtures import game_msg
 
 
@@ -41,6 +42,14 @@ def test_busy(msg_id: int, left: int) -> None:
 )
 def test_refusals(msg_id: int, expected: Refused) -> None:
     assert recognize_refusals(game_msg("refusals", msg_id)) == [expected]
+
+
+def test_gadget_no_money() -> None:
+    assert recognize_refusals(game_text(NO_MONEY_RIGHT14)) == [
+        Refused(reason="gadget_no_money", need=59444)
+    ]
+    plain = "❌Для покупки тебе не хватает всего-то $12 💵. Скоро накопишь!"
+    assert recognize_refusals(game_text(plain)) == [Refused(reason="gadget_no_money", need=12)]
 
 
 def test_antiflood_not_a_refusal() -> None:
