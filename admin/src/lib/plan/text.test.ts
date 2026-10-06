@@ -40,7 +40,9 @@ describe('словари плана', () => {
 			'battle_window', 'sleep_deadline', 'factory_window', 'uncertified', 'cooldown', 'rate_limited',
 			'not_feasible', 'no_hard_offer', 'cant_afford', 'sleep_not_allowed', 'market_closed', 'no_stock',
 			'not_player', 'in_metro', 'metro_unknown_screen', 'reserved', 'no_team', 'company_unknown',
-			'artifact_run', 'no_raw', 'motivation_cap', 'trip_pending', 'no_hard_team_offer'
+			'artifact_run', 'no_raw', 'motivation_cap', 'trip_pending', 'no_hard_team_offer',
+			'bag_full', 'saving', 'no_upgrade', 'target_blocked', 'dump_window', 'gorbushka_meeting',
+			'upgrade_running', 'shop_mismatch'
 		];
 		expect(verdicts.filter((v) => !(v in VERDICT))).toEqual([]);
 		expect(verdictText('stale:motivation')).toBe('нужно обновить: 🔥');
@@ -62,6 +64,28 @@ describe('словари плана', () => {
 		const withResult: Outlook = { ...plan, wakeups: [...plan.wakeups, result] };
 		expect(candidateDetail(pending, withResult)).toMatch(/^до /);
 		expect(actDetail('trip', { vehicle: 'bike' }, plan)).toBe('🚲 велосипед');
+	});
+
+	it('гаджеты: сценарии, вердикты, пробуждения и обновления', () => {
+		expect(scenarioText('gadget_buy')).toBe('🛒 покупка гаджета');
+		expect(scenarioText('gadget_wear_set')).toBe('🎽 надеть сет');
+		expect(scenarioText('gadget_upgrade')).toBe('🗜 заточка');
+		expect(verdictText('saving')).toBe('копим на сет');
+		expect(verdictText('upgrade_running')).toBe('на слоте идёт заточка');
+		expect(verdictText('stale:bag')).toBe('нужно обновить: рюкзак');
+		expect(verdictText('stale:stock_holdings')).toBe('нужно обновить: портфель акций');
+		const open = { at: '2026-09-27T05:00:00Z', kind: 'market_open' as const, key: null, after_wake: false };
+		expect(timerLine(open, plan)).toEqual({ icon: '📈', text: 'Откроется биржа', detail: '' });
+		const guard = { at: '2026-09-27T10:01:00Z', kind: 'gear_guard' as const, key: null, after_wake: false };
+		expect(timerLine(guard, plan).text).toBe('Кончится окно-запрет');
+		const refresh = { at: plan.now, kind: 'refresh' as const, key: 'stocks', after_wake: false };
+		expect(timerLine(refresh, plan).text).toBe('Можно снова обновить экран: биржу');
+		expect(actDetail('refresh', { source: 'upgrades' }, plan)).toBe('апгрейды');
+		const withTimers: Outlook = { ...plan, wakeups: [...plan.wakeups, open, guard] };
+		const closed = { scenario: 'gadget_buy', params: {}, score: null, verdict: 'market_closed' };
+		expect(candidateDetail(closed, withTimers)).toMatch(/^до /);
+		const battle = { scenario: 'gadget_upgrade', params: {}, score: null, verdict: 'battle_window' };
+		expect(candidateDetail(battle, withTimers)).toMatch(/^до /);
 	});
 
 	it('выбор командного задания: подпись и вид задания', () => {

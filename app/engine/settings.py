@@ -317,7 +317,7 @@ class GadgetsSection(BaseModel):
     """Покупка гаджетов: до каких сетов докупать, резерв денег и до какого уровня точить ⚪️."""
 
     sets: tuple[GadgetSetKey, ...] = ()
-    keep_money: int = Field(default=0, ge=0, json_schema_extra=UNUSED)
+    keep_money: int = Field(default=0, ge=0)
     white_until: int = Field(default=7, ge=1, le=25)
 
     @field_validator("sets")

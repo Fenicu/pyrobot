@@ -179,18 +179,19 @@ describe('перечитывание плана', () => {
 });
 
 describe('значимые поля state', () => {
-	it('всё, что читает планировщик, в том числе цены, статистика дел, биржа и уровень', () => {
+	it('всё, что читает планировщик, в том числе цены, статистика дел, биржа, уровень и гаджеты', () => {
 		for (const field of [
 			'busy', 'motivation', 'money', 'details', 'book_ready_at', 'sleep_deadline', 'team_task', 'lottery',
 			'battle_at', 'battle_target', 'prices', 'activity_stats', 'stock_limits', 'stock_quotes',
-			'smoothie_ingredients', 'level', 'some_future_field'
+			'smoothie_ingredients', 'level', 'gadgets', 'bag', 'bag_cap', 'upgrades', 'stock_holdings',
+			'some_future_field'
 		]) {
 			expect(significant({ [field]: null }), field).toBe(true);
 		}
 	});
 
 	it('поля, которых планировщик не читает, план не перечитывают', () => {
-		expect(significant({ exp: 1, skills: {}, bag: 3, stock_holdings: {} })).toBe(false);
+		expect(significant({ exp: 1, skills: {}, tangerines: 3, glory: 5 })).toBe(false);
 		expect(significant({ exp: 1, money: 5 })).toBe(true);
 	});
 });

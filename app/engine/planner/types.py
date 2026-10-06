@@ -75,6 +75,8 @@ WakeKind = Literal[
     "artifact_end",
     "trip_ready",
     "trip_result",
+    "market_open",
+    "gear_guard",
 ]
 
 

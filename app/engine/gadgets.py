@@ -143,9 +143,9 @@ def money_view(state: CharacterState, reserve: int, own: str | None, now: dateti
 
 def in_dump_window(state: CharacterState, settings: Settings, now: datetime) -> bool:
     """Окно предпроверки слива налички (`stocks_dump`): в нём акции не продаются, чтобы не
-    продать только что купленное."""
+    продать только что купленное; слив выключен — окна нет."""
     seen = state.battle_at
-    if seen is None:
+    if seen is None or not settings.features.stocks_dump:
         return False
     battle = battle_hour(seen.value, seen.at)
     lead = timedelta(minutes=settings.stocks.dump_lead_min)

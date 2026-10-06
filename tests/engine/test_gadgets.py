@@ -491,3 +491,5 @@ def test_dump_window() -> None:
     for before, inside in minutes.items():
         assert in_dump_window(state, settings, BATTLE - timedelta(minutes=before)) is inside
     assert not in_dump_window(CharacterState(), settings, NOW)
+    off = on_settings(features={"gadgets_buy": True, "stocks_dump": False})
+    assert not in_dump_window(state, off, BATTLE - timedelta(minutes=2))

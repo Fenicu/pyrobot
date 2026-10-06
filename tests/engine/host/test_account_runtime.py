@@ -175,6 +175,16 @@ async def test_two_runtimes_share_process_without_crosstalk(
     assert status.workers_ok and status.lease_ok and not status.paused
 
 
+async def test_loop_and_facade_share_artifact_and_gadget_runs(
+    engines: Engines, clean_db: Database
+) -> None:
+    runtime = await engines.start(1)
+    assert runtime.facade is not None and runtime.planner is not None
+    assert runtime.planner._gadgets is runtime.facade.gadgets
+    assert runtime.planner._artifacts is runtime.facade.artifacts
+    await runtime.stop()
+
+
 async def test_stop_drains_pipeline_abort_does_not(engines: Engines, clean_db: Database) -> None:
     first = await engines.start(1)
     assert first.pipeline is not None

@@ -178,10 +178,7 @@ def test_unused_settings_are_exactly_the_unread_ones() -> None:
     assert marked() == unread(app_chains()) == _UNREAD
 
 
-# Новые поля гаджетов ждут кода, который их читает: пометку снимает задача с чтением. У
-# `gadgets.sets` пометки нет: `e.gadgets.sets` в редьюсере проверка засчитывает как чтение.
-_GADGETS = {"gadgets.keep_money"}
-_UNREAD = {"features.casino", "features.arena", "levelup.policy"} | _GADGETS
+_UNREAD = {"features.casino", "features.arena", "levelup.policy"}
 
 
 def test_nested_leaf_counts_only_by_its_full_path() -> None:

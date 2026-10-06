@@ -15,17 +15,13 @@ export const IGNORED = new Set([
 	'schema_version',
 	'exp',
 	'exp_next',
-	'bag',
-	'bag_cap',
 	'tangerines',
 	'skills',
 	'woke_at',
-	'upgrades',
 	'last_refusal',
 	'factory_wins',
 	'glory',
-	'factory_call_at',
-	'stock_holdings'
+	'factory_call_at'
 ]);
 
 export function significant(changed: Record<string, unknown>): boolean {

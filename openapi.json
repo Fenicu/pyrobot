@@ -4886,7 +4886,9 @@
               "metro_ready",
               "artifact_end",
               "trip_ready",
-              "trip_result"
+              "trip_result",
+              "market_open",
+              "gear_guard"
             ],
             "title": "Kind",
             "type": "string"

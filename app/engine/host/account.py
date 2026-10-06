@@ -34,6 +34,7 @@ from app.engine.bus import Bus
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade
 from app.engine.fence import Fence
+from app.engine.gadgets import GadgetRuns
 from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.host.codes import CodeLimiter
 from app.engine.lag import LoopLagMonitor
@@ -303,6 +304,13 @@ class AccountRuntime:
             notifier=self.notifier,
             clock=SystemClock(),
         )
+        # Один на движок: цикл ведёт задачу заточки, фасад запускает и останавливает её.
+        gadgets = GadgetRuns(
+            settings=settings,
+            state=lambda: load_state(pipeline.state),
+            notifier=self.notifier,
+            clock=SystemClock(),
+        )
         self.planner = PlannerLoop(
             gateway=gateway,
             state=lambda: load_state(pipeline.state),
@@ -317,6 +325,7 @@ class AccountRuntime:
             reread=live_reread(transport, pipeline),
             auto=config.planner,
             artifacts=artifacts,
+            gadgets=gadgets,
         )
         game_chat = settings.current.chats.game_chat_id
 
@@ -355,6 +364,7 @@ class AccountRuntime:
             transport=transport,
             history=lambda: self.history,
             artifacts=artifacts,
+            gadgets=gadgets,
             bounds=bounds_fn,
         )
         self.supervisor.start("pipeline", pipeline.run)

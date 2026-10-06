@@ -78,7 +78,6 @@ describe('форма по схеме настроек с прода', () => {
 		expect(current.filter((f) => f.unused).map((f) => f.path.join('.'))).toEqual([
 			'features.arena',
 			'features.casino',
-			'gadgets.keep_money',
 			'levelup.policy'
 		]);
 		// В схеме с прода пометки ещё нет — ни одного поля.

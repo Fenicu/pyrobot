@@ -11,6 +11,7 @@ from typing import Any
 from app.engine.artifact import ArtifactRuns
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
+from app.engine.gadgets import GadgetRuns
 from app.engine.gametime import day_start, tasks_day, to_msk
 from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.gateway.types import Source
@@ -41,7 +42,12 @@ NOTHING_HOLD: dict[tuple[str, str], timedelta] = {
     # Тиража нет или продажа закрыта — до конца окна продажи не изменится.
     ("lottery_buy", "no_draw"): timedelta(minutes=30),
     ("lottery_buy", "lottery_closed"): timedelta(hours=2),
+    # Котировки и деньги за час, биржа за полчаса, витрина до релиза не изменятся.
+    ("gadget_buy", "cant_afford"): timedelta(hours=1),
+    ("gadget_buy", "market_closed"): timedelta(minutes=30),
+    ("gadget_buy", "shop_mismatch"): timedelta(hours=6),
 }
+GADGET_SCENARIOS = frozenset({"gadget_buy", "gadget_wear_set", "gadget_upgrade"})
 # /fb отдал отчёт не за сегодня — битва ещё не посчитана. По корпусу сегодняшний отчёт готов почти
 # сразу (18:31, 19:02): старый после ~19:00 почти наверняка значит, что сегодняшнего не будет. Не
 # больше трёх /fb за день с растущей паузой (18:31 → 18:46 → 19:16), дальше — до следующего дня.
@@ -134,6 +140,7 @@ class PlannerLoop:
         reread: Reread | None = None,
         auto: bool = True,
         artifacts: ArtifactRuns | None = None,
+        gadgets: GadgetRuns | None = None,
     ) -> None:
         self._gateway = gateway
         # auto=False — только ручные запуски из админки, без собственных решений.
@@ -161,6 +168,7 @@ class PlannerLoop:
         self._history = history
         self._reread = reread
         self._artifacts = artifacts
+        self._gadgets = gadgets
         # Длительности прошлых забегов метро (бюджет по p90): из хранилища при первом решении.
         self._metro_durations: list[float] | None = None
         # Запуски отчёта о фабрике (/fb) за день: при смене дня — из хранилища (переживает
@@ -228,6 +236,7 @@ class PlannerLoop:
     async def _idle(self) -> float:
         # Без собственных решений цикл всё равно закрывает сбор артефакта по сроку.
         await self._artifact_tick()
+        await self._gadget_tick()
         return self._max_idle_s
 
     async def run_manual(self) -> None:
@@ -287,6 +296,7 @@ class PlannerLoop:
     async def _step(self) -> float | None:
         now = self._clock.now()
         await self._artifact_tick()
+        await self._gadget_tick()
         if (ready := self._ready()) is not None:
             self.next_wake = None
             self._waiting = None
@@ -357,6 +367,15 @@ class PlannerLoop:
             await self._artifacts.tick()
         except Exception:
             log.exception("artifact run tick failed")
+
+    async def _gadget_tick(self) -> None:
+        """Сверка задачи заточки и полного рюкзака по состоянию: в игру ничего не шлёт."""
+        if self._gadgets is None:
+            return
+        try:
+            await self._gadgets.tick()
+        except Exception:
+            log.exception("gadget tick failed")
 
     async def outlook(self) -> PlanView:
         """«План бота»: проход планировщика и состояние цикла."""
@@ -600,6 +619,11 @@ class PlannerLoop:
                 await self._artifacts.started(result.status, result.reason, details)
             except Exception:
                 log.exception("artifact start result not applied")
+        if name in GADGET_SCENARIOS and self._gadgets is not None:
+            try:
+                await self._gadgets.after(name, act.params, result)
+            except Exception:
+                log.exception("gadget result not applied")
         is_deed = name.startswith("deed:")
         if result.status == "suppressed":
             if result.reason in NOT_HELD:
@@ -631,6 +655,8 @@ class PlannerLoop:
             self._cooldowns[key] = finished + backoff
         elif result.status == "nothing" or result.reason == "busy":
             hold = NOTHING_HOLD.get((name, result.reason), NOTHING_RETRY)
+            if result.reason == "busy" and name in GADGET_SCENARIOS:
+                hold = max(hold, self._busy_left(finished))
             if (name, result.reason) == ("lottery_buy", "no_draw"):
                 if LOTTERY_OPEN <= to_msk(finished).time() < LOTTERY_LATE_OPEN:
                     hold = LOTTERY_LATE_OPEN_HOLD
@@ -644,6 +670,12 @@ class PlannerLoop:
         if tries >= FACTORY_REPORT_TRIES:
             # Третий /fb за день без сегодняшнего отчёта — до завтра, каким бы ни был исход.
             self._cooldowns[key] = day_start(tasks_day(started) + timedelta(days=1))
+
+    def _busy_left(self, at: datetime) -> timedelta:
+        """Сколько ещё идёт дело по состоянию (отказ «занят» его обновил); неизвестно — ноль."""
+        seen = self._state().busy
+        busy = None if seen is None or seen.src == "doubtful" else seen.value
+        return max(busy.until - at, timedelta(0)) if busy is not None else timedelta(0)
 
     async def _failed(self, key: str, result: ScenarioResult, finished: datetime) -> None:
         count = self._failures.get(key, 0) + 1

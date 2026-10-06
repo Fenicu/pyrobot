@@ -40,9 +40,9 @@ from app.engine.state.reducer import LOTTERY_CURRENCIES, TRIP_RESULT_GRACE
 from app.engine.trips import trip_vehicles
 
 Phase = Literal["unknown", "asleep", "busy", "free"]
-# Таймеры-моменты: наступившие во сне к подъёму теряют смысл — битва и выброс из метро пройдут,
-# окно сна относится к ночи, которую персонаж уже спит.
-MOMENTS: frozenset[WakeKind] = frozenset({"battle", "metro_kick", "sleep_window"})
+# Таймеры-моменты: наступившие во сне к подъёму теряют смысл — битва, выброс из метро и конец
+# окна-запрета пройдут, окно сна относится к ночи, которую персонаж уже спит.
+MOMENTS: frozenset[WakeKind] = frozenset({"battle", "metro_kick", "sleep_window", "gear_guard"})
 
 
 NextWhy = Literal["personal", "team", "focus", "best", "artifact"]
@@ -326,7 +326,11 @@ class _Planner(DailyTasks):
             self.metro,
             self.artifact_refresh,
             self.trip,
+            self.gadget_wear_set,
+            self.gadget_buy,
             self.deeds,
+            # Заточка — после дел: идёт, пока персонаж занят делом или дел нет.
+            self.gadget_upgrade,
         )
 
     def levelup(self, busy: BusyState | None) -> Decision | None:

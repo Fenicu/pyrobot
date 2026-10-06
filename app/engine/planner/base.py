@@ -58,6 +58,9 @@ SOURCE = {
     **dict.fromkeys(("containers_small", "containers_medium"), "gifts"),
     "gorbushka": "gorbushka",
     **dict.fromkeys(("artifacts", "artifact_collect"), "artifacts"),
+    **dict.fromkeys(("gadgets", "bag", "bag_cap"), "inventory"),
+    **dict.fromkeys(("upgrades", "upgrade_info"), "upgrades"),
+    **dict.fromkeys(("stock_holdings", "stock_quotes", "stock_limits"), "stocks"),
 }
 FEATURE = {
     "book": "books",
@@ -85,6 +88,8 @@ FEATURE = {
     "lottery_buy": "lottery",
     "trip": "trips",
     "trips_refresh": "trips",
+    "gadget_buy": "gadgets_buy",
+    "gadget_wear_set": "gadgets_buy",
 }
 # В режиме сбора артефакта 🔥 тратят только его дела: вход в метро и бой Горбушки выключены.
 ARTIFACT_OFF = frozenset({"gorbushka", "metro"})

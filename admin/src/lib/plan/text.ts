@@ -35,7 +35,9 @@ export const WAKE: Record<WakeKind, WakeText> = {
 	metro_ready: { icon: '🚇', text: 'Метро доступно' },
 	artifact_end: { icon: '👾', text: 'Сбор артефакта кончается' },
 	trip_ready: { icon: '🚦', text: 'Можно ехать' },
-	trip_result: { icon: '🚦', text: 'Итог поездки' }
+	trip_result: { icon: '🚦', text: 'Итог поездки' },
+	market_open: { icon: '📈', text: 'Откроется биржа' },
+	gear_guard: { icon: '🛡', text: 'Кончится окно-запрет' }
 };
 
 /** Сценарии и псевдо-сценарии кандидатов (`state`, `deeds` — обновление ради занятости и дел). */
@@ -66,6 +68,9 @@ export const SCENARIO: Record<string, string> = {
 	artifact: '👾 сбор артефакта',
 	trip: '🚦 поездка',
 	trips_refresh: '🚦 обновление экрана транспорта',
+	gadget_buy: '🛒 покупка гаджета',
+	gadget_wear_set: '🎽 надеть сет',
+	gadget_upgrade: '🗜 заточка',
 	'deed:harvest': '⛏ добыча',
 	'deed:job': '💻 работа',
 	'deed:learn': '📚 учёба',
@@ -108,7 +113,9 @@ export const SOURCE_TEXT: Record<string, string> = {
 	gorbushka: 'Горбушку',
 	daily: 'задания',
 	artifacts: 'экран артефактов',
-	trips: 'транспорт'
+	trips: 'транспорт',
+	upgrades: 'апгрейды',
+	stocks: 'биржу'
 };
 
 /** Вердикты кандидатов (`Candidate.verdict`); `stale:<поле>` — отдельно. */
@@ -143,7 +150,15 @@ export const VERDICT: Record<string, string> = {
 	artifact_run: 'идёт сбор артефакта',
 	no_raw: 'нет 🔩',
 	motivation_cap: '🔥 у максимума — сначала дело',
-	trip_pending: 'ждёт итог прошлой поездки'
+	trip_pending: 'ждёт итог прошлой поездки',
+	bag_full: 'рюкзак полон',
+	saving: 'копим на сет',
+	no_upgrade: 'нечего улучшать',
+	target_blocked: 'нужны 💍/💻 сета',
+	dump_window: 'окно слива акций',
+	gorbushka_meeting: 'встреча на Горбушке',
+	upgrade_running: 'на слоте идёт заточка',
+	shop_mismatch: 'витрина не сходится с каталогом'
 };
 
 /** Поля состояния в вердикте `stale:<поле>`. */
@@ -164,7 +179,16 @@ const FIELD_TEXT: Record<string, string> = {
 	company: 'своя компания',
 	team_tag: 'команда',
 	artifact_collect: 'сбор артефакта',
-	trips: 'транспорт'
+	trips: 'транспорт',
+	level: 'уровень',
+	gadgets: 'гаджеты',
+	bag: 'рюкзак',
+	bag_cap: 'размер рюкзака',
+	upgrades: 'запас улучшений',
+	upgrade_info: 'экран апгрейдов',
+	stock_holdings: 'портфель акций',
+	stock_quotes: 'котировки',
+	stock_limits: 'лимиты биржи'
 };
 
 /** Отклонённый командный вариант главы: `team <тип> <N>🔥` или `team <тип> ?🔥`. */
@@ -322,7 +346,9 @@ export function candidateDetail(c: PlanCandidate, plan: Outlook): string {
 		plan.wakeups.find((t) => t.kind === kind && t.key === key && !t.after_wake);
 	let timer: PlanTimer | undefined;
 	if (c.verdict === 'no_motivation') timer = find('motivation');
-	else if (c.verdict === 'battle_window') timer = find('battle');
+	else if (c.verdict === 'battle_window') timer = c.scenario.startsWith('gadget_') ? find('gear_guard') : find('battle');
+	else if (c.verdict === 'gorbushka_meeting') timer = find('gear_guard');
+	else if (c.verdict === 'market_closed') timer = find('market_open');
 	else if (c.verdict === 'cooldown') {
 		const source = c.params.source;
 		timer = find('cooldown', c.scenario === 'refresh' ? `refresh:${String(source)}` : c.scenario);

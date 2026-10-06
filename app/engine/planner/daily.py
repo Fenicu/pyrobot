@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from app.engine.gametime import day_start, tasks_day
 from app.engine.parsing.daily import PERSONAL_DEEDS
 from app.engine.planner.base import BATTLE_AFTER, BATTLE_BEFORE
-from app.engine.planner.obligations import Obligations
+from app.engine.planner.gadgets import GadgetSteps
 from app.engine.planner.types import Candidate, Decision
 from app.engine.state.model import (
     DEED_PRIORS,
@@ -46,7 +46,7 @@ def team_reason(kind: str, fire: int | None) -> str:
     return f"team {kind} " + (UNKNOWN_FIRE if fire is None else f"{fire}🔥")
 
 
-class DailyTasks(Obligations):
+class DailyTasks(GadgetSteps):
     """Ежедневные задания: шаг `daily` (экран и выбор личного) и приоритет дел заданий."""
 
     def tasks_today(self) -> date:
