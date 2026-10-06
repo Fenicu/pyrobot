@@ -56,6 +56,26 @@ _JOB_BADMINTON = (
 )
 
 
+# Живые 04–05.10.2026 (прод): старты с 🐕 (добыча и переработка), короткая работа и учёба.
+HARVEST_DOG = (
+    "Ты начал разыскивать комплектующие на забытых развалах и бордах в интернете. Взял любимого "
+    "🐕 - он и быстрей полезное унюхает, так ещё и сам что-нибудь принесёт. Затраты - 30 💵. "
+    "Закончишь через 5 мин.\n\nОтменить: /decline\nЗавершить: /finish"
+)
+DCONV_DOG = (
+    "Ты перерабатываешь детали в сырьё, верный 🐕 на подхвате. Заплатил 5\xa0💵 за доступ к "
+    "станку. Выложил 10\xa0⚙️деталей. Закончишь через 3 мин.\n\nОтменить: /decline\n"
+    "Завершить: /finish"
+)
+JOB_SHORT = (
+    "Ты решаешь немного поработать. Минут 5, не больше.\n\nОтменить: /decline\nЗавершить: /finish"
+)
+LEARN_LIGHT = (
+    "Ученье - свет. А также вода и центральное отопление... Через 7 минут закончишь обучение."
+    "\n\nОтменить: /decline"
+)
+
+
 def _text_events(text: str) -> list[Event]:
     msg = replace(game_msg("activities", 3625686), text=text)
     return [e for recognize in RECOGNIZERS for e in recognize(msg)]
@@ -74,10 +94,28 @@ def test_starts_without_pet(text: str, expected: ActivityStarted) -> None:
 
 
 @pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (HARVEST_DOG, ActivityStarted(activity="harvest", duration_s=300, money=30)),
+        (DCONV_DOG, ActivityStarted(activity="dconv", duration_s=180, money=5, details=10)),
+        (JOB_SHORT, ActivityStarted(activity="job", duration_s=300)),
+        (LEARN_LIGHT, ActivityStarted(activity="learn", duration_s=420)),
+    ],
+    ids=["harvest_dog", "dconv_dog", "job_short", "learn_light"],
+)
+def test_starts_live_variants(text: str, expected: ActivityStarted) -> None:
+    assert _text_events(text) == [expected]
+
+
+@pytest.mark.parametrize(
     ("text", "activity"),
     [
         (_WALK_BARE, "walk"),
         (_JOB_BADMINTON, "job"),
+        (HARVEST_DOG, "harvest"),
+        (DCONV_DOG, "dconv"),
+        (JOB_SHORT, "job"),
+        (LEARN_LIGHT, "learn"),
         *(
             (game_msg("activities", msg_id).text, activity)
             for msg_id, activity in [
@@ -93,6 +131,10 @@ def test_starts_without_pet(text: str, expected: ActivityStarted) -> None:
     ids=[
         "walk_bare",
         "job_badminton",
+        "harvest_dog",
+        "dconv_dog",
+        "job_short",
+        "learn_light",
         "harvest",
         "job",
         "learn",

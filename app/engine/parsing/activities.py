@@ -8,12 +8,14 @@ from app.engine.events import Event
 from app.engine.parsing.common import DURATION, NUM, Rewards, dur, num, parse_rewards
 from app.engine.types import IncomingMessage
 
+# Срок старта — группа `t` (длительность) или `min` (минуты числом: «Минут 5, не больше»).
 _STARTS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    # С 🐀 «Ты отправился на Барахолку», с 🐕 «Ты начал разыскивать комплектующие».
     (
         "harvest",
         re.compile(
-            r"\AТы отправился на Барахолку.*?Затраты - (?P<money>\d+) 💵\. "
-            r"Закончишь через (?P<t>" + DURATION + r")",
+            r"\A(?:Ты отправился на Барахолку|Ты начал разыскивать комплектующие).*?"
+            r"Затраты - (?P<money>\d+)[\xa0 ]💵\. Закончишь через (?P<t>" + DURATION + r")",
             re.S,
         ),
     ),
@@ -26,7 +28,14 @@ _STARTS: tuple[tuple[str, re.Pattern[str]], ...] = (
             re.S,
         ),
     ),
+    ("job", re.compile(r"\AТы решаешь немного поработать\. Минут (?P<min>\d+), не больше\.")),
     ("learn", re.compile(r"\AНа учёбу.*?Закончишь через (?P<t>" + DURATION + r")", re.S)),
+    (
+        "learn",
+        re.compile(
+            r"\AУченье - свет\.[^\n]*?Через (?P<t>" + DURATION + r") ?закончишь обучение\."
+        ),
+    ),
     (
         "eat",
         re.compile(r"\AТы ушёл поесть.*?На еду уйдёт (?P<money>\d+) 💵 и (?P<t>\d+ минут)", re.S),
@@ -34,7 +43,8 @@ _STARTS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "dconv",
         re.compile(
-            r"\AТы перерабатываешь детали в сырьё\. Заплатил (?P<money>\d+)[\xa0 ]💵.*?"
+            r"\AТы перерабатываешь детали в сырьё(?:, [^\n.]*)?\. "
+            r"Заплатил (?P<money>\d+)[\xa0 ]💵.*?"
             r"Выложил (?P<details>\d+)[\xa0 ]⚙️деталей\. Закончишь через (?P<t>" + DURATION + r")",
             re.S,
         ),
@@ -215,7 +225,7 @@ def recognize_start(msg: IncomingMessage) -> list[Event]:
             return [
                 ActivityStarted(
                     activity=activity,
-                    duration_s=dur(m["t"]),
+                    duration_s=dur(m["t"]) if groups.get("t") else int(m["min"]) * 60,
                     money=int(groups.get("money") or 0),
                     details=int(groups.get("details") or 0),
                 )
