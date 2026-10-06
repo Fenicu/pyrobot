@@ -8,6 +8,7 @@ from app.engine.parsing.screens import LotterySkillsExpired
 from app.engine.settings import ChatsSection
 from app.engine.state.model import load_state, stale_fields
 from app.engine.state.reducer import StateReducer
+from tests.engine.parsing.test_tangerine import GIFTS
 from tests.engine.state.helpers import PARSER, at, feed, fixture_at, value
 from tests.fixtures import game_versions
 
@@ -217,6 +218,16 @@ def test_tangerine_refusals() -> None:
     assert value(state, "tangerine_ready_at") == "2026-09-27T04:55:00Z"
     state = feed(reducer, state, "tangerine", 3599304, 2)
     assert value(state, "tangerine_not_player") == "𝐿𝑜𝓁𝒾𝒸𝒽𝒶𝓃𝓂𝒶𝓎"
+
+
+def test_received_tangerines_add_once() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "profile", 3624478, 0)
+    gift = replace(fixture_at("tangerine", 3616906, 1), text=GIFTS[0][0])
+    state, effects = reducer.reduce(state, gift, PARSER.parse(gift))
+    assert (value(state, "tangerines"), state["tangerines"]["src"], effects) == (4, "derived", ())
+    edit = replace(gift, date=at(2), revision=1)
+    assert value(reducer.apply(state, edit, PARSER.parse(edit)), "tangerines") == 4
 
 
 def test_battle_menu_sets_next_battle() -> None:
