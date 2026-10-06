@@ -2,6 +2,8 @@ from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any
 
+import pytest
+
 from app.engine.parsing.trips import TRIP_SPAN, VEHICLES
 from app.engine.state.ledger import Effect
 from app.engine.state.model import BusyState, TripRef, TripsState, VehicleState
@@ -246,6 +248,23 @@ def test_result_without_reward_ends_the_trip() -> None:
     assert busy(s) is None
     last = trips(s).last
     assert last is not None and last.done and last.result_id == 3
+
+
+@pytest.mark.parametrize(
+    "text", [t.RESULT_TRAM_RAILS, t.RESULT_TRAM_GRANNIES], ids=["rails", "grannies"]
+)
+def test_tram_result_with_again_line_ends_the_trip(text: str) -> None:
+    r = StateReducer()
+    s = profiled(r)
+    s2, effects = apply(r, s, text, 1, 2)
+    # Без поездки — не итог: состояние не меняется.
+    assert effects == () and s2 == s
+    s, _ = apply(r, s, t.START_TRAM, 2, 3)
+    s, effects = apply(r, s, text, 12, 4)
+    assert effects == (Effect("trip", {}, key=f"trip:{at(2).isoformat()}"),)
+    assert busy(s) is None
+    last = trips(s).last
+    assert last is not None and last.done and last.result_id == 4
 
 
 def test_edit_of_trip_result_claims_again_without_reapplying() -> None:
