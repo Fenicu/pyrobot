@@ -310,10 +310,23 @@ def _locked(gadgets: GadgetsState) -> list[CraftedSet]:
     ]
 
 
+_MARKS = tuple(_plain(mark) for mark in UPGRADE_SET_MARKS)
+_KNOWN_LINES = frozenset(_plain(s.line) for s in SETS.values() if s.line is not None)
+
+
+def _upgrade_set(gadgets: GadgetsState) -> bool:
+    return any(_plain(line).startswith(_MARKS) for line in gadgets.sets)
+
+
+def _unknown_set(gadgets: GadgetsState) -> bool:
+    """Строка сета не из каталога и не сета заточки: из каких слотов он собран, неизвестно."""
+    lines = (_plain(line) for line in gadgets.sets)
+    return any(line not in _KNOWN_LINES and not line.startswith(_MARKS) for line in lines)
+
+
 def _replace(shop: _Shop, settings: Settings) -> tuple[BuyAction | None, bool]:
     """(c): лучший по приросту бонуса тир взамен надетого; при равенстве — дешевле."""
-    marks = tuple(_plain(mark) for mark in UPGRADE_SET_MARKS)
-    if any(_plain(line).startswith(marks) for line in shop.gadgets.sets):
+    if _upgrade_set(shop.gadgets) or _unknown_set(shop.gadgets):
         return None, False
     task = settings.gadget_upgrade
     busy = task.slot if task.status == "active" else None
@@ -358,7 +371,9 @@ def buy_plan(
 
     short = False
     taken = {up_slot(g) for g in shop.gadgets.items}
-    for slot in _SHOP_SLOTS:
+    # Неулучшенный гаджет на пустом слоте снял бы сет заточки.
+    empty = () if _upgrade_set(shop.gadgets) else _SHOP_SLOTS
+    for slot in empty:
         if slot in taken or (SLOTS[slot].min_level or 1) > shop.level:
             continue
         tier = SETS[target.set].shop_tier if target is not None else None

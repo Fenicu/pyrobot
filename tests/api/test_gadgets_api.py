@@ -118,7 +118,9 @@ async def test_get_without_engine_from_settings_and_snapshot(api: Api) -> None:
         features=FeaturesSection(gadgets_buy=True, gorbushka=False, sleep=False),
         gadgets=GadgetsSection(sets=("autumn",), keep_money=1_000),
     )
-    await store(api.container, settings, snapshot())
+    # С ⚫️Сет VIP пустой слот не заполняется: строка сета — крафтовый, не надетый.
+    gadgets = GadgetsState(items=(PHONE, BOOTS), sets=("🗳Сет Логистик",))
+    await store(api.container, settings, snapshot(gadgets=gadgets))
     body = (await api.client.get(GAD)).json()
     phone, boots = body["worn"]
     assert phone == {
@@ -134,7 +136,7 @@ async def test_get_without_engine_from_settings_and_snapshot(api: Api) -> None:
         "shop_tier": None,
     }
     assert (boots["up_slot"], boots["set"], boots["shop_tier"]) == ("legs", None, 6)
-    assert body["sets"] == ["⚫️Сет VIP"]
+    assert body["sets"] == ["🗳Сет Логистик"]
     assert body["bag"] == {"used": 12, "cap": 24}
     assert body["upgrades"] == {"white": 3, "blue": 4, "red": 33}
     assert body["upgrade_info"] == {

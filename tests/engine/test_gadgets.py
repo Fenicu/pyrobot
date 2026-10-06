@@ -35,7 +35,7 @@ from app.engine.state.model import (
     Upgrades,
 )
 from app.engine.state.reducer import StateReducer
-from tests.engine.gadget_texts import INV, game_text
+from tests.engine.gadget_texts import INV, UNWEAR_P1, game_text
 from tests.engine.inv_texts import INV_PROD_4
 from tests.engine.state.helpers import PARSER
 
@@ -182,6 +182,21 @@ def test_vip_account_with_empty_list_does_nothing() -> None:
     assert (plan.action, plan.verdict) == (None, "no_upgrade")
 
 
+def test_upgrade_set_keeps_empty_slot_empty() -> None:
+    # Экран 34: 📱 снят, ⚫️Сет VIP в хвосте. Купить и надеть ⚪️0 — снять VIP: (a) не покупает.
+    live = state_of(UNWEAR_P1, level=71, money=10**6)
+    assert live.gadgets is not None and "⚫️Сет VIP" in live.gadgets.value.sets
+    plan = buy_plan(live, on_settings(), 0, "bmesa", NOW)
+    assert (plan.action, plan.verdict) == (None, "no_upgrade")
+    worn = weak("p")
+    for mark in ("⚫️Сет VIP", "🔴Сет Уникальный", "🔵Сет Редкий"):
+        state = char(worn, level=49, money=10**6, lines=[mark])
+        plan = buy_plan(state, on_settings(), 0, "x", NOW)
+        assert (plan.action, plan.verdict) == (None, "no_upgrade")
+    free = buy_plan(char(worn, level=49, money=10**6), on_settings(), 0, "x", NOW)
+    assert free.action == BuyAction("empty", "right", 14, 59_999, True, 0)
+
+
 def test_newbie_buys_best_affordable_allowed_for_empty_slots_only() -> None:
     # Уровень 14, $112, надеты p4 и w3: (a) для 👞 и 🕶 (👕/👔 — с 20); 👞 тир 2 за $79 (ур. 11),
     # тир 3 ($314) не по карману, тир 6 требует 15.
@@ -312,6 +327,20 @@ def test_replace_respects_upgrade_set_crafted_set_and_task() -> None:
     # Живой экран: 🔴Сет Уникальный и 🌞Сет Летний — ничего не трогается.
     live = buy_plan(state_of(INV_PROD_4, level=49, money=10**6), on_settings(), 0, "x", NOW)
     assert (live.action, live.verdict) == (None, "no_upgrade")
+
+
+def test_replace_keeps_slots_with_unknown_set_line() -> None:
+    # Сет вне каталога (🗺 Кладоискатель, 🦉 Сова): из чего он собран, неизвестно — (c) не трогает
+    # ни одного слота.
+    worn = [shop("p1"), *(shop(c) for c in ("w14", "l14", "h14", "c14", "t14"))]
+    for line in ("🗺Сет Кладоискатель", "🦉Сет Сова"):
+        state = char(worn, level=49, money=10**6, lines=[line])
+        plan = buy_plan(state, on_settings(), 0, "x", NOW)
+        assert (plan.action, plan.verdict) == (None, "no_upgrade")
+    # Знакомая строка крафтового сета (не надетого) замену не держит.
+    state = char(worn, level=49, money=10**6, lines=["🗳Сет Логистик"])
+    plan = buy_plan(state, on_settings(), 0, "x", NOW)
+    assert plan.action == BuyAction("replace", "right", 14, 59_999, True, 0)
 
 
 def test_replace_waits_for_money_when_better_tier_is_dear() -> None:
