@@ -93,7 +93,7 @@ from app.engine.parsing.smoothie import (
 )
 from app.engine.parsing.stocks import Dividends, StockBought, StockScreen, StockSold
 from app.engine.parsing.swinfo import BattleSummary, FactoryCall, FactoryResult
-from app.engine.parsing.tangerine import TangerineRefused
+from app.engine.parsing.tangerine import TangerineReceived, TangerineRefused
 from app.engine.parsing.trips import (
     TRIP,
     TRIP_SPAN,
@@ -1040,6 +1040,11 @@ def _tangerine(p: _Patch, e: TangerineRefused) -> None:
         p.snap("tangerine_ready_at", p.later(e.left_s))
     elif e.reason == "not_player" and e.target is not None:
         p.snap("tangerine_not_player", e.target)
+
+
+@_on(TangerineReceived)
+def _tangerine_received(p: _Patch, e: TangerineReceived) -> None:
+    p.delta("tangerines", e.count)
 
 
 @_on(MetroEntrance)

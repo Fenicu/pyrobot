@@ -15,6 +15,21 @@ _COOLDOWN = re.compile(
     re.S,
 )
 
+# «👍Ура! ☣️[SU] <имя> <любая фраза> подарил тебе 🍊мандаринки +1 шт.»: имя — после значка
+# компании и тега команды, до первого обычного пробела.
+_RECEIVED = re.compile(
+    r"\A👍Ура! [^\w\[ ]*(?:\[[^\]\n]*\][\xa0 ]?)?(?P<name>[^ \n]+) (?:[^\n]*? )?"
+    r"подарил тебе 🍊мандаринки \+(?P<n>\d+)[\xa0 ]шт\.\Z"
+)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TangerineReceived(Event):
+    kind: ClassVar[str] = "tangerine_received"
+    outcome: ClassVar[bool] = True
+    sender: str
+    count: int
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TangerineRefused(Event):
@@ -30,6 +45,8 @@ def recognize_tangerine(msg: IncomingMessage) -> list[Event]:
         return [TangerineRefused(reason="not_player", target=m["target"])]
     if m := _COOLDOWN.match(text):
         return [TangerineRefused(reason="cooldown", left_s=dur(m["t"]))]
+    if m := _RECEIVED.match(text):
+        return [TangerineReceived(sender=m["name"], count=int(m["n"]))]
     return []
 
 

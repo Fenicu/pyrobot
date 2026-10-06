@@ -209,6 +209,26 @@ def test_result_without_reward_is_rewards_only_with_nothing() -> None:
     assert recognize_rewards_only(game_text(t.RESULT_NOTHING + "\n\n/job")) == []
 
 
+@pytest.mark.parametrize(
+    ("text", "rewards"),
+    [
+        (t.RESULT_NOTHING_CAR, Rewards()),
+        (t.RESULT_TRAM_RAILS, Rewards()),
+        (t.RESULT_TRAM_GRANNIES, Rewards()),
+        (t.RESULT_TRAM_EXP + "\n\n" + t.TRAM_AGAIN, Rewards(exp=244)),
+    ],
+    ids=["car_nothing", "tram_rails", "tram_grannies", "tram_exp"],
+)
+def test_result_with_again_line_is_rewards_only(text: str, rewards: Rewards) -> None:
+    assert parse(text) == [RewardsOnly(rewards=rewards)]
+
+
+def test_again_line_needs_a_story_and_a_whole_rewards_block() -> None:
+    assert recognize_rewards_only(game_text(t.TRAM_AGAIN)) == []
+    broken = "Сюжет.\n\nТы получил:\n💡Опыт: +1\n\nещё строка\n\n" + t.TRAM_AGAIN
+    assert recognize_rewards_only(game_text(broken)) == []
+
+
 def test_rewards_only_is_a_fallback_after_every_family() -> None:
     # Итог дела с той же формой, но со строкой продолжения — итог дела, не «только награда».
     deed = (

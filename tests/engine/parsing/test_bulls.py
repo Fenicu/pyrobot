@@ -2,9 +2,11 @@ from dataclasses import replace
 
 import pytest
 
+from app.engine.commands import CommandClass, classify_callback
 from app.engine.events import Event
 from app.engine.parsing import default_parser
 from app.engine.parsing.bulls import (
+    BullsEncounter,
     BullsInvite,
     BullsJoined,
     BullsRefused,
@@ -14,6 +16,9 @@ from app.engine.parsing.bulls import (
 from app.engine.parsing.common import Rewards
 from app.engine.parsing.swinfo import FactoryCall
 from app.engine.settings import ChatsSection
+from app.engine.state.reducer import StateReducer
+from app.engine.types import Button
+from tests.engine.helpers import make_msg
 from tests.fixtures import game_msg
 
 INVITE_CHAT = -1009999
@@ -46,6 +51,45 @@ INVITE_CHAT = -1009999
 )
 def test_bulls_in_game_chat(msg_id: int, expected: Event) -> None:
     assert recognize_bulls(game_msg("bulls", msg_id)) == [expected]
+
+
+# Живые 03.10.2026 (прод): встречи на ночной прогулке, кнопки «⚔Драться» / «🚶Пропустить».
+WALK_BULL = (
+    "Гуляя по ночному городу, ты заметил 🐮Быка, проникающего в здание банка.\n"
+    "За углом слышно бурное обсуждение возможностей подъёма акций.\n"
+    "Выбор за тобой: звать на помощь и ⚔️драться с ними или же уйти, надеясь на то, что быки "
+    "поднимут цены акций.\n"
+    "\n"
+    "У тебя есть 3 минуты на раздумья."
+)
+WALK_BEAR = (
+    "Прогуливаясь, ты заметил взламывающего банкомат 🐻Медведя.\n"
+    "Неподалёку ошиваются его сообщники.\n"
+    "Выбор за тобой: звать друзей и ⚔драться с ними или же 🚶пропустить с миром.\n"
+    "\n"
+    "У тебя есть 3 минуты на раздумья."
+)
+FIGHT_BUTTONS = (
+    Button("⚔Драться", 0, 0, "fight_accept"),
+    Button("🚶Пропустить", 0, 1, "fight_decline"),
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "enemy"), [(WALK_BULL, "bull"), (WALK_BEAR, "bear")], ids=["bull", "bear"]
+)
+def test_walk_encounter_is_an_offer_without_reaction(text: str, enemy: str) -> None:
+    msg = make_msg(text, buttons=FIGHT_BUTTONS)
+    assert default_parser(ChatsSection()).parse(msg) == [
+        BullsEncounter(enemy=enemy, expires_in_s=180)
+    ]
+    # В состояние не идёт: предложение истекает само.
+    assert StateReducer().reduce({}, msg, [BullsEncounter(enemy=enemy, expires_in_s=180)]) == (
+        {},
+        (),
+    )
+    # Кнопки встречи боту запрещены.
+    assert {classify_callback(b.data or "") for b in FIGHT_BUTTONS} == {CommandClass.FORBIDDEN}
 
 
 def test_invite_only_in_invite_chat() -> None:

@@ -5,6 +5,7 @@ import pytest
 from app.engine.scenarios.library import deed, free_item, refresh, run_scenario
 from app.engine.state.model import CharacterState
 from tests.engine.fakegame import World
+from tests.engine.parsing.test_activities import DCONV_DOG, HARVEST_DOG, JOB_SHORT, LEARN_LIGHT
 from tests.engine.scenarios.certify import certifies
 from tests.engine.scenarios.conftest import context
 from tests.fixtures import game_msg
@@ -33,6 +34,27 @@ STARTS = {
 async def test_deed_started(world: World, activity: str) -> None:
     command, fixture = STARTS[activity]
     world.game.on_text(command, ("activities", fixture))
+    result = await run_scenario(deed, context(world), CharacterState(), {"activity": activity})
+    assert (result.status, world.game.payloads()) == ("done", [command])
+    busy = world.state.busy
+    assert busy is not None and busy.value is not None and busy.value.activity == activity
+
+
+@pytest.mark.parametrize(
+    ("activity", "command", "text"),
+    [
+        ("harvest", "/harvest", HARVEST_DOG),
+        ("dconv", "/dconv", DCONV_DOG),
+        ("job", "/job", JOB_SHORT),
+        ("learn", "/learns", LEARN_LIGHT),
+    ],
+    ids=["harvest_dog", "dconv_dog", "job_short", "learn_light"],
+)
+async def test_deed_started_live_variants(
+    world: World, activity: str, command: str, text: str
+) -> None:
+    # На проде 05.10 старт с 🐕 не распознавался: сценарий ждал подтверждения до таймаута.
+    world.game.on_text(command, replace(game_msg("activities", STARTS[activity][1]), text=text))
     result = await run_scenario(deed, context(world), CharacterState(), {"activity": activity})
     assert (result.status, world.game.payloads()) == ("done", [command])
     busy = world.state.busy

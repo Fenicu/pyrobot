@@ -66,6 +66,10 @@ _REWARDS_ONLY = re.compile(r"\A\S.*\n\nТы получил:\n[^\n]+(?:\n[^\n]+)*
 _NO_REWARD = frozenset(
     {"Долго катался по городу в поисках приключений. Увы, сегодня не твой день."}
 )
+# Последняя строка «повторить» с командой вида («Заводи по новой! /car», «…ещё раз - /tram»): с
+# ней итог поездки — любой сюжет, с наградой или без.
+_AGAIN = re.compile(r"\n\n[^\n]+ /(?:" + "|".join(VEHICLES) + r")\Z")
+_STORY = re.compile(r"\A\S")
 
 
 def vehicle_key(name: str) -> str:
@@ -139,9 +143,9 @@ class TripRefused(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RewardsOnly(Event):
-    """«<сюжет>», пустая строка, «Ты получил:» и награда (или известный сюжет без награды) —
-    сообщение, которое не распознало ни одно семейство: итог поездки, если она идёт (решает
-    редьюсер), иначе не применяется."""
+    """«<сюжет>», пустая строка, «Ты получил:» и награда (или известный сюжет без награды; или
+    любой из них со строкой «повторить» с командой вида) — сообщение, которое не распознало ни
+    одно семейство: итог поездки, если она идёт (решает редьюсер), иначе не применяется."""
 
     kind: ClassVar[str] = "rewards_only"
     claimed_by: ClassVar[str | None] = "trip"
@@ -218,6 +222,13 @@ def recognize_rewards_only(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     if text in _NO_REWARD:
         return [RewardsOnly(rewards=Rewards())]
+    if (again := _AGAIN.search(text)) is not None:
+        story = text[: again.start()]
+        if _REWARDS_ONLY.match(story):
+            return [RewardsOnly(rewards=parse_rewards(story))]
+        if _STORY.match(story) and "Ты получил:" not in story:
+            return [RewardsOnly(rewards=Rewards())]
+        return []
     return [RewardsOnly(rewards=parse_rewards(text))] if _REWARDS_ONLY.match(text) else []
 
 
