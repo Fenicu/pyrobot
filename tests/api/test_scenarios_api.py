@@ -190,3 +190,13 @@ async def test_gadget_buy_and_wear_set_not_manual(world: World, api_client: Asyn
     names = {i["name"] for i in (await api_client.get("/api/v1/scenarios")).json()}
     assert not names & {"gadget_buy", "gadget_wear_set"}
     assert world.game.payloads() == []
+
+
+async def test_gadget_upgrade_not_manual(world: World, api_client: AsyncClient) -> None:
+    h = {"X-CSRF-Token": await login(api_client)}
+    params = {"task_id": 1, "slot": "right", "target": 5, "kind": "white", "batch": 20}
+    code, body = await _run(api_client, h, "gadget_upgrade", "gu1", **params)
+    assert (code, body) == (409, {"detail": "scenario_not_manual"})
+    names = {i["name"] for i in (await api_client.get("/api/v1/scenarios")).json()}
+    assert "gadget_upgrade" not in names
+    assert world.game.payloads() == []

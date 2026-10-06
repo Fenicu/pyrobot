@@ -158,10 +158,9 @@ def test_refresh_gadget_sources(source: str) -> None:
 
 
 def test_gadget_scenarios_are_not_manual() -> None:
-    assert {"gadget_buy", "gadget_wear_set"} <= SCENARIOS.keys()
-    registered = GADGET_SCENARIOS & SCENARIOS.keys()
-    assert all(not SCENARIOS[name].manual for name in registered)
-    assert {"gadget_buy", "gadget_wear_set"} <= CERTIFIED
+    assert GADGET_SCENARIOS <= SCENARIOS.keys()
+    assert all(not SCENARIOS[name].manual for name in GADGET_SCENARIOS)
+    assert GADGET_SCENARIOS <= CERTIFIED
 
 
 def test_gadget_scenario_params() -> None:
@@ -171,3 +170,7 @@ def test_gadget_scenario_params() -> None:
     assert SCENARIOS["gadget_buy"].invalid(bad) == sorted(buy)
     assert SCENARIOS["gadget_wear_set"].invalid({"set": "um", "slots": ["right"]}) == []
     assert SCENARIOS["gadget_wear_set"].invalid({"set": "logistic"}) == ["set"]
+    upgrade = {"task_id": 3, "slot": "pants", "target": 25, "kind": "auto", "batch": 20}
+    assert SCENARIOS["gadget_upgrade"].invalid(upgrade) == []
+    bad_upgrade = {"task_id": 0, "slot": "bag", "target": 61, "kind": "gold", "batch": 21}
+    assert SCENARIOS["gadget_upgrade"].invalid(bad_upgrade) == sorted(upgrade)

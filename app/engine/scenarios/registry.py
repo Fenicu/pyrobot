@@ -5,7 +5,8 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, get_args
 
-from app.engine.gadget_catalog import BUYABLE_SETS, SHOP
+from app.engine.gadget_catalog import BUYABLE_SETS, SHOP, SLOTS
+from app.engine.gadgets import UPGRADE_BATCH
 from app.engine.parsing.artifacts import RECOLLECTABLE
 from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.parsing.smoothie import INGREDIENTS
@@ -178,6 +179,19 @@ def _specs() -> dict[str, ScenarioSpec]:
             True,
             manual=False,
             required={"set": _one_of(BUYABLE_SETS)},
+        ),
+        ScenarioSpec(
+            "gadget_upgrade",
+            gadgets.gadget_upgrade,
+            True,
+            manual=False,
+            required={
+                "task_id": _int(1),
+                "slot": _one_of(SLOTS),
+                "target": _int(1, 60),
+                "kind": _one_of(("white", "blue", "red", "auto")),
+                "batch": _int(1, UPGRADE_BATCH),
+            },
         ),
     ]
     for item, certified in (

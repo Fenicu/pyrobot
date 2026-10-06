@@ -1,9 +1,10 @@
-"""Гаджеты: покупка в магазине (на нехватку — продажа чужих акций) с надеванием и надевание
-крафтового сета из рюкзака."""
+"""Гаджеты: покупка в магазине (на нехватку — продажа чужих акций) с надеванием, надевание
+крафтового сета из рюкзака и порция заточки гаджета."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -11,6 +12,7 @@ from app.engine.gadget_catalog import (
     SETS,
     SHOP,
     SLOTS,
+    UPGRADE_KINDS,
     SetKey,
     ShopItem,
     ShopSlot,
@@ -18,8 +20,16 @@ from app.engine.gadget_catalog import (
     set_by_name,
     slot_of_icon,
 )
-from app.engine.gadgets import gear_guard, gear_until, in_dump_window
-from app.engine.parsing.gadgets import GadgetBought, GadgetWorn, ShopScreen
+from app.engine.gadgets import gear_guard, gear_until, in_dump_window, upgrade_kind
+from app.engine.parsing.gadgets import (
+    GadgetBought,
+    GadgetWorn,
+    ShopScreen,
+    UpgradeAttempt,
+    UpgradeConfirm,
+    UpgradeScreen,
+    UpgradesScreen,
+)
 from app.engine.parsing.items import Gadget, Gadgets, Inventory
 from app.engine.parsing.screens import InfoScreen
 from app.engine.parsing.stocks import StockScreen, StockSold
@@ -29,15 +39,24 @@ from app.engine.scenarios.context import (
     ScenarioStopped,
     Step,
     StepResult,
+    expect_edit,
     expect_events,
 )
-from app.engine.scenarios.library import Params, ScenarioResult, require, wrong_screen
-from app.engine.state.model import CharacterState
+from app.engine.scenarios.library import (
+    Params,
+    ScenarioResult,
+    Status,
+    require,
+    wrong_screen,
+)
+from app.engine.state.model import CharacterState, Upgrades
+from app.engine.types import IncomingMessage
 
 NETWORK = "🕸Сеть"
 SHOP_BUTTON = "🏪Магазин"
 INV = "/inv"
 STOCK = "/stock"
+UPGRADES = "/upgrades"
 MISSING = "missing_item"
 _VS16 = "\ufe0f"
 
@@ -350,3 +369,168 @@ async def gadget_wear_set(
         "sets": list(after),
     }
     return ScenarioResult("done", "worn", details)
+
+
+# --- заточка
+
+Hold = Callable[[], tuple[str | None, datetime | None]]
+
+
+@dataclass
+class _Batch:
+    """Счёт порции заточки: попытки, успехи и провалы гаджета задачи, траты по видам, его
+    уровень."""
+
+    task_id: int
+    level: int | None = None
+    attempts: int = 0
+    ok: int = 0
+    fail: int = 0
+    spent: dict[str, int] = field(default_factory=lambda: dict.fromkeys(UPGRADE_KINDS, 0))
+
+    def count(self, attempt: UpgradeAttempt, own: bool) -> None:
+        """Попытка потратила улучшение; успех, провал и уровень — только у гаджета задачи."""
+        self.attempts += 1
+        self.spent[attempt.used] = self.spent.get(attempt.used, 0) + 1
+        if own:
+            self.level = attempt.level
+            self.ok += attempt.success
+            self.fail += not attempt.success
+
+    def result(self, status: Status, reason: str, **extra: Any) -> ScenarioResult:
+        details = {
+            "task_id": self.task_id,
+            "level": self.level,
+            "attempts": self.attempts,
+            "ok": self.ok,
+            "fail": self.fail,
+            "spent": dict(self.spent),
+            **extra,
+        }
+        return ScenarioResult(status, reason, details)
+
+
+def _left(stocks: dict[str, int]) -> Upgrades:
+    return Upgrades(**{kind: stocks.get(kind, 0) for kind in UPGRADE_KINDS})
+
+
+def _upgrade_hold(ctx: ScenarioContext, task_id: int, slot: str, until: datetime | None) -> Hold:
+    """Сверка перед каждым кликом заточки: задача `task_id` всё ещё активна на слоте (иначе
+    `task_changed`), нет окна-запрета по свежему состоянию (иначе вердикт). Второе — `deadline`
+    клика: ближайшее из `until` и начала окна-запрета."""
+
+    def hold() -> tuple[str | None, datetime | None]:
+        task = ctx.settings().gadget_upgrade
+        current = task.status == "active" and task.slot == slot
+        if not current or task.task_id != task_id or ctx.task_id != task_id:
+            return "task_changed", None
+        verdict, gear = _guard(ctx)
+        if verdict is not None:
+            return verdict, None
+        return None, min((t for t in (until, gear) if t is not None), default=None)
+
+    return hold
+
+
+async def _attempt(
+    ctx: ScenarioContext, frame: IncomingMessage, data: str, deadline: datetime | None, hold: Hold
+) -> StepResult:
+    """Попытка: клик вида с кадра `frame`; игра просит подтверждения — `…_1_accept` с кадра
+    правки-подтверждения после новой сверки. Итог принимается только правкой этого сообщения.
+    Запрет сверки — `refused <вердикт>` без доставки."""
+    message = frame.msg_id
+    step = await ctx.click(
+        message,
+        data,
+        expect_edit(message, UpgradeAttempt, UpgradeConfirm),
+        frame.revision,
+        content=frame.content_hash(),
+        deadline=deadline,
+    )
+    if step.step is not Step.OK or step.first(UpgradeConfirm) is None or step.delivery is None:
+        return step
+    verdict, deadline = hold()
+    if verdict is not None:
+        return StepResult(Step.REFUSED, verdict)
+    confirm = step.delivery.msg
+    return await ctx.click(
+        message,
+        f"{data}_1_accept",
+        expect_edit(message, UpgradeAttempt),
+        confirm.revision,
+        content=confirm.content_hash(),
+        deadline=deadline,
+    )
+
+
+def _of_slot(slot: str) -> Predicate:
+    return expect_events(
+        UpgradeScreen, accept=lambda e: isinstance(e, UpgradeScreen) and e.up_slot == slot
+    )
+
+
+async def gadget_upgrade(
+    ctx: ScenarioContext, state: CharacterState, params: Params
+) -> ScenarioResult:
+    """Порция заточки задачи `task_id`: `/upgrades` (гаджет на слоте, цель, запасы) → `/up_<slot>`
+    → до `batch` попыток с кадра сообщения `/up_`. Перед каждым кликом — сверка задачи и
+    окна-запрета (`_upgrade_hold`) и вид по локальному запасу; кадр следующей попытки — правка
+    итога. Итог — `{task_id, level, attempts, ok, fail, spent}`; порция кончилась — `done batch`
+    (решает планировщик)."""
+    task_id, slot, gadget = int(params["task_id"]), str(params["slot"]), str(params["gadget"])
+    target, kind = int(params["target"]), str(params["kind"])
+    white_until = int(params["white_until"])
+    until = datetime.fromisoformat(params["until"]) if params.get("until") else None
+    hold = _upgrade_hold(ctx, task_id, slot, until)
+    batch = _Batch(task_id)
+    async with ctx.lease("gadget_upgrade"):
+        opened = require(await ctx.send(UPGRADES, expect_events(UpgradesScreen)))
+        screen = opened.first(UpgradesScreen)
+        if screen is None or opened.delivery is None:
+            raise ScenarioStopped("unexpected_screen", opened)
+        worn = next((g for s, g in screen.items if s == slot), None)
+        if worn is None or worn.name != gadget:
+            return batch.result("nothing", "gadget_changed")
+        level = batch.level = worn.level or 0
+        if level >= target:
+            return batch.result("done", "target_reached")
+        if upgrade_kind(kind, level, _left(screen.stocks), white_until) is None:
+            seen = opened.delivery.msg.date.isoformat()
+            return batch.result("done", "exhausted", exhausted_seen_at=seen)
+        shown = require(await ctx.send(f"/up_{slot}", _of_slot(slot)))
+        up = shown.first(UpgradeScreen)
+        if up is None or shown.delivery is None:
+            raise ScenarioStopped("unexpected_screen", shown)
+        if up.name != gadget:
+            return batch.result("nothing", "gadget_changed")
+        level = batch.level = up.level or 0
+        stocks, frame = dict(up.stocks), shown.delivery.msg
+        for i in range(int(params["batch"])):
+            if level >= target:
+                break
+            if i:
+                await ctx.safe_point()
+            verdict, deadline = hold()
+            if verdict is not None:
+                return batch.result("nothing", verdict)
+            use = upgrade_kind(kind, level, _left(stocks), white_until)
+            if use is None:
+                return batch.result("done", "exhausted")
+            step = await _attempt(ctx, frame, f"up_{slot}_{UPGRADE_KINDS[use][1]}", deadline, hold)
+            if _local(step):
+                return batch.result("nothing", step.reason)
+            if step.step is not Step.OK:
+                failed = wrong_screen(step)
+                return batch.result(failed.status, failed.reason)
+            attempt = step.first(UpgradeAttempt)
+            if attempt is None or step.delivery is None:
+                return batch.result("stopped", "unexpected_screen")
+            own = attempt.name == gadget
+            batch.count(attempt, own)
+            stocks[attempt.used] = max(stocks.get(attempt.used, 0) - 1, 0)
+            if not own:
+                return batch.result("nothing", "gadget_changed")
+            level, frame = attempt.level, step.delivery.msg
+    if level >= target:
+        return batch.result("done", "target_reached")
+    return batch.result("done", "batch")
