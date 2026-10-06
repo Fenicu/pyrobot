@@ -453,3 +453,50 @@ def test_artifact_tactic_patch_applies() -> None:
     # Старые настройки без новых секций читаются с умолчаниями.
     old = Settings.model_validate({"engine": {"mode": "live"}})
     assert old.artifact_run.status == "idle" and old.artifacts.light == ("walk",)
+
+
+def test_gadgets_defaults() -> None:
+    s = Settings()
+    assert s.features.gadgets_buy is False
+    assert (s.gadgets.sets, s.gadgets.keep_money, s.gadgets.white_until) == ((), 0, 7)
+    assert (s.gadget_upgrade.status, s.gadget_upgrade.task_id) == ("idle", 0)
+
+
+def test_gadget_sets_unique_and_known() -> None:
+    with pytest.raises(ValidationError):
+        apply_patch(Settings(), {"gadgets": {"sets": ["pig", "pig"]}})
+    with pytest.raises(ValidationError):
+        apply_patch(Settings(), {"gadgets": {"sets": ["logistic"]}})
+    patched = apply_patch(Settings(), {"gadgets": {"sets": ["pig", "summer"]}})
+    assert patched.gadgets.sets == ("pig", "summer")
+
+
+def test_gadgets_money_and_white_until_bounds() -> None:
+    for bad in (0, 26):
+        with pytest.raises(ValidationError):
+            apply_patch(Settings(), {"gadgets": {"white_until": bad}})
+    for good in (1, 25):
+        patched = apply_patch(Settings(), {"gadgets": {"white_until": good}})
+        assert patched.gadgets.white_until == good
+    with pytest.raises(ValidationError):
+        apply_patch(Settings(), {"gadgets": {"keep_money": -1}})
+    assert apply_patch(Settings(), {"gadgets": {"keep_money": 500}}).gadgets.keep_money == 500
+
+
+def test_gadget_upgrade_is_read_only_section() -> None:
+    with pytest.raises(SettingsPatchError) as err:
+        apply_patch(Settings(), {"gadget_upgrade": {"status": "active"}})
+    assert (err.value.code, err.value.path) == ("read_only", "gadget_upgrade")
+    schema = Settings.model_json_schema()
+    upgrade = schema["$defs"]["GadgetUpgradeSection"]["properties"]
+    assert schema["properties"]["gadget_upgrade"]["readOnly"] is True
+    assert all(field["readOnly"] for field in upgrade.values())
+    for bad in ({"target": 0}, {"target": 61}, {"task_id": -1}, {"slot": "neck"}):
+        with pytest.raises(ValidationError):
+            Settings.model_validate({"gadget_upgrade": bad})
+
+
+def test_old_settings_read_with_gadget_defaults() -> None:
+    old = Settings.model_validate({"engine": {"mode": "live"}, "features": {"trips": False}})
+    assert old.features.gadgets_buy is False
+    assert old.gadgets.white_until == 7 and old.gadget_upgrade.status == "idle"

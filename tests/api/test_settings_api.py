@@ -365,3 +365,16 @@ async def test_bounds_apply_to_owner_too(api: Api) -> None:
     r = await api.client.patch(f"{A1}/settings", headers=api.headers, json=patch)
     assert r.status_code == 422
     assert r.json()["detail"] == "setting_out_of_bounds"
+
+
+async def test_patch_gadget_upgrade_is_422(
+    with_settings: Container, api_client: AsyncClient
+) -> None:
+    h = await _csrf(api_client)
+    body = {"version": 0, "changes": {"gadget_upgrade": {"status": "active"}}}
+    r = await api_client.patch("/api/v1/accounts/1/settings", headers=h, json=body)
+    assert r.status_code == 422 and r.json()["detail"][0]["type"] == "read_only"
+    assert r.json()["detail"][0]["loc"] == ["body", "changes", "gadget_upgrade"]
+    ok = {"version": 0, "changes": {"gadgets": {"sets": ["pig"], "white_until": 9}}}
+    r = await api_client.patch("/api/v1/accounts/1/settings", headers=h, json=ok)
+    assert r.status_code == 200

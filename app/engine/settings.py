@@ -101,6 +101,7 @@ class FeaturesSection(BaseModel):
     paid_info: bool = False
     seasonal: bool = False
     trips: bool = True
+    gadgets_buy: bool = Field(default=False, json_schema_extra=UNUSED)
 
 
 Deed = Literal["harvest", "job", "learn", "dconv", "walk", "confa", "rob"]
@@ -304,6 +305,48 @@ class TripsSection(BaseModel):
         return value
 
 
+GadgetSetKey = Literal["summer", "autumn", "um", "pig"]
+UpSlotKey = Literal[
+    "right", "left", "legs", "head", "chest", "torso", "ring", "book", "pbank", "pants"
+]
+UpgradeChoice = Literal["white", "blue", "red", "auto"]
+UpgradeStatus = Literal["idle", "active", "done", "exhausted", "stopped", "failed"]
+
+
+class GadgetsSection(BaseModel):
+    """Покупка гаджетов: до каких сетов докупать, резерв денег и до какого уровня точить ⚪️."""
+
+    sets: tuple[GadgetSetKey, ...] = ()
+    keep_money: int = Field(default=0, ge=0, json_schema_extra=UNUSED)
+    white_until: int = Field(default=7, ge=1, le=25, json_schema_extra=UNUSED)
+
+    @field_validator("sets")
+    @classmethod
+    def _unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(set(value)) != len(value):
+            raise ValueError("sets must not repeat")
+        return value
+
+
+_GADGET_RO = {**READ_ONLY, **UNUSED}
+
+
+class GadgetUpgradeSection(BaseModel):
+    """Текущая задача заточки: меняют эндпоинты `/gadgets/upgrade*` и движок, не PATCH."""
+
+    status: UpgradeStatus = Field(default="idle", json_schema_extra=_GADGET_RO)
+    task_id: int = Field(default=0, ge=0, json_schema_extra=_GADGET_RO)
+    slot: UpSlotKey | None = Field(default=None, json_schema_extra=_GADGET_RO)
+    gadget: str | None = Field(default=None, json_schema_extra=_GADGET_RO)
+    kind: UpgradeChoice | None = Field(default=None, json_schema_extra=_GADGET_RO)
+    target: int | None = Field(default=None, ge=1, le=60, json_schema_extra=_GADGET_RO)
+    start_level: int | None = Field(default=None, ge=0, json_schema_extra=_GADGET_RO)
+    end_level: int | None = Field(default=None, ge=0, json_schema_extra=_GADGET_RO)
+    started_at: datetime | None = Field(default=None, json_schema_extra=_GADGET_RO)
+    ended_at: datetime | None = Field(default=None, json_schema_extra=_GADGET_RO)
+    end_reason: str | None = Field(default=None, json_schema_extra=_GADGET_RO)
+
+
 class Settings(BaseModel):
     engine: EngineSection = Field(default_factory=EngineSection)
     chats: ChatsSection = Field(default_factory=ChatsSection)
@@ -320,8 +363,12 @@ class Settings(BaseModel):
     lottery: LotterySection = Field(default_factory=LotterySection)
     artifacts: ArtifactsSection = Field(default_factory=ArtifactsSection)
     trips: TripsSection = Field(default_factory=TripsSection)
+    gadgets: GadgetsSection = Field(default_factory=GadgetsSection)
     artifact_run: ArtifactRunSection = Field(
         default_factory=ArtifactRunSection, json_schema_extra=READ_ONLY
+    )
+    gadget_upgrade: GadgetUpgradeSection = Field(
+        default_factory=GadgetUpgradeSection, json_schema_extra=READ_ONLY
     )
 
 

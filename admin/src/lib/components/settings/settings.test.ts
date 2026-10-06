@@ -51,7 +51,7 @@ describe('Настройки', () => {
 	});
 
 
-	it('раздел «Поездки» — виды транспорта по-русски, порядок кнопками, секция после «Сбора артефакта»', async () => {
+	it('раздел «Поездки» — виды транспорта по-русски, порядок кнопками, секция после «Гаджетов»', async () => {
 		const user = userEvent.setup();
 		const values = {
 			...settings.values,
@@ -61,7 +61,8 @@ describe('Настройки', () => {
 		const { editor } = await view(undefined, () => ({ ...settings, schema: schemaJson, values }));
 		const nav = screen.getByRole('navigation', { name: 'Секции настроек' });
 		const items = [...nav.querySelectorAll('li')].map((li) => li.textContent?.trim());
-		expect(items.indexOf('Поездки')).toBe(items.indexOf('Сбор артефакта') + 1);
+		expect(items.indexOf('Гаджеты')).toBe(items.indexOf('Сбор артефакта') + 1);
+		expect(items.indexOf('Поездки')).toBe(items.indexOf('Гаджеты') + 1);
 		await user.click(screen.getByRole('button', { name: 'Поездки' }));
 		const section = screen.getByRole('region', { name: 'Поездки' });
 		const list = within(section).getByRole('group', { name: 'Виды транспорта' });

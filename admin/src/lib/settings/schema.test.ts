@@ -78,6 +78,20 @@ describe('форма по схеме настроек с прода', () => {
 		expect(current.filter((f) => f.unused).map((f) => f.path.join('.'))).toEqual([
 			'features.arena',
 			'features.casino',
+			'features.gadgets_buy',
+			'gadget_upgrade.end_level',
+			'gadget_upgrade.end_reason',
+			'gadget_upgrade.ended_at',
+			'gadget_upgrade.gadget',
+			'gadget_upgrade.kind',
+			'gadget_upgrade.slot',
+			'gadget_upgrade.start_level',
+			'gadget_upgrade.started_at',
+			'gadget_upgrade.status',
+			'gadget_upgrade.target',
+			'gadget_upgrade.task_id',
+			'gadgets.keep_money',
+			'gadgets.white_until',
 			'levelup.policy'
 		]);
 		// В схеме с прода пометки ещё нет — ни одного поля.

@@ -525,6 +525,12 @@
      "title": "Fastfood",
      "type": "boolean"
     },
+    "gadgets_buy": {
+     "default": false,
+     "title": "Gadgets Buy",
+     "type": "boolean",
+     "x-unused": true
+    },
     "gorbushka": {
      "default": true,
      "title": "Gorbushka",
@@ -627,6 +633,222 @@
     }
    },
    "title": "FoodSection",
+   "type": "object"
+  },
+  "GadgetUpgradeSection": {
+   "description": "Текущая задача заточки: меняют эндпоинты `/gadgets/upgrade*` и движок, не PATCH.",
+   "properties": {
+    "end_level": {
+     "anyOf": [
+      {
+       "minimum": 0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "End Level",
+     "x-unused": true
+    },
+    "end_reason": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "End Reason",
+     "x-unused": true
+    },
+    "ended_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Ended At",
+     "x-unused": true
+    },
+    "gadget": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Gadget",
+     "x-unused": true
+    },
+    "kind": {
+     "anyOf": [
+      {
+       "enum": [
+        "white",
+        "blue",
+        "red",
+        "auto"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Kind",
+     "x-unused": true
+    },
+    "slot": {
+     "anyOf": [
+      {
+       "enum": [
+        "right",
+        "left",
+        "legs",
+        "head",
+        "chest",
+        "torso",
+        "ring",
+        "book",
+        "pbank",
+        "pants"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Slot",
+     "x-unused": true
+    },
+    "start_level": {
+     "anyOf": [
+      {
+       "minimum": 0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Start Level",
+     "x-unused": true
+    },
+    "started_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Started At",
+     "x-unused": true
+    },
+    "status": {
+     "default": "idle",
+     "enum": [
+      "idle",
+      "active",
+      "done",
+      "exhausted",
+      "stopped",
+      "failed"
+     ],
+     "readOnly": true,
+     "title": "Status",
+     "type": "string",
+     "x-unused": true
+    },
+    "target": {
+     "anyOf": [
+      {
+       "maximum": 60,
+       "minimum": 1,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "readOnly": true,
+     "title": "Target",
+     "x-unused": true
+    },
+    "task_id": {
+     "default": 0,
+     "minimum": 0,
+     "readOnly": true,
+     "title": "Task Id",
+     "type": "integer",
+     "x-unused": true
+    }
+   },
+   "title": "GadgetUpgradeSection",
+   "type": "object"
+  },
+  "GadgetsSection": {
+   "description": "Покупка гаджетов: до каких сетов докупать, резерв денег и до какого уровня точить ⚪️.",
+   "properties": {
+    "keep_money": {
+     "default": 0,
+     "minimum": 0,
+     "title": "Keep Money",
+     "type": "integer",
+     "x-unused": true
+    },
+    "sets": {
+     "default": [],
+     "items": {
+      "enum": [
+       "summer",
+       "autumn",
+       "um",
+       "pig"
+      ],
+      "type": "string"
+     },
+     "title": "Sets",
+     "type": "array"
+    },
+    "white_until": {
+     "default": 7,
+     "maximum": 25,
+     "minimum": 1,
+     "title": "White Until",
+     "type": "integer",
+     "x-unused": true
+    }
+   },
+   "title": "GadgetsSection",
    "type": "object"
   },
   "LevelupSection": {
@@ -1066,6 +1288,13 @@
   },
   "food": {
    "$ref": "#/$defs/FoodSection"
+  },
+  "gadget_upgrade": {
+   "$ref": "#/$defs/GadgetUpgradeSection",
+   "readOnly": true
+  },
+  "gadgets": {
+   "$ref": "#/$defs/GadgetsSection"
   },
   "levelup": {
    "$ref": "#/$defs/LevelupSection"

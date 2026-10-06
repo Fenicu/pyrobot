@@ -11,7 +11,17 @@ export function settingHelp(path: string): string | undefined {
 	return SETTINGS_TEXT[path]?.help;
 }
 
-const VALUE_LABELS: Record<string, Record<string, string>> = { 'trips.vehicles': VEHICLE };
+const GADGET_SET: Record<string, string> = {
+	summer: '🌞 Летний (T11)',
+	autumn: '🍂 Осень (T12)',
+	um: 'Um-сет (T13)',
+	pig: '🐷 Свинтус (T14)'
+};
+
+const VALUE_LABELS: Record<string, Record<string, string>> = {
+	'trips.vehicles': VEHICLE,
+	'gadgets.sets': GADGET_SET
+};
 
 export function valueLabels(path: string): Record<string, string> | undefined {
 	return VALUE_LABELS[path];
@@ -26,6 +36,7 @@ export const SECTION_ORDER = [
 	'sleep',
 	'lottery',
 	'artifacts',
+	'gadgets',
 	'trips',
 	'battle',
 	'stocks',
