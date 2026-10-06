@@ -51,3 +51,20 @@ describe('описания настроек', () => {
 		}
 	});
 });
+
+describe('описания гаджетов', () => {
+	it('пустой список сетов не выключает пустые слоты и замену', () => {
+		const sets = SETTINGS_TEXT['gadgets.sets']?.help;
+		expect(sets).not.toContain('ничего не покупать');
+		expect(sets).toContain('пустые слоты');
+		const flag = SETTINGS_TEXT['features.gadgets_buy']?.help;
+		for (const rule of ['Пустой слот', 'Части сетов', 'Когда копить не на что']) {
+			expect(flag).toContain(rule);
+		}
+	});
+
+	it('«авто»: ⚪️ до уровня, дальше 🔴, кончились — 🔵', () => {
+		const help = SETTINGS_TEXT['gadgets.white_until']?.help;
+		expect(help).toContain('дальше — 🔴, а когда они кончатся — 🔵');
+	});
+});
