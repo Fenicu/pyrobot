@@ -413,6 +413,10 @@ class KurigramTransport:
         self._client = self._new_client()
 
     @property
+    def api_id(self) -> int:
+        return self._api_id
+
+    @property
     def online(self) -> bool:
         return self._online
 

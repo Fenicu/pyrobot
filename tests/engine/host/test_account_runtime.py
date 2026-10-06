@@ -1,5 +1,6 @@
 import secrets
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from app.engine.host.account import AccountRuntime, RuntimeDeps
 from app.engine.host.codes import CodeLimiter
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
+from app.engine.notify import Level
 from app.engine.settings import ChatIsSelf, Settings, SettingsPatch
 from app.engine.tg_auth import TgState
 from app.engine.transport.kurigram import KurigramTransport
@@ -485,3 +487,31 @@ async def test_start_clamps_out_of_bounds_with_system_history(
     assert last_hist is not None
     assert last_hist.changed_by == "system"
     assert last_hist.data["engine"]["min_request_interval_s"] == 1.6
+
+
+class _ServerTexts:
+    def __init__(self) -> None:
+        self.items: list[tuple[str, str, str]] = []
+
+    async def notify(self, level: Level, code: str, text: str) -> None:
+        self.items.append((level, code, text))
+
+
+async def test_unused_code_watch_for_server_app_only(kurigram: Engines) -> None:
+    server = _ServerTexts()
+    kurigram.deps = replace(kurigram.deps, server_notifier=server)
+    runtime = await kurigram.start(1)
+    tg = runtime.tg
+    assert tg is not None
+    # Серверное приложение: код в приложение ждёт отчёта о неиспользовании.
+    assert tg._server_notifier is server and tg._server_app()
+    await tg.start("+888", owner="s1")
+    assert len(tg._watches) == 1
+    await kurigram.deps.accounts.set_tg_app(1, 12345, BOX.seal(b"a" * 32, "tg_api_hash", 1))
+    await runtime.reload_tg_app()
+    assert not tg._server_app()
+    await tg.start("+888", owner="s1")
+    assert len(tg._watches) == 1
+    # Остановка движка снимает ожидание: отчёта нет.
+    await runtime.stop()
+    assert tg._watches == set() and server.items == []

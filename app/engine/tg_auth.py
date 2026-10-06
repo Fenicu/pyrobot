@@ -6,6 +6,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
@@ -152,13 +153,21 @@ class _Attempt:
     next_type: str | None = None
     timeout: int | None = None
     timeout_at: float | None = None
+    # Код принят Telegram (вход или шаг пароля).
+    code_used: bool = False
+
+
+# Код через серверное приложение не введён за это время — уведомление владельцу сервера.
+UNUSED_CODE_S = 900.0
 
 
 class TgAuthManager:
     """Вход аккаунта `account_id` в Telegram. Перед каждым выходом в онлайн (`_accept`) —
     привязка (`bind` пишет её и отвечает привязкой из базы, пользователь другого аккаунта —
     `TgUserTaken`) и свой чат в настройках (`self_chat` — поля `chats.*`, равные пользователю).
-    Запросы кода — через лимит процесса `codes`."""
+    Запросы кода — через лимит процесса `codes`. Код в приложение Telegram, запрошенный через
+    серверное приложение (`server_app()`), не принятый за `unused_code_s`, — одно уведомление
+    сервера `tg_code_not_used` на попытку: Telegram бывает молча не доставляет такие коды."""
 
     def __init__(
         self,
@@ -171,9 +180,16 @@ class TgAuthManager:
         account_id: int,
         attempt_ttl_s: float = 600.0,
         notifier: NotifierPort | None = None,
+        server_notifier: NotifierPort | None = None,
+        server_app: Callable[[], bool] = lambda: False,
+        unused_code_s: float = UNUSED_CODE_S,
     ) -> None:
         self._backend = backend
         self._notifier = notifier
+        self._server_notifier = server_notifier
+        self._server_app = server_app
+        self._unused_code_s = unused_code_s
+        self._watches: set[asyncio.Task[None]] = set()
         # None — аккаунт не привязан: первый вход привязывает, дальше пускается только он.
         self._expected = expected_user_id
         self._bind = bind
@@ -272,7 +288,7 @@ class TgAuthManager:
                 timeout = None
 
             timeout_at = time.time() + timeout if timeout is not None else None
-            self._attempt = _Attempt(
+            attempt = _Attempt(
                 uuid.uuid4().hex,
                 owner,
                 phone,
@@ -284,10 +300,13 @@ class TgAuthManager:
                 timeout=timeout,
                 timeout_at=timeout_at,
             )
+            self._attempt = attempt
             if code_type == "setup_email":
                 self._set(TgState.AWAITING_EMAIL)
             else:
                 self._set(TgState.AWAITING_CODE)
+            if code_type == "app" and self._server_notifier is not None and self._server_app():
+                self._watch_unused(attempt)
             return self.status()
 
     async def submit_code(self, attempt_id: str, owner: str, code: str) -> TgStatus:
@@ -299,6 +318,7 @@ class TgAuthManager:
                     attempt.phone, attempt.code_hash, code, is_email=is_email
                 )
             except PasswordRequired:
+                attempt.code_used = True
                 self._set(TgState.AWAITING_PASSWORD)
                 return self.status()
             except InvalidCode:
@@ -317,6 +337,7 @@ class TgAuthManager:
             except Exception as exc:
                 log.exception("telegram sign_in failed")
                 raise TgBackendError("sign_in_failed") from exc
+            attempt.code_used = True
             self._attempt = None
             await self._accept(user_id)
             return self.status()
@@ -496,6 +517,35 @@ class TgAuthManager:
         async with self._lock:
             if self._state is TgState.OVERLOAD:
                 self._set(TgState.ONLINE)
+
+    async def close(self) -> None:
+        """Остановка движка: ожидания неиспользованных кодов снимаются."""
+        watches = list(self._watches)
+        for task in watches:
+            task.cancel()
+        await asyncio.gather(*watches, return_exceptions=True)
+
+    def _watch_unused(self, attempt: _Attempt) -> None:
+        task = asyncio.create_task(
+            self._report_unused(attempt, datetime.now(UTC)),
+            name=f"tg-code-unused-{self._account_id}",
+        )
+        self._watches.add(task)
+        task.add_done_callback(self._watches.discard)
+
+    async def _report_unused(self, attempt: _Attempt, requested: datetime) -> None:
+        await asyncio.sleep(self._unused_code_s)
+        if attempt.code_used or self._server_notifier is None:
+            return
+        try:
+            await self._server_notifier.notify(
+                "warn",
+                "tg_code_not_used",
+                f"account {self._account_id}: login code requested via server app at "
+                f"{requested:%Y-%m-%d %H:%M} UTC was not used",
+            )
+        except Exception:
+            log.exception("tg_code_not_used notification failed")
 
     def _take_code(self) -> None:
         """Запрос кода (SMS, звонок, письмо) — через общий лимит: сверх — `CodeRateLimited`."""

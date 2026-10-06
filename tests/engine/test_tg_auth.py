@@ -723,3 +723,81 @@ async def test_cancel_drops_attempt_only_while_logging_in() -> None:
     online = tg_auth(FakeTgBackend(authorized=True), expected_user_id=EXPECTED)
     await online.boot()
     assert (await online.cancel()).state is TgState.ONLINE
+
+
+class _Texts:
+    def __init__(self) -> None:
+        self.items: list[tuple[str, str, str]] = []
+
+    async def notify(self, level: str, code: str, text: str) -> None:
+        self.items.append((level, code, text))
+
+
+def _watched(backend: FakeTgBackend, *, server_app: bool = True) -> tuple[TgAuthManager, _Texts]:
+    server = _Texts()
+    mgr = tg_auth(
+        backend,
+        expected_user_id=EXPECTED,
+        account_id=7,
+        server_notifier=server,
+        server_app=lambda: server_app,
+        unused_code_s=0.05,
+    )
+    return mgr, server
+
+
+async def test_unused_server_app_code_reported_once_per_attempt() -> None:
+    import re
+
+    mgr, server = _watched(FakeTgBackend())
+    await mgr.boot()
+    first = await mgr.start("+79991234567", owner="s1")
+    # Неверный код — не использованный; отмена и новая попытка — каждая со своим отчётом.
+    await mgr.submit_code(first.attempt_id or "", "s1", "00000")
+    await mgr.cancel()
+    await mgr.start("+79991234567", owner="s1")
+    await until(lambda: len(server.items) == 2)
+    await asyncio.sleep(0.1)
+    assert len(server.items) == 2
+    level, code, text = server.items[0]
+    assert (level, code) == ("warn", "tg_code_not_used")
+    assert re.fullmatch(
+        r"account 7: login code requested via server app at "
+        r"\d{4}-\d\d-\d\d \d\d:\d\d UTC was not used",
+        text,
+    )
+    assert "7999" not in text and "00000" not in text
+
+
+async def test_used_or_own_app_or_other_delivery_not_reported() -> None:
+    # Код принят (вход или шаг пароля) — отчёта нет.
+    mgr, server = _watched(FakeTgBackend())
+    await mgr.boot()
+    st = await mgr.start("+888", owner="s1")
+    assert (await mgr.submit_code(st.attempt_id or "", "s1", "12345")).state is TgState.ONLINE
+    pw, pw_server = _watched(FakeTgBackend(password="pw"))
+    await pw.boot()
+    st = await pw.start("+888", owner="s1")
+    assert (await pw.submit_code(st.attempt_id or "", "s1", "12345")).state is (
+        TgState.AWAITING_PASSWORD
+    )
+    # Своё приложение и доставка не в приложение — не про серверное приложение.
+    own, own_server = _watched(FakeTgBackend(), server_app=False)
+    await own.boot()
+    await own.start("+888", owner="s1")
+    sms, sms_server = _watched(
+        FakeTgBackend(sent_code_info=SentCodeInfo(phone_code_hash="h", type="sms"))
+    )
+    await sms.boot()
+    await sms.start("+888", owner="s1")
+    await asyncio.sleep(0.15)
+    assert server.items == pw_server.items == own_server.items == sms_server.items == []
+
+
+async def test_close_cancels_unused_code_watch() -> None:
+    mgr, server = _watched(FakeTgBackend())
+    await mgr.boot()
+    await mgr.start("+888", owner="s1")
+    await mgr.close()
+    await asyncio.sleep(0.1)
+    assert server.items == []

@@ -854,6 +854,10 @@ pyrobot python -m app.tools.users set-password <логин>` (пароль сп�
 - `account_error` (error) — аккаунт перешёл в аварийное состояние `error` (ошибка запуска или crash loop задач движка);
 - `lock_connection_lost` (error) — обрыв соединения базы данных, на котором держатся блокировки аренды;
 - `tg_codes_limit` (warn) — превышен лимит запросов кодов Telegram;
+- `tg_code_not_used` (warn) — «account N: login code requested via server app at <время UTC> was not
+  used»: код входа в приложение Telegram, запрошенный через серверное приложение (`PYROBOT_TG_API_ID`),
+  не введён за 15 минут; одно уведомление на попытку входа, без номера и кода. Telegram бывает молча не
+  доставляет такие коды — помогает своё приложение у аккаунта («Своё приложение Telegram»);
 - `invite_used` (info) — новое приглашение принято, зарегистрирован пользователь.
 
 

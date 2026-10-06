@@ -37,6 +37,7 @@ from app.engine.fence import Fence
 from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.host.codes import CodeLimiter
 from app.engine.lag import LoopLagMonitor
+from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
 from app.engine.parsing.sleep import RobberyAlert
 from app.engine.pipeline import Pipeline
@@ -144,6 +145,8 @@ class RuntimeDeps:
     # Ключ сессий Telegram в базе; нет только у транспорта fake без `PYROBOT_SECRET_KEY`.
     box: SecretBox | None = None
     server: ServerSettingsRepo | None = None
+    # Уведомления сервера (владельцам): неиспользованный код входа через серверное приложение.
+    server_notifier: NotifierPort | None = None
 
 
 class AccountRuntime:
@@ -262,6 +265,8 @@ class AccountRuntime:
             codes=self._deps.codes,
             account_id=self.account_id,
             notifier=self.notifier,
+            server_notifier=self._deps.server_notifier,
+            server_app=self._server_app,
         )
         if self._kurigram is not None:
             self._kurigram.on_auth_lost = self.tg.mark_lost
@@ -423,6 +428,8 @@ class AccountRuntime:
                         )
             with contextlib.suppress(Exception):
                 await self.supervisor.stop()
+            if self.tg is not None:
+                await self.tg.close()
             # Потоки SSE этого движка заканчиваются: клиенты переподключатся к новому.
             self.stream.close()
 
@@ -437,7 +444,14 @@ class AccountRuntime:
                     await self._kurigram.abort()
             with contextlib.suppress(Exception):
                 await self.supervisor.stop()
+            if self.tg is not None:
+                await self.tg.close()
             self.stream.close()
+
+    def _server_app(self) -> bool:
+        """Вход идёт через серверное приложение Telegram (не своё приложение аккаунта)."""
+        kurigram = self._kurigram
+        return kurigram is not None and kurigram.api_id == self._deps.config.tg_api_id
 
     async def _crash_loop(self, task: str) -> None:
         await self._on_crash_loop(self.account_id, task)

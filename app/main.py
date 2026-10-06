@@ -88,6 +88,7 @@ class Runtime:
             codes=codes,
             box=self.box,
             server=self.server_settings,
+            server_notifier=self.server_notifier,
         )
         self.host = EngineHost(
             deps,
