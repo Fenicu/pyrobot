@@ -5,11 +5,21 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal, get_args
 
+from app.engine.gadget_catalog import BUYABLE_SETS, SHOP
 from app.engine.parsing.artifacts import RECOLLECTABLE
 from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.parsing.smoothie import INGREDIENTS
 from app.engine.parsing.trips import VEHICLES
-from app.engine.scenarios import artifacts, daily, library, lottery, metro, obligations, trips
+from app.engine.scenarios import (
+    artifacts,
+    daily,
+    gadgets,
+    library,
+    lottery,
+    metro,
+    obligations,
+    trips,
+)
 from app.engine.scenarios.library import FOOD_BUTTONS, REFRESH, ScenarioFn
 from app.engine.settings import Target
 
@@ -148,6 +158,27 @@ def _specs() -> dict[str, ScenarioSpec]:
         ),
         ScenarioSpec("trip", trips.trip, True, required={"vehicle": _one_of(VEHICLES)}),
         ScenarioSpec("trips_refresh", trips.trips_refresh, True),
+        # `wear` и `in_bag` необязательные: у `Param` нет типа bool.
+        ScenarioSpec(
+            "gadget_buy",
+            gadgets.gadget_buy,
+            True,
+            manual=False,
+            required={
+                "rule": _one_of(("empty", "set", "replace")),
+                "slot": _one_of(SHOP),
+                "tier": _int(1, 14),
+                "price": _int(0),
+                "reserve": _int(0),
+            },
+        ),
+        ScenarioSpec(
+            "gadget_wear_set",
+            gadgets.gadget_wear_set,
+            True,
+            manual=False,
+            required={"set": _one_of(BUYABLE_SETS)},
+        ),
     ]
     for item, certified in (
         ("book", True),

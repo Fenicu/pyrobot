@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 import tests.engine.scenarios as package
+from app.engine.gateway.gateway import GADGET_SCENARIOS
 from app.engine.scenarios.registry import CERTIFIED, SCENARIOS, Param, ScenarioSpec
 
 
@@ -154,3 +155,19 @@ def test_manual_flag_defaults_true() -> None:
 @pytest.mark.parametrize("source", ["upgrades", "stocks"])
 def test_refresh_gadget_sources(source: str) -> None:
     assert SCENARIOS["refresh"].invalid({"source": source}) == []
+
+
+def test_gadget_scenarios_are_not_manual() -> None:
+    assert {"gadget_buy", "gadget_wear_set"} <= SCENARIOS.keys()
+    registered = GADGET_SCENARIOS & SCENARIOS.keys()
+    assert all(not SCENARIOS[name].manual for name in registered)
+    assert {"gadget_buy", "gadget_wear_set"} <= CERTIFIED
+
+
+def test_gadget_scenario_params() -> None:
+    buy = {"rule": "empty", "slot": "right", "tier": 1, "price": 3, "reserve": 0}
+    assert SCENARIOS["gadget_buy"].invalid(buy) == []
+    bad = {"rule": "any", "slot": "ring", "tier": 15, "price": -1, "reserve": True}
+    assert SCENARIOS["gadget_buy"].invalid(bad) == sorted(buy)
+    assert SCENARIOS["gadget_wear_set"].invalid({"set": "um", "slots": ["right"]}) == []
+    assert SCENARIOS["gadget_wear_set"].invalid({"set": "logistic"}) == ["set"]

@@ -395,6 +395,13 @@ async def test_buy_and_wear_set_notifications() -> None:
     assert "⚫️Сет VIP" in texts[5] and "🌞Летний сет" in texts[5]
 
 
+async def test_copy_from_bag_worn_is_not_a_purchase() -> None:
+    rig = Rig()
+    details = {"gadget": PHONE, "rule": "empty", "slot": "right", "tier": 1, "worn": True}
+    await rig.runs.after("gadget_buy", {}, ScenarioResult("done", "worn", details))
+    assert rig.notes.items == []
+
+
 def test_pure_transitions_reject_without_active_task() -> None:
     idle = Settings()
     with pytest.raises(GadgetConflict) as stop:

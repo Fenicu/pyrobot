@@ -693,7 +693,8 @@ class GadgetRuns:
         await self._ended(task_id, result.reason, _int(details.get("level")))
 
     async def _buy_result(self, result: ScenarioResult, d: Mapping[str, Any]) -> None:
-        if result.status == "done":
+        # `done worn` — надет экземпляр из рюкзака, без покупки: не о чем сообщать.
+        if (result.status, result.reason) == ("done", "bought"):
             text = f"bought {d.get('bought')} for ${d.get('price')} ({d.get('rule')})"
             sold = sum(_int(s.get("n")) or 0 for s in d.get("sold") or ())
             if sold:

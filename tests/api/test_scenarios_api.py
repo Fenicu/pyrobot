@@ -178,3 +178,15 @@ async def test_not_manual_scenario_is_409_and_hidden(
     monkeypatch.setitem(SCENARIOS, "x", ScenarioSpec("x", fn, True))
     code, _ = await _run(api_client, h, "x", "nm2")
     assert code == 202
+
+
+async def test_gadget_buy_and_wear_set_not_manual(world: World, api_client: AsyncClient) -> None:
+    h = {"X-CSRF-Token": await login(api_client)}
+    params = {"rule": "empty", "slot": "right", "tier": 1, "price": 3, "reserve": 0}
+    code, body = await _run(api_client, h, "gadget_buy", "gb1", **params)
+    assert (code, body) == (409, {"detail": "scenario_not_manual"})
+    code, body = await _run(api_client, h, "gadget_wear_set", "gw1", set="um")
+    assert (code, body) == (409, {"detail": "scenario_not_manual"})
+    names = {i["name"] for i in (await api_client.get("/api/v1/scenarios")).json()}
+    assert not names & {"gadget_buy", "gadget_wear_set"}
+    assert world.game.payloads() == []
