@@ -277,3 +277,26 @@ def test_edit_of_trip_result_claims_again_without_reapplying() -> None:
     s2, effects = r.reduce(s, edit, PARSER.parse(edit))
     assert effects == (Effect("trip", {"knowledge": 16}, key=f"trip:{at(0).isoformat()}"),)
     assert value(s2, "knowledge") == knowledge
+
+
+def test_cancelled_trip_has_no_result() -> None:
+    r = StateReducer()
+    s = profiled(r)
+    s, _ = apply(r, s, t.START_TRAM, 0, 2)
+    s, _ = apply(r, s, "Действие отменено.", 1, 3)
+    assert busy(s) is None
+    last = trips(s).last
+    assert last is not None and last.done and last.result_id == 3
+    # Чужое «Ты получил:» после отмены - не итог отменённой поездки.
+    s2, effects = apply(r, s, t.RESULT_TRAM_EXP, 5, 4)
+    assert effects == () and value(s2, "exp") == value(s, "exp")
+
+
+def test_cancelled_deed_keeps_the_trip_open() -> None:
+    r = StateReducer()
+    s = profiled(r)
+    s, _ = apply(r, s, t.START_TRAM, 0, 2)
+    s = feed(r, s, "activities", 3517276, 1)
+    s, _ = apply(r, s, "Действие отменено.", 2, 3)
+    last = trips(s).last
+    assert last is not None and not last.done

@@ -480,6 +480,12 @@ def _bonus(p: _Patch, e: BonusRewards) -> None:
 def _cancelled(p: _Patch, e: ActivityCancelled) -> None:
     if e.result != "ok":
         return
+    current: Obs[BusyState | None] | None = p.get("busy")
+    if current is not None and current.value is not None and current.value.activity == TRIP:
+        state, src = _trips(p)
+        if state.last is not None and not state.last.done:
+            done = state.last.model_copy(update={"done": True, "result_id": p.msg_id})
+            p.snap("trips", state.model_copy(update={"last": done}), src=src)
     p.snap("busy", None)
     p.delta("motivation", e.motivation)
     p.delta("money", e.money)
