@@ -406,6 +406,15 @@ def test_gadget_callback_classes(data: str, cls: CommandClass) -> None:
     assert classify_callback(data) is cls
 
 
+# Арабско-индийские цифры (U+0660…): \d их пропустил бы, а игра таких команд не знает.
+@pytest.mark.parametrize(
+    "text",
+    ["/wear_\u0661\u0661_p1", "/wear_11_p\u0661", "/unwear_p\u0661", "/sells_hooli_\u0665"],
+)
+def test_gadget_and_stock_commands_need_ascii_digits(text: str) -> None:
+    assert classify_text(text, "bmesa") is F
+
+
 def test_gadget_feature() -> None:
     assert feature_of_text("/buy_right1") == feature_of_text("/wear_3_p1") == "gadgets_buy"
     assert feature_of_text("/unwear_p1") == "gadgets_buy"

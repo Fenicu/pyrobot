@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from app.engine.gateway.gateway import RECONCILE_REASON
+from app.engine.gateway.gateway import RECONCILE_REASON, command_feature
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Expectation, Source
 from app.engine.settings import ArtifactRunSection, GadgetUpgradeSection, Settings
 from app.engine.transport.fake import Sent
@@ -552,6 +552,12 @@ async def test_sells_from_gadget_buy_ignores_stocks_dump_flag(rig: Rig) -> None:
     off = await rig.gw.submit(_gadget_send("/sells_hooli_5", "gadget_buy"))
     assert (off.status, off.reason) == (ActionStatus.REJECTED, "feature_off:gadgets_buy")
     assert [s.payload for s in rig.transport.sent] == ["/sells_hooli_5"]
+
+
+def test_sells_counts_as_gadget_buy_only_from_scenario_step() -> None:
+    assert command_feature(_gadget_send("/sells_hooli_5", "gadget_buy")) == "gadgets_buy"
+    manual = _gadget_send("/sells_hooli_5", "gadget_buy", source=Source.MANUAL)
+    assert command_feature(manual) == "stocks_dump"
 
 
 async def test_deadline_passed_rejects(rig: Rig) -> None:

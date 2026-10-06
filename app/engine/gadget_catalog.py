@@ -185,7 +185,7 @@ SHOP: dict[ShopSlot, tuple[ShopItem, ...]] = {
 }
 
 
-_CODE = re.compile(r"([a-z])(\d+)")
+_CODE = re.compile(r"([a-z])([0-9]+)")
 
 
 def shop_item(code: str) -> ShopItem | None:

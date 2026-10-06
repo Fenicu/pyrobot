@@ -79,6 +79,7 @@ def test_lookups() -> None:
     sm = shop_item("p11")
     assert sm is not None and sm.name == "S-март" and shop_item("t501") is None
     assert shop_item("h18") is None
+    assert shop_item("p\u0661") is None and shop_item("p\u0661\u0661") is None
     assert set_by_name("S-март") == (SETS["summer"], "right")
     assert set_by_name("LoRat") is None
     assert slot_of_icon("⌚") is slot_of_icon("⌚️") is SLOTS["left"]

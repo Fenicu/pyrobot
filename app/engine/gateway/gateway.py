@@ -147,8 +147,9 @@ def command_feature(req: ActionRequest) -> str | None:
         return None
     if req.kind is ActionKind.SEND:
         text = req.text or ""
-        # Продажа акций на покупку гаджета — под флагом покупки, а не слива.
-        if req.scenario == "gadget_buy" and STOCK_SELL.match(text.strip()):
+        # Продажа акций шагом покупки гаджета — под флагом покупки, а не слива.
+        scenario_step = req.source is Source.SCENARIO and req.scenario == "gadget_buy"
+        if scenario_step and STOCK_SELL.match(text.strip()):
             return "gadgets_buy"
         return feature_of_text(text)
     return feature_of_callback(req.data or "")
