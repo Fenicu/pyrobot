@@ -266,7 +266,7 @@ async def _out(
     stocks, info = _value(state.upgrades), _value(state.upgrade_info)
     progress = None
     if task.slot is not None and task.started_at is not None:
-        p = await reads.upgrade_progress(task.slot, task.started_at)
+        p = await reads.upgrade_progress(task.slot, task.started_at, task.ended_at)
         progress = ProgressOut(
             attempts=p.attempts,
             ok=p.ok,

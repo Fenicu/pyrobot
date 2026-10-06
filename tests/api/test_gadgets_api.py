@@ -208,6 +208,17 @@ async def test_get_progress_from_ledger_since_start(api: Api) -> None:
     }
 
 
+async def test_closed_task_progress_ends_at_its_end(api: Api) -> None:
+    start = datetime.now(UTC) - timedelta(hours=1)
+    end = start + timedelta(minutes=2, seconds=30)
+    await attempts(api.container, [start + timedelta(minutes=m) for m in (1, 2, 3, 4)])
+    closed = task(start, status="stopped", ended_at=end, end_reason="stopped")
+    await store(api.container, Settings(gadget_upgrade=closed), snapshot())
+    body = (await api.client.get(GAD)).json()
+    assert body["task"]["status"] == "stopped"
+    assert body["progress"]["attempts"] == 2
+
+
 async def test_start_and_stop(api: Api) -> None:
     f = await engine(api, state=snapshot())
     started = await api.client.post(

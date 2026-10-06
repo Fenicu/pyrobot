@@ -330,15 +330,20 @@ class DbReads:
         since = tasks_day(started) if started is not None else None
         return [LedgerEntry(d, kind, amounts, items) for d, kind, amounts, items in rows], since
 
-    async def upgrade_progress(self, slot: str, since: datetime) -> UpgradeProgress:
-        """Попытки заточки слота `slot` с момента `since` (старт задачи) по эффектам
-        `gadget_upgrade` журнала прихода."""
+    async def upgrade_progress(
+        self, slot: str, since: datetime, until: datetime | None = None
+    ) -> UpgradeProgress:
+        """Попытки заточки слота `slot` с секунды `since` (старт задачи) по `until` (конец
+        задачи; None — идёт) по эффектам `gadget_upgrade` журнала прихода: их время — дата
+        сообщения игры, в целых секундах."""
         query = select(LedgerRow.amounts, LedgerRow.items).where(
             LedgerRow.account_id == self._account_id,
             LedgerRow.kind == "gadget_upgrade",
-            LedgerRow.at >= since,
+            LedgerRow.at >= since.replace(microsecond=0),
             LedgerRow.items.has_key(f"up:{slot}"),
         )
+        if until is not None:
+            query = query.where(LedgerRow.at <= until)
         async with self._db.sessions() as session:
             rows = (await session.execute(query)).all()
         spent = dict.fromkeys(_UPGRADE_KINDS, 0)

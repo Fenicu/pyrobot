@@ -141,3 +141,37 @@ async def test_upgrade_progress_by_slot_since_start(clean_db: Database) -> None:
     assert await DbReads(clean_db, 2).upgrade_progress("right", start) == UpgradeProgress(
         attempts=0, ok=0, fail=0, spent={"white": 0, "blue": 0, "red": 0}
     )
+
+
+def upgrade_row(at: datetime, msg_id: int) -> LedgerRow:
+    return LedgerRow(
+        account_id=1,
+        at=at,
+        recorded_at=at,
+        day=at.astimezone(MSK).date(),
+        kind="gadget_upgrade",
+        amounts={"upgrades_white": -1},
+        items={"up:right": 1, "ok": 1},
+        chat_id=1,
+        msg_id=msg_id,
+        revision=0,
+        content_hash="h",
+        seq=0,
+    )
+
+
+async def test_upgrade_progress_from_start_second_until_end(clean_db: Database) -> None:
+    # Время записей — дата сообщения игры, целые секунды; старт задачи — с долями секунды.
+    start = msk(28, 12) + timedelta(microseconds=700_000)
+    end = start + timedelta(minutes=2)
+    moments = [
+        msk(28, 12),
+        start + timedelta(minutes=1),
+        msk(28, 12, 2),
+        end + timedelta(seconds=1),
+    ]
+    async with clean_db.sessions() as s, s.begin():
+        s.add_all(upgrade_row(at, i) for i, at in enumerate(moments))
+    reads = DbReads(clean_db, 1)
+    assert (await reads.upgrade_progress("right", start)).attempts == 4
+    assert (await reads.upgrade_progress("right", start, end)).attempts == 3
