@@ -118,6 +118,11 @@
 		tg_code_rate_limited: 'Слишком много запросов кода входа',
 		send_code_failed: 'Код не отправлен — Telegram недоступен',
 		resend_code_failed: 'Не удалось повторно отправить код — Telegram недоступен',
+		send_code_unavailable: 'Других способов отправки кода у Telegram нет — введите код, который уже отправлен',
+		send_verify_email_code_failed: 'Не удалось отправить письмо с кодом',
+		verify_email_failed: 'Не удалось подтвердить почту',
+		sign_in_failed: 'Не удалось войти',
+		check_password_failed: 'Не удалось проверить пароль 2FA',
 		connect_failed: 'Нет соединения с Telegram',
 		online_failed: 'Не удалось выйти в сеть после входа',
 		logout_failed: 'Выход из Telegram не удался'
@@ -129,11 +134,9 @@
 		if (code === 'unexpected_user' && bound) {
 			return `Аккаунт привязан к пользователю Telegram ${bound}, а вошёл другой — сервис вышел из сессии. Для другого персонажа создайте новый аккаунт`;
 		}
-		if (code.startsWith('send_code_rejected:')) {
-			const reason = code.slice('send_code_rejected:'.length);
-			return ERRORS[reason]
-				? `Telegram отклонил отправку кода: ${ERRORS[reason]}`
-				: `Telegram отклонил отправку кода (${reason})`;
+		const unsupported = 'send_code_unsupported:';
+		if (code.startsWith(unsupported)) {
+			return `Telegram ответил на запрос кода способом, который бот не поддерживает (${code.slice(unsupported.length)})`;
 		}
 		return ERRORS[code] ?? code;
 	}
@@ -167,12 +170,18 @@
 		} catch (e) {
 			if (!(e instanceof ApiFailure)) throw e;
 			const err = e.error;
-			if (err.kind === 'conflict' || (err.kind === 'http' && err.status === 400) || err.kind === 'forbidden') {
+			if (err.kind === 'http' && err.status === 400 && err.code) {
+				// 400 — отказ Telegram с кодом (RPC ID в нижнем регистре или код входа).
 				attempt = null;
 				message =
-					err.status === 400 && err.code && (ERRORS[err.code] || err.code.startsWith('send_code_rejected:'))
+					ERRORS[err.code] || err.code.startsWith('send_code_unsupported:')
 						? statusError(err.code)
-						: 'Попытка входа устарела или начата в другой вкладке — начните заново';
+						: `Telegram отклонил запрос (${err.code})`;
+			} else if (err.kind === 'conflict' || (err.kind === 'http' && err.status === 400) || err.kind === 'forbidden') {
+				attempt = null;
+				message = 'Попытка входа устарела или начата в другой вкладке — начните заново';
+			} else if (err.kind === 'validation') {
+				message = 'Некорректный адрес почты';
 			} else if (err.kind === 'rate_limited' && err.code !== 'flood_wait') {
 				message = errorText(err);
 			} else if (err.kind === 'rate_limited') {
@@ -254,6 +263,10 @@
 		);
 	};
 
+	const cancel = () => {
+		void step(() => call(api.POST('/tg/login/cancel')));
+	};
+
 	async function logout() {
 		const ok = await dialogs.confirm({
 			title: 'Выйти из Telegram?',
@@ -274,7 +287,7 @@
 		if (st.state !== 'awaiting_code') return null;
 		switch (st.delivery_type) {
 			case 'app':
-				return 'Код отправлен в приложение Telegram';
+				return 'Код отправлен в приложение Telegram — сообщение от «Telegram» с синей галочкой на ваших устройствах; может быть в архиве';
 			case 'sms':
 				return 'Код отправлен по SMS';
 			case 'call':
@@ -301,6 +314,13 @@
 			return `Отправить код ${method} (${resendCountdown} с)`;
 		}
 		return `Отправить код ${method}`;
+	}
+
+	/** Через какое приложение Telegram запрошен код: от него зависит, доставит ли Telegram код. */
+	function viaText(): string {
+		return app === null || app === 'server'
+			? 'Код запрошен через серверное приложение'
+			: `Код запрошен через своё приложение (api_id ${app.api_id})`;
 	}
 
 	const phase = $derived(status?.state ?? null);
@@ -351,13 +371,14 @@
 		<button type="button" class="btn btn-danger" disabled={busy} onclick={logout}>Выйти из Telegram</button>
 	{:else if waiting && attempt === null}
 		<section class="card space-y-2 text-sm">
-			<p>Вход уже начат в другой вкладке или сессии. Можно начать заново здесь.</p>
+			<p>Вход уже начат в другой вкладке или сессии. Можно начать заново здесь или отменить его.</p>
 			<form class="flex gap-2" onsubmit={start}>
 				<label class="flex-1"><span class="sr-only">Телефон</span>
 					<input class="input" type="tel" placeholder="+7…" autocomplete="off" bind:value={phone} required />
 				</label>
 				<button type="submit" class="btn btn-primary" disabled={busy || !phone.trim()}>Получить код</button>
 			</form>
+			{@render cancelButton()}
 		</section>
 	{:else if phase === 'awaiting_email'}
 		<form class="card space-y-2" onsubmit={sendEmail}>
@@ -376,9 +397,12 @@
 					required
 				/>
 			</label>
-			<button type="submit" class="btn btn-primary" disabled={busy || !email.trim()}>
-				Отправить код на почту
-			</button>
+			<div class="flex flex-wrap gap-2">
+				<button type="submit" class="btn btn-primary" disabled={busy || !email.trim()}>
+					Отправить код на почту
+				</button>
+				{@render cancelButton()}
+			</div>
 		</form>
 	{:else if phase === 'awaiting_email_code'}
 		<form class="card space-y-2" onsubmit={sendEmailCode}>
@@ -396,15 +420,19 @@
 					required
 				/>
 			</label>
-			<button type="submit" class="btn btn-primary" disabled={busy || !emailCode.trim()}>
-				Подтвердить почту
-			</button>
+			<div class="flex flex-wrap gap-2">
+				<button type="submit" class="btn btn-primary" disabled={busy || !emailCode.trim()}>
+					Подтвердить почту
+				</button>
+				{@render cancelButton()}
+			</div>
 		</form>
 	{:else if phase === 'awaiting_code'}
 		<form class="card space-y-2" onsubmit={sendCode}>
 			{#if deliveryText(status)}
 				<p class="text-sm text-fg-muted">{deliveryText(status)}</p>
 			{/if}
+			<p class="text-sm text-fg-muted">{viaText()}</p>
 			<label class="block space-y-1">
 				<span class="label">Код из Telegram</span>
 				<input
@@ -416,18 +444,39 @@
 					required
 				/>
 			</label>
+			{#if app === 'server'}
+				<details class="text-sm">
+					<summary class="cursor-pointer">Код не пришёл?</summary>
+					<div class="mt-2 space-y-2 text-fg-muted">
+						<p>
+							Telegram иногда не доставляет коды для общего приложения сервера. Создайте своё приложение
+							Telegram — это пара минут:
+						</p>
+						<ol class="list-decimal space-y-1 pl-5">
+							<li>
+								откройте
+								<a class="underline" href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org</a>
+								и войдите по номеру телефона;
+							</li>
+							<li>выберите «API development tools»;</li>
+							<li>App title и Short name — любые, создайте приложение;</li>
+							<li>скопируйте api_id и api_hash;</li>
+							<li>
+								нажмите «Отменить вход», впишите их в блоке «Своё приложение Telegram» ниже и запросите код
+								снова.
+							</li>
+						</ol>
+					</div>
+				</details>
+			{/if}
 			<div class="flex flex-wrap gap-2">
-				<button type="submit" class="btn btn-primary" disabled={busy || !code.trim()}>
-					Отправить код
-				</button>
-				<button
-					type="button"
-					class="btn"
-					disabled={busy || resendCountdown > 0}
-					onclick={resend}
-				>
-					{resendLabel(status)}
-				</button>
+				<button type="submit" class="btn btn-primary" disabled={busy || !code.trim()}>Войти</button>
+				{#if status?.delivery_next_type}
+					<button type="button" class="btn" disabled={busy || resendCountdown > 0} onclick={resend}>
+						{resendLabel(status)}
+					</button>
+				{/if}
+				{@render cancelButton()}
 			</div>
 		</form>
 	{:else if phase === 'awaiting_password'}
@@ -436,7 +485,10 @@
 				<span class="label">Пароль 2FA</span>
 				<input class="input" type="password" autocomplete="off" name="tg-2fa" bind:value={password} required />
 			</label>
-			<button type="submit" class="btn btn-primary" disabled={busy || !password}>Войти</button>
+			<div class="flex flex-wrap gap-2">
+				<button type="submit" class="btn btn-primary" disabled={busy || !password}>Войти</button>
+				{@render cancelButton()}
+			</div>
 		</form>
 	{:else if status && phase !== 'overload' && phase !== 'stopped'}
 		<form class="card space-y-2" onsubmit={start}>
@@ -448,7 +500,14 @@
 		</form>
 	{/if}
 
-	<section class="card" aria-labelledby="tg-app">
+	{#snippet cancelButton()}
+		<button type="button" class="btn" disabled={busy} onclick={cancel}>Отменить вход</button>
+	{/snippet}
+
+	<section
+		class="card {phase === 'awaiting_code' && app === 'server' ? 'border-warn-bg' : ''}"
+		aria-labelledby="tg-app"
+	>
 		<h2 id="tg-app" class="card-title">Своё приложение Telegram</h2>
 		{#if status === null}
 			<p class="text-sm text-fg-muted">…</p>
@@ -459,7 +518,17 @@
 			{#if appLocked}
 				<p class="mt-1 text-sm text-fg-muted">Сначала выйдите из Telegram</p>
 			{:else}
-				<p class="mt-1 text-sm text-fg-muted">Приложение действует со следующего входа в Telegram.</p>
+				{#if app === 'server'}
+					<p class="mt-1 text-sm">
+						Если код входа не приходит, создайте своё приложение: войдите на
+						<a class="underline" href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org</a>
+						по номеру телефона → «API development tools» → App title и Short name любые → скопируйте api_id и
+						api_hash сюда и запросите код снова.
+					</p>
+				{/if}
+				<p class="mt-1 text-sm text-fg-muted">
+					Приложение действует со следующего входа в Telegram; начатый вход при сохранении сбрасывается.
+				</p>
 				<form class="mt-2 space-y-2" onsubmit={saveApp}>
 					<label class="block space-y-1">
 						<span class="label">api_id</span>

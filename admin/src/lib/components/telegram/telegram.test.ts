@@ -83,11 +83,11 @@ describe('Вход в Telegram', () => {
 		expect(code).toHaveAttribute('autocomplete', 'one-time-code');
 		expect(code).toHaveAttribute('inputmode', 'numeric');
 		await user.type(code, '11111');
-		await user.click(screen.getByRole('button', { name: 'Отправить код' }));
+		await user.click(screen.getByRole('button', { name: 'Войти' }));
 		expect(await screen.findByText('Неверный код — попробуйте ещё раз')).toBeInTheDocument();
 		expect(screen.getByLabelText('Код из Telegram')).toHaveValue('');
 		await user.type(screen.getByLabelText('Код из Telegram'), '22222');
-		await user.click(screen.getByRole('button', { name: 'Отправить код' }));
+		await user.click(screen.getByRole('button', { name: 'Войти' }));
 		expect(await screen.findByLabelText('Пароль 2FA')).toHaveAttribute('autocomplete', 'off');
 		await user.type(screen.getByLabelText('Пароль 2FA'), 'secret');
 		await user.click(screen.getByRole('button', { name: 'Войти' }));
@@ -119,7 +119,7 @@ describe('Вход в Telegram', () => {
 		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+7999');
 		await user.click(screen.getByRole('button', { name: 'Получить код' }));
 		await user.type(await screen.findByLabelText('Код из Telegram'), '1');
-		await user.click(screen.getByRole('button', { name: 'Отправить код' }));
+		await user.click(screen.getByRole('button', { name: 'Войти' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent('Попытка входа устарела');
 		expect(await screen.findByLabelText('Телефон аккаунта')).toBeInTheDocument();
 	});
@@ -215,10 +215,10 @@ describe('Вход в Telegram', () => {
 		await user.type(emailCodeInput, '54321');
 		await user.click(screen.getByRole('button', { name: 'Подтвердить почту' }));
 
-		expect(await screen.findByText('Код отправлен в приложение Telegram')).toBeInTheDocument();
+		expect(await screen.findByText(/^Код отправлен в приложение Telegram/)).toBeInTheDocument();
 		const codeInput = screen.getByLabelText('Код из Telegram');
 		await user.type(codeInput, '12345');
-		await user.click(screen.getByRole('button', { name: 'Отправить код' }));
+		await user.click(screen.getByRole('button', { name: 'Войти' }));
 
 		expect(await screen.findByRole('button', { name: 'Выйти из Telegram' })).toBeInTheDocument();
 
@@ -261,16 +261,41 @@ describe('Вход в Telegram', () => {
 		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+79991234567');
 		await user.click(screen.getByRole('button', { name: 'Получить код' }));
 
-		expect(await screen.findByText('Код отправлен в приложение Telegram')).toBeInTheDocument();
+		expect(await screen.findByText(/^Код отправлен в приложение Telegram/)).toBeInTheDocument();
 		const resendBtn = screen.getByRole('button', { name: 'Отправить код по SMS' });
 		expect(resendBtn).toBeEnabled();
 
 		await user.click(resendBtn);
 		expect(resent).toBe(true);
 		expect(await screen.findByText('Код отправлен по SMS')).toBeInTheDocument();
+		// Следующего способа доставки нет — и кнопки повторной отправки нет.
+		expect(screen.queryByRole('button', { name: /^Отправить код/ })).not.toBeInTheDocument();
 
 		const resendCall = fetch.calls.find((c) => c.url === '/api/v1/accounts/1/tg/login/resend');
 		expect(JSON.parse(resendCall!.body)).toEqual({ attempt_id: 'a1' });
+	});
+
+	it('без следующего способа доставки кнопки повторной отправки нет; send_code_unavailable — пояснение', async () => {
+		const user = userEvent.setup();
+		setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/status') return json(st('unauthorized'));
+			if (c.url === '/api/v1/accounts/1/tg/login/start')
+				return json(st('awaiting_code', { attempt_id: 'a1', delivery_type: 'app', delivery_next_type: 'sms' }));
+			return json(
+				st('awaiting_code', {
+					attempt_id: 'a1',
+					delivery_type: 'app',
+					delivery_next_type: null,
+					error: 'send_code_unavailable'
+				})
+			);
+		});
+		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+7999');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+		await user.click(await screen.findByRole('button', { name: 'Отправить код по SMS' }));
+		expect(await screen.findByText(/Других способов отправки кода у Telegram нет/)).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: /^Отправить код/ })).not.toBeInTheDocument();
+		expect(screen.getByLabelText('Код из Telegram')).toBeInTheDocument();
 	});
 
 	it('код отправлен на почту (delivery_type: email)', async () => {
@@ -294,31 +319,102 @@ describe('Вход в Telegram', () => {
 		expect(await screen.findByText('Код отправлен на почту f***n@g***.com')).toBeInTheDocument();
 	});
 
-	it('перевод ошибок Telegram (phone_number_invalid, phone_password_flood, send_code_rejected)', async () => {
+	it('перевод ошибок Telegram: RPC ID, send_code_unsupported, неизвестный отказ, 502 почты', async () => {
 		const user = userEvent.setup();
 		let error = 'phone_number_invalid';
+		let status = 400;
 		setup((c) => {
 			if (c.url === '/api/v1/accounts/1/tg/status') return json(st('unauthorized'));
-			if (c.url === '/api/v1/accounts/1/tg/login/start')
-				return json({ detail: error }, 400);
+			if (c.url === '/api/v1/accounts/1/tg/login/start') return json({ detail: error }, status);
 			return json(st('unauthorized'));
 		});
 
 		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+7999');
-		await user.click(screen.getByRole('button', { name: 'Получить код' }));
-		expect(await screen.findByRole('alert')).toHaveTextContent('Неверный номер телефона');
-
-		error = 'send_code_rejected:phone_number_banned';
-		await user.click(screen.getByRole('button', { name: 'Получить код' }));
-		expect(await screen.findByRole('alert')).toHaveTextContent(
-			'Telegram отклонил отправку кода: Номер телефона заблокирован в Telegram'
+		const expectAlert = async (code: string, text: string, http = 400) => {
+			error = code;
+			status = http;
+			await user.click(screen.getByRole('button', { name: 'Получить код' }));
+			await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(text));
+		};
+		await expectAlert('phone_number_invalid', 'Неверный номер телефона');
+		// Сервер отдаёт чистый RPC ID Telegram в нижнем регистре.
+		await expectAlert('phone_number_banned', 'Номер телефона заблокирован в Telegram');
+		await expectAlert('phone_password_flood', 'Слишком много попыток ввода пароля — попробуйте позже');
+		await expectAlert(
+			'send_code_unsupported:sent_code_payment_required',
+			'Telegram ответил на запрос кода способом, который бот не поддерживает (sent_code_payment_required)'
 		);
+		await expectAlert('auth_restart', 'Telegram отклонил запрос (auth_restart)');
+		await expectAlert('send_verify_email_code_failed', 'Не удалось отправить письмо с кодом', 502);
+		await expectAlert('verify_email_failed', 'Не удалось подтвердить почту', 502);
+	});
+});
 
-		error = 'phone_password_flood';
+describe('Код не пришёл', () => {
+	const awaiting = (extra: object = {}) =>
+		st('awaiting_code', { attempt_id: 'a1', delivery_type: 'app', delivery_next_type: null, ...extra });
+
+	it('код через серверное приложение: куда отправлен, «Код не пришёл?», отмена входа', async () => {
+		const user = userEvent.setup();
+		let status = st('unauthorized', { app: 'server' });
+		const fetch = setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/login/start') status = awaiting({ app: 'server' });
+			if (c.url === '/api/v1/accounts/1/tg/login/cancel') status = st('unauthorized', { app: 'server' });
+			return json(status);
+		});
+		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+7999');
 		await user.click(screen.getByRole('button', { name: 'Получить код' }));
-		expect(await screen.findByRole('alert')).toHaveTextContent(
-			'Слишком много попыток ввода пароля — попробуйте позже'
-		);
+		expect(
+			await screen.findByText(
+				'Код отправлен в приложение Telegram — сообщение от «Telegram» с синей галочкой на ваших устройствах; может быть в архиве'
+			)
+		).toBeInTheDocument();
+		expect(screen.getByText('Код запрошен через серверное приложение')).toBeInTheDocument();
+		const hint = screen.getByText('Код не пришёл?');
+		await user.click(hint);
+		const details = hint.closest('details')!;
+		expect(details).toHaveTextContent('Telegram иногда не доставляет коды для общего приложения сервера');
+		expect(details).toHaveTextContent('API development tools');
+		expect(details).toHaveTextContent('api_hash');
+		const link = details.querySelector('a[href="https://my.telegram.org"]');
+		expect(link).not.toBeNull();
+		expect(link).toHaveAttribute('target', '_blank');
+		expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+
+		await user.click(screen.getByRole('button', { name: 'Отменить вход' }));
+		expect(await screen.findByLabelText('Телефон аккаунта')).toBeInTheDocument();
+		const cancel = fetch.calls.find((c) => c.url === '/api/v1/accounts/1/tg/login/cancel')!;
+		expect([cancel.method, cancel.headers.get('x-csrf-token')]).toEqual(['POST', 'c']);
+		// После отмены форма своего приложения доступна.
+		expect(screen.getByLabelText('api_id')).toBeInTheDocument();
+	});
+
+	it('код через своё приложение — api_id и без «Код не пришёл?»', async () => {
+		const user = userEvent.setup();
+		let status = st('unauthorized', { app: { api_id: 12345 } });
+		setup((c) => {
+			if (c.url === '/api/v1/accounts/1/tg/login/start') status = awaiting({ app: { api_id: 12345 } });
+			return json(status);
+		});
+		await user.type(await screen.findByLabelText('Телефон аккаунта'), '+7999');
+		await user.click(screen.getByRole('button', { name: 'Получить код' }));
+		expect(await screen.findByText('Код запрошен через своё приложение (api_id 12345)')).toBeInTheDocument();
+		expect(screen.queryByText('Код не пришёл?')).not.toBeInTheDocument();
+	});
+
+	it('вход из другой вкладки и шаг почты тоже можно отменить', async () => {
+		setup(() => json(st('awaiting_email', { attempt_id: 'other', delivery_type: 'setup_email' })));
+		expect(await screen.findByText(/Вход уже начат в другой вкладке/)).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Отменить вход' })).toBeInTheDocument();
+	});
+
+	it('блок своего приложения — короткая инструкция и ссылка на my.telegram.org', async () => {
+		setup(() => json(st('unauthorized', { app: 'server' })));
+		await screen.findByLabelText('api_id');
+		const block = screen.getByRole('heading', { name: 'Своё приложение Telegram' }).closest('section')!;
+		expect(block).toHaveTextContent('Если код входа не приходит');
+		expect(block).toHaveTextContent('API development tools');
+		expect(block.querySelector('a[href="https://my.telegram.org"]')).not.toBeNull();
 	});
 });
 
