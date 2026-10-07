@@ -25,6 +25,7 @@ export type SettingsPatchOut = S['SettingsPatchOut'];
 export type SettingsVersion = S['SettingsVersionOut'];
 export type MetroRunSummary = S['MetroRunSummary'];
 export type MetroRunDetail = S['MetroRunDetail'];
+export type MetroLive = S['MetroLive'];
 export type MetricsOut = S['MetricsOut'];
 export type NotificationOut = S['NotificationOut'];
 export type UnrecognizedOut = S['UnrecognizedOut'];

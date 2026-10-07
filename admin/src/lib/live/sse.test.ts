@@ -86,6 +86,35 @@ describe('кадры SSE с прода', () => {
 		expect(note).toMatchObject({ type: 'notification', data: { id: 10, level: 'warn' } });
 	});
 
+	it('живой кадр метро (форма из app/engine/metro/live.py)', () => {
+		const frame = {
+			message_id: 77,
+			scenario_run_id: 5,
+			running: true,
+			started_at: '2026-10-07T18:00:00+00:00',
+			battle_at: null,
+			kick_at: null,
+			budget: { total_s: null, used: 0, step_s: 5 },
+			grid: { cells: { '0,0': '.' }, visited: [[0, 0]] },
+			pos: [0, 0],
+			exit: null,
+			path: [[0, 0]],
+			vitals: [],
+			events: [],
+			steps: 0,
+			mode: 'explore',
+			leave_reason: null,
+			stamina: 100,
+			packs: 2,
+			found: {},
+			last_event: null,
+			outcome: null
+		};
+		expect(decodeEvent('metro_live', JSON.stringify(frame), 'e:9')).toEqual({ type: 'metro_live', id: 'e:9', data: frame });
+		expect(decodeEvent('metro_live', '{"message_id": 77, "running": true}')).toBeNull();
+		expect(decodeEvent('metro_live', JSON.stringify({ ...frame, message_id: '77' }))).toBeNull();
+	});
+
 	it('незнакомый тип, битый JSON и чужая форма — null', () => {
 		expect(decodeEvent('ping', '{}')).toBeNull();
 		expect(decodeEvent('state', '{oops')).toBeNull();

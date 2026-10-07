@@ -7,14 +7,17 @@
 	import CharacterCard from '$lib/components/home/CharacterCard.svelte';
 	import ControlsCard from '$lib/components/home/ControlsCard.svelte';
 	import GadgetsCard from '$lib/components/home/GadgetsCard.svelte';
+	import MetroLiveCard from '$lib/components/home/MetroLiveCard.svelte';
 	import PlanCard from '$lib/components/home/PlanCard.svelte';
 	import StatusHeader from '$lib/components/home/StatusHeader.svelte';
 	import TodayCard from '$lib/components/home/TodayCard.svelte';
 	import { DailyStore } from '$lib/daily/store.svelte';
 	import { GadgetsStore } from '$lib/gadgets/store.svelte';
+	import { shown } from '$lib/metro/live';
+	import { MetroLiveStore } from '$lib/metro/store.svelte';
 	import { PlanStore } from '$lib/plan/store.svelte';
 
-	const { api, live, engine, character } = current.get();
+	const { id: account, api, live, engine, character } = current.get();
 
 	// Относительное время («через 38 мин») обновляется раз в 30 с.
 	let now = $state(new Date());
@@ -26,6 +29,9 @@
 	const artifact = new ArtifactStore(api);
 	// «Гаджеты при тебе»: план покупки, задача заточки и её ход.
 	const gadgets = new GadgetsStore(api);
+	// «Метро — прохождение»: живой кадр забега, пока открыта главная.
+	const metro = new MetroLiveStore(api);
+	const metroShown = $derived(shown(metro.frame, metro.receivedAt, now.getTime()));
 
 	// Готовность цикла (tg_offline, spending_blocked, lock_lost, pipeline_unhealthy) не шлёт своего
 	// кадра потока — её доходит только опрос статуса движка (раз в 15 с). Пауза и kill уже приходят
@@ -46,11 +52,13 @@
 		daily.start();
 		artifact.start();
 		gadgets.start();
+		metro.start();
 		const off = live.subscribe((e) => {
 			plan.onEvent(e);
 			daily.onEvent(e);
 			artifact.onEvent(e);
 			gadgets.onEvent(e);
+			metro.onEvent(e);
 		});
 		return () => {
 			clearInterval(t);
@@ -59,6 +67,7 @@
 			daily.stop();
 			artifact.stop();
 			gadgets.stop();
+			metro.stop();
 		};
 	});
 </script>
@@ -78,7 +87,20 @@
 	{#if character.error && !character.loaded}
 		<p class="card text-sm text-bad-fg" role="alert">Состояние недоступно: движок не отвечает.</p>
 	{/if}
-	<PlanCard plan={plan.outlook} error={plan.error} state={character.state} {now} />
+	<PlanCard
+		plan={plan.outlook}
+		error={plan.error}
+		state={character.state}
+		{now}
+		metroHref={metroShown ? '#metro-live' : null}
+	/>
+	<MetroLiveCard
+		frame={metro.frame}
+		receivedAt={metro.receivedAt}
+		{now}
+		{account}
+		metroRunning={plan.outlook?.loop.current === 'metro'}
+	/>
 	<div class="grid gap-3 md:grid-cols-2">
 		<div class="space-y-3">
 			<CharacterCard state={character.state} stale={character.stale} {now} days={daily.data?.days ?? []} />

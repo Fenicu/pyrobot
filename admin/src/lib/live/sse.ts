@@ -1,4 +1,4 @@
-import type { Markup, PublicState } from '$lib/api/types';
+import type { Markup, MetroLive, PublicState } from '$lib/api/types';
 
 /** Кадры потока `/api/v1/accounts/{id}/events` (`app/engine/stream.py`). */
 export interface SseMessage {
@@ -78,6 +78,7 @@ export type LiveEvent =
 	| { type: 'scenario_run'; id: string; data: SseScenarioRun }
 	| { type: 'notification'; id: string; data: SseNotification }
 	| { type: 'settings'; id: string; data: SseSettings }
+	| { type: 'metro_live'; id: string; data: MetroLive }
 	| { type: 'reset'; id: string; data: { reason: ResetReason } };
 
 export type LiveType = LiveEvent['type'];
@@ -89,6 +90,7 @@ export const LIVE_TYPES: readonly LiveType[] = [
 	'scenario_run',
 	'notification',
 	'settings',
+	'metro_live',
 	'reset'
 ];
 const RESETS = new Set(['new', 'unknown', 'evicted', 'epoch']);
@@ -114,6 +116,21 @@ function valid(type: LiveType, d: Rec): boolean {
 			return num(d.id) && str(d.level) && str(d.code) && str(d.text);
 		case 'settings':
 			return num(d.version) && str(d.mode);
+		case 'metro_live':
+			return (
+				num(d.message_id) &&
+				typeof d.running === 'boolean' &&
+				str(d.started_at) &&
+				num(d.steps) &&
+				str(d.mode) &&
+				Array.isArray(d.path) &&
+				Array.isArray(d.events) &&
+				Array.isArray(d.vitals) &&
+				typeof d.budget === 'object' &&
+				d.budget !== null &&
+				typeof d.found === 'object' &&
+				d.found !== null
+			);
 		case 'reset':
 			return RESETS.has(String(d.reason));
 	}

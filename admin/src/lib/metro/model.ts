@@ -182,14 +182,15 @@ export const EVENT_TEXT: Record<string, string> = {
 	metro_buffs: 'бафы'
 };
 
-const LEAVE_REASON: Record<string, string> = {
+export const LEAVE_REASON: Record<string, string> = {
 	explored: 'всё обошёл',
 	deadline: 'не успеть до битвы',
-	early_exit: 'досрочный выход'
+	early_exit: 'досрочный выход',
+	no_stamina: '🔋 0 и нет аптечек'
 };
 
 /** «💵 71 ⚙️ 9 ⚪ 1». */
-function lootText(loot: unknown): string {
+export function lootText(loot: unknown): string {
 	if (typeof loot !== 'object' || loot === null) return '';
 	return Object.entries(loot as Record<string, unknown>)
 		.map(([k, v]) => `${CURRENCY[k] ?? k} ${String(v)}`)

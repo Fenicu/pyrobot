@@ -27,6 +27,11 @@ interface Blocker {
 	when: string;
 }
 
+/** Строка «Сейчас» про идущий сценарий. */
+export function runningText(scenario: string): string {
+	return `▶ Идёт сценарий: ${scenarioText(scenario)}`;
+}
+
 function blockers(plan: Outlook): Blocker[] {
 	const loop = plan.loop;
 	const out: Blocker[] = [];
@@ -35,7 +40,7 @@ function blockers(plan: Outlook): Blocker[] {
 		out.push({ text: `⛔ Решения не исполняются: ${readyText(loop.ready)}`, when: 'когда это пройдёт' });
 	}
 	// На паузе ручной сценарий может идти (manual_while_paused): его видно и тогда.
-	if (loop.current !== null) out.push({ text: `▶ Идёт сценарий: ${scenarioText(loop.current)}`, when: 'после него' });
+	if (loop.current !== null) out.push({ text: runningText(loop.current), when: 'после него' });
 	if (loop.manual_queue > 0) out.push({ text: `🖐 Ручных запусков в очереди: ${loop.manual_queue}`, when: 'после них' });
 	if (!loop.auto) {
 		out.push({ text: 'Планировщик выключен: бот исполняет только ручные запуски', when: 'если бы он работал' });

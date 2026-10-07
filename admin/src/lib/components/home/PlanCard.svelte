@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { errorText, type ApiError } from '$lib/api/errors';
 	import type { Outlook, PlanCandidate, PlanTimer, PublicState } from '$lib/api/types';
-	import { basisText, explain, nowView } from '$lib/plan/now';
+	import { basisText, explain, nowView, runningText } from '$lib/plan/now';
 	import {
 		actDetail,
 		candidateDetail,
@@ -18,9 +18,11 @@
 		error: ApiError | null;
 		state: PublicState;
 		now: Date;
+		/** Якорь карточки «Метро — прохождение», если она показана: строка идущего метро — ссылка. */
+		metroHref?: string | null;
 	}
 	// Снимок — для строки пояснения (задания дня); `state` занят руной.
-	let { plan, error, state: snapshot, now }: Props = $props();
+	let { plan, error, state: snapshot, now, metroHref = null }: Props = $props();
 
 	/** На телефоне сразу видно «Сейчас» и первые 5 событий, остальное — по «Ещё». */
 	const PHONE_TIMERS = 5;
@@ -45,6 +47,7 @@
 	// Движок не запущен (или ещё регистрируется) — это не сбой: приглушённо, как на плашке.
 	const stopped = $derived(error?.kind === 'engine_down' && error.code !== 'planner not started');
 	const view = $derived(plan ? nowView(plan, clock) : null);
+	const metroLine = $derived(metroHref && plan?.loop.current === 'metro' ? runningText('metro') : null);
 	// Занятость устарела: кроме решения, план — второй проход по последним известным значениям.
 	const basis = $derived(plan ? basisText(plan) : '');
 	const why = $derived(plan ? explain(plan, snapshot, now) : '');
@@ -115,7 +118,11 @@
 				<section aria-labelledby="plan-now">
 					<h3 id="plan-now" class="mb-1 text-xs font-semibold tracking-wide text-fg-muted uppercase">Сейчас</h3>
 					{#if view.blockers.length > 0}
-						{#each view.blockers as line (line)}<p class="font-semibold text-warn-fg">{line}</p>{/each}
+						{#each view.blockers as line (line)}
+							<p class="font-semibold text-warn-fg">
+								{#if line === metroLine}<a class="hover:underline" href={metroHref}>{line}</a>{:else}{line}{/if}
+							</p>
+						{/each}
 						{#if view.decision}
 							<p class="text-sm">
 								{view.decision}{#if view.at}{' — следующий шаг в '}<b>{fmtTime(view.at)}</b>{/if}
