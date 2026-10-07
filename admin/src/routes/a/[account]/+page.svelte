@@ -100,6 +100,7 @@
 		{now}
 		{account}
 		metroRunning={plan.outlook?.loop.current === 'metro'}
+		metroRunId={metro.metroRunId}
 	/>
 	<div class="grid gap-3 md:grid-cols-2">
 		<div class="space-y-3">

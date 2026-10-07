@@ -35,17 +35,37 @@ export function withHistory(next: MetroLive, cur: MetroLive | null): MetroLive {
 	return { ...next, events: [...older, ...next.events].slice(-EVENTS_KEPT) };
 }
 
-/** Момент конца забега по кадру `running: false`: получен потоком — тогда; взят GET-ом позже —
- * не позже выброса (`kick_at`) и не позже `RUN_MAX_MS` от начала. */
+/** Кадров нет дольше — связь с забегом потеряна (движок упал, поток или GET недоступны). */
+export const LOST_AFTER_MS = 5 * 60_000;
+/** Выброс прошёл дольше — забег точно кончился, а кадра конца нет. */
+export const KICK_GRACE_MS = 2 * 60_000;
+
+/** Момент конца забега по кадру `running: false`: по доле бюджета (`started_at + used × total_s`) —
+ * точно, пока доля не упёрлась в 1; иначе — момент получения, но не позже выброса (`kick_at`) и не
+ * позже `RUN_MAX_MS` от начала (кадр взят GET-ом позже конца). */
 export function endedAt(frame: MetroLive, receivedAt: number): number {
+	const started = Date.parse(frame.started_at);
+	const { total_s: total, used } = frame.budget;
+	if (total && used < 1) return started + used * total * 1000;
 	const kick = frame.kick_at ? Date.parse(frame.kick_at) : Infinity;
-	return Math.min(receivedAt, kick, Date.parse(frame.started_at) + RUN_MAX_MS);
+	return Math.min(receivedAt, kick, started + RUN_MAX_MS);
 }
 
-/** Карточка на главной: забег идёт или кончился меньше `OUTCOME_KEEP_MS` назад. */
+/** С какого момента идущий кадр — потерянная связь: `LOST_AFTER_MS` без кадров или `KICK_GRACE_MS`
+ * после выброса; null — кадр конца. */
+export function lostAt(frame: MetroLive, receivedAt: number): number | null {
+	if (!frame.running) return null;
+	const kick = frame.kick_at ? Date.parse(frame.kick_at) + KICK_GRACE_MS : Infinity;
+	return Math.min(receivedAt + LOST_AFTER_MS, kick);
+}
+
+/** Карточка на главной: забег идёт (или связь с ним потеряна меньше `OUTCOME_KEEP_MS` назад) либо
+ * кончился меньше `OUTCOME_KEEP_MS` назад. */
 export function shown(frame: MetroLive | null, receivedAt: number | null, now: number): boolean {
 	if (frame === null) return false;
-	return frame.running || now - endedAt(frame, receivedAt ?? now) <= OUTCOME_KEEP_MS;
+	const got = receivedAt ?? now;
+	const since = frame.running ? lostAt(frame, got)! : endedAt(frame, got);
+	return now - since <= OUTCOME_KEEP_MS;
 }
 
 export const MODE_TEXT: Record<string, string> = {

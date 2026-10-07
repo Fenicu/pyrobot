@@ -132,6 +132,23 @@ describe('живой кадр метро', () => {
 		store.stop();
 	});
 
+	it('запуск метро из потока scenario_run: id идущего, конец — сброс', async () => {
+		const { s, store } = await started();
+		await s.answer(json(liveFrame()));
+		const run = (id: number, scenario: string, status: string): LiveEvent => ({
+			type: 'scenario_run',
+			id: 'x',
+			data: { id, scenario, status, reason: '' }
+		});
+		store.onEvent(run(8, 'metro', 'running'));
+		expect(store.metroRunId).toBe(8);
+		store.onEvent(run(9, 'book', 'running'));
+		expect(store.metroRunId).toBe(8);
+		store.onEvent(run(8, 'metro', 'done'));
+		expect(store.metroRunId).toBeNull();
+		store.stop();
+	});
+
 	it('после ухода с главной поздний ответ и кадры не применяются', async () => {
 		const { s, store } = await started();
 		store.stop();

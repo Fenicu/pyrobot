@@ -12,6 +12,9 @@ export class MetroLiveStore {
 	frame = $state<MetroLive | null>(null);
 	/** Когда показанный кадр получен (мс): замершие кадры и возраст итога. */
 	receivedAt = $state<number | null>(null);
+	/** Идущий запуск сценария метро по кадрам `scenario_run` (null — не видно): итог прошлого забега
+	 * отличается от входа в новый. */
+	metroRunId = $state<number | null>(null);
 	#api: AccountApi;
 	#clock: () => number;
 	#inflight: AbortController | null = null;
@@ -56,6 +59,11 @@ export class MetroLiveStore {
 		if (!this.#started) return;
 		if (event.type === 'reset') void this.load();
 		else if (event.type === 'metro_live') this.#apply(event.data);
+		else if (event.type === 'scenario_run') {
+			const run = event.data;
+			if (run.scenario === 'metro' && run.status === 'running') this.metroRunId = run.id;
+			else if (run.id === this.metroRunId && run.status !== 'running') this.metroRunId = null;
+		}
 	}
 
 	#apply(next: MetroLive): void {

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { cleanup, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MetroLive, Outlook, StateOut } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
@@ -9,13 +9,17 @@ import PlanCard from './PlanCard.svelte';
 const NOW = new Date('2026-10-07T18:10:00Z');
 const TITLE = 'Метро — прохождение';
 
-function card(frame: MetroLive | null, over: { receivedAt?: number; metroRunning?: boolean } = {}) {
+function card(
+	frame: MetroLive | null,
+	over: { receivedAt?: number; metroRunning?: boolean; metroRunId?: number | null; now?: Date } = {}
+) {
 	render(MetroLiveCard, {
 		frame,
 		receivedAt: over.receivedAt ?? NOW.getTime(),
-		now: NOW,
+		now: over.now ?? NOW,
 		account: 1,
-		metroRunning: over.metroRunning ?? false
+		metroRunning: over.metroRunning ?? false,
+		metroRunId: over.metroRunId ?? null
 	});
 	return screen.queryByRole('region', { name: TITLE });
 }
@@ -65,16 +69,49 @@ describe('«Метро — прохождение» на главной', () => 
 		expect(block).not.toHaveTextContent('итог прошлого забега');
 	});
 
-	it('итог прошлого забега, пока идёт вход в новый', () => {
-		const block = card(liveFrame({ running: false, outcome: 'finished', mode: 'leave' }), { metroRunning: true })!;
+	it('итог прошлого забега — только когда известен новый запуск метро', () => {
+		const done = liveFrame({ running: false, outcome: 'finished', mode: 'leave' });
+		const block = card(done, { metroRunning: true, metroRunId: 8 })!;
 		expect(block).toHaveTextContent('Забег завершён: вышел сам');
 		expect(block).toHaveTextContent('Это итог прошлого забега');
 	});
 
+	it('план ещё держит метро, а нового запуска не видно — мягко: «последний забег»', () => {
+		const done = liveFrame({ running: false, outcome: 'finished', mode: 'leave' });
+		const block = card(done, { metroRunning: true, metroRunId: 7 })!;
+		expect(block).not.toHaveTextContent('итог прошлого забега');
+		expect(block).toHaveTextContent('Последний забег');
+	});
+
+	it('кадры не приходят 5 минут — связь потеряна: без времени и выброса, через 30 минут карточки нет', () => {
+		const got = NOW.getTime() - 6 * 60_000;
+		const block = card(liveFrame(), { receivedAt: got })!;
+		expect(block).toHaveTextContent('связь потеряна, данные на 21:04');
+		expect(within(block).queryByRole('progressbar', { name: 'Время забега' })).toBeNull();
+		expect(block).not.toHaveTextContent('до выброса');
+		expect(block).not.toHaveTextContent('обновлено');
+		cleanup();
+		expect(card(liveFrame(), { receivedAt: NOW.getTime() - 36 * 60_000 })).toBeNull();
+	});
+
+	it('выброс прошёл больше 2 минут назад — связь потеряна, даже если кадр свежий', () => {
+		const later = new Date('2026-10-07T18:48:00Z');
+		const block = card(liveFrame(), { now: later, receivedAt: later.getTime() - 60_000 })!;
+		expect(block).toHaveTextContent('связь потеряна, данные на 21:47');
+		expect(block).not.toHaveTextContent('выброс вот-вот');
+	});
+
+	it('🔋 неизвестна — прочерк без процента', () => {
+		const block = card(liveFrame({ stamina: null }))!;
+		expect(block).toHaveTextContent('🔋 —');
+		expect(block).not.toHaveTextContent('—%');
+	});
+
 	it('без кадра и с итогом старше 30 минут — карточки нет', () => {
 		expect(card(null)).toBeNull();
-		const old = liveFrame({ running: false, outcome: 'finished', mode: 'leave' });
-		expect(card(old, { receivedAt: NOW.getTime() - 31 * 60_000 })).toBeNull();
+		// Забег с 17:00, конец — 17:10 по доле бюджета: час назад.
+		const old = liveFrame({ running: false, outcome: 'finished', mode: 'leave', started_at: '2026-10-07T17:00:00+00:00' });
+		expect(card(old)).toBeNull();
 	});
 });
 

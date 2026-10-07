@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { MetroLive } from '$lib/api/types';
-	import { liveMap, modeText, outcomeText, shown, STALE_AFTER_MS } from '$lib/metro/live';
+	import { liveMap, lostAt, modeText, outcomeText, shown, STALE_AFTER_MS } from '$lib/metro/live';
 	import { eventIcon, eventText, lootText, timeline } from '$lib/metro/model';
 	import { accountHref } from '$lib/nav';
-	import { fmtSpan } from '$lib/util/format';
+	import { fmtSpan, fmtTime } from '$lib/util/format';
 	import Meter from '../Meter.svelte';
 	import MetroMap from '../metro/MetroMap.svelte';
 
@@ -13,10 +13,12 @@
 		receivedAt: number | null;
 		now: Date;
 		account: number;
-		/** По плану сейчас идёт сценарий метро: итог прошлого забега — пока новый входит. */
+		/** По плану сейчас идёт сценарий метро. */
 		metroRunning?: boolean;
+		/** Идущий запуск метро по кадрам `scenario_run` (null — не видно). */
+		metroRunId?: number | null;
 	}
-	let { frame, receivedAt, now, account, metroRunning = false }: Props = $props();
+	let { frame, receivedAt, now, account, metroRunning = false, metroRunId = null }: Props = $props();
 
 	/** Строк ленты событий. */
 	const RECENT = 8;
@@ -31,6 +33,15 @@
 	const at = $derived(Math.max(now.getTime(), ticked));
 
 	const visible = $derived(shown(frame, receivedAt, at));
+	// Связь с идущим забегом потеряна: время и выброс по часам страницы уже не правда.
+	const lost = $derived.by(() => {
+		const since = frame && receivedAt !== null ? lostAt(frame, receivedAt) : null;
+		return since !== null && at >= since;
+	});
+	const live = $derived(frame?.running === true && !lost);
+	// Итог прошлого забега — только если виден другой запуск метро; иначе план мог не успеть
+	// узнать о конце только что кончившегося.
+	const newRun = $derived(metroRunId !== null && metroRunId !== frame?.scenario_run_id);
 	const model = $derived(frame ? liveMap(frame) : null);
 	const step = $derived(model ? Math.max(0, model.path.length - 1) : 0);
 	const recent = $derived(model ? timeline(model).slice(-RECENT).reverse() : []);
@@ -44,7 +55,7 @@
 	});
 	const kickLeft = $derived(frame?.kick_at ? (Date.parse(frame.kick_at) - at) / 1000 : null);
 	const staleS = $derived(
-		frame?.running && receivedAt !== null && at - receivedAt > STALE_AFTER_MS ? (at - receivedAt) / 1000 : null
+		live && receivedAt !== null && at - receivedAt > STALE_AFTER_MS ? (at - receivedAt) / 1000 : null
 	);
 </script>
 
@@ -58,9 +69,13 @@
 		</div>
 		{#if !frame.running}
 			<p class="font-semibold">Забег завершён: {outcomeText(frame)}</p>
-			{#if metroRunning}
+			{#if newRun}
 				<p class="text-xs text-fg-muted">Это итог прошлого забега: идёт вход в новый, карта появится с первым шагом.</p>
+			{:else if metroRunning}
+				<p class="text-xs text-fg-muted">Последний забег.</p>
 			{/if}
+		{:else if lost && receivedAt !== null}
+			<p class="text-sm text-fg-muted" role="status">связь потеряна, данные на {fmtTime(new Date(receivedAt))}</p>
 		{/if}
 		<div class="mt-2 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)]">
 			<div class="min-w-0">
@@ -72,10 +87,10 @@
 				</p>
 				<p>режим: <b>{modeText(frame)}</b></p>
 				<div>
-					<p>🔋 {frame.stamina ?? '—'}%</p>
+					<p>🔋 {frame.stamina === null ? '—' : `${frame.stamina}%`}</p>
 					<Meter value={Math.min(frame.stamina ?? 0, 100)} max={100} label="Выносливость" />
 				</div>
-				{#if frame.running}
+				{#if live}
 					<div>
 						<p>
 							время: {Math.round(used * 100)}%{#if kickLeft !== null}{` · ${kickLeft > 0 ? `до выброса ~${fmtSpan(kickLeft)}` : 'выброс вот-вот'}`}{/if}
