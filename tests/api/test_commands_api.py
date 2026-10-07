@@ -283,6 +283,7 @@ async def test_inflight_key_with_other_text_is_422(
     h = {"X-CSRF-Token": await login(api_client)}
     code, _ = await _send(api_client, h, "/job", "f1")
     assert code == 202
+    await until(lambda: bool(transport.sent))
     code, body = await _send(api_client, h, "/harvest", "f1")
     assert code == 422 and body == {"detail": "idempotency_key reused"}
     code, _ = await _send(api_client, h, "/job", "f1")
