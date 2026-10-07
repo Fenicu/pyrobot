@@ -256,8 +256,8 @@ async def gadget_buy(
     сверяется с каталогом до продажи акций (комиссия $1/шт. не платится зря), на нехватку
     продаются чужие акции, витрина открывается снова (контекст `/buy_` и свежие деньги). Окно
     слива и окно-запрет — и до продажи, и перед `/buy_` (там же позиция и деньги с резервом
-    `reserve`). `wear` — надеть
-    купленное; `in_bag` — неулучшенный экземпляр уже в рюкзаке: только надеть."""
+    `reserve`). `wear` — надеть купленное (в пустой слот игра надевает его сама); `in_bag` —
+    неулучшенный экземпляр уже в рюкзаке: только надеть."""
     rule, slot = str(params["rule"]), params["slot"]
     item = SHOP[slot][int(params["tier"]) - 1]
     reserve = int(params["reserve"])
@@ -294,16 +294,17 @@ async def gadget_buy(
         if bought.step is not Step.OK:
             failed_buy = wrong_screen(bought)
             return ScenarioResult(failed_buy.status, failed_buy.reason, {"sold": sold})
+        answer = bought.first(GadgetBought)
         details: dict[str, Any] = {
             "bought": item.name,
             "price": item.price,
             "rule": rule,
             "slot": slot,
             "tier": item.tier,
-            "worn": False,
+            "worn": answer is not None and answer.worn,
             "sold": sold,
         }
-        if params.get("wear"):
+        if params.get("wear") and not details["worn"]:
             # Куплено: что бы ни случилось при надевании, итог — покупка (наденет следующий).
             try:
                 await ctx.safe_point()

@@ -275,6 +275,22 @@ def test_all_parts_in_bag_gives_wear_set_of_remaining() -> None:
     assert plan.target.worn == ("right", "left", "legs")
 
 
+def test_set_part_bought_into_empty_slot_is_worn_by_game() -> None:
+    # При ⚫️Сет VIP пустой 👞 правило (a) не трогает, а (b) покупает в него часть цели — игра
+    # сразу надевает её. Следующий план считает 👞 надетым и надевает только части из рюкзака.
+    rest = [part("summer", s) for s in ("right", "left", "ring", "book")]
+    bag = [part("summer", s) for s in ("head", "chest", "torso")]
+    worn = [*rest, *(shop(c) for c in ("h6", "c6", "t6"))]
+    vip = ["⚫️Сет VIP"]
+    before = char(worn, bag, level=45, money=50_000, lines=vip)
+    plan = buy_plan(before, on_settings(["summer"]), 0, "x", NOW)
+    assert plan.action == BuyAction("set", "legs", 11, 44_499, False, 0)
+    after = char([*worn, part("summer", "legs")], bag, level=45, money=5_501, lines=vip)
+    plan = buy_plan(after, on_settings(["summer"]), 0, "x", NOW)
+    assert plan.action == WearSet("summer", ("head", "chest", "torso"))
+    assert plan.target is not None and plan.target.worn == ("right", "left", "legs")
+
+
 def test_target_blocked_by_ring_and_book() -> None:
     # 💍/💻 вне каталога, все магазинные — тир 14 (лучше некуда): цель заблокирована, (c) пусто.
     worn = [shop(c) for c in ("p14", "w14", "l14", "h14", "c14", "t14")] + [RING, BOOK]

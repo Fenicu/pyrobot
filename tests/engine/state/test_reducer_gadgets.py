@@ -13,6 +13,7 @@ from app.engine.state.model import CharacterState, GadgetsState, Obs, dump_state
 from app.engine.state.reducer import StateReducer
 from tests.engine.gadget_texts import (
     BOUGHT_RIGHT1,
+    BOUGHT_WORN_LEGS2,
     FAIL_0,
     GAME,
     INV,
@@ -121,6 +122,14 @@ def test_bought_spends_catalog_price_and_doubts_gadgets() -> None:
     s = apply(r, s, BOUGHT_RIGHT1, 1, msg_id=2)
     assert value(s, "money") == 552 and value(s, "bag") == 12 and s["gadgets"]["src"] == "doubtful"
     assert effects(BOUGHT_RIGHT1) == [Effect("gadget_buy", {"money": -3}, {"Китайская мобила": 1})]
+
+
+def test_bought_into_empty_slot_keeps_bag_and_doubts_gadgets() -> None:
+    r = StateReducer()
+    s = apply(r, profile_money(555), INV, 0)
+    s = apply(r, s, BOUGHT_WORN_LEGS2, 1, msg_id=2)
+    assert value(s, "money") == 476 and value(s, "bag") == 11 and s["gadgets"]["src"] == "doubtful"
+    assert effects(BOUGHT_WORN_LEGS2) == [Effect("gadget_buy", {"money": -79}, {"Термо-штаны": 1})]
 
 
 def test_bought_unknown_item_doubts_money_without_effect() -> None:

@@ -687,8 +687,9 @@ def _gadget_bought(p: _Patch, e: GadgetBought) -> None:
     else:
         p.delta("money", -price)
         p.effect("gadget_buy", amounts(money=-price), {e.name: 1})
-    p.delta("bag", 1)
-    # Код купленного появится только в /inv: до него список рюкзака неполон.
+    if not e.worn:
+        p.delta("bag", 1)
+    # Код купленного (и надетое игрой) появится только в /inv: до него список неполон.
     p.doubt("gadgets")
 
 

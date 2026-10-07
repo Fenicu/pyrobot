@@ -18,9 +18,11 @@ from app.engine.types import IncomingMessage
 from tests.engine.fakegame import GAME, LIVE, Ref, World, running_world
 from tests.engine.gadget_texts import (
     BOUGHT_RIGHT1,
+    BOUGHT_WORN_LEGS2,
     INV_BOUGHT,
     NETWORK,
     NO_MONEY_RIGHT14,
+    SHOP_LEGS,
     SHOP_MENU,
     SHOP_RIGHT,
     UNKNOWN,
@@ -182,6 +184,42 @@ async def test_buy_and_wear(live_buying: World) -> None:
         "sold": [],
     }
     assert live_buying.game.payloads() == [*NAV, "/buy_right1", "/inv", "/wear_11_p1"]
+
+
+def shop_legs(world: World) -> None:
+    world.game.on_text("🕸Сеть", game_text(NETWORK))
+    world.game.on_text("🏪Магазин", game_text(SHOP_MENU))
+    world.game.on_text("👞Ноги", game_text(SHOP_LEGS))
+    world.game.on_text("/buy_legs2", game_text(BOUGHT_WORN_LEGS2))
+
+
+@certifies("gadget_buy")
+async def test_buy_into_empty_slot_is_worn_by_game(live_buying: World) -> None:
+    shop_legs(live_buying)
+    status, reason, details = await run(
+        live_buying, rule="empty", slot="legs", tier=2, price=79, reserve=0, wear=True
+    )
+    assert (status, reason) == ("done", "bought")
+    assert details == {
+        "bought": "Термо-штаны",
+        "price": 79,
+        "rule": "empty",
+        "slot": "legs",
+        "tier": 2,
+        "worn": True,
+        "sold": [],
+    }
+    assert live_buying.game.payloads() == ["🕸Сеть", "🏪Магазин", "👞Ноги", "/buy_legs2"]
+
+
+@certifies("gadget_buy")
+async def test_set_part_into_empty_slot_is_worn_by_game(live_buying: World) -> None:
+    shop_legs(live_buying)
+    status, reason, details = await run(
+        live_buying, rule="set", slot="legs", tier=2, price=79, reserve=0
+    )
+    assert (status, reason, details["worn"]) == ("done", "bought", True)
+    assert live_buying.game.payloads() == ["🕸Сеть", "🏪Магазин", "👞Ноги", "/buy_legs2"]
 
 
 @certifies("gadget_buy")

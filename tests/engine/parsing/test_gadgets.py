@@ -25,6 +25,8 @@ from app.engine.types import Button
 from tests.engine import gadget_texts as texts
 from tests.engine.gadget_texts import (
     BOUGHT_RIGHT1,
+    BOUGHT_WORN_HEAD2,
+    BOUGHT_WORN_LEGS2,
     CONFIRM_2,
     CONFIRM_3,
     CONFIRM_BUTTONS,
@@ -37,6 +39,7 @@ from tests.engine.gadget_texts import (
     OK_1,
     OK_2,
     OK_3,
+    SHOP_LEGS,
     SHOP_MENU,
     SHOP_RIGHT,
     UCOFF,
@@ -92,9 +95,24 @@ def test_shop_menu_and_network_are_info() -> None:
 
 def test_bought() -> None:
     assert events(BOUGHT_RIGHT1) == [
-        GadgetBought(name="Китайская мобила", bonuses={"practice": 1})
+        GadgetBought(name="Китайская мобила", bonuses={"practice": 1}, worn=False)
     ]
     assert GadgetBought.outcome
+
+
+def test_bought_into_empty_slot_is_worn() -> None:
+    assert events(BOUGHT_WORN_LEGS2) == [
+        GadgetBought(name="Термо-штаны", bonuses={"practice": 2, "cunning": 2}, worn=True)
+    ]
+    assert events(BOUGHT_WORN_HEAD2) == [
+        GadgetBought(name="Очки с диоптриями", bonuses={"theory": 2, "wisdom": 2}, worn=True)
+    ]
+
+
+def test_legs_showcase() -> None:
+    e = only(ShopScreen, SHOP_LEGS)
+    assert (e.slot, len(e.offers), e.money) == ("legs", 14, 862)
+    assert (e.offers[1].name, e.offers[1].level, e.offers[1].price) == ("Термо-штаны", 11, 79)
 
 
 def test_no_money_refusal() -> None:

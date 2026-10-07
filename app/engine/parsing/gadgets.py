@@ -23,7 +23,7 @@ _OFFER = re.compile(
 _MONEY = re.compile(r"^💵Твои деньги: \$(?P<money>" + NUM + r")$", re.M)
 _BOUGHT = re.compile(
     r"\A👍Поздравляю! Ты стал счастливым обладателем гаджета (?P<name>.+?) "
-    r"\((?P<stats>[^()]*)\) и положил его в 🎒Рюкзак \(/inv\)\."
+    r"\((?P<stats>[^()]*)\) и (?:(?P<bag>положил его в 🎒Рюкзак \(/inv\))|сразу надел его)\."
 )
 _CHANGE = re.compile(
     r"^👍Ты (?P<verb>надел|снял) (?:(?P<grade>[^\w\s]+)(?P<level>\d+)[ \xa0])?(?P<name>.+?)"
@@ -80,10 +80,13 @@ class ShopScreen(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class GadgetBought(Event):
+    """Покупка в магазине; `worn` — слот был пуст и игра сразу надела купленное."""
+
     kind: ClassVar[str] = "gadget_bought"
     outcome: ClassVar[bool] = True
     name: str
     bonuses: dict[str, int]
+    worn: bool
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -210,7 +213,7 @@ def _bought(m: re.Match[str]) -> list[Event]:
     parsed = gadget_stats(m["stats"])
     if parsed is None:
         return []
-    return [GadgetBought(name=m["name"], bonuses=parsed[0])]
+    return [GadgetBought(name=m["name"], bonuses=parsed[0], worn=m["bag"] is None)]
 
 
 def _changed(text: str) -> list[Event]:
