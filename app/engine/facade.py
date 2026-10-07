@@ -22,6 +22,7 @@ from app.engine.scenarios.registry import SCENARIOS
 from app.engine.settings import (
     ArtifactKey,
     Settings,
+    SettingsConflict,
     SettingsPatch,
     SettingsProvider,
     UpgradeChoice,
@@ -30,7 +31,13 @@ from app.engine.settings import (
 )
 from app.engine.state.model import company_of, load_state
 from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
-from app.engine.transport.base import GAME_CHAT_USERNAME, JoinStatus, Transport
+from app.engine.transport.base import (
+    GAME_CHAT_USERNAME,
+    TANGERINE_CHAT_USERNAME,
+    JoinStatus,
+    Transport,
+    TransportRejected,
+)
 
 if TYPE_CHECKING:
     from app.engine.planner.loop import PlannerLoop
@@ -39,6 +46,8 @@ if TYPE_CHECKING:
     from app.engine.stream import EventStream
 
 log = logging.getLogger(__name__)
+# Попыток записи адресата мандаринов, если версия настроек сменилась между чтением и записью.
+_REPLY_TO_ATTEMPTS = 3
 # «План бота» не пересчитывается чаще: несколько вкладок не гоняют проход планировщика.
 OUTLOOK_TTL_S = 5.0
 
@@ -95,6 +104,14 @@ class EngineStatus:
     lease_ok: bool
     # Аккаунт состоит в общем чате игры (по сверке истории); None — ещё не проверено.
     game_chat_member: bool | None = None
+
+
+@dataclass(frozen=True)
+class TangerinePost:
+    """Своё сообщение в чате мандаринов."""
+
+    chat_id: int
+    message_id: int
 
 
 @dataclass(frozen=True)
@@ -210,6 +227,35 @@ class EngineFacade:
         if self._transport is None or self.tg.status().state is not TgState.ONLINE:
             raise TgNotOnline
         await self._transport.send_saved(text)
+
+    async def tangerine_post(self, text: str) -> TangerinePost:
+        """Сообщение аккаунта в чате мандаринов — вне шлюза команд и в любом режиме: явное
+        действие владельца. Перед ним — вступление в чат по username со сверкой id с
+        `chats.tangerine_chat_id` (другой чат — `chat_mismatch`, ничего не отправлено)."""
+        if self._transport is None or self.tg.status().state is not TgState.ONLINE:
+            raise TgNotOnline
+        chat_id = self.settings.current.chats.tangerine_chat_id
+        status = await self._transport.join_chat(TANGERINE_CHAT_USERNAME, chat_id)
+        if status == "request_sent":
+            raise TransportRejected("join_request_sent")
+        message_id = await self._transport.send_chat_message(chat_id, text)
+        return TangerinePost(chat_id, message_id)
+
+    async def set_tangerine_reply_to(self, message_id: int, *, by: str) -> SettingsUpdate:
+        """Адресат мандаринов (`chats.tangerine_reply_to`) — той же правкой, что и PATCH
+        настроек: новая версия, строка истории, применение на лету."""
+        attempt = 1
+        while True:
+            try:
+                return await self.patch_settings(
+                    {"chats": {"tangerine_reply_to": message_id}},
+                    version=self.settings.version,
+                    by=by,
+                )
+            except SettingsConflict:
+                if attempt >= _REPLY_TO_ATTEMPTS:
+                    raise
+                attempt += 1
 
     def ready(self) -> bool:
         st = self.status()

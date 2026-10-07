@@ -1,7 +1,7 @@
 """Ответы с ошибками в OpenAPI. Форма — как у `HTTPException` FastAPI: `{"detail": …}`;
 модели только описывают её для TS-типов админки, ответы через них не проходят."""
 
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import BaseModel
 
@@ -53,6 +53,24 @@ class OutOfBoundsOut(BaseModel):
     limit: float
 
 
+class AccountErrorOut(BaseModel):
+    """Ошибка про один из аккаунтов запроса: какой — `account_id`."""
+
+    detail: str
+    account_id: int
+
+
+class TangerinePairPartialOut(BaseModel):
+    """Пара для мандаринов не собрана: сообщение аккаунта уже в чате, у партнёра — нет."""
+
+    detail: Literal["tangerine_pair_partial"]
+    # Код ошибки партнёра, как у одиночного сообщения (`tg_not_online`, `flood_wait`, …).
+    reason: str
+    # Отправленные сообщения: id аккаунта → id сообщения.
+    posted: dict[int, int]
+    failed: int
+
+
 def error(*codes: str) -> dict[str, Any]:
     """Описание ответа `{"detail": "<код>"}` с перечнем возможных кодов."""
     return {"model": ErrorOut, "description": " | ".join(codes)}
@@ -81,6 +99,10 @@ TG_NOT_ONLINE = "tg_not_online"
 TG_LOGGED_IN = "tg_logged_in"
 # Чат по username общего чата игры — не `chats.swinfo_chat_id`: аккаунт в него не вступает.
 GAME_CHAT_MISMATCH = "game_chat_mismatch"
+# Чат по username чата мандаринов — не `chats.tangerine_chat_id`: аккаунт в него не вступает.
+TANGERINE_CHAT_MISMATCH = "tangerine_chat_mismatch"
+TANGERINE_PAIR_SELF = "tangerine_pair_self"
+TANGERINE_PAIR_PARTIAL: Final = "tangerine_pair_partial"
 INVITE_NOT_FOUND = "invite_not_found"
 INVITE_GONE = "invite_gone"
 LOGIN_TAKEN = "login_taken"

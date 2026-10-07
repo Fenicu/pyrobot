@@ -9,7 +9,13 @@ import pytest
 from app.engine.artifact import ArtifactConflict
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
-from app.engine.facade import EngineFacade, GameChatWatch, LockLostError, TgNotOnline
+from app.engine.facade import (
+    EngineFacade,
+    GameChatWatch,
+    LockLostError,
+    TangerinePost,
+    TgNotOnline,
+)
 from app.engine.gadgets import GadgetConflict
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.store import ActionStore
@@ -163,6 +169,83 @@ async def test_join_game_chat_needs_online_telegram() -> None:
     with pytest.raises(TgNotOnline):
         await f.join_game_chat()
     assert transport.joins == []
+
+
+async def test_tangerine_post_joins_by_username_then_sends() -> None:
+    transport = FakeTransport()
+    f = build(transport=transport)
+    await f.tg.boot()
+    assert f.settings.current.engine.mode == "dry_run"
+    post = await f.tangerine_post("🍊")
+    assert transport.joins == [("mandarinkaSW", -1001377961602)]
+    assert transport.posted == [(-1001377961602, "🍊")]
+    assert post == TangerinePost(chat_id=-1001377961602, message_id=post.message_id)
+    assert post.message_id > 0
+    assert transport.sent == []
+
+
+async def test_tangerine_post_uses_chat_from_settings() -> None:
+    transport = FakeTransport()
+    settings = StaticSettings(Settings.model_validate({"chats": {"tangerine_chat_id": -1009}}))
+    f = build(transport=transport, settings=settings)
+    await f.tg.boot()
+    transport.join_status = "already_member"
+    post = await f.tangerine_post("привет")
+    assert transport.joins == [("mandarinkaSW", -1009)]
+    assert post.chat_id == -1009 and transport.posted == [(-1009, "привет")]
+
+
+async def test_tangerine_post_mismatch_sends_nothing() -> None:
+    transport = FakeTransport()
+    transport.chat_ids["mandarinkaSW"] = -1001
+    f = build(transport=transport)
+    await f.tg.boot()
+    with pytest.raises(TransportRejected, match="chat_mismatch"):
+        await f.tangerine_post("🍊")
+    assert transport.posted == []
+
+
+async def test_tangerine_post_join_request_pending_sends_nothing() -> None:
+    transport = FakeTransport()
+    transport.join_status = "request_sent"
+    f = build(transport=transport)
+    await f.tg.boot()
+    with pytest.raises(TransportRejected, match="join_request_sent"):
+        await f.tangerine_post("🍊")
+    assert transport.posted == []
+
+
+async def test_tangerine_post_needs_online_telegram() -> None:
+    transport = FakeTransport()
+    f = build(authorized=False, transport=transport)
+    await f.tg.boot()
+    with pytest.raises(TgNotOnline):
+        await f.tangerine_post("🍊")
+    assert transport.joins == [] and transport.posted == []
+
+
+async def test_tangerine_reply_to_goes_through_patch_with_retry_on_conflict() -> None:
+    class Racing(StaticSettings):
+        """Первая запись проигрывает гонку: версия успела смениться."""
+
+        raced = False
+
+        async def update(
+            self, change: SettingsChange, *, changed_by: str, expected_version: int | None = None
+        ) -> tuple[Settings, int]:
+            if not self.raced:
+                self.raced = True
+                await super().update(lambda s: s, changed_by="other")
+            return await super().update(
+                change, changed_by=changed_by, expected_version=expected_version
+            )
+
+    settings = Racing()
+    f = build(settings=settings)
+    await f.tg.boot()
+    upd = await f.set_tangerine_reply_to(777, by="admin")
+    assert settings.current.chats.tangerine_reply_to == 777
+    assert upd.version == 2 and upd.changed == {"chats.tangerine_reply_to": [None, 777]}
 
 
 async def test_kill_latches_even_if_persist_fails() -> None:

@@ -29,6 +29,25 @@
         "title": "AccountDeleteIn",
         "type": "object"
       },
+      "AccountErrorOut": {
+        "description": "Ошибка про один из аккаунтов запроса: какой — `account_id`.",
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail",
+          "account_id"
+        ],
+        "title": "AccountErrorOut",
+        "type": "object"
+      },
       "AccountOut": {
         "properties": {
           "blocked": {
@@ -5017,6 +5036,24 @@
         "title": "OutlookOut",
         "type": "object"
       },
+      "PairedAccountOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "message_id"
+        ],
+        "title": "PairedAccountOut",
+        "type": "object"
+      },
       "ParamSpec": {
         "description": "Обязательный параметр сценария: `values` — у enum, `min`/`max` — у int, `pattern` — у\nstring (ECMA-262). Проверяет сервер: запуск с недопустимым значением — 422.",
         "properties": {
@@ -7079,6 +7116,108 @@
           "close_hour"
         ],
         "title": "StockLimits",
+        "type": "object"
+      },
+      "TangerinePairIn": {
+        "properties": {
+          "partner_id": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Partner Id",
+            "type": "integer"
+          },
+          "text": {
+            "default": "🍊",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "partner_id"
+        ],
+        "title": "TangerinePairIn",
+        "type": "object"
+      },
+      "TangerinePairOut": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/PairedAccountOut"
+          },
+          "partner": {
+            "$ref": "#/components/schemas/PairedAccountOut"
+          }
+        },
+        "required": [
+          "account",
+          "partner"
+        ],
+        "title": "TangerinePairOut",
+        "type": "object"
+      },
+      "TangerinePairPartialOut": {
+        "description": "Пара для мандаринов не собрана: сообщение аккаунта уже в чате, у партнёра — нет.",
+        "properties": {
+          "detail": {
+            "const": "tangerine_pair_partial",
+            "title": "Detail",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "posted": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Posted",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail",
+          "reason",
+          "posted",
+          "failed"
+        ],
+        "title": "TangerinePairPartialOut",
+        "type": "object"
+      },
+      "TangerinePostIn": {
+        "properties": {
+          "text": {
+            "default": "🍊",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "title": "TangerinePostIn",
+        "type": "object"
+      },
+      "TangerinePostOut": {
+        "properties": {
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "integer"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chat_id",
+          "message_id"
+        ],
+        "title": "TangerinePostOut",
         "type": "object"
       },
       "TargetOut": {
@@ -12200,6 +12339,319 @@
         "summary": "Get State",
         "tags": [
           "state"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/tangerine/pair": {
+      "post": {
+        "description": "Пара своих аккаунтов дарит 🍊 друг другу: оба пишут в чат мандаринов (сначала этот, потом\nпартнёр), и `chats.tangerine_reply_to` каждого указывает на сообщение другого — той же\nправкой, что PATCH настроек. Партнёр — другой аккаунт той же учётки (чужой — 404), оба\nдвижка запущены и в Telegram онлайн (иначе 409 `tg_not_online` с `account_id`, ничего не\nотправлено). Сообщение партнёра не ушло — настройки не меняются, ответ\n`tangerine_pair_partial` с кодом ошибки партнёра: сообщение этого аккаунта остаётся в чате.",
+        "operationId": "tangerine_pair_api_v1_accounts__account_id__tangerine_pair_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TangerinePairIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TangerinePairOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AccountErrorOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TangerinePairPartialOut"
+                    }
+                  ],
+                  "title": "Response 409 Tangerine Pair Api V1 Accounts  Account Id  Tangerine Pair Post"
+                }
+              }
+            },
+            "description": "tg_not_online with `account_id` (before any message) | account_deleting | tangerine_chat_mismatch | tangerine_pair_partial"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "invalid body | tangerine_pair_self"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TangerinePairPartialOut"
+                    }
+                  ],
+                  "title": "Response 429 Tangerine Pair Api V1 Accounts  Account Id  Tangerine Pair Post"
+                }
+              }
+            },
+            "description": "flood_wait"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TangerinePairPartialOut"
+                    }
+                  ],
+                  "title": "Response 502 Tangerine Pair Api V1 Accounts  Account Id  Tangerine Pair Post"
+                }
+              }
+            },
+            "description": "<код ошибки Telegram> | tangerine_pair_partial"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TangerinePairPartialOut"
+                    }
+                  ],
+                  "title": "Response 503 Tangerine Pair Api V1 Accounts  Account Id  Tangerine Pair Post"
+                }
+              }
+            },
+            "description": "engine not running | tangerine_pair_partial"
+          }
+        },
+        "summary": "Tangerine Pair",
+        "tags": [
+          "tangerine"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/tangerine/post": {
+      "post": {
+        "description": "Сообщение аккаунта в чате мандаринов @mandarinkaSW: перед ним аккаунт вступает в чат, id\nчата по username сверяется с `chats.tangerine_chat_id`. Текст обрезается по краям, 1–200\nсимволов.",
+        "operationId": "tangerine_post_api_v1_accounts__account_id__tangerine_post_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TangerinePostIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TangerinePostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account_deleting | tg_not_online | tangerine_chat_mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "flood_wait"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "<код ошибки Telegram> | join_request_sent | join_declined | message_id_unknown"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not running"
+          }
+        },
+        "summary": "Tangerine Post",
+        "tags": [
+          "tangerine"
         ]
       }
     },

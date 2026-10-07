@@ -22,6 +22,7 @@ from app.api.routes_planner import router as planner_router
 from app.api.routes_reference import router as reference_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_state import router as state_router
+from app.api.routes_tangerine import router as tangerine_router
 from app.db.base import Database
 from app.engine.fence import LeaseLost
 from app.engine.settings import ChatIsSelf, SettingsOutOfBounds
@@ -79,6 +80,7 @@ def create_api(container: Container) -> FastAPI:
     app.include_router(planner_router)
     app.include_router(artifact_router)
     app.include_router(gadgets_router)
+    app.include_router(tangerine_router)
     app.include_router(state_router)
     app.include_router(settings_router)
     app.include_router(journal_router)

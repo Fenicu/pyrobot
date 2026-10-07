@@ -731,6 +731,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{account_id}/tangerine/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tangerine Pair
+         * @description Пара своих аккаунтов дарит 🍊 друг другу: оба пишут в чат мандаринов (сначала этот, потом
+         *     партнёр), и `chats.tangerine_reply_to` каждого указывает на сообщение другого — той же
+         *     правкой, что PATCH настроек. Партнёр — другой аккаунт той же учётки (чужой — 404), оба
+         *     движка запущены и в Telegram онлайн (иначе 409 `tg_not_online` с `account_id`, ничего не
+         *     отправлено). Сообщение партнёра не ушло — настройки не меняются, ответ
+         *     `tangerine_pair_partial` с кодом ошибки партнёра: сообщение этого аккаунта остаётся в чате.
+         */
+        post: operations["tangerine_pair_api_v1_accounts__account_id__tangerine_pair_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{account_id}/tangerine/post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tangerine Post
+         * @description Сообщение аккаунта в чате мандаринов @mandarinkaSW: перед ним аккаунт вступает в чат, id
+         *     чата по username сверяется с `chats.tangerine_chat_id`. Текст обрезается по краям, 1–200
+         *     символов.
+         */
+        post: operations["tangerine_post_api_v1_accounts__account_id__tangerine_post_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/tg/app": {
         parameters: {
             query?: never;
@@ -1423,6 +1470,16 @@ export interface components {
         AccountDeleteIn: {
             /** Confirm Name */
             confirm_name: string;
+        };
+        /**
+         * AccountErrorOut
+         * @description Ошибка про один из аккаунтов запроса: какой — `account_id`.
+         */
+        AccountErrorOut: {
+            /** Account Id */
+            account_id: number;
+            /** Detail */
+            detail: string;
         };
         /** AccountOut */
         AccountOut: {
@@ -3222,6 +3279,13 @@ export interface components {
             /** Wakeups */
             wakeups: components["schemas"]["PlanTimerOut"][];
         };
+        /** PairedAccountOut */
+        PairedAccountOut: {
+            /** Id */
+            id: number;
+            /** Message Id */
+            message_id: number;
+        };
         /**
          * ParamSpec
          * @description Обязательный параметр сценария: `values` — у enum, `min`/`max` — у int, `pattern` — у
@@ -3819,6 +3883,55 @@ export interface components {
             open_hour: number;
             /** Reserve */
             reserve: number;
+        };
+        /** TangerinePairIn */
+        TangerinePairIn: {
+            /** Partner Id */
+            partner_id: number;
+            /**
+             * Text
+             * @default 🍊
+             */
+            text: string;
+        };
+        /** TangerinePairOut */
+        TangerinePairOut: {
+            account: components["schemas"]["PairedAccountOut"];
+            partner: components["schemas"]["PairedAccountOut"];
+        };
+        /**
+         * TangerinePairPartialOut
+         * @description Пара для мандаринов не собрана: сообщение аккаунта уже в чате, у партнёра — нет.
+         */
+        TangerinePairPartialOut: {
+            /**
+             * Detail
+             * @constant
+             */
+            detail: "tangerine_pair_partial";
+            /** Failed */
+            failed: number;
+            /** Posted */
+            posted: {
+                [key: string]: number;
+            };
+            /** Reason */
+            reason: string;
+        };
+        /** TangerinePostIn */
+        TangerinePostIn: {
+            /**
+             * Text
+             * @default 🍊
+             */
+            text: string;
+        };
+        /** TangerinePostOut */
+        TangerinePostOut: {
+            /** Chat Id */
+            chat_id: number;
+            /** Message Id */
+            message_id: number;
         };
         /** TargetOut */
         TargetOut: {
@@ -6833,6 +6946,206 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    tangerine_pair_api_v1_accounts__account_id__tangerine_pair_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TangerinePairIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TangerinePairOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description tg_not_online with `account_id` (before any message) | account_deleting | tangerine_chat_mismatch | tangerine_pair_partial */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountErrorOut"] | components["schemas"]["ErrorOut"] | components["schemas"]["TangerinePairPartialOut"];
+                };
+            };
+            /** @description invalid body | tangerine_pair_self */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description flood_wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"] | components["schemas"]["TangerinePairPartialOut"];
+                };
+            };
+            /** @description <код ошибки Telegram> | tangerine_pair_partial */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"] | components["schemas"]["TangerinePairPartialOut"];
+                };
+            };
+            /** @description engine not running | tangerine_pair_partial */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"] | components["schemas"]["TangerinePairPartialOut"];
+                };
+            };
+        };
+    };
+    tangerine_post_api_v1_accounts__account_id__tangerine_post_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TangerinePostIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TangerinePostOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account_deleting | tg_not_online | tangerine_chat_mismatch */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description flood_wait */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description <код ошибки Telegram> | join_request_sent | join_declined | message_id_unknown */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

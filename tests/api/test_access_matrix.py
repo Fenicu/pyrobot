@@ -32,6 +32,7 @@ BODIES: dict[str, dict[str, Any]] = {
     "/notifications/read": {"up_to_id": 1},
     "/artifact/start": {"artifact": "light"},
     "/gadgets/upgrade": {"slot": "right", "target": 25, "kind": "auto"},
+    "/tangerine/pair": {"partner_id": 1},
 }
 
 
@@ -79,6 +80,8 @@ def test_matrix_covers_spec_table(app: FastAPI) -> None:
         "/gadgets",
         "/gadgets/upgrade",
         "/gadgets/upgrade/stop",
+        "/tangerine/post",
+        "/tangerine/pair",
     ):
         assert f"{PREFIX}{tail}" in paths
     # Каталог сценариев общий.
