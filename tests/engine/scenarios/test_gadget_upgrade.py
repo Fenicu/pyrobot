@@ -26,6 +26,8 @@ from tests.engine.gadget_texts import (
     OK_3,
     UP_BUTTONS,
     UP_BUTTONS_AUTO,
+    UP_LEFT_BUTTONS,
+    UP_LEFT_PROD,
     UP_RIGHT_0,
     UP_RIGHT_2,
     UPGRADES,
@@ -371,3 +373,32 @@ async def test_gateway_deadline_in_guard_window_is_nothing(upgrading: World) -> 
     )
     assert (status, reason) == ("nothing", "battle_window")
     assert upgrading.game.payloads() == ["/upgrades", "/up_right"]
+
+
+WATCH = "Chtozatime"
+
+
+@pytest.fixture
+async def upgrading_left() -> AsyncIterator[World]:
+    task = TASK.model_copy(update={"slot": "left", "gadget": WATCH})
+    async for w in running_world(LIVE.model_copy(update={"gadget_upgrade": task})):
+        yield w
+
+
+@certifies("gadget_upgrade")
+async def test_two_skill_gadget_without_auto_button(upgrading_left: World) -> None:
+    # Прод 07.10: экран `/up_left` с двумя строками навыков и без «🗜Автоматически».
+    upgrades = swap(
+        UPGRADES_P1, "⚫️25\xa0⌚️SM-art (+100🎓, +51🔨, 💎)", f"⌚️{WATCH} (+45🎓, +23🔨)"
+    )
+    upgrading_left.game.on_text("/upgrades", game_text(upgrades))
+    upgrading_left.game.on_text("/up_left", game_text(UP_LEFT_PROD, buttons=UP_LEFT_BUTTONS))
+    fail = swap(FAIL_0, f"📱{PHONE}", f"⌚️{WATCH}")
+    upgrading_left.game.on_click("up_left_low", edit=ref(fail, UP_LEFT_BUTTONS))
+    ctx = context(upgrading_left)
+    params = {"task_id": 3, "slot": "left", "gadget": WATCH, "white_until": 7, "until": None}
+    params |= {"target": 5, "kind": "white", "batch": 1}
+    result = await run_scenario(gadget_upgrade, ctx, CharacterState(), params)
+    assert (result.status, result.reason) == ("done", "batch")
+    assert counts(result.details or {}) == (3, 1, 0, 1, 0)
+    assert upgrading_left.game.payloads() == ["/upgrades", "/up_left", "up_left_low"]

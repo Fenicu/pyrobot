@@ -40,7 +40,8 @@ _STOCK = re.compile(
 )
 _UPGRADEMAN = re.compile(r"^🗜Апгрейдмэн: .*\(\+(?P<pct>\d+)%\)$", re.M)
 _UP_STOCK = re.compile(r"^(?P<icon>⚪️|🔵|🔴) (?P<n>\d+)[\xa0 ]шт\.$", re.M)
-_UP_BODY = re.compile(r"\A" + _HEADER + r"\n[^\n]+\n\nУ тебя\n")
+# Под шапкой — по строке на каждый навык гаджета (от одной до трёх).
+_UP_BODY = re.compile(r"\A" + _HEADER + r"\n(?:[^\n]+\n)+\nУ тебя\n")
 _BUTTON_CHANCE = re.compile(r"^(?P<icon>⚪️|🔵|🔴) \((?P<chance>\d+)%\)$")
 _TRIES = r"Успех: (?P<ok>\d+)[^\w\s.]+\nПровал: (?P<fail>\d+)[^\w\s.]+\.?"
 _ATTEMPT = re.compile(

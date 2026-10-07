@@ -708,6 +708,23 @@ UP_RIGHT_2 = (
     "❗Провал: 2⚪️ уровень (+6% к навыкам)."
 )
 
+# Прод 07.10.2026 05:56 UTC, аккаунт 3: ответ на `/up_left`, гаджет с двумя навыками;
+# кнопки без «🗜Автоматически» (грейд SW ниже 100).
+UP_LEFT_PROD = (
+    "⌚️Chtozatime\n"
+    "🎓 45 + 0% = 45.00\n"
+    "🔨 23 + 0% = 23.00\n"
+    "\n"
+    "У тебя\n"
+    "⚪️ 1492 шт.\n"
+    "🔵 1047 шт.\n"
+    "🔴 272 шт.\n"
+    "\n"
+    "Улучшить:\n"
+    "❕Успех: 1⚪️ уровень (+3% к навыкам).\n"
+    "❗Провал: 0⚪️ уровень (+0% к навыкам)."
+)
+
 # 17_click_up_right_low.json, id 3631618 (правка)
 FAIL_0 = (
     "📱Китайская мобила\n"
@@ -798,6 +815,11 @@ UP_BUTTONS = (
     Button("🔴 (85%)", 0, 2, "up_right_high"),
 )
 UP_BUTTONS_AUTO = (*UP_BUTTONS, Button("🗜Автоматически", 1, 0, "up_auto_right"))
+UP_LEFT_BUTTONS = (
+    Button("⚪️ (65%)", 0, 0, "up_left_low"),
+    Button("🔵 (75%)", 1, 0, "up_left_middle"),
+    Button("🔴 (85%)", 2, 0, "up_left_high"),
+)
 CONFIRM_BUTTONS = (
     Button("👍Давай!", 0, 0, "up_right_low_1_accept"),
     Button("👎Боюсь", 0, 1, "up_right_low_decline"),
