@@ -1476,6 +1476,34 @@ async def test_chat_message_id_from_short_sent_answer() -> None:
     assert await t.send_chat_message(TANGERINE, "🍊") == 6262
 
 
+def _foreign_updates(*updates: object) -> object:
+    from pyrogram import raw
+
+    return raw.types.Updates(updates=list(updates), users=[], chats=[], date=0, seq=0)
+
+
+async def test_chat_message_id_only_from_own_random_id() -> None:
+    from pyrogram import raw
+
+    # В оживлённом чате в ответе бывают чужие новые сообщения: их id не наш.
+    other = raw.types.UpdateNewChannelMessage(
+        message=raw.types.Message(
+            id=9090, peer_id=raw.types.PeerChannel(channel_id=1), date=0, message="чужое"
+        ),
+        pts=1,
+        pts_count=1,
+    )
+    for answer in (
+        _foreign_updates(other),
+        _foreign_updates(raw.types.UpdateMessageID(id=8080, random_id=2), other),
+    ):
+        t = FakeKurigram()
+        await _online(t)
+        t.client.responses["SendMessage"] = answer
+        with pytest.raises(TransportRejected, match="message_id_unknown"):
+            await t.send_chat_message(TANGERINE, "🍊")
+
+
 async def test_chat_message_without_id_in_answer_is_refusal() -> None:
     t = FakeKurigram()
     await _online(t)

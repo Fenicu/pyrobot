@@ -3624,7 +3624,8 @@ identity (`get_me`) проверяется до запуска апдейтов,
 `join_chat` аккаунт вступает и в чат мандаринов (`TANGERINE_CHAT_USERNAME = "mandarinkaSW"`,
 сверка с `chats.tangerine_chat_id`). Своё сообщение в чат — `send_chat_message(chat_id, text)`: одна попытка
 `SendMessage` через ограду аренды и вне шлюза команд, ответ — id отправленного сообщения (из
-`UpdateMessageID` своего `random_id` или `UpdateShortSentMessage`); id в ответе нет — отказ
+`UpdateMessageID` своего `random_id` или `UpdateShortSentMessage`; новые сообщения в ответе
+могут быть чужими, их id не берётся); id в ответе нет — отказ
 `message_id_unknown`, пир не разрешился — отказ `peer:<ошибка>` (сообщение точно не ушло), прочие
 ошибки Telegram — отказ с их кодом.
 

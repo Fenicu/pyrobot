@@ -142,13 +142,17 @@ def _forwarded_id(updates: Any, random_id: int) -> int:
 
 
 def _sent_id(updates: Any, random_id: int) -> int:
-    """Id своего отправленного сообщения: короткий ответ `UpdateShortSentMessage` (личка, малая
-    группа) или как у пересылки."""
+    """Id своего отправленного сообщения — только по `UpdateMessageID` своего `random_id` или из
+    короткого ответа `UpdateShortSentMessage`; 0 — не найден. Новые сообщения в ответе могут быть
+    чужими (оживлённый чат), их id не берётся."""
     from pyrogram import raw
 
     if isinstance(updates, raw.types.UpdateShortSentMessage):
         return int(updates.id)
-    return _forwarded_id(updates, random_id)
+    for update in getattr(updates, "updates", None) or ():
+        if isinstance(update, raw.types.UpdateMessageID) and update.random_id == random_id:
+            return int(update.id)
+    return 0
 
 
 @dataclass(frozen=True)
