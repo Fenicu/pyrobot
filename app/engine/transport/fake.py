@@ -12,7 +12,7 @@ from app.engine.tg_auth import (
     PasswordRequired,
     SentCodeInfo,
 )
-from app.engine.transport.base import GroupCheck, GroupInfo, JoinStatus
+from app.engine.transport.base import GroupCheck, GroupInfo, JoinStatus, TransportRejected
 from app.engine.types import IncomingMessage
 
 
@@ -54,6 +54,10 @@ class FakeTransport:
         self.joins: list[tuple[str, int]] = []
         self.join_status: JoinStatus = "joined"
         self.join_fail_with: list[BaseException] = []
+        # Настоящий id чата по username: другой ожидаемый id — отказ `chat_mismatch`.
+        self.chat_ids: dict[str, int] = {}
+        # Сообщения в чаты мимо шлюза (`send_chat_message`): чат и текст.
+        self.posted: list[tuple[int, str]] = []
         self._next_id = 1000
         self._tasks: set[asyncio.Future[None]] = set()
 
@@ -109,6 +113,8 @@ class FakeTransport:
     async def join_chat(self, username: str, expect_id: int) -> JoinStatus:
         if self.join_fail_with:
             raise self.join_fail_with.pop(0)
+        if self.chat_ids.get(username, expect_id) != expect_id:
+            raise TransportRejected("chat_mismatch")
         self.joins.append((username, expect_id))
         return self.join_status
 
@@ -116,6 +122,13 @@ class FakeTransport:
         if self.fail_with:
             raise self.fail_with.pop(0)
         self.saved.append(text)
+
+    async def send_chat_message(self, chat_id: int, text: str) -> int:
+        if self.fail_with:
+            raise self.fail_with.pop(0)
+        self.posted.append((chat_id, text))
+        self._next_id += 1
+        return self._next_id
 
 
 class FakeTgBackend:

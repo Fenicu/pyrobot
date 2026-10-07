@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from app.engine.transport.base import FloodWait
+from app.engine.transport.base import FloodWait, TransportRejected
 from app.engine.transport.fake import FakeTransport, Sent
 
 
@@ -33,3 +33,25 @@ async def test_fail_with_queue() -> None:
     assert exc.value.seconds == 3
     assert t.sent == []
     assert await t.send_text(1, "y") > 0
+
+
+async def test_chat_message_returns_new_id_and_is_recorded() -> None:
+    t = FakeTransport()
+    first = await t.send_chat_message(-1001377961602, "🍊")
+    second = await t.send_chat_message(-1001377961602, "ещё")
+    assert second > first > 0
+    assert t.posted == [(-1001377961602, "🍊"), (-1001377961602, "ещё")]
+    assert t.sent == []
+    t.fail_with.append(FloodWait(3))
+    with pytest.raises(FloodWait):
+        await t.send_chat_message(-1001377961602, "🍊")
+    assert len(t.posted) == 2
+
+
+async def test_join_chat_with_other_id_is_mismatch_without_join() -> None:
+    t = FakeTransport()
+    t.chat_ids["mandarinkaSW"] = -1001
+    with pytest.raises(TransportRejected, match="chat_mismatch"):
+        await t.join_chat("mandarinkaSW", -1001377961602)
+    assert t.joins == []
+    assert await t.join_chat("mandarinkaSW", -1001) == "joined"

@@ -13,6 +13,8 @@ GroupCheck = Literal["ok", "not_group", "not_member", "unavailable"]
 JoinStatus = Literal["joined", "already_member", "request_sent"]
 # Username общего чата игры (`chats.swinfo_chat_id`): по числовому id в чат не вступить.
 GAME_CHAT_USERNAME = "startupwarschat"
+# Username чата мандаринов (`chats.tangerine_chat_id`): в него вступают перед своим сообщением.
+TANGERINE_CHAT_USERNAME = "mandarinkaSW"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,4 +82,8 @@ class Transport(Protocol):
 
     async def send_saved(self, text: str) -> None:
         """Отправка сообщения в «Избранное» (Saved Messages) текущего аккаунта."""
+        ...
+
+    async def send_chat_message(self, chat_id: int, text: str) -> int:
+        """Сообщение в чат одной попыткой, мимо шлюза команд; id отправленного сообщения."""
         ...

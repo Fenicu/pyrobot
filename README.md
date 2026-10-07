@@ -3616,7 +3616,13 @@ identity (`get_me`) проверяется до запуска апдейтов,
 вступления, затем `JoinChannel`; итог `joined`, `already_member` (`USER_ALREADY_PARTICIPANT`) или
 `request_sent` (заявка ждёт одобрения, в том числе бота-охранника чата); отклонённая заявка —
 отказ `join_declined`. Вызов — через ограду аренды, вне шлюза команд; пир чата
-после вступления сохраняется в `tg_peers` (чат SWINFO — среди чатов из настроек).
+после вступления сохраняется в `tg_peers` (чат SWINFO — среди чатов из настроек). Тем же
+`join_chat` аккаунт вступает и в чат мандаринов (`TANGERINE_CHAT_USERNAME = "mandarinkaSW"`,
+сверка с `chats.tangerine_chat_id`). Своё сообщение в чат — `send_chat_message(chat_id, text)`: одна попытка
+`SendMessage` через ограду аренды и вне шлюза команд, ответ — id отправленного сообщения (из
+`UpdateMessageID` своего `random_id` или `UpdateShortSentMessage`); id в ответе нет — отказ
+`message_id_unknown`, пир не разрешился — отказ `peer:<ошибка>` (сообщение точно не ушло), прочие
+ошибки Telegram — отказ с их кодом.
 
 **Сессия Telegram — в базе, а не в файле.** `PgSessionStorage` (`app/db/tg_storage.py`,
 `storage_engine` клиента kurigram) пишет поля сессии (`dc_id`, `api_id`, `test_mode`, `auth_key`,

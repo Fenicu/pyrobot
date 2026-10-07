@@ -141,6 +141,16 @@ def _forwarded_id(updates: Any, random_id: int) -> int:
     return found
 
 
+def _sent_id(updates: Any, random_id: int) -> int:
+    """Id своего отправленного сообщения: короткий ответ `UpdateShortSentMessage` (личка, малая
+    группа) или как у пересылки."""
+    from pyrogram import raw
+
+    if isinstance(updates, raw.types.UpdateShortSentMessage):
+        return int(updates.id)
+    return _forwarded_id(updates, random_id)
+
+
 @dataclass(frozen=True)
 class ChatFilter:
     game_chat_id: int
@@ -1012,6 +1022,44 @@ class KurigramTransport:
         except errors.Unauthorized as exc:
             await self._lose_auth(client)
             raise TransportAuthLost(str(exc)) from exc
+
+    @_fenced
+    async def send_chat_message(self, chat_id: int, text: str) -> int:
+        from pyrogram import errors, raw
+
+        client = self._client
+        random_id = client.rnd_id()
+        try:
+            peer = await self._peer(client, chat_id)
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except Exception as exc:
+            # До отправки дело не дошло: сообщения точно нет.
+            raise TransportRejected(f"peer:{type(exc).__name__}") from exc
+        try:
+            # Одна попытка: повтор после тайм-аута мог бы отправить дважды.
+            updates = await client.invoke(
+                raw.functions.messages.SendMessage(
+                    peer=peer, message=text, random_id=random_id, no_webpage=True
+                ),
+                retries=1,
+                sleep_threshold=0,
+                retry_delay=0,
+            )
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except errors.RPCError as exc:
+            raise TransportRejected(str(exc.ID or exc)) from exc
+        message_id = _sent_id(updates, random_id)
+        if not message_id:
+            raise TransportRejected("message_id_unknown")
+        return message_id
 
     @_fenced
     async def click(

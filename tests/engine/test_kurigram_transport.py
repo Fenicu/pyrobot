@@ -1447,3 +1447,84 @@ def test_saved_messages_not_accepted_by_chat_filter() -> None:
     own_user_id = 99999999
     saved_msg = NS(chat=NS(id=own_user_id), from_user=NS(id=own_user_id), reply_markup=None)
     assert not f.accepts(saved_msg)
+
+
+TANGERINE = -1001377961602
+
+
+async def test_chat_message_single_attempt_returns_message_id() -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.responses["SendMessage"] = _forwarded(5151)
+    assert await t.send_chat_message(TANGERINE, "🍊") == 5151
+    name, kw = t.client.invoked[-1]
+    assert name == "SendMessage"
+    assert kw == {"retries": 1, "sleep_threshold": 0, "retry_delay": 0}
+    query = t.client.queries[-1]
+    assert query.message == "🍊" and query.reply_to is None
+    assert t.client.resolved == [TANGERINE]
+
+
+async def test_chat_message_id_from_short_sent_answer() -> None:
+    from pyrogram import raw
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.responses["SendMessage"] = raw.types.UpdateShortSentMessage(
+        id=6262, pts=1, pts_count=1, date=0
+    )
+    assert await t.send_chat_message(TANGERINE, "🍊") == 6262
+
+
+async def test_chat_message_without_id_in_answer_is_refusal() -> None:
+    t = FakeKurigram()
+    await _online(t)
+    with pytest.raises(TransportRejected, match="message_id_unknown"):
+        await t.send_chat_message(TANGERINE, "🍊")
+
+
+@pytest.mark.parametrize(
+    ("error", "raised"),
+    [
+        ("ChatWriteForbidden", TransportRejected),
+        ("UserBannedInChannel", TransportRejected),
+        ("AuthKeyUnregistered", TransportAuthLost),
+    ],
+)
+async def test_chat_message_errors_classified(error: str, raised: type[Exception]) -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors["SendMessage"] = rpc_error(error)
+    with pytest.raises(raised):
+        await t.send_chat_message(TANGERINE, "🍊")
+
+
+async def test_chat_message_flood_wait_mapped() -> None:
+    from pyrogram import errors
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors["SendMessage"] = errors.FloodWait(7)
+    with pytest.raises(FloodWait) as caught:
+        await t.send_chat_message(TANGERINE, "🍊")
+    assert caught.value.seconds == 7.0
+
+
+async def test_chat_message_goes_through_fence() -> None:
+    clock = FakeMonotonic()
+    fence = Fence(1, 1, clock.now + 10.0, monotonic=clock)
+    t = FakeKurigram(fence=fence)
+    await _online(t)
+    clock.now += 20.0
+    with pytest.raises(LeaseLost):
+        await t.send_chat_message(TANGERINE, "🍊")
+
+
+@pytest.mark.parametrize("error", [KeyError("unknown peer"), OSError("network down")])
+async def test_chat_message_unresolved_peer_is_refusal(error: Exception) -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors["ResolvePeer"] = error
+    with pytest.raises(TransportRejected, match="peer"):
+        await t.send_chat_message(TANGERINE, "🍊")
+    assert all(name != "SendMessage" for name, _ in t.client.invoked)
