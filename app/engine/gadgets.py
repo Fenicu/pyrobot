@@ -257,6 +257,14 @@ def _target_view(key: SetKey, shop: _Shop) -> TargetView | None:
 
     worn = tuple(slot for slot in _SHOP_SLOTS if counted(slot))
     in_bag = tuple(slot for slot in _SHOP_SLOTS if slot not in worn and bought(slot))
+    # Купленное в пустой слот игра надевает сама: при сете заточки такие части — последними,
+    # когда остальные уже в рюкзаке, иначе сет заточки снимется до сборки цели.
+    taken = {up_slot(g) for g in worn_items}
+    upgrade = _upgrade_set(shop.gadgets)
+
+    def order(m: tuple[ShopSlot, int, int]) -> tuple[bool, int]:
+        return upgrade and m[0] not in taken, m[2]
+
     missing = tuple(
         sorted(
             (
@@ -264,7 +272,7 @@ def _target_view(key: SetKey, shop: _Shop) -> TargetView | None:
                 for slot in _SHOP_SLOTS
                 if slot not in worn and slot not in in_bag
             ),
-            key=lambda m: m[2],
+            key=order,
         )
     )
     uncounted = tuple(slot for slot in _EXTRA_SLOTS if not counted(slot))

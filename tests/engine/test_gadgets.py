@@ -275,6 +275,49 @@ def test_all_parts_in_bag_gives_wear_set_of_remaining() -> None:
     assert plan.target.worn == ("right", "left", "legs")
 
 
+SUMMER_REST = [part("summer", s) for s in ("right", "left", "ring", "book")]
+SUMMER_BAG = [part("summer", s) for s in ("head", "chest")]
+
+
+def test_upgrade_set_defers_empty_slot_part_until_others_in_bag() -> None:
+    # При ⚫️Сет VIP часть в пустой 👞 игра надела бы сразу и сняла VIP до сборки сета: сначала
+    # 👔 ($47 999) в рюкзак, хоть 👞 ($44 499) и дешевле.
+    worn = [*SUMMER_REST, *(shop(c) for c in ("h6", "c6", "t6"))]
+    vip = ["⚫️Сет VIP"]
+    plan = buy_plan(
+        char(worn, SUMMER_BAG, level=45, money=50_000, lines=vip),
+        on_settings(["summer"]),
+        0,
+        "x",
+        NOW,
+    )
+    assert plan.action == BuyAction("set", "torso", 11, 47_999, False, 0)
+    assert plan.target is not None
+    assert [m[0] for m in plan.target.missing] == ["torso", "legs"]
+    # На 👔 не хватает — копим на неё, а не покупаем 👞 в пустой слот.
+    poor = char(worn, SUMMER_BAG, level=45, money=45_000, lines=vip)
+    plan = buy_plan(poor, on_settings(["summer"]), 0, "x", NOW)
+    assert (plan.action, plan.verdict) == (None, "saving")
+    assert plan.target is not None and plan.target.need_money == 2_999
+    # 👔 уже в рюкзаке — осталась только 👞: её покупка и сразу надевание сета.
+    bag = [*SUMMER_BAG, part("summer", "torso")]
+    plan = buy_plan(
+        char(worn, bag, level=45, money=50_000, lines=vip), on_settings(["summer"]), 0, "x", NOW
+    )
+    assert plan.action == BuyAction("set", "legs", 11, 44_499, False, 0)
+
+
+def test_no_upgrade_set_keeps_order() -> None:
+    worn = [*SUMMER_REST, *(shop(c) for c in ("h6", "c6", "t6"))]
+    plan = buy_plan(
+        char(worn, SUMMER_BAG, level=45, money=50_000), on_settings(["summer"]), 0, "x", NOW
+    )
+    # Без сета заточки пустой 👞 занимает правило (a), недостающие — от дешёвой.
+    assert plan.action == BuyAction("empty", "legs", 11, 44_499, True, 0)
+    assert plan.target is not None
+    assert [m[0] for m in plan.target.missing] == ["legs", "torso"]
+
+
 def test_set_part_bought_into_empty_slot_is_worn_by_game() -> None:
     # При ⚫️Сет VIP пустой 👞 правило (a) не трогает, а (b) покупает в него часть цели — игра
     # сразу надевает её. Следующий план считает 👞 надетым и надевает только части из рюкзака.
