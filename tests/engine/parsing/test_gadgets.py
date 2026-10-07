@@ -44,6 +44,8 @@ from tests.engine.gadget_texts import (
     UNWEAR_P1,
     UP_BUTTONS,
     UP_BUTTONS_AUTO,
+    UP_LEFT_BUTTONS,
+    UP_LEFT_PROD,
     UP_RIGHT_2,
     UPGRADES,
     UPGRADES_CONFIRM_OFF,
@@ -169,6 +171,29 @@ def test_up_screen_without_upgrade() -> None:
     assert (e.grade, e.level, e.name) == (None, None, "Китайская мобила")
 
 
+def test_up_screen_two_skills_without_auto_button() -> None:
+    e = only(UpgradeScreen, UP_LEFT_PROD, buttons=UP_LEFT_BUTTONS)
+    assert (e.up_slot, e.grade, e.level, e.name) == ("left", None, None, "Chtozatime")
+    assert e.stocks == {"white": 1492, "blue": 1047, "red": 272}
+    assert e.chances == {"white": 65, "blue": 75, "red": 85}
+
+
+def test_up_screen_three_skills() -> None:
+    text = (
+        "⚫️26\xa0🕶Хиджаб\n"
+        "🎓\xa085 + 78% = 151.30\n"
+        "🐢\xa055 + 78% = 97.90\n"
+        "🔨\xa030 + 78% = 53.40\n\n" + UP_LEFT_PROD.split("\n\n", 1)[1].replace(" шт.", "\xa0шт.")
+    )
+    buttons = tuple(
+        Button(b.text, b.row, b.col, (b.data or "").replace("left", "head"))
+        for b in UP_LEFT_BUTTONS
+    )
+    e = only(UpgradeScreen, text, buttons=buttons)
+    assert (e.up_slot, e.grade, e.level, e.name) == ("head", "⚫️", 26, "Хиджаб")
+    assert e.stocks == {"white": 1492, "blue": 1047, "red": 272}
+
+
 @pytest.mark.parametrize(
     ("text", "level", "success", "nxt"),
     [
@@ -218,6 +243,7 @@ def test_confirm_mode_answers() -> None:
 _BUTTONS = {
     "UP_RIGHT_0": UP_BUTTONS_AUTO,
     "UP_RIGHT_2": UP_BUTTONS_AUTO,
+    "UP_LEFT_PROD": UP_LEFT_BUTTONS,
     "FAIL_0": UP_BUTTONS,
     "FAIL_0_DOT": UP_BUTTONS,
     "OK_1": UP_BUTTONS,
