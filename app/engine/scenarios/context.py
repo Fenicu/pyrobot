@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from app.engine.bus import Delivery
 from app.engine.clock import Clock, SystemClock
@@ -30,6 +31,8 @@ Predicate = Callable[[Delivery], Match | None]
 History = Callable[[int, int], Awaitable[list[IncomingMessage]]]
 # Текущая версия сообщения, прочитанная из Telegram и пропущенная через конвейер.
 Reread = Callable[[int, int], Awaitable[IncomingMessage | None]]
+# Кадр в поток событий аккаунта (`EventStream.publish`): тип и данные.
+Publish = Callable[[str, dict[str, Any]], None]
 
 
 class Step(StrEnum):
@@ -136,8 +139,10 @@ class ScenarioContext:
         state: Callable[[], CharacterState] | None = None,
         settings: Callable[[], Settings] | None = None,
         task_id: int | None = None,
+        publish: Publish | None = None,
     ) -> None:
         self._gateway = gateway
+        self._publish = publish
         # Свежие состояние и настройки между шагами: снимок на старте устаревает за порцию.
         self._state = state
         self._settings = settings
@@ -173,6 +178,11 @@ class ScenarioContext:
     async def notify(self, level: Level, code: str, text: str) -> None:
         if self._notifier is not None:
             await self._notifier.notify(level, code, text)
+
+    def publish(self, type_: str, data: dict[str, Any]) -> None:
+        """Кадр в поток событий аккаунта (живой ход забега); без потока — никуда."""
+        if self._publish is not None:
+            self._publish(type_, data)
 
     def latest(self, message_id: int) -> IncomingMessage | None:
         """Последняя ревизия сообщения игрового чата из кэша конвейера."""

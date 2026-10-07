@@ -20,6 +20,8 @@ async def test_state_and_settings_default_to_empty(world: World) -> None:
     assert ctx.state() == CharacterState()
     assert ctx.settings() == Settings()
     assert ctx.task_id is None
+    # Без потока аккаунта (тесты, отдельный запуск) живой кадр никуда не уходит.
+    ctx.publish("metro_live", {"running": True})
 
 
 async def test_state_and_settings_are_read_fresh(world: World) -> None:

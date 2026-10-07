@@ -54,6 +54,28 @@ def test_reset_reasons() -> None:
     assert stream.subscribe("e1:4").replay == []
 
 
+def test_live_frame_keeps_only_latest_in_history() -> None:
+    # Живой кадр метро — снимок целиком: в истории только последний, история не раздувается.
+    stream = EventStream(epoch="e1", history=3)
+    assert stream.latest("metro_live") is None
+    stream.publish("metro_live", {"steps": 1})
+    stream.publish("notification", {"code": "a"})
+    stream.publish("metro_live", {"steps": 2})
+    stream.publish("metro_live", {"steps": 3})
+    assert [(e.seq, e.type) for e in stream.history()] == [(2, "notification"), (4, "metro_live")]
+    assert stream.latest("metro_live") == {"steps": 3}
+    # Вытеснен заменённый кадр, а не нужное событие: досылка без reset.
+    resumed = stream.subscribe("e1:1")
+    assert resumed.reset is None and [e.seq for e in resumed.replay] == [2, 4]
+    for code in "bcd":
+        stream.publish("notification", {"code": code})
+    # Последний кадр помнится, даже когда история его уже вытеснила.
+    assert all(e.type == "notification" for e in stream.history())
+    assert stream.latest("metro_live") == {"steps": 3}
+    assert stream.subscribe("e1:3").reset == "evicted"
+    assert stream.subscribe("e1:4").reset is None
+
+
 def test_lagging_subscriber_dropped_without_blocking() -> None:
     stream = EventStream(epoch="e1", queue_size=2)
     slow = stream.subscribe(None)

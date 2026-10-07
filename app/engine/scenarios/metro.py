@@ -10,6 +10,7 @@ from app.engine.bus import Delivery
 from app.engine.events import Event, Unrecognized
 from app.engine.gateway.types import Match, Predicate, Verdict
 from app.engine.metro.budget import Budget, prior_step_s
+from app.engine.metro.live import LiveFeed, live_frame
 from app.engine.metro.solver import Click, Done, MetroSolver, Policy, policy_of
 from app.engine.parsing.metro import (
     ENTRY_COST,
@@ -499,6 +500,39 @@ async def _explore(
     solver: MetroSolver,
     started: datetime,
 ) -> ScenarioResult:
+    """Обход с живым кадром для админки: на старте, после каждого экрана и в конце."""
+
+    def frame(running: bool, outcome: str | None) -> dict[str, Any]:
+        return live_frame(
+            solver,
+            message_id=message,
+            scenario_run_id=ctx.run_id,
+            started=started,
+            now=ctx.clock.now(),
+            running=running,
+            outcome=outcome,
+        )
+
+    live = LiveFeed(ctx.publish, frame, ctx.clock.monotonic)
+    live.update()
+    outcome = "interrupted"
+    try:
+        result = await _walk(ctx, message, current, buffs, solver, started, live)
+        outcome = result.reason
+        return result
+    finally:
+        live.close(outcome)
+
+
+async def _walk(
+    ctx: ScenarioContext,
+    message: int,
+    current: IncomingMessage,
+    buffs: MetroBuffs,
+    solver: MetroSolver,
+    started: datetime,
+    live: LiveFeed,
+) -> ScenarioResult:
     wait_s = _wait_s(ctx, buffs)
     stuck_s = _stuck_timeout_s(ctx, buffs)
     notified: set[str] = set(solver.alerts)
@@ -540,6 +574,7 @@ async def _explore(
             if screen is None:
                 return await _halt(ctx, "unexpected_screen", record("unexpected_screen"))
             move = solver.next(screen, ctx.clock.now())
+            live.update()
             for alert in solver.alerts:
                 if alert not in notified:
                     notified.add(alert)

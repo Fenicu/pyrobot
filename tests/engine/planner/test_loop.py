@@ -948,6 +948,23 @@ async def test_metro_run_saved_and_durations_loaded(
     assert rig.loop._metro_durations == [960.0] * 20
 
 
+async def test_scenario_publishes_live_frames_through_the_loop(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Живой кадр сценарий отдаёт в поток аккаунта, переданный циклу.
+    async def fake_metro(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        ctx.publish("metro_live", {"running": True, "scenario_run_id": ctx.run_id})
+        return ScenarioResult("nothing", "test")
+
+    monkeypatch.setitem(loop_module.SCENARIOS, "metro", ScenarioSpec("metro", fake_metro, True))
+    frames: list[tuple[str, dict[str, Any]]] = []
+    rig = Rig(world)
+    rig.loop._publish = lambda type_, data: frames.append((type_, data))
+    decision = await rig.store.record(datetime.now(UTC), Act("metro", {}, "metro_ready"))
+    await rig.loop._execute(Act("metro", {}, "metro_ready"), decision, dry_run=False)
+    assert frames == [("metro_live", {"running": True, "scenario_run_id": 1})]
+
+
 async def test_paused_metro_run_is_saved(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
     # Приостановленный забег продолжится позже, но его запись (карта, путь) нужна и сейчас.
     record = {"duration_s": 300.0, "steps": 40, "outcome": "paused"}

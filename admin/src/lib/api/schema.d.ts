@@ -504,6 +504,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{account_id}/metro/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Metro Live
+         * @description Последний живой кадр забега метро с запуска движка: идущий (`running`) или конец.
+         */
+        get: operations["metro_live_api_v1_accounts__account_id__metro_live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/metro/runs": {
         parameters: {
             query?: never;
@@ -2551,6 +2571,72 @@ export interface components {
                     number
                 ][];
             };
+        };
+        /**
+         * MetroLive
+         * @description Живой кадр забега (кадр `metro_live` потока событий): `events` — последние 30,
+         *     `found` — всё найденное за забег, `outcome` — исход в последнем кадре (`running` false).
+         */
+        MetroLive: {
+            /** Battle At */
+            battle_at: string | null;
+            budget: components["schemas"]["MetroLiveBudget"];
+            /** Events */
+            events: unknown[];
+            /** Exit */
+            exit: number[] | null;
+            /** Found */
+            found: {
+                [key: string]: number;
+            };
+            /** Grid */
+            grid: {
+                [key: string]: unknown;
+            };
+            /** Kick At */
+            kick_at: string | null;
+            /** Last Event */
+            last_event: {
+                [key: string]: unknown;
+            } | null;
+            /** Leave Reason */
+            leave_reason: string | null;
+            /** Message Id */
+            message_id: number;
+            /** Mode */
+            mode: string;
+            /** Outcome */
+            outcome: string | null;
+            /** Packs */
+            packs: number | null;
+            /** Path */
+            path: unknown[];
+            /** Pos */
+            pos: number[];
+            /** Running */
+            running: boolean;
+            /** Scenario Run Id */
+            scenario_run_id: number | null;
+            /** Stamina */
+            stamina: number | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Steps */
+            steps: number;
+            /** Vitals */
+            vitals: unknown[];
+        };
+        /** MetroLiveBudget */
+        MetroLiveBudget: {
+            /** Step S */
+            step_s: number;
+            /** Total S */
+            total_s: number | null;
+            /** Used */
+            used: number;
         };
         /** MetroRunDetail */
         MetroRunDetail: {
@@ -5978,6 +6064,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    metro_live_api_v1_accounts__account_id__metro_live_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetroLive"];
+                };
+            };
+            /** @description no metro run since the engine started */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

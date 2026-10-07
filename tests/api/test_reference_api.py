@@ -11,9 +11,14 @@ from app.db.models import MetricRow
 from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
 from app.engine.events import Unrecognized
+from app.engine.metro.budget import Budget
+from app.engine.metro.live import LIVE, live_frame
+from app.engine.metro.solver import MetroSolver, policy_of
 from app.engine.planner.types import Act
-from tests.api.conftest import login
+from app.engine.settings import MetroSection
+from tests.api.conftest import login, run_engine
 from tests.engine.helpers import make_msg
+from tests.engine.test_facade import build
 
 pytestmark = pytest.mark.db
 
@@ -30,7 +35,7 @@ async def _metrics(db: Database, points: list[tuple[int, str, float]]) -> None:
 
 
 async def test_reference_needs_session(container: Container, api_client: AsyncClient) -> None:
-    for path in ("/metrics", "/metro/runs", "/unrecognized", "/notifications"):
+    for path in ("/metrics", "/metro/runs", "/metro/live", "/unrecognized", "/notifications"):
         assert (await api_client.get(f"/api/v1/accounts/1{path}")).status_code == 401
 
 
@@ -146,6 +151,50 @@ async def test_metro_runs_list_and_detail(
     assert full["visited"] == 0
     assert (await api_client.get(f"/api/v1/accounts/1/metro/runs/{second}")).json()["visited"] == 3
     assert (await api_client.get("/api/v1/accounts/1/metro/runs/999999")).status_code == 404
+
+
+async def test_metro_live_last_frame_of_running_engine(
+    container: Container, api_client: AsyncClient
+) -> None:
+    await login(api_client)
+    url = "/api/v1/accounts/1/metro/live"
+    # Движок не запущен — живого кадра нет и быть не может.
+    assert (await api_client.get(url)).json() == {"detail": "engine not running"}
+    engine = run_engine(container, build())
+    # Забега с запуска движка не было.
+    empty = await api_client.get(url)
+    assert (empty.status_code, empty.content) == (204, b"")
+    budget = Budget(started=T0, battle_at=_at(60), margin=timedelta(minutes=20))
+    solver = MetroSolver(policy_of(MetroSection()), budget, pos=(0, 1), steps=1)
+    solver.grid.cells[(0, 1)] = "."
+    solver.events.append(
+        {"step": 1, "pos": [0, 1], "kind": "metro_loot", "item": "money", "amount": 7}
+    )
+    solver.vitals.append({"step": 1, "pos": [0, 1], "stamina": 90, "packs": 2})
+    frame = live_frame(
+        solver, message_id=77, scenario_run_id=5, started=T0, now=_at(10), running=True
+    )
+    engine.stream.publish(LIVE, frame)
+    body = (await api_client.get(url)).json()
+    assert datetime.fromisoformat(body.pop("started_at")) == T0
+    assert datetime.fromisoformat(body.pop("battle_at")) == _at(60)
+    assert datetime.fromisoformat(body.pop("kick_at")) == _at(45)
+    assert body == {
+        k: v for k, v in frame.items() if k not in ("started_at", "battle_at", "kick_at")
+    }
+    assert body["found"] == {"money": 7} and body["budget"]["used"] == 0.25
+    done = live_frame(
+        solver,
+        message_id=77,
+        scenario_run_id=5,
+        started=T0,
+        now=_at(20),
+        running=False,
+        outcome="finished",
+    )
+    engine.stream.publish(LIVE, done)
+    last = (await api_client.get(url)).json()
+    assert (last["running"], last["outcome"]) == (False, "finished")
 
 
 async def test_unrecognized_list_and_ack(

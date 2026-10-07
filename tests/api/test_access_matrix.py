@@ -69,6 +69,7 @@ def test_matrix_covers_spec_table(app: FastAPI) -> None:
         "/scenarios/{name}/run",
         "/metrics",
         "/metro/runs",
+        "/metro/live",
         "/unrecognized/ack",
         "/notifications/read",
         "/daily",

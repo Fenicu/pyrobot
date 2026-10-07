@@ -103,8 +103,31 @@ def start_at(world: World, run: int, version: int) -> None:
     world.game.on_click("maze_start", edit=("metro", run, version))
 
 
+class Live:
+    """Приёмник живых кадров; часы `monotonic` идут на 1.5 с за вызов — троттлинг не мешает
+    видеть каждый кадр."""
+
+    def __init__(self) -> None:
+        self.frames: list[dict[str, Any]] = []
+        self.ticks = 0.0
+
+    def __call__(self, type_: str, data: dict[str, Any]) -> None:
+        assert type_ == "metro_live"
+        self.frames.append(data)
+
+    def now(self) -> datetime:
+        return datetime.now(UTC)
+
+    def monotonic(self) -> float:
+        self.ticks += 1.5
+        return self.ticks
+
+
 def ctx(
-    world: World, stop_after: int | None = None, notes: Notes | None = None
+    world: World,
+    stop_after: int | None = None,
+    notes: Notes | None = None,
+    live: Live | None = None,
 ) -> ScenarioContext:
     # Пауза после заданного числа отправок останавливает сценарий в безопасной точке.
     journal = world.pipeline._journal
@@ -130,6 +153,9 @@ def ctx(
         notifier=notes,
         history=history,
         reread=reread,
+        clock=live,
+        publish=live,
+        run_id=41 if live is not None else None,
     )
 
 
@@ -183,6 +209,65 @@ async def test_explores_like_recorded_run(world: World) -> None:
     # Первый кадр (версия 7) — уже приход вправо: решатель засчитывает и этот шаг.
     assert record["steps"] == moves + 1
     assert world.state.stamina is not None and world.state.stamina.value == 100
+
+
+def _summed(events: list[dict[str, Any]]) -> dict[str, int]:
+    found: dict[str, int] = {}
+    for e in events:
+        loot = {e["item"]: e["amount"]} if e["kind"] == "metro_loot" else e.get("loot", {})
+        if e["kind"] in ("metro_loot", "metro_fight", "metro_chest_opened"):
+            for item, amount in loot.items():
+                found[item] = found.get(item, 0) + amount
+    return found
+
+
+@certifies("metro")
+async def test_live_frames_follow_the_run(world: World) -> None:
+    expected = replay(world, 7, 260)
+    live = Live()
+    result = await run(world, ctx(world, stop_after=len(expected), live=live))
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert result.details is not None
+    record = result.details["metro"]
+    frames = live.frames
+    # Кадр на старте обхода и после каждого обработанного экрана, последний — при остановке.
+    assert len(frames) >= len(expected) - len(ENTRY)
+    assert all(f["running"] for f in frames[:-1]) and frames[0]["steps"] == 0
+    steps = [f["steps"] for f in frames]
+    assert steps == sorted(steps) and len(set(steps)) > 100
+    assert len({tuple(f["pos"]) for f in frames}) > 50
+    last = frames[-1]
+    assert (last["running"], last["outcome"]) == (False, "paused")
+    assert (last["steps"], last["pos"], last["path"]) == (
+        record["steps"],
+        record["pos"],
+        record["path"],
+    )
+    assert last["message_id"] == record["message_id"] and last["scenario_run_id"] == 41
+    assert last["started_at"] == record["started_at"]
+    assert last["events"] == record["events"][-30:] and last["last_event"] == record["events"][-1]
+    assert last["found"] == _summed(record["events"]) and last["found"]["money"] > 0
+    growing = [f["found"].get("money", 0) for f in frames]
+    assert growing == sorted(growing)
+
+
+@certifies("metro")
+async def test_live_frame_at_finish_takes_found_from_exit_screen(world: World) -> None:
+    replay(world, 529, 532)
+    live = Live()
+    battle = datetime.now(UTC) + timedelta(minutes=25)
+    context = ctx(world, live=live)
+    result = await run(world, context, battle_at=battle.isoformat(), margin_min=25)
+    assert (result.status, result.reason) == ("done", "finished")
+    assert result.details is not None
+    record = result.details["metro"]
+    last = live.frames[-1]
+    assert (last["running"], last["outcome"]) == (False, "finished")
+    [shown] = [e for e in record["events"] if e["kind"] == "metro_exit"]
+    assert last["found"] == shown["found"] and last["found"]["money"] == 157
+    assert last["battle_at"] == battle.isoformat()
+    assert last["budget"]["total_s"] is not None and last["budget"]["used"] == 1.0
+    assert last["mode"] == "leave" and last["leave_reason"] == "deadline"
 
 
 @certifies("metro")

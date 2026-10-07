@@ -1,14 +1,15 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, Literal
 
-from fastapi import Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from app.api.cursor import decode_cursor, encode_cursor
 from app.api.deps import SessionContext, require_csrf
-from app.api.errors import AUTH, CSRF, not_found
+from app.api.errors import AUTH, CSRF, ENGINE, ENGINE_NOT_RUNNING, not_found
 from app.api.scope import AccountScope, account_router, account_scope
 from app.db.models import MetroRunRow
+from app.engine.metro.live import LIVE
 from app.engine.state.reducer import METRIC_FIELDS
 
 router = account_router("reference")
@@ -52,11 +53,48 @@ class MetroRunSummary(BaseModel):
     visited: int = 0
 
 
-class MetroRunDetail(MetroRunSummary):
+class MetroTrack(BaseModel):
+    """Карта и ход забега: сетка, путь, события и 🔋 по шагам — как в записи забега."""
+
     grid: dict[str, Any]
     path: list[Any]
     events: list[Any]
     vitals: list[Any]
+
+
+class MetroRunDetail(MetroTrack, MetroRunSummary):
+    pass
+
+
+class MetroLiveBudget(BaseModel):
+    # Секунд от начала забега до битвы минус запас; None — момент битвы не задан.
+    total_s: float | None
+    # Доля бюджета, прошедшая к кадру (0..1).
+    used: float
+    step_s: float
+
+
+class MetroLive(MetroTrack):
+    """Живой кадр забега (кадр `metro_live` потока событий): `events` — последние 30,
+    `found` — всё найденное за забег, `outcome` — исход в последнем кадре (`running` false)."""
+
+    message_id: int
+    scenario_run_id: int | None
+    running: bool
+    started_at: datetime
+    battle_at: datetime | None
+    kick_at: datetime | None
+    budget: MetroLiveBudget
+    pos: list[int]
+    exit: list[int] | None
+    steps: int
+    mode: str
+    leave_reason: str | None
+    stamina: int | None
+    packs: int | None
+    found: dict[str, int]
+    last_event: dict[str, Any] | None
+    outcome: str | None
 
 
 class MetroRunsPage(BaseModel):
@@ -195,6 +233,25 @@ async def metro_run(
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "metro run not found")
     return _metro_run(MetroRunDetail, row)
+
+
+@router.get(
+    "/metro/live",
+    response_model=MetroLive,
+    responses={
+        **AUTH,
+        204: {"description": "no metro run since the engine started"},
+        **ENGINE,
+    },
+)
+async def metro_live(scope: Annotated[AccountScope, Depends(account_scope)]) -> Any:
+    """Последний живой кадр забега метро с запуска движка: идущий (`running`) или конец."""
+    if scope.engine is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, ENGINE_NOT_RUNNING)
+    frame = scope.engine.stream.latest(LIVE)
+    if frame is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return frame
 
 
 @router.get("/unrecognized", response_model=UnrecognizedPage, responses=AUTH)

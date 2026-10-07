@@ -3417,6 +3417,229 @@
         "title": "MetricsOut",
         "type": "object"
       },
+      "MetroLive": {
+        "description": "Живой кадр забега (кадр `metro_live` потока событий): `events` — последние 30,\n`found` — всё найденное за забег, `outcome` — исход в последнем кадре (`running` false).",
+        "properties": {
+          "battle_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battle At"
+          },
+          "budget": {
+            "$ref": "#/components/schemas/MetroLiveBudget"
+          },
+          "events": {
+            "items": {},
+            "title": "Events",
+            "type": "array"
+          },
+          "exit": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit"
+          },
+          "found": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Found",
+            "type": "object"
+          },
+          "grid": {
+            "additionalProperties": true,
+            "title": "Grid",
+            "type": "object"
+          },
+          "kick_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kick At"
+          },
+          "last_event": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Event"
+          },
+          "leave_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Leave Reason"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "packs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Packs"
+          },
+          "path": {
+            "items": {},
+            "title": "Path",
+            "type": "array"
+          },
+          "pos": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Pos",
+            "type": "array"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "scenario_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Run Id"
+          },
+          "stamina": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stamina"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "steps": {
+            "title": "Steps",
+            "type": "integer"
+          },
+          "vitals": {
+            "items": {},
+            "title": "Vitals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "grid",
+          "path",
+          "events",
+          "vitals",
+          "message_id",
+          "scenario_run_id",
+          "running",
+          "started_at",
+          "battle_at",
+          "kick_at",
+          "budget",
+          "pos",
+          "exit",
+          "steps",
+          "mode",
+          "leave_reason",
+          "stamina",
+          "packs",
+          "found",
+          "last_event",
+          "outcome"
+        ],
+        "title": "MetroLive",
+        "type": "object"
+      },
+      "MetroLiveBudget": {
+        "properties": {
+          "step_s": {
+            "title": "Step S",
+            "type": "number"
+          },
+          "total_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total S"
+          },
+          "used": {
+            "title": "Used",
+            "type": "number"
+          }
+        },
+        "required": [
+          "total_s",
+          "used",
+          "step_s"
+        ],
+        "title": "MetroLiveBudget",
+        "type": "object"
+      },
       "MetroRunDetail": {
         "properties": {
           "buffs": {
@@ -10766,6 +10989,82 @@
           }
         },
         "summary": "Metrics",
+        "tags": [
+          "reference"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/metro/live": {
+      "get": {
+        "description": "Последний живой кадр забега метро с запуска движка: идущий (`running`) или конец.",
+        "operationId": "metro_live_api_v1_accounts__account_id__metro_live_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetroLive"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "204": {
+            "description": "no metro run since the engine started"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not running"
+          }
+        },
+        "summary": "Metro Live",
         "tags": [
           "reference"
         ]

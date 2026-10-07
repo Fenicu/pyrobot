@@ -22,7 +22,7 @@ from app.engine.planner.decide import Outlook, decide, lottery_params, outlook, 
 from app.engine.planner.obligations import LOTTERY_OPEN
 from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Act, Wait
-from app.engine.scenarios.context import History, Reread, ScenarioContext
+from app.engine.scenarios.context import History, Publish, Reread, ScenarioContext
 from app.engine.scenarios.library import ScenarioResult, run_scenario
 from app.engine.scenarios.registry import CERTIFIED, SCENARIOS
 from app.engine.settings import SettingsProvider
@@ -141,8 +141,11 @@ class PlannerLoop:
         auto: bool = True,
         artifacts: ArtifactRuns | None = None,
         gadgets: GadgetRuns | None = None,
+        publish: Publish | None = None,
     ) -> None:
         self._gateway = gateway
+        # Поток событий аккаунта: живые кадры сценариев (метро).
+        self._publish = publish
         # auto=False — только ручные запуски из админки, без собственных решений.
         self._auto = auto
         self._manual: deque[ManualRun] = deque()
@@ -506,6 +509,7 @@ class PlannerLoop:
             state=self._state,
             settings=lambda: self._settings.current,
             task_id=act.params.get("task_id") if act.scenario == "gadget_upgrade" else None,
+            publish=self._publish,
         )
         self.current = act.scenario
         self.current_params = dict(act.params)

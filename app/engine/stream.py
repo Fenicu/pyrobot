@@ -23,6 +23,8 @@ HISTORY = 1000
 QUEUE_SIZE = 256
 # Служебное поле редьюсера в поток не входит (как и в GET /state).
 _INTERNAL = frozenset({"applied"})
+# Кадры-снимки: новый заменяет прежний — в истории только последний, он же помнится отдельно.
+SNAPSHOTS = frozenset({"metro_live"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +53,10 @@ class EventStream:
         self.epoch = epoch or str(int(time.time() * 1000))
         self._seq = 0
         self._history: deque[StreamEvent] = deque(maxlen=history)
+        # Номер последнего события, вытесненного из переполненной истории (заменённые снимки
+        # не в счёт: досылать их не нужно).
+        self._evicted = 0
+        self._latest: dict[str, dict[str, Any]] = {}
         self._queue_size = queue_size
         self._subs: set[Subscription] = set()
         self._closed = False
@@ -65,9 +71,20 @@ class EventStream:
     def history(self) -> list[StreamEvent]:
         return list(self._history)
 
+    def latest(self, type_: str) -> dict[str, Any] | None:
+        """Последний кадр-снимок типа `type_` с запуска движка; None — его не было."""
+        return self._latest.get(type_)
+
     def publish(self, type_: str, data: dict[str, Any]) -> None:
         self._seq += 1
         event = StreamEvent(self._seq, type_, data)
+        if type_ in SNAPSHOTS:
+            self._latest[type_] = data
+            stale = next((e for e in self._history if e.type == type_), None)
+            if stale is not None:
+                self._history.remove(stale)
+        if len(self._history) == self._history.maxlen:
+            self._evicted = self._history[0].seq if self._history else event.seq
         self._history.append(event)
         for sub in list(self._subs):
             try:
@@ -108,8 +125,7 @@ class EventStream:
         seq = int(raw)
         if seq > self._seq:
             return [], "unknown"
-        oldest = self._history[0].seq if self._history else self._seq + 1
-        if seq < oldest - 1:
+        if seq < self._evicted:
             return [], "evicted"
         return [e for e in self._history if e.seq > seq], None
 

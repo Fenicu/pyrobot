@@ -326,6 +326,7 @@ class AccountRuntime:
             auto=config.planner,
             artifacts=artifacts,
             gadgets=gadgets,
+            publish=self.stream.publish,
         )
         game_chat = settings.current.chats.game_chat_id
 
