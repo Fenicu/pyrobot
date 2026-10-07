@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { liveFrame } from '$lib/test/metro-live';
-import { endedAt, lostAt, modeText, outcomeText, shown } from './live';
+import { endedAt, endText, lostAt, modeText, outcomeText, shown, supersedes } from './live';
 
 const at = (iso: string) => Date.parse(iso);
 
@@ -22,6 +22,34 @@ describe('живой кадр метро: тексты и показ', () => {
 		expect(outcomeText(liveFrame({ ...end, outcome: 'paused' }))).toBe('остановлен: пауза');
 		expect(outcomeText(liveFrame({ ...end, outcome: 'unexpected_screen:fight' }))).toBe('остановлен: незнакомый экран');
 		expect(outcomeText(liveFrame({ ...end, outcome: 'zzz' }))).toBe('остановлен: zzz');
+		expect(outcomeText(liveFrame({ ...end, outcome: 'cancelled' }))).toBe('остановлен: прерван перезапуском');
+	});
+
+	it('строка конца: «завершён» — только у дошедшего до конца, иначе «остановлен»', () => {
+		const end = { running: false };
+		expect(endText(liveFrame({ ...end, outcome: 'finished', mode: 'leave' }))).toBe('Забег завершён: вышел сам');
+		expect(endText(liveFrame({ ...end, outcome: 'finished', mode: 'explore' }))).toBe('Забег завершён: выброс');
+		expect(endText(liveFrame({ ...end, outcome: 'paused' }))).toBe('Забег остановлен: пауза');
+		expect(endText(liveFrame({ ...end, outcome: 'cancelled' }))).toBe('Забег остановлен: прерван перезапуском');
+	});
+
+	it('какой кадр новее: другое сообщение, другой запуск того же сообщения, шаги внутри запуска', () => {
+		const stopped = liveFrame({ steps: 40, running: false, outcome: 'paused' });
+		// Продолжение после паузы: то же сообщение, новый запуск, первый кадр с тем же числом шагов.
+		const resumed = liveFrame({ steps: 40, scenario_run_id: 8 });
+		expect(supersedes(resumed, stopped)).toBe(true);
+		// Запоздавший кадр прежнего запуска продолжение не затирает, даже с бо́льшим числом шагов.
+		expect(supersedes(liveFrame({ steps: 41, running: false, outcome: 'paused' }), resumed)).toBe(false);
+		expect(supersedes(liveFrame({ steps: 41, scenario_run_id: 8 }), resumed)).toBe(true);
+		expect(supersedes(liveFrame({ steps: 39, scenario_run_id: 8 }), resumed)).toBe(false);
+		// Внутри запуска при равных шагах конец важнее идущего кадра.
+		expect(supersedes(liveFrame({ steps: 40, running: false, outcome: 'paused' }), liveFrame({ steps: 40 }))).toBe(true);
+		expect(supersedes(liveFrame({ steps: 40 }), stopped)).toBe(false);
+		// Запуск неизвестен — по шагам; новое сообщение — новее старого.
+		expect(supersedes(liveFrame({ steps: 3, scenario_run_id: null }), liveFrame({ steps: 2 }))).toBe(true);
+		expect(supersedes(liveFrame({ steps: 1, scenario_run_id: null }), liveFrame({ steps: 2 }))).toBe(false);
+		expect(supersedes(liveFrame({ message_id: 600, steps: 0, scenario_run_id: 6 }), stopped)).toBe(true);
+		expect(supersedes(liveFrame({ message_id: 400, steps: 90, scenario_run_id: 9 }), stopped)).toBe(false);
 	});
 
 	it('итог — 30 минут после конца: конец по доле бюджета, без бюджета — по получению кадра', () => {

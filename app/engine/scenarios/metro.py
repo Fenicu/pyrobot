@@ -518,6 +518,9 @@ async def _explore(
         result = await _walk(ctx, message, current, buffs, solver, started, live)
         outcome = result.reason
         return result
+    except asyncio.CancelledError:
+        outcome = "cancelled"
+        raise
     finally:
         live.close(outcome)
 

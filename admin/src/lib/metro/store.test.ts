@@ -120,6 +120,18 @@ describe('живой кадр метро', () => {
 		store.stop();
 	});
 
+	it('продолжение после паузы (то же сообщение, новый запуск) сразу сменяет кадр остановки, события сохраняются', async () => {
+		const { s, store } = await started();
+		await s.answer(json(liveFrame({ running: false, outcome: 'paused' })));
+		store.onEvent(live(liveFrame({ scenario_run_id: 8, events: [] })));
+		expect(store.frame).toMatchObject({ scenario_run_id: 8, running: true, steps: 2 });
+		expect(store.frame?.events).toHaveLength(2);
+		// Кадр остановки прежнего запуска, пришедший позже, продолжение не откатывает.
+		store.onEvent(live(liveFrame({ steps: 3, running: false, outcome: 'paused' })));
+		expect(store.frame?.scenario_run_id).toBe(8);
+		store.stop();
+	});
+
 	it('события забега копятся: кадр несёт последние 30, карта — все с открытия главной', async () => {
 		const { s, store } = await started();
 		const e = (step: number) => ({ step, pos: [0, 0], kind: 'metro_loot', item: 'money', amount: step });

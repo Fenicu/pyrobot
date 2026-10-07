@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { MetroLive } from '$lib/api/types';
-	import { liveMap, lostAt, modeText, outcomeText, shown, STALE_AFTER_MS } from '$lib/metro/live';
+	import { endText, liveMap, lostAt, modeText, shown, STALE_AFTER_MS } from '$lib/metro/live';
 	import { eventIcon, eventText, lootText, timeline } from '$lib/metro/model';
 	import { accountHref } from '$lib/nav';
 	import { fmtSpan, fmtTime } from '$lib/util/format';
@@ -39,9 +39,12 @@
 		return since !== null && at >= since;
 	});
 	const live = $derived(frame?.running === true && !lost);
-	// Итог прошлого забега — только если виден другой запуск метро; иначе план мог не успеть
-	// узнать о конце только что кончившегося.
-	const newRun = $derived(metroRunId !== null && metroRunId !== frame?.scenario_run_id);
+	// Виден другой запуск метро. Забег, не дошедший до конца, продолжается в том же сообщении
+	// (персонаж ещё в метро) — это не новый забег; дошедший — итог прошлого. Без другого запуска
+	// план мог не успеть узнать о конце только что кончившегося.
+	const otherRun = $derived(metroRunId !== null && metroRunId !== frame?.scenario_run_id);
+	const newRun = $derived(otherRun && frame?.outcome === 'finished');
+	const resuming = $derived(otherRun && !newRun);
 	const model = $derived(frame ? liveMap(frame) : null);
 	const step = $derived(model ? Math.max(0, model.path.length - 1) : 0);
 	const recent = $derived(model ? timeline(model).slice(-RECENT).reverse() : []);
@@ -68,9 +71,11 @@
 			{/if}
 		</div>
 		{#if !frame.running}
-			<p class="font-semibold">Забег завершён: {outcomeText(frame)}</p>
+			<p class="font-semibold">{endText(frame)}</p>
 			{#if newRun}
 				<p class="text-xs text-fg-muted">Это итог прошлого забега: идёт вход в новый, карта появится с первым шагом.</p>
+			{:else if resuming}
+				<p class="text-xs text-fg-muted">Забег продолжается: карта обновится с первым шагом.</p>
 			{:else if metroRunning}
 				<p class="text-xs text-fg-muted">Последний забег.</p>
 			{/if}
@@ -88,9 +93,11 @@
 				<p>режим: <b>{modeText(frame)}</b></p>
 				<div>
 					<p>🔋 {frame.stamina === null ? '—' : `${frame.stamina}%`}</p>
-					<Meter value={Math.min(frame.stamina ?? 0, 100)} max={100} label="Выносливость" />
+					{#if frame.stamina !== null}
+						<Meter value={Math.min(frame.stamina, 100)} max={100} label="Выносливость" />
+					{/if}
 				</div>
-				{#if live}
+				{#if live && frame.budget.total_s !== null}
 					<div>
 						<p>
 							время: {Math.round(used * 100)}%{#if kickLeft !== null}{` · ${kickLeft > 0 ? `до выброса ~${fmtSpan(kickLeft)}` : 'выброс вот-вот'}`}{/if}

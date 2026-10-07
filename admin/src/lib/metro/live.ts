@@ -12,12 +12,15 @@ export const RUN_MAX_MS = 90 * 60_000;
 /** Событий, накопленных за забег, не больше. */
 export const EVENTS_KEPT = 2_000;
 
-/** `next` новее `cur`: другой забег — по `message_id` (сообщение нового забега позже), тот же — по
- * шагам, при равных — конец забега важнее идущего кадра. Поздний ответ GET после `reset` так не
- * затирает кадр потока. */
+/** `next` новее `cur`: другой забег — по `message_id` (сообщение нового забега позже); тот же забег
+ * другим запуском (продолжение после паузы или перезапуска) — по `scenario_run_id`: позже запущенный
+ * новее, шаги сравниваются только внутри одного запуска; при равных шагах конец запуска важнее
+ * идущего кадра. Поздний ответ GET после `reset` так не затирает кадр потока. */
 export function supersedes(next: MetroLive, cur: MetroLive | null): boolean {
 	if (cur === null) return true;
 	if (next.message_id !== cur.message_id) return next.message_id > cur.message_id;
+	const [a, b] = [next.scenario_run_id, cur.scenario_run_id];
+	if (a && b && a !== b) return a > b;
 	if (next.steps !== cur.steps) return next.steps > cur.steps;
 	return !next.running || cur.running;
 }
@@ -84,6 +87,7 @@ export function modeText(frame: MetroLive): string {
 /** Причины остановки забега (`ScenarioResult.reason` сценария метро). */
 const STOP_TEXT: Record<string, string> = {
 	paused: 'пауза',
+	cancelled: 'прерван перезапуском',
 	interrupted: 'сбой сценария',
 	lost: 'потерял позицию на карте',
 	unexpected_wall: 'стена на месте прохода',
@@ -96,11 +100,21 @@ const STOP_TEXT: Record<string, string> = {
 	timeout: 'игра не ответила'
 };
 
+function stopText(frame: MetroLive): string {
+	const reason = frame.outcome ?? '';
+	return STOP_TEXT[reason.split(':')[0]!] ?? reason;
+}
+
 /** Исход по последнему кадру — теми же словами, что список забегов. */
 export function outcomeText(frame: MetroLive): string {
 	if (frame.outcome === 'finished') return frame.mode === 'leave' ? OUTCOME_TEXT.self : OUTCOME_TEXT.ejected;
-	const reason = frame.outcome ?? '';
-	return `${OUTCOME_TEXT.stopped}: ${STOP_TEXT[reason.split(':')[0]!] ?? reason}`;
+	return `${OUTCOME_TEXT.stopped}: ${stopText(frame)}`;
+}
+
+/** Строка конца забега на карточке: «Забег завершён: вышел сам», «Забег остановлен: пауза». */
+export function endText(frame: MetroLive): string {
+	if (frame.outcome === 'finished') return `Забег завершён: ${outcomeText(frame)}`;
+	return `Забег остановлен: ${stopText(frame)}`;
 }
 
 /** Модель карты: кадр по форме — как запись забега, выход — из кадра. */

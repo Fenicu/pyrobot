@@ -76,6 +76,31 @@ describe('«Метро — прохождение» на главной', () => 
 		expect(block).toHaveTextContent('Это итог прошлого забега');
 	});
 
+	it('пауза и продолжение в том же сообщении — не «прошлый забег»; строка «остановлен»', () => {
+		const paused = liveFrame({ running: false, outcome: 'paused' });
+		const block = card(paused, { metroRunning: true, metroRunId: 8 })!;
+		expect(block).toHaveTextContent('Забег остановлен: пауза');
+		expect(block).not.toHaveTextContent('Забег завершён');
+		expect(block).not.toHaveTextContent('итог прошлого забега');
+		expect(block).toHaveTextContent('Забег продолжается: карта обновится с первым шагом.');
+	});
+
+	it('прерван перезапуском — остановка, не сбой', () => {
+		const block = card(liveFrame({ running: false, outcome: 'cancelled' }))!;
+		expect(block).toHaveTextContent('Забег остановлен: прерван перезапуском');
+		expect(block).not.toHaveTextContent('сбой');
+	});
+
+	it('без битвы (бюджет неизвестен) — без полосы времени; 🔋 неизвестна — без пустой полосы', () => {
+		const blind = liveFrame({ battle_at: null, kick_at: null, budget: { total_s: null, used: 0, step_s: 5.2 }, stamina: null });
+		const block = card(blind)!;
+		expect(within(block).queryByRole('progressbar', { name: 'Время забега' })).toBeNull();
+		expect(block).not.toHaveTextContent('время:');
+		expect(block).not.toHaveTextContent('0%');
+		expect(within(block).queryByRole('progressbar', { name: 'Выносливость' })).toBeNull();
+		expect(block).toHaveTextContent('🔋 —');
+	});
+
 	it('план ещё держит метро, а нового запуска не видно — мягко: «последний забег»', () => {
 		const done = liveFrame({ running: false, outcome: 'finished', mode: 'leave' });
 		const block = card(done, { metroRunning: true, metroRunId: 7 })!;

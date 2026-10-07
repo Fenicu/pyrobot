@@ -1,3 +1,4 @@
+import asyncio
 import random
 from collections.abc import AsyncIterator
 from dataclasses import replace
@@ -249,6 +250,30 @@ async def test_live_frames_follow_the_run(world: World) -> None:
     assert last["found"] == _summed(record["events"]) and last["found"]["money"] > 0
     growing = [f["found"].get("money", 0) for f in frames]
     assert growing == sorted(growing)
+
+
+@certifies("metro")
+async def test_live_frame_on_cancel_is_cancelled_not_failure(world: World) -> None:
+    # Рестарт или деплой посреди забега отменяет задачу: последний кадр — «cancelled», не сбой.
+    replay(world, 7, 260)
+    walking = asyncio.Event()
+
+    class Watched(Live):
+        def __call__(self, type_: str, data: dict[str, Any]) -> None:
+            super().__call__(type_, data)
+            if len(self.frames) >= 5:
+                walking.set()
+
+    live = Watched()
+    task = asyncio.create_task(run(world, ctx(world, live=live)))
+    async with asyncio.timeout(5):
+        await walking.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    last = live.frames[-1]
+    assert (last["running"], last["outcome"]) == (False, "cancelled")
+    assert all(f["running"] for f in live.frames[:-1])
 
 
 @certifies("metro")
