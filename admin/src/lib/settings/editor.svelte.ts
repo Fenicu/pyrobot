@@ -97,6 +97,23 @@ export class SettingsEditor {
 		}
 	}
 
+	/** Перечитать настройки, изменённые в обход формы (пара мандаринов): несохранённые правки
+	 * остаются поверх новых значений. Предупреждение о версии не новее прочитанной снимается. */
+	async refresh(): Promise<void> {
+		if (!this.server) return this.load();
+		try {
+			const out = await call(this.#api.GET('/settings'));
+			if (!this.server || out.version < this.server.version) return;
+			let draft: Json = clone(out.values);
+			for (const path of this.changes) draft = setAt(draft, path, getAt(this.draft, path));
+			this.server = out;
+			this.draft = draft;
+			if (this.conflict !== null && this.conflict <= out.version) this.conflict = null;
+		} catch (e) {
+			if (!(e instanceof ApiFailure)) throw e;
+		}
+	}
+
 	value(path: Path): Json {
 		return getAt(this.draft, path);
 	}

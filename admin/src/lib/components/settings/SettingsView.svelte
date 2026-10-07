@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Search from '@lucide/svelte/icons/search';
 	import type { AccountApi } from '$lib/api/account';
+	import type { AccountOut } from '$lib/api/types';
 	import { errorText } from '$lib/api/errors';
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
 	import { ADVANCED_SECTIONS, settingHelp, settingLabel } from '$lib/settings/labels';
@@ -12,6 +13,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import SettingField from './SettingField.svelte';
 	import SettingsHistory from './SettingsHistory.svelte';
+	import TangerineExchange from './TangerineExchange.svelte';
 
 	interface Props {
 		api: AccountApi;
@@ -19,8 +21,11 @@
 		/** Движок аккаунта запущен; нет — настройки пишутся прямо в базу и применятся при его старте. */
 		running?: boolean;
 		now?: Date;
+		/** Открытый аккаунт и аккаунты учётки — для «Обмена мандаринами» в «Чатах». */
+		accountId?: number;
+		accounts?: AccountOut[] | null;
 	}
-	let { api, editor, running = true, now }: Props = $props();
+	let { api, editor, running = true, now, accountId, accounts = null }: Props = $props();
 	let active = $state<string | null>(null);
 	let query = $state('');
 	// История перечитывается с каждой новой версией: своё сохранение, перечитывание после чужого
@@ -181,7 +186,12 @@
 				<h2 class="card-title">{title(section)}</h2>
 				{@const about = settingHelp(section.name) ?? section.description}
 				{#if about}<p class="mb-1 text-xs text-fg-muted">{about}</p>{/if}
-				{#each editable(section.fields) as f (pathKey(f.path))}<SettingField {editor} field={f} />{/each}
+				{#each editable(section.fields) as f (pathKey(f.path))}
+					<SettingField {editor} field={f} />
+					{#if pathKey(f.path) === 'chats.tangerine_reply_to' && accountId !== undefined}
+						<TangerineExchange {api} {accountId} {accounts} onpaired={() => void editor.refresh()} />
+					{/if}
+				{/each}
 			{/if}
 		</section>
 

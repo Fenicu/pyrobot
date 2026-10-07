@@ -167,3 +167,50 @@ describe('правки во время сохранения', () => {
 		expect(next.e.conflict).toBe(15);
 	});
 });
+
+describe('перечитывание после правки в обход формы', () => {
+	const paired = {
+		...settings,
+		version: 14,
+		values: { ...settings.values, chats: { ...(settings.values.chats as object), tangerine_reply_to: 555 } }
+	};
+
+	async function fresh() {
+		let current: SettingsOut = settings;
+		const fetch = mockFetch(() => json(current));
+		const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
+		const e = new SettingsEditor(api);
+		await e.load();
+		current = paired;
+		return e;
+	}
+
+	it('без правок — новые значения и версия', async () => {
+		const e = await fresh();
+		await e.refresh();
+		expect(e.version).toBe(14);
+		expect(e.value(['chats', 'tangerine_reply_to'])).toBe(555);
+		expect(e.changes).toEqual([]);
+	});
+
+	it('несохранённые правки остаются поверх новых значений', async () => {
+		const e = await fresh();
+		e.set(['food', 'banana_reserve'], 40);
+		await e.refresh();
+		expect(e.version).toBe(14);
+		expect(e.value(['chats', 'tangerine_reply_to'])).toBe(555);
+		expect(e.serverValue(['chats', 'tangerine_reply_to'])).toBe(555);
+		expect(e.value(['food', 'banana_reserve'])).toBe(40);
+		expect(e.changes).toEqual([['food', 'banana_reserve']]);
+	});
+
+	it('кадр settings этой же правки пришёл раньше ответа — предупреждения нет', async () => {
+		const e = await fresh();
+		e.set(['food', 'banana_reserve'], 40);
+		e.onEvent({ type: 'settings', id: 'e:1', data: { version: 14, mode: 'live', paused: true, killed: false } });
+		expect(e.conflict).toBe(14);
+		await e.refresh();
+		expect(e.conflict).toBeNull();
+		expect(e.value(['food', 'banana_reserve'])).toBe(40);
+	});
+});

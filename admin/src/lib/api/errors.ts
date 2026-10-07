@@ -131,8 +131,21 @@ const CODE_TEXT: Record<string, string> = {
 	reason_required: 'Укажите причину блокировки',
 	too_many_streams: 'Слишком много активных подключений',
 	invalid_tg_app: 'Неверные api_id или api_hash приложения Telegram',
-	secret_key_unavailable: 'Ключ шифрования сервера недоступен — попробуйте позже'
+	secret_key_unavailable: 'Ключ шифрования сервера недоступен — попробуйте позже',
+	tangerine_chat_mismatch: 'Чат @mandarinkaSW не совпадает с «Чатом мандаринов» из настроек — ничего не отправлено',
+	tangerine_pair_self: 'Нельзя связать аккаунт с самим собой',
+	join_request_sent: 'Заявка на вступление в чат ждёт одобрения — сообщение не отправлено',
+	join_declined: 'Заявку на вступление отклонили',
+	message_id_unknown: 'Telegram не вернул id отправленного сообщения',
+	post_failed: 'Сообщение не отправилось',
+	version_conflict: 'Настройки в этот момент изменили',
+	settings_write_failed: 'Сбой записи настроек'
 };
+
+/** Перевод кода сервера; нет перевода — undefined. */
+export function codeText(code: string): string | undefined {
+	return CODE_TEXT[code];
+}
 
 /** Ожидание для человека: секунды до минуты, дальше — минуты вверх. */
 function waitText(seconds: number): string {

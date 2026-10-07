@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
-	import { current, session } from '$lib/app.svelte';
+	import { accounts, current, session } from '$lib/app.svelte';
 	import SettingsView from '$lib/components/settings/SettingsView.svelte';
 	import { SettingsEditor } from '$lib/settings/editor.svelte';
 	import { leaveGuard } from '$lib/settings/leave';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 
-	const { api, live, engine } = current.get();
+	const { id, api, live, engine } = current.get();
 	const editor = new SettingsEditor(api);
 
 	onMount(() => {
@@ -36,4 +36,4 @@
 <svelte:head><title>Настройки · pyrobot</title></svelte:head>
 
 <h1 class="mb-3 text-lg font-semibold">Настройки</h1>
-<SettingsView {api} {editor} running={engine.status?.running !== false} />
+<SettingsView {api} {editor} running={engine.status?.running !== false} accountId={id} accounts={accounts.list} />
