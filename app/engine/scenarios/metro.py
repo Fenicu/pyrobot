@@ -246,8 +246,6 @@ async def _buy_and_start(
             shown, buffs = step.delivery.msg, _buffs_of(step)
             if name not in buffs.bought:
                 await ctx.notify("warn", "metro_buff_not_bought", f"metro: buff {name} not bought")
-        if "fastMove" not in buffs.bought:
-            await ctx.notify("warn", "metro_slow", "metro: no fast move buff, a step takes 20 s")
         await ctx.safe_point()
         first = await _click_on(ctx, shown, "maze_start", _wait_s(ctx, buffs))
     except Halted as halted:

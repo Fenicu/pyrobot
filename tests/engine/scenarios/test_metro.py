@@ -354,13 +354,13 @@ async def test_unknown_screen_after_buff_halts_at_once(world: World) -> None:
 
 
 @certifies("metro")
-async def test_without_fast_move_notified(world: World) -> None:
+async def test_without_fast_move_no_notification(world: World) -> None:
     start_at(world, RUN, 5)
     notes = Notes()
     result = await run(world, ctx(world, stop_after=4, notes=notes), buffs=[])
     assert (result.status, result.reason) == ("stopped", "paused")
     assert world.game.payloads() == ["🏢Офис", "🚇Метро", "maze_enter_accept", "maze_start"]
-    assert ("warn", "metro_slow") in notes.sent
+    assert not [n for n in notes.sent if n[1] == "metro_slow"]
 
 
 @certifies("metro")
