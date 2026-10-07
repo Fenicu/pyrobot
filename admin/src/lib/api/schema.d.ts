@@ -748,6 +748,8 @@ export interface paths {
          *     движка запущены и в Telegram онлайн (иначе 409 `tg_not_online` с `account_id`, ничего не
          *     отправлено). Сообщение партнёра не ушло — настройки не меняются, ответ
          *     `tangerine_pair_partial` с кодом ошибки партнёра: сообщение этого аккаунта остаётся в чате.
+         *     Не записалась настройка после обоих сообщений — тот же ответ с обоими id в `posted` и уже
+         *     записанными аккаунтами в `written`, без отката.
          */
         post: operations["tangerine_pair_api_v1_accounts__account_id__tangerine_pair_post"];
         delete?: never;
@@ -3901,7 +3903,8 @@ export interface components {
         };
         /**
          * TangerinePairPartialOut
-         * @description Пара для мандаринов не собрана: сообщение аккаунта уже в чате, у партнёра — нет.
+         * @description Пара для мандаринов не собрана: сообщение партнёра не ушло или после обоих сообщений не
+         *     записалась настройка `chats.tangerine_reply_to`. Ушедшие сообщения остаются в чате.
          */
         TangerinePairPartialOut: {
             /**
@@ -3917,6 +3920,8 @@ export interface components {
             };
             /** Reason */
             reason: string;
+            /** Written */
+            written: number[];
         };
         /** TangerinePostIn */
         TangerinePostIn: {
@@ -7012,13 +7017,13 @@ export interface operations {
                     "application/json": components["schemas"]["AccountErrorOut"] | components["schemas"]["ErrorOut"] | components["schemas"]["TangerinePairPartialOut"];
                 };
             };
-            /** @description invalid body | tangerine_pair_self */
+            /** @description invalid body | tangerine_pair_self | tangerine_pair_partial (chat_is_self on the settings write) */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorOut"];
+                    "application/json": components["schemas"]["ErrorOut"] | components["schemas"]["TangerinePairPartialOut"];
                 };
             };
             /** @description flood_wait */
@@ -7028,6 +7033,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"] | components["schemas"]["TangerinePairPartialOut"];
+                };
+            };
+            /** @description tangerine_pair_partial (settings_write_failed) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TangerinePairPartialOut"];
                 };
             };
             /** @description <код ошибки Telegram> | tangerine_pair_partial */

@@ -61,14 +61,19 @@ class AccountErrorOut(BaseModel):
 
 
 class TangerinePairPartialOut(BaseModel):
-    """Пара для мандаринов не собрана: сообщение аккаунта уже в чате, у партнёра — нет."""
+    """Пара для мандаринов не собрана: сообщение партнёра не ушло или после обоих сообщений не
+    записалась настройка `chats.tangerine_reply_to`. Ушедшие сообщения остаются в чате."""
 
     detail: Literal["tangerine_pair_partial"]
-    # Код ошибки партнёра, как у одиночного сообщения (`tg_not_online`, `flood_wait`, …).
+    # Код ошибки: сообщения — как у одиночного (`tg_not_online`, `flood_wait`, …), записи —
+    # `engine not running`, `version_conflict`, `chat_is_self`, `settings_write_failed`.
     reason: str
     # Отправленные сообщения: id аккаунта → id сообщения.
     posted: dict[int, int]
+    # Аккаунт, на котором сорвалось.
     failed: int
+    # Аккаунты, чей `chats.tangerine_reply_to` уже записан (без отката).
+    written: list[int]
 
 
 def error(*codes: str) -> dict[str, Any]:

@@ -7157,7 +7157,7 @@
         "type": "object"
       },
       "TangerinePairPartialOut": {
-        "description": "Пара для мандаринов не собрана: сообщение аккаунта уже в чате, у партнёра — нет.",
+        "description": "Пара для мандаринов не собрана: сообщение партнёра не ушло или после обоих сообщений не\nзаписалась настройка `chats.tangerine_reply_to`. Ушедшие сообщения остаются в чате.",
         "properties": {
           "detail": {
             "const": "tangerine_pair_partial",
@@ -7178,13 +7178,21 @@
           "reason": {
             "title": "Reason",
             "type": "string"
+          },
+          "written": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Written",
+            "type": "array"
           }
         },
         "required": [
           "detail",
           "reason",
           "posted",
-          "failed"
+          "failed",
+          "written"
         ],
         "title": "TangerinePairPartialOut",
         "type": "object"
@@ -12344,7 +12352,7 @@
     },
     "/api/v1/accounts/{account_id}/tangerine/pair": {
       "post": {
-        "description": "Пара своих аккаунтов дарит 🍊 друг другу: оба пишут в чат мандаринов (сначала этот, потом\nпартнёр), и `chats.tangerine_reply_to` каждого указывает на сообщение другого — той же\nправкой, что PATCH настроек. Партнёр — другой аккаунт той же учётки (чужой — 404), оба\nдвижка запущены и в Telegram онлайн (иначе 409 `tg_not_online` с `account_id`, ничего не\nотправлено). Сообщение партнёра не ушло — настройки не меняются, ответ\n`tangerine_pair_partial` с кодом ошибки партнёра: сообщение этого аккаунта остаётся в чате.",
+        "description": "Пара своих аккаунтов дарит 🍊 друг другу: оба пишут в чат мандаринов (сначала этот, потом\nпартнёр), и `chats.tangerine_reply_to` каждого указывает на сообщение другого — той же\nправкой, что PATCH настроек. Партнёр — другой аккаунт той же учётки (чужой — 404), оба\nдвижка запущены и в Telegram онлайн (иначе 409 `tg_not_online` с `account_id`, ничего не\nотправлено). Сообщение партнёра не ушло — настройки не меняются, ответ\n`tangerine_pair_partial` с кодом ошибки партнёра: сообщение этого аккаунта остаётся в чате.\nНе записалась настройка после обоих сообщений — тот же ответ с обоими id в `posted` и уже\nзаписанными аккаунтами в `written`, без отката.",
         "operationId": "tangerine_pair_api_v1_accounts__account_id__tangerine_pair_post",
         "parameters": [
           {
@@ -12449,11 +12457,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorOut"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ErrorOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/TangerinePairPartialOut"
+                    }
+                  ],
+                  "title": "Response 422 Tangerine Pair Api V1 Accounts  Account Id  Tangerine Pair Post"
                 }
               }
             },
-            "description": "invalid body | tangerine_pair_self"
+            "description": "invalid body | tangerine_pair_self | tangerine_pair_partial (chat_is_self on the settings write)"
           },
           "429": {
             "content": {
@@ -12472,6 +12488,16 @@
               }
             },
             "description": "flood_wait"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TangerinePairPartialOut"
+                }
+              }
+            },
+            "description": "tangerine_pair_partial (settings_write_failed)"
           },
           "502": {
             "content": {

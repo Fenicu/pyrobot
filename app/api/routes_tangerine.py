@@ -14,6 +14,7 @@ from app.api.deps import SessionContext, container, require_csrf
 from app.api.errors import (
     ACCOUNT_DELETING,
     ACCOUNT_NOT_FOUND,
+    CHAT_IS_SELF,
     CSRF,
     ENGINE,
     ENGINE_NOT_RUNNING,
@@ -30,6 +31,7 @@ from app.api.errors import (
 from app.api.scope import AccountScope, account_router, account_scope, running
 from app.engine.facade import EngineFacade, TangerinePost, TgNotOnline
 from app.engine.fence import LeaseLost
+from app.engine.settings import ChatIsSelf, SettingsConflict
 from app.engine.tg_auth import TgState
 from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
 
@@ -141,13 +143,18 @@ async def tangerine_post(
             f"{ACCOUNT_DELETING} | {TANGERINE_CHAT_MISMATCH} | {TANGERINE_PAIR_PARTIAL}",
         },
         422: {
-            "model": ErrorOut,
-            "description": f"invalid body | {TANGERINE_PAIR_SELF}",
+            "model": ErrorOut | TangerinePairPartialOut,
+            "description": f"invalid body | {TANGERINE_PAIR_SELF} | {TANGERINE_PAIR_PARTIAL} "
+            f"({CHAT_IS_SELF} on the settings write)",
         },
         429: {"model": ErrorOut | TangerinePairPartialOut, "description": FLOOD_WAIT},
         502: {
             "model": ErrorOut | TangerinePairPartialOut,
             "description": f"<код ошибки Telegram> | {TANGERINE_PAIR_PARTIAL}",
+        },
+        500: {
+            "model": TangerinePairPartialOut,
+            "description": f"{TANGERINE_PAIR_PARTIAL} (settings_write_failed)",
         },
         503: {
             "model": ErrorOut | TangerinePairPartialOut,
@@ -166,7 +173,9 @@ async def tangerine_pair(
     правкой, что PATCH настроек. Партнёр — другой аккаунт той же учётки (чужой — 404), оба
     движка запущены и в Telegram онлайн (иначе 409 `tg_not_online` с `account_id`, ничего не
     отправлено). Сообщение партнёра не ушло — настройки не меняются, ответ
-    `tangerine_pair_partial` с кодом ошибки партнёра: сообщение этого аккаунта остаётся в чате."""
+    `tangerine_pair_partial` с кодом ошибки партнёра: сообщение этого аккаунта остаётся в чате.
+    Не записалась настройка после обоих сообщений — тот же ответ с обоими id в `posted` и уже
+    записанными аккаунтами в `written`, без отката."""
     me = scope.account
     if me.status == "deleting":
         raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
@@ -192,30 +201,55 @@ async def tangerine_pair(
     try:
         their_post = await _post(theirs, body.text)
     except _PostFailed as exc:
-        return _partial(me.id, my_post, partner.id, exc.code, exc.detail, exc.headers)
+        return _partial({me.id: my_post}, partner.id, exc.code, exc.detail, exc.headers)
     except Exception:
         log.exception("tangerine pair: partner %s post failed", partner.id)
-        return _partial(me.id, my_post, partner.id, status.HTTP_502_BAD_GATEWAY, "post_failed")
-    await mine.set_tangerine_reply_to(their_post.message_id, by=ctx.login)
-    await theirs.set_tangerine_reply_to(my_post.message_id, by=ctx.login)
+        return _partial({me.id: my_post}, partner.id, status.HTTP_502_BAD_GATEWAY, "post_failed")
+    posted = {me.id: my_post, partner.id: their_post}
+    written: list[int] = []
+    for account_id, f, reply_to in (
+        (me.id, mine, their_post.message_id),
+        (partner.id, theirs, my_post.message_id),
+    ):
+        try:
+            await f.set_tangerine_reply_to(reply_to, by=ctx.login)
+        except Exception as exc:
+            code, reason = _write_failure(exc)
+            if code == status.HTTP_500_INTERNAL_SERVER_ERROR:
+                log.exception("tangerine pair: account %s settings write failed", account_id)
+            return _partial(posted, account_id, code, reason, written=written)
+        written.append(account_id)
     return TangerinePairOut(
         account=PairedAccountOut(id=me.id, message_id=my_post.message_id),
         partner=PairedAccountOut(id=partner.id, message_id=their_post.message_id),
     )
 
 
+def _write_failure(exc: Exception) -> tuple[int, str]:
+    """Ответ на сорванную запись адресата после обоих сообщений."""
+    if isinstance(exc, LeaseLost):
+        return status.HTTP_503_SERVICE_UNAVAILABLE, ENGINE_NOT_RUNNING
+    if isinstance(exc, SettingsConflict):
+        return status.HTTP_409_CONFLICT, "version_conflict"
+    if isinstance(exc, ChatIsSelf):
+        return status.HTTP_422_UNPROCESSABLE_CONTENT, CHAT_IS_SELF
+    return status.HTTP_500_INTERNAL_SERVER_ERROR, "settings_write_failed"
+
+
 def _partial(
-    account_id: int,
-    post: TangerinePost,
-    partner_id: int,
+    posted: dict[int, TangerinePost],
+    failed: int,
     code: int,
     reason: str,
     headers: dict[str, str] | None = None,
+    *,
+    written: list[int] | None = None,
 ) -> JSONResponse:
     out = TangerinePairPartialOut(
         detail=TANGERINE_PAIR_PARTIAL,
         reason=reason,
-        posted={account_id: post.message_id},
-        failed=partner_id,
+        posted={account_id: post.message_id for account_id, post in posted.items()},
+        failed=failed,
+        written=written or [],
     )
     return JSONResponse(out.model_dump(mode="json"), status_code=code, headers=headers)

@@ -5,6 +5,7 @@ import pytest
 from app.db.base import Database
 from app.db.settings_store import DbSettingsStore
 from app.engine.fence import LeaseLost
+from app.engine.settings import ChatIsSelf, SettingsConflict
 from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
 from app.engine.transport.fake import FakeTransport
 from tests.api.conftest import A1, Api, make_user, run_engine
@@ -166,6 +167,7 @@ async def test_pair_partner_failure_changes_no_settings(api: Api) -> None:
         "reason": "CHAT_WRITE_FORBIDDEN",
         "posted": {"1": my_msg},
         "failed": partner,
+        "written": [],
     }
     assert mine.posted == [(TANGERINE, "🍊")] and theirs.posted == []
     assert (my_store.version, their_store.version) == before
@@ -199,6 +201,52 @@ async def test_pair_partner_failure_reasons(
     )
     assert list(body["posted"]) == ["1"] and len(mine.posted) == 1
     assert my_store.current.chats.tangerine_reply_to is None
+
+
+@pytest.mark.parametrize(
+    ("failing", "failure", "code", "reason"),
+    [
+        ("partner", LeaseLost("lease"), 503, "engine not running"),
+        ("partner", SettingsConflict("raced"), 409, "version_conflict"),
+        ("account", ChatIsSelf(["chats.game_chat_id"]), 422, "chat_is_self"),
+        ("account", RuntimeError("db down"), 500, "settings_write_failed"),
+    ],
+)
+async def test_pair_settings_write_failure_keeps_both_message_ids(
+    api: Api, failing: str, failure: Exception, code: int, reason: str
+) -> None:
+    partner = await _second(api)
+    mine, my_store = await _engine(api)
+    theirs, their_store = await _engine(api, partner)
+    theirs._next_id = 5000
+    store = their_store if failing == "partner" else my_store
+    write = store.update
+
+    async def broken(*args: Any, **kwargs: Any) -> Any:
+        raise failure
+
+    store.update = broken  # type: ignore[method-assign]
+    r = await api.client.post(PAIR, headers=api.headers, json={"partner_id": partner})
+    store.update = write  # type: ignore[method-assign]
+    assert r.status_code == code
+    [(_, my_text)] = mine.posted
+    [(_, their_text)] = theirs.posted
+    assert my_text == their_text == "🍊"
+    body = r.json()
+    my_msg, their_msg = body["posted"]["1"], body["posted"][str(partner)]
+    assert (my_msg, their_msg) == (1001, 5001)
+    failed = partner if failing == "partner" else 1
+    assert body == {
+        "detail": "tangerine_pair_partial",
+        "reason": reason,
+        "posted": {"1": my_msg, str(partner): their_msg},
+        "failed": failed,
+        "written": [1] if failing == "partner" else [],
+    }
+    # Без отката: записанное остаётся.
+    expected = their_msg if failing == "partner" else None
+    assert my_store.current.chats.tangerine_reply_to == expected
+    assert their_store.current.chats.tangerine_reply_to is None
 
 
 async def test_pair_partner_flood_wait_keeps_retry_after(api: Api) -> None:
