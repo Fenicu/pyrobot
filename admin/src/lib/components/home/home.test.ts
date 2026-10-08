@@ -218,6 +218,48 @@ describe('компания и команда в карточке персона�
 	});
 });
 
+describe('строка стартапа в карточке персонажа', () => {
+	type Startup = { level: number | null; max: boolean; progress: number | null; progress_needed: number | null };
+	const row = (value: Startup) => {
+		render(CharacterCard, {
+			state: { ...prod.state, startup: { at: prod.now, src: 'screen' as const, value } },
+			stale: [],
+			now: NOW
+		});
+		const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
+		return within(card).getByText('🔮 Стартап').parentElement;
+	};
+
+	it('уровень и прогресс', () => {
+		expect(row({ level: 3, max: false, progress: 120, progress_needed: 400 })).toHaveTextContent(
+			'ур. 3 · прогресс 120 из 400'
+		);
+	});
+
+	it('порог скрыт — «из ?»', () => {
+		expect(row({ level: 3, max: false, progress: 120, progress_needed: null })).toHaveTextContent(
+			'ур. 3 · прогресс 120 из ?'
+		);
+	});
+
+	it('прогресс неизвестен — только уровень', () => {
+		const r = row({ level: 3, max: false, progress: null, progress_needed: null });
+		expect(r).toHaveTextContent('ур. 3');
+		expect(r).not.toHaveTextContent('прогресс');
+	});
+
+	it('на потолке — «максимальный»', () => {
+		expect(row({ level: 5, max: true, progress: null, progress_needed: null })).toHaveTextContent(
+			'ур. 5 · максимальный'
+		);
+	});
+
+	it('стартапа нет — строки нет', () => {
+		render(CharacterCard, { state: prod.state, stale: [], now: NOW });
+		expect(screen.queryByText('🔮 Стартап')).toBeNull();
+	});
+});
+
 describe('карточка гаджетов', () => {
 	const api = createAccountApi(
 		{ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} },

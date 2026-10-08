@@ -8,6 +8,7 @@ export const ACTIVITY: Record<string, string> = {
 	dconv: 'переработка',
 	walk: 'прогулка',
 	confa: 'конференция',
+	startup: 'пилить стартап',
 	rob: 'грабёж',
 	gorbushka: 'Горбушка',
 	sleep_hotel: 'сон в отеле',

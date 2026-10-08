@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COMPANY, accountTitle } from './game';
+import { COMPANY, accountTitle, activityLabel } from './game';
 
 const acc = (name: string, company: string | null = null, team_tag: string | null = null) => ({
 	name,
@@ -63,5 +63,11 @@ describe('accountTitle', () => {
 	it('чужой значок или тег в имени не считается своим', () => {
 		expect(accountTitle(acc('🎩Fenicu', 'bmesa', 'SU'))).toBe('☣️[SU] 🎩Fenicu');
 		expect(accountTitle(acc('[XX] Fenicu', null, 'SU'))).toBe('[SU] [XX] Fenicu');
+	});
+});
+
+describe('подписи дел', () => {
+	it('«Пилить» стартап', () => {
+		expect(activityLabel('startup')).toBe('пилить стартап');
 	});
 });

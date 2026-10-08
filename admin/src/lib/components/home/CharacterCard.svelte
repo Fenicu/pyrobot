@@ -29,6 +29,23 @@
 	const company = $derived(val(state, 'company'));
 	const teamTag = $derived(val(state, 'team_tag'));
 	const isStale = (field: string) => stale.includes(field);
+
+	// Стартап: уровень и прогресс к следующему уровню; `max` — потолок игры, прогресса нет.
+	const startup = $derived(val(state, 'startup'));
+	const startupLevel = $derived(startup?.level);
+	const startupMax = $derived(startup?.max === true);
+	const startupProgress = $derived(startup?.progress);
+	const startupNeeded = $derived(startup?.progress_needed);
+	const startupText = $derived(
+		[
+			typeof startupLevel === 'number' ? `ур. ${startupLevel}` : '',
+			startupMax
+				? 'максимальный'
+				: typeof startupProgress === 'number'
+					? `прогресс ${fmtNum(startupProgress)} из ${typeof startupNeeded === 'number' ? fmtNum(startupNeeded) : '?'}`
+					: ''
+		].filter(Boolean).join(' · ')
+	);
 </script>
 
 <section class="card" aria-labelledby="character-title">
@@ -63,6 +80,9 @@
 		<Row label="📚 🔩 ⚙️" stale={isStale('knowledge') || isStale('raw') || isStale('details')}>
 			{fmtNum(val(state, 'knowledge'))} · {fmtNum(val(state, 'raw'))} · {fmtNum(val(state, 'details'))}
 		</Row>
+		{#if startup}
+			<Row label="🔮 Стартап" stale={isStale('startup')}>{startupText || '—'}</Row>
+		{/if}
 		<Row label="Занятость" stale={isStale('busy')}>
 			{#if busy}
 				{busyText(busy, now)}
