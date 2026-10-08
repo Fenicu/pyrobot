@@ -9,7 +9,8 @@ from app.engine.parsing.common import NUM, Rewards, num, parse_rewards
 from app.engine.parsing.food import FOODS
 from app.engine.types import IncomingMessage
 
-# Подарки за 🍊: экран покупки (кнопка «🎁 за 10🍊»), его правка после покупки и ответ на /unbox_t.
+# Подарки за 🍊: экран покупки (кнопка «🎁 за 10🍊»), его правки (подтверждение, итог покупки) и
+# ответ на /unbox_t.
 _SHOP = re.compile(
     r"\AПокупка подарков за 🍊\n\n🎁У тебя: (?P<gifts>" + NUM + r") шт\.\n"
     r".*?^У тебя: (?P<tangerines>" + NUM + r")🍊$",
@@ -17,6 +18,11 @@ _SHOP = re.compile(
 )
 _BOUGHT = re.compile(
     r"^👍Ты приобрёл (?P<n>" + NUM + r") шт\. подарков\. Заплатил (?P<paid>" + NUM + r")🍊\.$",
+    re.M,
+)
+_CONFIRM = re.compile(
+    r"^Ты собираешься купить (?P<n>" + NUM + r") шт\. подарков "
+    r"на сумму (?P<cost>" + NUM + r")🍊\. Берёшь\?$",
     re.M,
 )
 _SHORT = re.compile(r"^❌Тебе не хватает (?P<n>" + NUM + r")🍊 для покупки\.$", re.M)
@@ -39,6 +45,16 @@ class TangerineGiftShop(Event):
     tangerines: int
     options: tuple[int, ...] = ()
     short: int | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TangerineGiftConfirm(Event):
+    """«Ты собираешься купить N шт. подарков на сумму X🍊. Берёшь?» — правка экрана покупки после
+    клика по количеству; покупает только `g_tangerines_small_<N>_accept` с этой правки."""
+
+    kind: ClassVar[str] = "tangerine_gift_confirm"
+    count: int
+    cost: int
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -86,10 +102,11 @@ def recognize_gifts(msg: IncomingMessage) -> list[Event]:
             options=_options(msg),
             short=num(short["n"]) if short else None,
         )
-        bought = _BOUGHT.search(text)
-        if bought is None:
-            return [shop]
-        return [shop, TangerineGiftBought(count=num(bought["n"]), paid=num(bought["paid"]))]
+        if bought := _BOUGHT.search(text):
+            return [shop, TangerineGiftBought(count=num(bought["n"]), paid=num(bought["paid"]))]
+        if confirm := _CONFIRM.search(text):
+            return [shop, TangerineGiftConfirm(count=num(confirm["n"]), cost=num(confirm["cost"]))]
+        return [shop]
     if text.startswith(_OPENED):
         return [TangerineGiftOpened(rewards=parse_rewards(text), food=_food(text))]
     return []
