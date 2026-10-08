@@ -210,3 +210,15 @@ async def test_spend_free_click_unknown_after_restart_is_not_an_obligation(
     )
     assert sorted(c.action_id for c in await store.mark_unfinished_unknown()) == [move, buff]
     assert [o.action_id for o in await store.unreconciled()] == [buff]
+
+
+async def test_main_unknown_after_restart_is_not_an_obligation(clean_db: Database) -> None:
+    # /main только показывает профиль: его неизвестный исход блок трат не ставит.
+    store = DbActionStore(clean_db, account_id=1)
+    main = await store.create(
+        ActionRequest(kind=ActionKind.SEND, chat_id=1, text="/main"),
+        CommandClass.RISKY,
+        ActionStatus.SENT,
+    )
+    assert [c.action_id for c in await store.mark_unfinished_unknown()] == [main]
+    assert await store.unreconciled() == []

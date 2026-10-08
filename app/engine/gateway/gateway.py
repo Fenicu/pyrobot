@@ -24,6 +24,7 @@ from app.engine.commands import (
     feature_of_callback,
     feature_of_text,
     spends_nothing_callback,
+    spends_nothing_text,
 )
 from app.engine.events import AntiFlood
 from app.engine.gateway.store import CANCELLED, ActionStore, DuplicateKey
@@ -140,6 +141,8 @@ def _answer_chat(req: ActionRequest) -> int:
 def spends_nothing(req: ActionRequest) -> bool:
     if req.kind is ActionKind.FORWARD:
         return True
+    if req.kind is ActionKind.SEND:
+        return spends_nothing_text(req.text or "")
     return req.kind is ActionKind.CLICK and spends_nothing_callback(req.data or "")
 
 

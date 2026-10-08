@@ -446,6 +446,9 @@ _SPEND_FREE_CALLBACK = re.compile(
     r"|npc_low_accept|npc_low_decline|npc_high_accept|npc_high_decline))\Z"
 )
 
+# /main только показывает профиль.
+_SPEND_FREE_TEXT = (MAIN,)
+
 
 def feature_of_text(text: str) -> str | None:
     value = text.strip()
@@ -458,3 +461,8 @@ def feature_of_callback(data: str) -> str | None:
 
 def spends_nothing_callback(data: str) -> bool:
     return _SPEND_FREE_CALLBACK.match(data) is not None
+
+
+def spends_nothing_text(text: str) -> bool:
+    value = text.strip()
+    return any(p.match(value) for p in _SPEND_FREE_TEXT)

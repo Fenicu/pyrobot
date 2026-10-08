@@ -569,7 +569,8 @@ async def test_deadline_passed_rejects(rig: Rig) -> None:
 
 
 def _main(scenario: str | None, source: Source = Source.SCENARIO, **kw: Any) -> ActionRequest:
-    return send("/main", source=source, scenario=scenario, expect=expect_text("Битва"), **kw)
+    kw.setdefault("expect", expect_text("Битва"))
+    return send("/main", source=source, scenario=scenario, **kw)
 
 
 async def test_main_from_metro_scenario_passes_without_confirm(rig: Rig) -> None:
@@ -603,3 +604,17 @@ async def test_main_by_hand_with_confirmation_passes(rig: Rig) -> None:
     rig.reply_with("Битва через 4ч. 21 мин.!")
     res = await rig.gw.submit(_main(None, Source.MANUAL, risky_confirmed=True))
     assert res.status is ActionStatus.CONFIRMED
+
+
+async def test_main_from_metro_scenario_passes_spending_block(rig: Rig) -> None:
+    rig.gw.block_spending(RECONCILE_REASON)
+    rig.reply_with("Битва через 4ч. 21 мин.!")
+    res = await rig.gw.submit(_main("metro"))
+    assert res.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["/main"]
+
+
+async def test_main_uncertain_does_not_block_spending(rig: Rig) -> None:
+    res = await rig.gw.submit(_main("metro", expect=Expectation(lambda d: None, 0.05)))
+    assert res.status is ActionStatus.OUTCOME_UNKNOWN
+    assert rig.gw.spending_blocked is None

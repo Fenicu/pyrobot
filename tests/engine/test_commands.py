@@ -425,3 +425,10 @@ def test_gadget_feature() -> None:
     assert feature_of_text("/up_right") is None
     assert feature_of_callback("up_right_low") is None
     assert feature_of_callback("up_right_low_1_accept") is None
+
+
+@pytest.mark.parametrize(("text", "free"), [("/main", True), (" /main ", True), ("/job", False)])
+def test_spends_nothing_text(text: str, free: bool) -> None:
+    from app.engine.commands import spends_nothing_text
+
+    assert spends_nothing_text(text) is free

@@ -177,6 +177,24 @@ async def test_purge_drops_old_unreconciled_spend_free_clicks(clean_db: Database
     assert left == [("maze_left", True), ("t_convDets_hard_confirm", False)]
 
 
+async def test_purge_drops_old_unreconciled_main(clean_db: Database) -> None:
+    def sent(days: float, text: str) -> ActionRow:
+        row = _action(days, "outcome_unknown")
+        row.kind, row.command_class, row.payload = "send", "risky", {"text": text}
+        return row
+
+    async with clean_db.sessions() as s, s.begin():
+        s.add_all([sent(91, "/main"), sent(91, "/harvest"), sent(1, "/main")])
+    purged = await DbRetention(clean_db, 1).purge(NOW, RetentionPolicy())
+    assert purged["actions"] == 1
+    async with clean_db.sessions() as s:
+        left = sorted(
+            (str(a.payload["text"]), a.created_at == _ago(1))
+            for a in await s.scalars(select(ActionRow))
+        )
+    assert left == [("/harvest", False), ("/main", True)]
+
+
 def _ledger(at: datetime, day: date) -> LedgerRow:
     return LedgerRow(
         account_id=1,

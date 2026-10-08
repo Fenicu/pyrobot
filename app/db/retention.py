@@ -45,8 +45,8 @@ class DbRetention:
             ActionRow.command_class.not_in(UNRECONCILED_FREE),
             ActionRow.reconciled_at.is_(None),
         )
-        # Клик без трат (ход метро) сверке не нужен и обязательством не считается.
-        spend_free = await self._spend_free_clicks(open_obligation, ActionRow.created_at < journal)
+        # Действие без трат (ход метро, /main) сверке не нужно и обязательством не считается.
+        spend_free = await self._spend_free(open_obligation, ActionRow.created_at < journal)
         unfinished = (ActionStatus.INTENT.value, ActionStatus.SENT.value)
         # Бюджет метро — по p90 последних завершённых забегов, какими бы старыми они ни были.
         recent_metro = (
@@ -101,19 +101,21 @@ class DbRetention:
             ),
         }
 
-    async def _spend_free_clicks(self, *conds: Any) -> list[int]:
+    async def _spend_free(self, *conds: Any) -> list[int]:
         async with self._db.sessions() as session:
             rows = await session.execute(
                 select(ActionRow.id, ActionRow.kind, ActionRow.payload).where(
                     ActionRow.account_id == self._account_id,
-                    ActionRow.kind == ActionKind.CLICK.value,
+                    ActionRow.kind.in_((ActionKind.CLICK.value, ActionKind.SEND.value)),
                     *conds,
                 )
             )
             return [
                 row.id
                 for row in rows
-                if Obligation(row.id, row.kind, data=row.payload.get("data")).spends_nothing
+                if Obligation(
+                    row.id, row.kind, row.payload.get("text"), row.payload.get("data")
+                ).spends_nothing
             ]
 
     async def _purge(self, model: Any, *conds: Any) -> int:
