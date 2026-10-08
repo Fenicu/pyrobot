@@ -1095,11 +1095,20 @@ def test_unconfirmed_exit_checked_with_compact_10_min_before_battle() -> None:
     decision = decide(stuck_state(check), METRO_ALONE, check, metro_probes=["main"])
     assert act(decision) == ("metro", {"probe": "compact"})
     # Проверка перед битвой без ответа: больше ничего не шлём до ответа игры.
-    after = BATTLE_EVENING + timedelta(minutes=30)
-    decision = decide(stuck_state(after), METRO_ALONE, after, metro_probes=["main", "compact"])
+    late = BATTLE_EVENING - timedelta(minutes=5)
+    decision = decide(stuck_state(late), METRO_ALONE, late, metro_probes=["main", "compact"])
     assert isinstance(decision, Wait)
     assert ("refresh", "metro_stuck") in candidates(decision)
     assert not [w for w in candidates(decision) if w[1] == "chosen"]
+
+
+def test_unconfirmed_exit_released_by_battle() -> None:
+    # Выброс не распознан (или пропущен): после битвы забега персонаж точно снаружи.
+    after = BATTLE_EVENING + timedelta(minutes=1)
+    for probes in (["main", "compact"], []):
+        decision = decide(stuck_state(after), METRO_ALONE, after, metro_probes=probes)
+        assert act(decision)[0] == "refresh"
+        assert not any(c.verdict == "metro_stuck" for c in decision.candidates)
 
 
 def test_probe_cooldown_is_its_own() -> None:

@@ -6,8 +6,7 @@ from dataclasses import asdict, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
-import app.engine.parsing.metro as metro_parsing
-from app.engine.events import AntiFlood, Event, Unrecognized
+from app.engine.events import Event, Unrecognized
 from app.engine.gadget_catalog import SHOP, slot_of_icon
 from app.engine.gametime import MSK, tasks_day, to_msk
 from app.engine.parsing.activities import (
@@ -1357,18 +1356,21 @@ def _metro_left(p: _Patch, loot: dict[str, int], stamina: int | None) -> None:
 
 
 def _exit_confirmed(p: _Patch, events: Sequence[Event]) -> None:
-    """Распознанный ответ игры вне метро подтверждает выход после итога: в забеге игра на
-    команды не отвечает. Кадры метро, нераспознанное и антифлуд выход не подтверждают."""
+    """Выход после итога подтверждает только ответ, которого в забеге не бывает: профиль (ответ
+    на `/compact` и `/main`) и отказ по кулдауну метро; экран входа и выброс снимают отметку
+    сами. Пуши игры (мандарины, ограбление, конец дела) приходят и в метро — не подтверждают."""
     inside: Obs[MetroRunRef | None] | None = p.get("metro_message")
     run = inside.value if inside is not None else None
-    if run is None or run.exit_at is None or run.message_id == p.msg_id or not events:
+    if run is None or run.exit_at is None or run.message_id == p.msg_id:
         return
-    if any(
-        isinstance(e, Unrecognized | AntiFlood) or type(e).__module__ == metro_parsing.__name__
-        for e in events
-    ):
-        return
-    p.snap("metro_message", None)
+    if any(_outside(e) for e in events):
+        p.snap("metro_message", None)
+
+
+def _outside(e: Event) -> bool:
+    return isinstance(e, ProfileCompact) or (
+        isinstance(e, Refused) and e.reason == "metro_cooldown"
+    )
 
 
 def _sale_ends(p: _Patch, draw_in_s: int) -> datetime:

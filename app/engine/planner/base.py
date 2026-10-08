@@ -94,6 +94,9 @@ FEATURE = {
 }
 # Ключ кулдауна проверок выхода из метро: свой, не общий с забегом.
 METRO_PROBE = "metro_probe"
+# Неподтверждённый выход без известной битвы забега держит планировщик не дольше этого (после
+# второй проверки `/main`).
+EXIT_HOLD_NO_BATTLE = timedelta(hours=3)
 # В режиме сбора артефакта 🔥 тратят только его дела: вход в метро и бой Горбушки выключены.
 ARTIFACT_OFF = frozenset({"gorbushka", "metro"})
 
@@ -109,6 +112,19 @@ def battle_hour(at: datetime, seen: datetime | None = None) -> datetime:
     shifted = at - (HOURLY_SKEW if hourly else BATTLE_SKEW)
     hour = shifted.replace(minute=0, second=0, microsecond=0)
     return hour if hour == shifted else hour + timedelta(hours=1)
+
+
+def exit_unconfirmed(state: CharacterState, now: datetime) -> bool:
+    """Итог забега показан, выход не подтверждён, а битва забега ещё не прошла: персонаж,
+    возможно, в метро. После битвы он снаружи наверняка — даже если выброс не распознан."""
+    seen = state.metro_message
+    run = seen.value if seen is not None else None
+    if run is None or run.exit_at is None:
+        return False
+    known = run.battle_at
+    if known is None:
+        return now < run.exit_at + EXIT_HOLD_NO_BATTLE
+    return now < battle_hour(known.value, known.at)
 
 
 class PlannerBase:
@@ -138,10 +154,7 @@ class PlannerBase:
         self.metro_probes: Sequence[str] = metro_probes
         # Итог забега показан, выход не подтверждён: персонаж, возможно, ещё в метро и игра молчит
         # на команды — шлём только проверки выхода.
-        seen = state.metro_message
-        self.exit_unconfirmed = (
-            seen is not None and seen.value is not None and seen.value.exit_at is not None
-        )
+        self.exit_unconfirmed = exit_unconfirmed(state, now)
         self.volatile_age = timedelta(minutes=settings.engine.state_stale_after_min)
         self.stale = self.find_stale()
         self.refresh_every = timedelta(seconds=settings.engine.refresh_min_interval_s)

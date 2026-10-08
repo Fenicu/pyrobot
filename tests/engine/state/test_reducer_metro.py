@@ -1,9 +1,12 @@
 from dataclasses import replace
 from typing import Any
 
+import pytest
+
 from app.engine.state.ledger import Effect
 from app.engine.state.model import load_state
 from app.engine.state.reducer import StateReducer
+from app.engine.types import IncomingMessage
 from tests.engine.parsing.test_metro import (
     COLLAPSED,
     COLLAPSED_EMPTY,
@@ -12,7 +15,7 @@ from tests.engine.parsing.test_metro import (
     NO_STAMINA,
 )
 from tests.engine.state.helpers import PARSER, at, feed, fixture_at, value
-from tests.fixtures import game_versions
+from tests.fixtures import game_msg, game_versions
 
 RUN = game_versions("metro", 3624441)
 
@@ -274,6 +277,42 @@ def test_metro_and_unrecognized_messages_do_not_confirm_exit() -> None:
     other = replace(RUN[5], msg_id=3700005, text="что-то новое", inline=(), date=at(21))
     state = reducer.apply(state, other, PARSER.parse(other))
     assert value(state, "metro_message")["exit_at"] is not None
+
+
+GIFT = "👍Ура! ☂️MstrGreen подарил тебе 🍊мандаринки +3 шт."
+
+
+@pytest.mark.parametrize(
+    "push",
+    [
+        # Мандарины пришли в 04:30 07.10, пока персонаж сидел в метро.
+        replace(
+            RUN[5],
+            msg_id=3700006,
+            text="👍Ура! ☂️MstrGreen подарил тебе 🍊мандаринки +3 шт.",
+            inline=(),
+        ),
+        replace(game_msg("sleep", 3420238), msg_id=3700007),
+    ],
+    ids=["tangerine_gift", "robbery_alert"],
+)
+def test_game_pushes_do_not_confirm_exit(push: IncomingMessage) -> None:
+    reducer = StateReducer()
+    state = _version(reducer, _before_metro(reducer), 5, 4)
+    state = _version(reducer, state, 532, 20)
+    msg = replace(push, date=at(21), created_at=at(21))
+    events = PARSER.parse(msg)
+    assert events and not any(type(e).__name__ == "Unrecognized" for e in events)
+    state = reducer.apply(state, msg, events)
+    assert value(state, "metro_message")["exit_at"] is not None
+
+
+def test_metro_cooldown_refusal_confirms_exit() -> None:
+    reducer = StateReducer()
+    state = _version(reducer, _before_metro(reducer), 5, 4)
+    state = _version(reducer, state, 532, 20)
+    state = feed(reducer, state, "metro", 3624531, 21)
+    assert value(state, "metro_message") is None
 
 
 def test_answer_in_other_chat_does_not_confirm_exit() -> None:

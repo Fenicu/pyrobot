@@ -551,7 +551,9 @@ class Obligations(PlannerBase):
         не ответит сама (выброс, отчёт битвы). Проверки с неизвестным исходом тоже считаются."""
         seen = self.s.metro_message
         run = seen.value if seen is not None else None
-        if run is None or run.exit_at is None or "compact" in self.metro_probes:
+        if run is None or run.exit_at is None or not self.exit_unconfirmed:
+            return None
+        if "compact" in self.metro_probes:
             return None
         known = run.battle_at
         final = (
