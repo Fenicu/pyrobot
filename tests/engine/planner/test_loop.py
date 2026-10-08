@@ -100,11 +100,14 @@ class Rig:
 
 # Цикл проверяется на механиках фазы 3; календарь фазы 4 — в test_obligations.py. Окна по часам
 # (обязательства, ночной сон) выключены: часы здесь настоящие. Дело выбирается по оценке:
-# чередование основных дел — в test_decide.py.
+# чередование основных дел — в test_decide.py. Фастфуд включён, цель битвы — та, что в профиле
+# 3624478, чтобы цикл её не перевыставлял.
 QUIET = LIVE.model_copy(
     update={
+        "battle": LIVE.battle.model_copy(update={"target": "📯Pied Piper"}),
         "features": LIVE.features.model_copy(
             update={
+                "fastfood": True,
                 "stocks_dump": False,
                 "factory": False,
                 "bulls": False,

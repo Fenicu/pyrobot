@@ -180,8 +180,12 @@ def ctx(
     )
 
 
+# Настройки, с которыми записаны живые забеги: порядок покупки бафов совпадает с кадрами входа.
+RECORDED = {"buffs": ["fastMove", "strong", "firstAid"], "chest_min_packs": 2}
+
+
 async def run(world: World, context: ScenarioContext, **params: Any) -> ScenarioResult:
-    return await run_scenario(metro, context, CharacterState(), params)
+    return await run_scenario(metro, context, CharacterState(), {**RECORDED, **params})
 
 
 @certifies("metro")

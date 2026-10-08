@@ -361,7 +361,9 @@ def _without_windows(s: Settings) -> Settings:
         ),
         False,
     )
-    return s.model_copy(update={"features": s.features.model_copy(update=off)})
+    # Цель — та, что в профиле 3624478: планировщик не перевыставляет её до рефреша.
+    battle = s.battle.model_copy(update={"target": "📯Pied Piper"})
+    return s.model_copy(update={"features": s.features.model_copy(update=off), "battle": battle})
 
 
 async def test_planner_refreshes_state_in_dry_run(

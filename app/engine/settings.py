@@ -79,7 +79,7 @@ class FeaturesSection(BaseModel):
 
     deeds: bool = True
     books: bool = True
-    fastfood: bool = True
+    fastfood: bool = False
     cards_containers: bool = True
     gorbushka: bool = True
     sleep: bool = True
@@ -133,7 +133,7 @@ Food = Literal["hotdog", "pizza", "burger", "banana"]
 
 
 class FoodSection(BaseModel):
-    order: tuple[Food, ...] = ("hotdog", "pizza", "burger")
+    order: tuple[Food, ...] = ("burger", "pizza", "hotdog")
     banana_reserve: int = Field(default=50, ge=0)
 
 
@@ -159,7 +159,7 @@ Target = Literal[
 
 
 class BattleSection(BaseModel):
-    target: Target = "📯Pied Piper"
+    target: Target = "🛡Защита"
     # Цель на конкретную битву: час битвы по Москве → цель.
     overrides: dict[Annotated[int, Field(ge=0, le=23)], Target] = Field(default_factory=dict)
 
@@ -185,10 +185,10 @@ class MetroSection(BaseModel):
     battle_margin_min: int = Field(default=15, ge=15, le=1440)
     extra_margin_min: int = Field(default=10, ge=0, le=1440)
     # Бафы за 🕳; за 🌐 — никогда (донат).
-    buffs: tuple[MetroBuff, ...] = ("fastMove", "strong", "firstAid")
+    buffs: tuple[MetroBuff, ...] = ("firstAid", "strong", "fastMove")
     heal_at: int = Field(default=50, ge=0, le=100)
     heal_before_exit: bool = True
-    chest_min_packs: int = Field(default=2, ge=0)
+    chest_min_packs: int = Field(default=1, ge=0)
     npc_low_enabled: bool = True
     npc_high_enabled: bool = False
     # Без аптечек с NPC не драться при 🔋 ниже этого: на экране NPC лечиться нельзя.

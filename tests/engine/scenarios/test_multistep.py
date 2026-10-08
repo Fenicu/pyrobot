@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from dataclasses import replace
 
 import pytest
@@ -5,7 +6,7 @@ import pytest
 from app.engine.notify import Level
 from app.engine.scenarios.library import fastfood, gorbushka, levelup, run_scenario, sleep
 from app.engine.state.model import CharacterState, Obs, Skills
-from tests.engine.fakegame import Ref, World
+from tests.engine.fakegame import FED, Ref, World, running_world
 from tests.engine.parsing.test_gorbushka import MIN_LEVEL_EDIT
 from tests.engine.scenarios.certify import certifies
 from tests.engine.scenarios.conftest import context
@@ -18,6 +19,12 @@ class Notes:
 
     async def notify(self, level: Level, code: str, text: str) -> None:
         self.sent.append((level, code))
+
+
+@pytest.fixture
+async def world() -> AsyncIterator[World]:
+    async for w in running_world(FED):
+        yield w
 
 
 @certifies("fastfood")

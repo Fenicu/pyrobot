@@ -105,8 +105,8 @@ def test_arrival_moves_position_and_repeats_until_branch_end() -> None:
         (MetroChestOpened(result="grenade"), 7, "maze_continue"),
         (MetroNpc(strength="low"), 7, "maze_npc_low_accept"),
         (MetroNpc(strength="high"), 7, "maze_npc_high_decline"),
-        (MetroChest(), 2, "maze_chest_accept"),
-        (MetroChest(), 1, "maze_chest_decline"),
+        (MetroChest(), 1, "maze_chest_accept"),
+        (MetroChest(), 0, "maze_chest_decline"),
         (MetroFirstAid(packs=7, stamina=44, after=94), 7, "maze_first_aid_decline"),
     ],
 )

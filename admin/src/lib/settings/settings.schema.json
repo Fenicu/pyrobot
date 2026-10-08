@@ -235,7 +235,7 @@
      "type": "object"
     },
     "target": {
-     "default": "📯Pied Piper",
+     "default": "🛡Защита",
      "enum": [
       "📯Pied Piper",
       "🤖Hooli",
@@ -521,7 +521,7 @@
      "type": "boolean"
     },
     "fastfood": {
-     "default": true,
+     "default": false,
      "title": "Fastfood",
      "type": "boolean"
     },
@@ -619,9 +619,9 @@
     },
     "order": {
      "default": [
-      "hotdog",
+      "burger",
       "pizza",
-      "burger"
+      "hotdog"
      ],
      "items": {
       "enum": [
@@ -971,9 +971,9 @@
     },
     "buffs": {
      "default": [
-      "fastMove",
+      "firstAid",
       "strong",
-      "firstAid"
+      "fastMove"
      ],
      "items": {
       "enum": [
@@ -987,7 +987,7 @@
      "type": "array"
     },
     "chest_min_packs": {
-     "default": 2,
+     "default": 1,
      "minimum": 0,
      "title": "Chest Min Packs",
      "type": "integer"

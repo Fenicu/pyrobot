@@ -52,8 +52,10 @@ def _seen(value: Any, src: str = "screen") -> dict[str, Any]:
     return {"value": value, "at": _iso(SEEN), "src": src}
 
 
-# Адресат мандаринов по умолчанию не задан: у фикстуры — как у сохранённого экземпляра.
-SETTINGS = Settings.model_validate({"chats": {"tangerine_reply_to": 927136}})
+# Адресат мандаринов и цель битвы — как у сохранённого экземпляра, а не по умолчанию.
+SETTINGS = Settings.model_validate(
+    {"chats": {"tangerine_reply_to": 927136}, "battle": {"target": "📯Pied Piper"}}
+)
 
 
 def _snapshot() -> dict[str, Any]:

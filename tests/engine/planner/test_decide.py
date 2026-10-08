@@ -96,7 +96,7 @@ def awake(at: datetime = NOW, **over: Any) -> CharacterState:
         "motivation_next_at": t(30),
         "busy": None,
         "battle_at": at.replace(minute=0, second=0, microsecond=0) + timedelta(hours=3),
-        "battle_target": "📯Pied Piper",
+        "battle_target": "🛡Защита",
         "sleep_deadline": t(40 * 60),
         "sleep_allowed_at": t(-60),
         "levelup_pending": False,
@@ -286,20 +286,37 @@ def test_book_not_while_busy() -> None:
     assert verdicts(decision)["book"] == "busy"
 
 
+# Фастфуд по умолчанию выключен (персонаж ест сам); виды по 🔋 проверяются при порядке от
+# дешёвого к дорогому.
+FASTFOOD = config(
+    {"features": {"fastfood": True}, "food": {"order": ["hotdog", "pizza", "burger"]}}
+)
+
+
+def test_fastfood_off_by_default() -> None:
+    decision = decide(awake(stamina=10), BASE, NOW)
+    assert act(decision)[0] == "deed:job" and "fastfood" not in verdicts(decision)
+
+
 @pytest.mark.parametrize(
     ("stamina", "food"),
     [(10, "hotdog"), (55, "pizza"), (80, "burger"), (95, None)],
 )
 def test_fastfood_kind_by_stamina(stamina: int, food: str | None) -> None:
-    decision = decide(awake(stamina=stamina), BASE, NOW)
+    decision = decide(awake(stamina=stamina), FASTFOOD, NOW)
     if food is None:
         assert act(decision)[0] == "deed:job"
     else:
         assert act(decision) == ("fastfood", {"food": food})
 
 
+def test_fastfood_default_order_takes_burger_first() -> None:
+    settings = config({"features": {"fastfood": True}})
+    assert act(decide(awake(stamina=10), settings, NOW)) == ("fastfood", {"food": "burger"})
+
+
 def test_fastfood_order_and_banana_reserve() -> None:
-    settings = config({"food": {"order": ["banana", "burger"]}})
+    settings = config({"features": {"fastfood": True}, "food": {"order": ["banana", "burger"]}})
     assert act(decide(awake(stamina=10), settings, NOW)) == ("fastfood", {"food": "burger"})
     rich = {**FOOD, "banana": FoodStockState(count=51, low=150, high=275)}
     state = awake(stamina=10, food_stock=rich)
@@ -308,15 +325,15 @@ def test_fastfood_order_and_banana_reserve() -> None:
 
 def test_fastfood_during_deed_but_not_while_eating() -> None:
     during = awake(stamina=10, busy=BusyState(activity="harvest", until=m(4)))
-    assert act(decide(during, BASE, NOW)) == ("fastfood", {"food": "hotdog"})
+    assert act(decide(during, FASTFOOD, NOW)) == ("fastfood", {"food": "hotdog"})
     eating = awake(stamina=10, busy=BusyState(activity="eat", until=m(4)))
-    decision = decide(eating, BASE, NOW)
+    decision = decide(eating, FASTFOOD, NOW)
     assert isinstance(decision, Wait) and verdicts(decision)["fastfood"] == "eating"
 
 
 def test_fastfood_cooldown_wakes() -> None:
     state = awake(stamina=10, fastfood_ready_at=m(12), motivation=0)
-    decision = decide(state, BASE, NOW)
+    decision = decide(state, FASTFOOD, NOW)
     assert isinstance(decision, Wait) and decision.until == r(12)
 
 

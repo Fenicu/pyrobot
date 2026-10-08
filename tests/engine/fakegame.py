@@ -177,6 +177,8 @@ LIVE = Settings(
         click_answer_timeout_s=0.05,
     )
 )
+# Фастфуд по умолчанию выключен: без флага шлюз не пропустит команды его сценария.
+FED = LIVE.model_copy(update={"features": LIVE.features.model_copy(update={"fastfood": True})})
 
 
 class World:

@@ -62,6 +62,10 @@ class Recorder:
         self.codes.append(code)
 
 
+# Фастфуд по умолчанию выключен, а сверка еды проверяется на его командах.
+FED = LIVE.model_copy(update={"features": LIVE.features.model_copy(update={"fastfood": True})})
+
+
 class World:
     def __init__(
         self,
@@ -71,7 +75,7 @@ class World:
         ready: Callable[[], bool] = lambda: True,
         **reconciler: Any,
     ) -> None:
-        self.rig = Rig()
+        self.rig = Rig(FED)
         self.bus = Bus()
         self.pipeline = Pipeline(
             journal=MemoryJournal(),

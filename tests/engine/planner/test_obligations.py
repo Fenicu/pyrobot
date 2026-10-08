@@ -65,7 +65,7 @@ def state(now: datetime, **over: Any) -> CharacterState:
         "busy": None,
         # Битвы — в начале часа.
         "battle_at": now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=9),
-        "battle_target": "📯Pied Piper",
+        "battle_target": "🛡Защита",
         "company": "bmesa",
         "sleep_deadline": at(40 * 60),
         "sleep_allowed_at": at(-60),
@@ -104,7 +104,7 @@ NOON = msk(12)
 
 def test_target_set_when_profile_shows_none() -> None:
     decision = decide(state(NOON, battle_target=None), only(), NOON)
-    assert act(decision) == ("battle_target", {"target": "📯Pied Piper"})
+    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_target_override_for_battle_hour() -> None:
@@ -139,11 +139,11 @@ def test_defense_shown_in_profile_is_ready() -> None:
 
 def test_profile_with_other_target_is_reset() -> None:
     decision = decide(state(NOON, battle_target="🤖Hooli"), only(), NOON)
-    assert act(decision) == ("battle_target", {"target": "📯Pied Piper"})
+    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_target_old_profile_does_not_count() -> None:
-    before = Obs(value="📯Pied Piper", at=NOON - timedelta(hours=10))
+    before = Obs(value="🛡Защита", at=NOON - timedelta(hours=10))
     decision = decide(state(NOON, battle_target=before), only(), NOON)
     assert act(decision)[0] == "battle_target"
 
@@ -151,7 +151,7 @@ def test_target_old_profile_does_not_count() -> None:
 def test_target_set_while_sleeping() -> None:
     sleeping = BusyState(activity="sleep_hotel", until=NOON + timedelta(hours=3))
     decision = decide(state(NOON, busy=sleeping, battle_target=None), only(), NOON)
-    assert act(decision) == ("battle_target", {"target": "📯Pied Piper"})
+    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_no_target_in_last_minute() -> None:
@@ -218,15 +218,19 @@ def test_holiday_target_matches_battle_of_other_precision() -> None:
     assert "battle_target" not in verdicts(decide(holiday, cfg, now))
 
 
+def fed(**sections: Any) -> Settings:
+    """`only()` с включённым фастфудом: по умолчанию он выключен."""
+    cfg = only(**sections)
+    return cfg.model_copy(update={"features": cfg.features.model_copy(update={"fastfood": True})})
+
+
 def test_zero_stamina_before_battle_eats_when_no_fastfood() -> None:
     now = msk(12, 40)
-    cfg = Settings.model_validate(
-        {"features": {**{name: False for name in PHASE4}, "fastfood": False}}
-    )
     hungry = state(now, stamina=0, battle_at=msk(13))
-    assert act(decide(hungry, cfg, now)) == ("deed:eat", {})
+    # Фастфуд по умолчанию выключен: 🔋 к битве восстанавливает обычная еда.
+    assert act(decide(hungry, only(), now)) == ("deed:eat", {})
     with_food = state(now, stamina=0, battle_at=msk(13))
-    decision = decide(with_food, only(), now)
+    decision = decide(with_food, fed(), now)
     assert act(decision) == ("fastfood", {"food": "hotdog"})
     assert isinstance(decision, Act) and decision.reason == "battle_stamina"
 
@@ -235,11 +239,11 @@ def test_battle_stamina_uses_fastfood_rules() -> None:
     now, battle = msk(12, 40), msk(13)
     bananas = {"banana": FoodStockState(count=10, low=150, high=275)}
     only_bananas = state(now, stamina=0, battle_at=battle, food_stock=bananas)
-    assert act(decide(only_bananas, only(), now)) == ("deed:eat", {})
+    assert act(decide(only_bananas, fed(), now)) == ("deed:eat", {})
     late = state(now, stamina=0, battle_at=battle, fastfood_ready_at=battle)
-    assert act(decide(late, only(), now)) == ("deed:eat", {})
+    assert act(decide(late, fed(), now)) == ("deed:eat", {})
     soon = state(now, stamina=0, battle_at=battle, fastfood_ready_at=now + timedelta(minutes=5))
-    decision = decide(soon, only(), now)
+    decision = decide(soon, fed(), now)
     assert isinstance(decision, Wait) and decision.reason == "fastfood_ready"
 
 
@@ -247,7 +251,7 @@ def test_battle_stamina_refreshes_stale_food_before_paid_eat() -> None:
     now = msk(12, 40)
     old_food = Obs(value=FOOD, at=now - timedelta(hours=7))
     hungry = state(now, stamina=0, battle_at=msk(13), food_stock=old_food)
-    decision = decide(hungry, only(), now)
+    decision = decide(hungry, fed(), now)
     assert act(decision) == ("refresh", {"source": "food"})
     assert verdicts(decision)["battle_stamina"] == "stale:food_stock"
 
@@ -839,10 +843,10 @@ DAY = timedelta(days=1)
 METRO_PARAMS = {
     "battle_at": BATTLE_EVENING.isoformat(),
     "margin_min": 25,
-    "buffs": ["fastMove", "strong", "firstAid"],
+    "buffs": ["firstAid", "strong", "fastMove"],
     "heal_at": 50,
     "heal_before_exit": True,
-    "chest_min_packs": 2,
+    "chest_min_packs": 1,
     "npc_low": True,
     "npc_high": False,
     "npc_min_stamina": 30,

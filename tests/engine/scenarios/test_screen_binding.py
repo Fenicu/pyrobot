@@ -2,6 +2,7 @@
 безопасной точки между ними нет. Пауза (её проверяет безопасная точка) пару не разрывает."""
 
 import asyncio
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,7 +15,7 @@ from app.engine.scenarios.metro import metro
 from app.engine.scenarios.obligations import battle_target, smoothie, stocks_dump
 from app.engine.state.model import CharacterState, Obs, Skills
 from app.engine.types import IncomingMessage
-from tests.engine.fakegame import GAME, Ref, World
+from tests.engine.fakegame import FED, GAME, Ref, World, running_world
 from tests.engine.metro.simgame import enter_with_real_frames
 from tests.engine.scenarios.certify import certifies
 from tests.engine.scenarios.conftest import context
@@ -72,6 +73,12 @@ PAIRS: dict[str, tuple[Any, CharacterState, dict[str, Any], list[tuple[str, Ref]
         [("/stock", ("stocks", 3624065)), ("/buys_stark_69", ("stocks", 3625255))],
     ),
 }
+
+
+@pytest.fixture
+async def world() -> AsyncIterator[World]:
+    async for w in running_world(FED):
+        yield w
 
 
 @certifies(*PAIRS)

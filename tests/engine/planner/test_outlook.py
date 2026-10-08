@@ -181,7 +181,7 @@ def test_asleep_shows_timers_after_wake_without_their_acts() -> None:
 
 def test_asleep_sets_only_battle_target() -> None:
     view = view_of(awake(busy=SLEEP, battle_target="🤖Hooli", prizebox=True))
-    assert act(view.decision) == ("battle_target", {"target": "📯Pied Piper"})
+    assert act(view.decision) == ("battle_target", {"target": "🛡Защита"})
     assert [(c.scenario, c.verdict) for c in view.considered] == [("battle_target", "chosen")]
     assert view.also_ready == ()
 
@@ -276,7 +276,7 @@ def test_hints_follow_settings_and_money() -> None:
     assert view_of(poor, low).hints.sleep_place == "bridge"
     unknown = awake().model_copy(update={"money": None, "prices": priced})
     assert outlook(unknown, BASE, NOW).hints.sleep_place is None
-    assert view_of(awake()).hints.battle_target == "📯Pied Piper"
+    assert view_of(awake()).hints.battle_target == "🛡Защита"
 
 
 def test_asleep_timers_during_sleep_happen_on_wake() -> None:
@@ -307,7 +307,7 @@ def test_asleep_timers_during_sleep_happen_on_wake() -> None:
 
 
 def test_battle_target_hint_only_for_upcoming_battle() -> None:
-    assert view_of(awake()).hints.battle_target == "📯Pied Piper"
+    assert view_of(awake()).hints.battle_target == "🛡Защита"
     past = awake(battle_at=obs(m(-30), age_min=90))
     assert view_of(past).hints.battle_target is None
 

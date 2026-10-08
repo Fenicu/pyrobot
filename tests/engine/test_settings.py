@@ -52,8 +52,8 @@ def test_strategy_defaults_follow_spec() -> None:
     assert s.strategy.deeds == ("harvest", "job", "learn", "dconv", "walk")
     assert s.features.books and s.features.gorbushka and s.features.lottery
     assert not s.features.casino and not s.features.pet_feast and s.features.daily_tasks
-    assert s.features.team_pick
-    assert s.food.order == ("hotdog", "pizza", "burger") and s.food.banana_reserve == 50
+    assert s.features.team_pick and not s.features.fastfood
+    assert s.food.order == ("burger", "pizza", "hotdog") and s.food.banana_reserve == 50
     assert (s.sleep.duration_h, s.sleep.hotel_if_cash_after_reserve_ge) == (7, None)
     assert s.levelup.policy == "balanced" and not s.engine.paused
 
@@ -65,7 +65,7 @@ def test_sleep_duration_bounds() -> None:
 
 def test_phase4_defaults_follow_spec() -> None:
     s = Settings()
-    assert (s.battle.target, s.battle.overrides) == ("📯Pied Piper", {})
+    assert (s.battle.target, s.battle.overrides) == ("🛡Защита", {})
     stocks = s.stocks
     assert (stocks.cash_floor, stocks.min_dump, stocks.sell_cap_margin, stocks.dump_lead_min) == (
         150,
@@ -96,8 +96,8 @@ def test_battle_override_hour_bounds(hour: int) -> None:
 def test_metro_defaults_follow_spec() -> None:
     m = Settings().metro
     assert (m.min_budget_min, m.battle_margin_min, m.extra_margin_min) == (60, 15, 10)
-    assert m.buffs == ("fastMove", "strong", "firstAid")
-    assert (m.heal_at, m.heal_before_exit, m.chest_min_packs) == (50, True, 2)
+    assert m.buffs == ("firstAid", "strong", "fastMove")
+    assert (m.heal_at, m.heal_before_exit, m.chest_min_packs) == (50, True, 1)
     assert (m.npc_low_enabled, m.npc_high_enabled, m.npc_min_stamina) == (True, False, 30)
     assert Settings().features.metro is True
 
