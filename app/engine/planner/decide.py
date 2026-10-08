@@ -545,17 +545,23 @@ class _Planner(DailyTasks):
         отказ без /dos."""
         if not self.cfg.features.startup or busy is not None:
             return None
-        if (field := self.stale_of("startup", "motivation", "knowledge", "raw")) is not None:
+        if self.artifact_blocks("deed:startup"):
+            self.reject("deed:startup", {}, "artifact_run")
+            return None
+        # Раздел закрыт по уровню персонажа: отказ без чтения экрана стартапов.
+        char_level = self.value("level")
+        if char_level is not None and char_level < STARTUP_MIN_LEVEL:
+            self.reject("deed:startup", {}, "startup_locked")
+            return None
+        if (
+            field := self.stale_of("startup", "motivation", "knowledge", "raw", "battle_at")
+        ) is not None:
             return self.refresh("startup", field)
         seen = self.s.startup
         state = seen.value if seen is not None else None
         if state is None or state.level is None:
             return self.refresh("startup", "startup")
         if state.max:
-            return None
-        char_level = self.value("level")
-        if char_level is not None and char_level < STARTUP_MIN_LEVEL:
-            self.reject("deed:startup", {}, "startup_locked")
             return None
         price = self.price("startup")
         raw_needed = STARTUP_RAW_LOW if state.level < STARTUP_RAW_LEVEL else STARTUP_RAW_FALLBACK

@@ -26,7 +26,7 @@ from app.engine.scenarios.context import History, Publish, Reread, ScenarioConte
 from app.engine.scenarios.library import ScenarioResult, run_scenario
 from app.engine.scenarios.registry import CERTIFIED, SCENARIOS
 from app.engine.settings import SettingsProvider
-from app.engine.state.model import CharacterState
+from app.engine.state.model import SLOW_MAX_AGE, CharacterState, is_fresh
 
 log = logging.getLogger(__name__)
 # Серия неудач сценария: 5 мин, 10, 20… но не больше 2 ч.
@@ -68,7 +68,7 @@ SHARED_REFUSALS = frozenset(
 )
 # Отказ из-за уровня или профессии за минуты не изменится: пауза сценария до следующих суток. Пауза
 # в памяти, перезапуск её сбрасывает — одна лишняя попытка допустима.
-LONG_REFUSALS = frozenset({"min_level", "not_harvester"})
+LONG_REFUSALS = frozenset({"min_level", "not_harvester", "startup_level"})
 
 
 class FixedParams(ValueError):
@@ -388,38 +388,49 @@ class PlannerLoop:
     async def _startup_tick(self) -> None:
         """Режим прокачки стартапа по состоянию: стартап на потолке игры — флаг выключается и
         приходит уведомление; отказ «раздел закрыт по уровню» — одно уведомление."""
-        if not self._settings.current.features.startup:
-            return
-        state = self._state()
-        seen = state.startup
-        startup = seen.value if seen is not None else None
-        if startup is not None and startup.max:
-            level = startup.level if startup.level is not None else "?"
-            await self._settings.update(
-                lambda s: s.model_copy(
-                    update={"features": s.features.model_copy(update={"startup": False})}
-                ),
-                changed_by="engine",
-            )
-            await self._notifier.notify(
-                "info",
-                "startup_maxed",
-                f"startup reached the game cap (level {level}), startup mode switched off",
-            )
-            return
-        refusal = state.last_refusal
-        if (
-            refusal is not None
-            and refusal.value is not None
-            and refusal.value.reason == "startup_level"
-            and not self._startup_locked_told
-        ):
-            self._startup_locked_told = True
-            await self._notifier.notify(
-                "warn",
-                "startup_locked",
-                "startup needs character level 18; startup mode paused",
-            )
+        try:
+            if not self._settings.current.features.startup:
+                return
+            state = self._state()
+            seen = state.startup
+            startup = seen.value if seen is not None else None
+            # Выключаем только по свежему экрану: старый снимок `max` флаг не трогает.
+            if (
+                startup is not None
+                and startup.max
+                and is_fresh(seen, self._clock.now(), SLOW_MAX_AGE)
+            ):
+                level = startup.level if startup.level is not None else "?"
+                await self._settings.update(
+                    lambda s: s.model_copy(
+                        update={"features": s.features.model_copy(update={"startup": False})}
+                    ),
+                    changed_by="engine",
+                )
+                await self._notifier.notify(
+                    "info",
+                    "startup_maxed",
+                    f"startup reached the game cap (level {level}), startup mode switched off",
+                )
+                return
+            refusal = state.last_refusal
+            char_level = state.level.value if state.level is not None else None
+            refused = refusal.value if refusal is not None else None
+            need = refused.need if refused is not None else None
+            if (
+                refused is not None
+                and refused.reason == "startup_level"
+                and (char_level is None or need is None or char_level < need)
+                and not self._startup_locked_told
+            ):
+                self._startup_locked_told = True
+                await self._notifier.notify(
+                    "warn",
+                    "startup_locked",
+                    "startup needs character level 18; startup mode paused",
+                )
+        except Exception:
+            log.exception("startup tick failed")
 
     async def outlook(self) -> PlanView:
         """«План бота»: проход планировщика и состояние цикла."""

@@ -65,6 +65,8 @@ describe('словари итогов дня', () => {
 		);
 		expect(lossText({ kind: 'deed_start', count: 6, amounts: { money: -180 } })).toBe('⛏ начало дел ×6 −$180');
 		expect(amountsText({ upgrades_white: 2, containers_small: 1 })).toBe('+2 ⚪, +1 🗳М');
+		// Прогресс стартапа и ключи — значками, а не названиями ключей.
+		expect(amountsText({ startup_progress: 6, keys: 50 })).toBe('+6 ⏳, +50 🔑');
 	});
 
 	it('счётчики дня: предметы, события разового, деньги потерь', () => {

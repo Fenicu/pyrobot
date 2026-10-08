@@ -116,7 +116,8 @@ export const SOURCE_TEXT: Record<string, string> = {
 	artifacts: 'экран артефактов',
 	trips: 'транспорт',
 	upgrades: 'апгрейды',
-	stocks: 'биржу'
+	stocks: 'биржу',
+	startup: 'экран стартапа'
 };
 
 /** Вердикты кандидатов (`Candidate.verdict`); `stale:<поле>` — отдельно. */

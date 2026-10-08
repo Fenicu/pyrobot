@@ -10,11 +10,11 @@ from tests.engine.startup_texts import (
     RESULT_PARTS,
     SCREEN_FROSTY,
     SCREEN_IN_PROGRESS,
-    SCREEN_MAX,
+    SCREEN_LEVEL6,
     START,
     startup_msg,
 )
-from tests.engine.state.helpers import PARSER, at, value
+from tests.engine.state.helpers import PARSER, at, feed, value
 
 
 def _msg(text: str, minutes: float, msg_id: int) -> IncomingMessage:
@@ -78,7 +78,7 @@ def test_levelup_raises_level_and_doubts_progress() -> None:
 
 def test_startup_max_refusal_marks_max() -> None:
     reducer = StateReducer()
-    state = _feed(reducer, {}, SCREEN_MAX, 1, 1)
+    state = _feed(reducer, {}, SCREEN_LEVEL6, 1, 1)
     state = _feed(reducer, state, MAX_REFUSAL, 2, 2)
     assert value(state, "startup")["max"] is True
 
@@ -104,3 +104,11 @@ def test_startup_result_writes_ledger_row() -> None:
         "startup_progress": 5,
         "keys": 50,
     }
+
+
+def test_startup_start_doubts_raw() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "profile", 3624478, 0)
+    assert state["raw"]["src"] == "screen"
+    state = _feed(reducer, state, START, 1, 1)
+    assert state["raw"]["src"] == "doubtful"

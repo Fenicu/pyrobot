@@ -57,6 +57,8 @@ const AMOUNT: Record<string, string> = {
 	knowledge: '📚',
 	details: '⚙️',
 	raw: '🔩',
+	startup_progress: '⏳',
+	keys: '🔑',
 	upgrades_white: '⚪',
 	upgrades_blue: '🔵',
 	upgrades_red: '🔴',
@@ -64,7 +66,7 @@ const AMOUNT: Record<string, string> = {
 	containers_small: '🗳М',
 	containers_medium: '🗳С'
 };
-const AMOUNT_ORDER = ['money', 'trophies', 'exp', 'knowledge', 'details', 'raw', 'upgrades_white', 'upgrades_blue', 'upgrades_red', 'containers_small', 'containers_medium'];
+const AMOUNT_ORDER = ['money', 'trophies', 'exp', 'knowledge', 'details', 'raw', 'startup_progress', 'keys', 'upgrades_white', 'upgrades_blue', 'upgrades_red', 'containers_small', 'containers_medium'];
 
 const weekday = new Intl.DateTimeFormat('ru-RU', { timeZone: TZ, weekday: 'short' });
 

@@ -28,8 +28,8 @@ from app.engine.planner.store import MemoryPlannerStore
 from app.engine.planner.types import Act, Candidate, Decision, Wait
 from app.engine.scenarios.library import ScenarioResult
 from app.engine.scenarios.registry import ScenarioSpec
-from app.engine.settings import Settings
-from app.engine.state.model import CharacterState
+from app.engine.settings import Settings, StaticSettings
+from app.engine.state.model import CharacterState, Obs, RefusalState, StartupState
 from tests.engine.fakegame import LIVE, Ref, World, running_world
 from tests.engine.helpers import until
 from tests.engine.planner.test_obligations import (
@@ -40,7 +40,7 @@ from tests.engine.planner.test_obligations import (
     state,
 )
 from tests.engine.planner.test_obligations import NOON as OBLIGATIONS_NOON
-from tests.engine.startup_texts import MAX_REFUSAL, REFUSAL_LOW_LEVEL, SCREEN_MAX, startup_msg
+from tests.engine.startup_texts import MAX_REFUSAL, REFUSAL_LOW_LEVEL, SCREEN_LEVEL6, startup_msg
 from tests.fixtures import game_msg
 
 
@@ -377,6 +377,7 @@ async def test_refusal_cooldowns(world: World) -> None:
     [
         (Act("gorbushka", {"buy": False}, "gorbushka_fight"), "min_level"),
         (Act("deed:harvest", {}, "best"), "not_harvester"),
+        (Act("deed:startup", {}, "startup level 6"), "startup_level"),
     ],
 )
 async def test_permanent_refusal_holds_scenario_until_next_game_day(
@@ -1247,7 +1248,7 @@ async def test_startup_max_turns_off_flag_and_notifies(world: World) -> None:
         ),
         changed_by="test",
     )
-    await world.game.show(startup_msg(SCREEN_MAX))
+    await world.game.show(startup_msg(SCREEN_LEVEL6))
     await world.game.show(startup_msg(MAX_REFUSAL))
     rig = Rig(world)
     await rig.loop.step()
@@ -1267,3 +1268,74 @@ async def test_startup_locked_notifies_once_per_episode(world: World) -> None:
     await rig.loop.step()
     await rig.loop.step()
     assert rig.notes.codes.count("startup_locked") == 1
+
+
+class BoomSettings:
+    """Настройки, у которых `update` падает: сбой хранилища."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    @property
+    def current(self) -> Settings:
+        return self._settings
+
+    async def update(
+        self, change: Any, *, changed_by: str, expected_version: int | None = None
+    ) -> tuple[Settings, int]:
+        raise RuntimeError("settings update failed")
+
+
+def startup_on() -> Settings:
+    return QUIET.model_copy(
+        update={"features": QUIET.features.model_copy(update={"startup": True})}
+    )
+
+
+def max_startup(at: datetime) -> CharacterState:
+    return CharacterState(
+        startup=Obs(
+            value=StartupState(level=6, max=True, progress=0, progress_needed=1200),
+            at=at,
+        )
+    )
+
+
+async def test_startup_tick_swallows_settings_failure(world: World) -> None:
+    now = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
+    rig = Rig(world, ready="paused")
+    rig.loop._clock = FixedClock(now)
+    rig.loop._state = lambda: max_startup(now)
+    rig.loop._settings = BoomSettings(startup_on())
+    await rig.loop.step()
+
+
+@pytest.mark.parametrize(("age_h", "switched_off"), [(1, True), (7, False)])
+async def test_startup_max_switches_off_only_when_fresh(
+    world: World, age_h: int, switched_off: bool
+) -> None:
+    now = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
+    settings = StaticSettings(startup_on())
+    rig = Rig(world, ready="paused")
+    rig.loop._clock = FixedClock(now)
+    rig.loop._settings = settings
+    rig.loop._state = lambda: max_startup(now - timedelta(hours=age_h))
+    await rig.loop.step()
+    assert settings.current.features.startup is not switched_off
+
+
+@pytest.mark.parametrize(("level", "notified"), [(20, False), (15, True)])
+async def test_startup_locked_notification_respects_level(
+    world: World, level: int, notified: bool
+) -> None:
+    now = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
+    notes = Notes()
+    rig = Rig(world, ready="paused", notes=notes)
+    rig.loop._clock = FixedClock(now)
+    rig.loop._settings = StaticSettings(startup_on())
+    rig.loop._state = lambda: CharacterState(
+        level=Obs(value=level, at=now),
+        last_refusal=Obs(value=RefusalState(reason="startup_level", need=18), at=now),
+    )
+    await rig.loop.step()
+    assert notes.codes.count("startup_locked") == (1 if notified else 0)

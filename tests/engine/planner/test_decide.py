@@ -660,7 +660,7 @@ def test_simultaneous_timers_wait_for_first_reason_by_name() -> None:
 
 
 def startup_state(**over: Any) -> CharacterState:
-    """Состояние с свежем экран «🔮Стартапы» (level, max, прогресс, цены пилю)."""
+    """Состояние со свежим экраном «🔮Стартапы»: уровень, потолок, прогресс."""
     fields: dict[str, Any] = {
         "level": 6,
         "max": False,
@@ -681,9 +681,19 @@ def test_startup_pills_when_resources_allow() -> None:
     assert decision.reason == "startup level 6"  # type: ignore[union-attr]
 
 
-def test_startup_priority_over_ordinary_deeds() -> None:
-    # Ресурсов хватает и на «Пилить», и на дела: «Пилить» выше.
-    assert act(decide(startup_state(), STARTUP_ON, NOW)) == ("deed:startup", {})
+def test_startup_priority_under_metro() -> None:
+    # Метро выше «Пилить»: когда забег готов, пилить не идём.
+    cfg = config({"features": {"startup": True, "metro": True}})
+    assert act(decide(startup_state(), cfg, NOW))[0] == "metro"
+
+
+def test_startup_locked_before_stale_refresh() -> None:
+    # Раздел закрыт по уровню: отказ без чтения экрана, даже если он устарел.
+    stale = obs(StartupState(level=6, max=False, progress=0, progress_needed=1200), age_min=7 * 60)
+    state = startup_state().model_copy(update={"level": obs(15, age_min=0), "startup": stale})
+    decision = decide(state, STARTUP_ON, NOW)
+    assert verdicts(decision)["deed:startup"] == "startup_locked"
+    assert act(decision)[0] != "deed:startup"
 
 
 @pytest.mark.parametrize(

@@ -489,6 +489,9 @@ def _started(p: _Patch, e: ActivityStarted) -> None:
     p.delta("details", -e.details)
     p.delta("motivation", -_motivation_cost(p, e.activity))
     p.effect("deed_start", amounts(money=-e.money, details=-e.details))
+    if e.activity == "startup":
+        # Заход тратит 2–3🔩, а сообщение о старте их не называет: сырьё под сомнением.
+        p.doubt("raw")
 
 
 @_on(ActivityFinished)

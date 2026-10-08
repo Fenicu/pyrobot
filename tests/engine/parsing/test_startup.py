@@ -28,7 +28,7 @@ from tests.engine.startup_texts import (
     RESULT_PLAIN,
     SCREEN_FROSTY,
     SCREEN_IN_PROGRESS,
-    SCREEN_MAX,
+    SCREEN_LEVEL6,
     START,
     startup_msg,
 )
@@ -118,7 +118,7 @@ def test_screen_in_progress() -> None:
 
 
 def test_screen_with_known_threshold() -> None:
-    events = _events(SCREEN_MAX)
+    events = _events(SCREEN_LEVEL6)
     assert events == [
         PricesScreen(
             screen="startup",

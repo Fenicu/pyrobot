@@ -6,7 +6,14 @@ from app.engine.planner.decide import NextDeed, decide, outlook
 from app.engine.planner.types import Act, Wakeup
 from app.engine.scenarios.registry import CERTIFIED
 from app.engine.settings import ArtifactRunSection, ArtifactsSection, Settings
-from app.engine.state.model import ArtifactCollect, BusyState, GorbushkaState, Obs, PriceState
+from app.engine.state.model import (
+    ArtifactCollect,
+    BusyState,
+    GorbushkaState,
+    Obs,
+    PriceState,
+    StartupState,
+)
 from tests.engine.planner.test_daily import DAILY, offers, picked, tasks
 from tests.engine.planner.test_decide import BASE, NOW, act, awake, config, m, verdicts, w
 from tests.engine.planner.test_obligations import (
@@ -55,6 +62,18 @@ def test_light_collect_spends_motivation_on_walks_only() -> None:
         "deed:dconv": "artifact_run",
         "deed:walk": "chosen",
     }
+
+
+def test_startup_does_not_pill_during_artifact_run() -> None:
+    # Во время сбора 🔥 идут на дела тактики: «Пилить» — отказ `artifact_run`, без /dos.
+    screen = Obs(value=StartupState(level=6, max=False, progress=0, progress_needed=1200), at=NOW)
+    state = awake(raw=5, startup=screen, artifact_collect=seen())
+    cfg = mode(
+        BASE.model_copy(update={"features": BASE.features.model_copy(update={"startup": True})})
+    )
+    decision = decide(state, cfg, NOW)
+    assert verdicts(decision)["deed:startup"] == "artifact_run"
+    assert act(decision)[0] != "deed:startup"
 
 
 def test_tactic_order_is_strict_and_book_follows_character_level() -> None:

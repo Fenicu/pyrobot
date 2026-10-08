@@ -8,7 +8,7 @@ from tests.engine.fakegame import LIVE, World, running_world
 from tests.engine.parsing.test_activities import DCONV_DOG, HARVEST_DOG, JOB_SHORT, LEARN_LIGHT
 from tests.engine.scenarios.certify import certifies
 from tests.engine.scenarios.conftest import context
-from tests.engine.startup_texts import MAX_REFUSAL, SCREEN_MAX, START, startup_msg
+from tests.engine.startup_texts import MAX_REFUSAL, SCREEN_LEVEL6, START, startup_msg
 from tests.fixtures import game_msg
 
 
@@ -285,7 +285,7 @@ REFRESHES = {
     "food": ("/to_eat", ("food", 3624997)),
     "gifts": ("/gifts", ("items", 3623585)),
     "gorbushka": ("/gorbushka", ("gorbushka", 3516741)),
-    "startup": ("🔮Стартап", startup_msg(SCREEN_MAX)),
+    "startup": ("🔮Стартап", startup_msg(SCREEN_LEVEL6)),
 }
 
 
