@@ -256,13 +256,43 @@ def test_battle_stamina_refreshes_stale_food_before_paid_eat() -> None:
     assert verdicts(decision)["battle_stamina"] == "stale:food_stock"
 
 
+def test_battle_stamina_without_fastfood_eats_below_full() -> None:
+    # Фастфуд выключен: персонаж ест сам 🍴 перед битвой, как только 🔋 не полная.
+    now = msk(12, 40)
+    tired = state(now, stamina=60, battle_at=msk(13))
+    decision = decide(tired, only(), now)
+    assert act(decision) == ("deed:eat", {})
+    assert isinstance(decision, Act) and decision.reason == "battle_stamina"
+    assert "deed:eat" not in verdicts(decide(state(now, battle_at=msk(13)), only(), now))
+    # С фастфудом — как раньше: только на нуле.
+    assert "deed:eat" not in verdicts(decide(tired, fed(), now))
+
+
+def test_battle_stamina_eat_keeps_money_reserves() -> None:
+    now = msk(12, 40)
+    ticket = GorbushkaState(state="need_ticket")
+    # 💵 124: на еду (5) хватает, но не сверх билета Горбушки (120).
+    poor = state(now, stamina=60, battle_at=msk(13), money=124, gorbushka=ticket)
+    decision = decide(poor, only(), now)
+    assert verdicts(decision)["deed:eat"] == "no_money"
+    rich = state(now, stamina=60, battle_at=msk(13), money=125, gorbushka=ticket)
+    assert act(decide(rich, only(), now)) == ("deed:eat", {})
+
+
+def test_battle_stamina_eat_waits_while_busy() -> None:
+    now = msk(12, 40)
+    busy = BusyState(activity="harvest", until=now + timedelta(minutes=3))
+    decision = decide(state(now, stamina=60, battle_at=msk(13), busy=busy), only(), now)
+    assert "deed:eat" not in verdicts(decision)
+
+
 def test_battle_stamina_eat_only_if_done_before_battle() -> None:
     no_fastfood = Settings.model_validate(
         {"features": {**{name: False for name in PHASE4}, "fastfood": False}}
     )
     late = msk(12, 50)
     decision = decide(state(late, stamina=0, battle_at=msk(13)), no_fastfood, late)
-    assert "deed:eat" not in verdicts(decision)
+    assert verdicts(decision)["deed:eat"] == "battle_window"
     in_time = msk(13) - timedelta(minutes=11)
     decision = decide(state(in_time, stamina=0, battle_at=msk(13)), no_fastfood, in_time)
     assert act(decision) == ("deed:eat", {})
@@ -863,6 +893,36 @@ def test_metro_when_ready_and_battle_far() -> None:
     ready = metro_state(NOON, metro_ready_at=Obs(value=NOON, at=NOON))
     assert act(decide(ready, METRO, NOON))[0] == "metro"
     assert act(decide(metro_state(NOON), only(), NOON))[0] != "metro"
+
+
+def test_metro_without_fastfood_eats_before_entry() -> None:
+    # Фастфуд выключен: перед спуском персонаж ест сам 🍴 до 100% 🔋, потом — метро.
+    tired = metro_state(NOON, stamina=70)
+    decision = decide(tired, METRO, NOON)
+    assert act(decision) == ("deed:eat", {})
+    assert isinstance(decision, Act) and decision.reason == "metro_stamina"
+    assert act(decide(metro_state(NOON), METRO, NOON)) == ("metro", METRO_PARAMS)
+    # С фастфудом — сразу в метро, как раньше.
+    with_food = METRO.model_copy(
+        update={"features": METRO.features.model_copy(update={"fastfood": True})}
+    )
+    assert act(decide(tired, with_food, NOON)) == ("metro", METRO_PARAMS)
+
+
+def test_metro_entry_eat_follows_deed_rules() -> None:
+    tired = metro_state(NOON, stamina=70)
+    # 💵 на еду нет или дела выключены — метро без еды.
+    poor = metro_state(NOON, stamina=70, money=4)
+    decision = decide(poor, METRO, NOON)
+    assert act(decision) == ("metro", METRO_PARAMS)
+    assert verdicts(decision)["deed:eat"] == "no_money"
+    no_deeds = METRO.model_copy(
+        update={"features": METRO.features.model_copy(update={"deeds": False})}
+    )
+    assert act(decide(tired, no_deeds, NOON)) == ("metro", METRO_PARAMS)
+    # Кулдаун сценария еды (отказ или сбой) — тоже без еды, а не по кругу.
+    cooled = decide(tired, METRO, NOON, cooldowns={"deed:eat": NOON + timedelta(minutes=5)})
+    assert act(cooled) == ("metro", METRO_PARAMS)
 
 
 def test_metro_budget_counts_from_start_of_battle_hour() -> None:

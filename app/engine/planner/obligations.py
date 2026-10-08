@@ -36,6 +36,7 @@ HOTEL_RESERVE_AHEAD = timedelta(hours=3)
 AFTER_FACTORY_MARGIN = timedelta(minutes=15)
 TARGET_LAST_CALL = timedelta(minutes=1)
 STAMINA_AHEAD = timedelta(minutes=30)
+FULL_STAMINA = 100
 FASTFOOD_BEFORE = timedelta(minutes=2)
 DUMP_SPAN = timedelta(minutes=10)
 BULLS_INVITE_TTL = timedelta(minutes=3)
@@ -153,6 +154,8 @@ class Obligations(PlannerBase):
         battle = self.upcoming_battle()
         if battle is None or battle - self.now > STAMINA_AHEAD:
             return None
+        if not self.cfg.features.fastfood:
+            return self.eat_up("battle_stamina", busy)
         if self.stale_of("stamina") is not None or self.value("stamina") > 0:
             return None
         if busy is not None and busy.activity == "eat":
@@ -177,6 +180,43 @@ class Obligations(PlannerBase):
         if self.stale_of("money") is not None or self.value("money") < price.money:
             return None
         return self.act("deed:eat", {}, "battle_stamina")
+
+    def eat_up(self, reason: str, busy: BusyState | None) -> Decision | None:
+        """Фастфуд выключен — персонаж ест сам: обычная еда 🍴 (`deed:eat`) до 100% 🔋 по
+        правилам дел — свободен, 💵 сверх резервов билета Горбушки и отеля, окна битвы, сна и
+        фабрики, сертификация и кулдаун. Не проходит — None: шаг идёт дальше без еды."""
+        if busy is not None or not self.feature_on("deed:eat"):
+            return None
+        if self.stale_of("stamina", "money") is not None:
+            return None
+        if self.value("stamina") >= FULL_STAMINA:
+            return None
+        price = self.price("eat")
+        verdict = self.window_verdict(self.now + self.duration("eat", price))
+        money = self.value("money") - self.ticket_reserve() - self.hotel_reserve()
+        if verdict is None and money < price.money:
+            verdict = "no_money"
+        if verdict is not None:
+            self.reject("deed:eat", {}, verdict)
+            return None
+        return self.act("deed:eat", {}, reason)
+
+    def window_verdict(self, end: datetime) -> str | None:
+        """Занятие до `end` не помещается в окно: битва, дедлайн сна, запись на фабрику."""
+        battle = self.battle_time()
+        deadline: datetime | None = self.value("sleep_deadline")
+        if (
+            battle is not None
+            and self.now < battle + BATTLE_AFTER
+            and end > battle - BATTLE_BEFORE
+        ):
+            self.wake(battle + BATTLE_AFTER, "battle")
+            return "battle_window"
+        if deadline is not None and end > deadline:
+            return "sleep_deadline"
+        if self.blocks_factory(end):
+            return "factory_window"
+        return None
 
     def stocks_dump(self, busy: BusyState | None) -> Decision | None:
         if not self.feature_on("stocks_dump"):
@@ -519,6 +559,8 @@ class Obligations(PlannerBase):
             self.reject("metro", {}, "reserved" if alone else "no_motivation")
             self.wake(self.value("motivation_next_at"), "motivation")
             return None
+        if not self.cfg.features.fastfood and (eat := self.eat_up("metro_stamina", None)):
+            return eat
         return self.act("metro", self.metro_params(battle), "metro_ready")
 
     def metro_params(self, battle: datetime) -> dict[str, Any]:

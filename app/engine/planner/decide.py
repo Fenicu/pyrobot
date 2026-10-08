@@ -8,8 +8,6 @@ from typing import Any, Literal
 from app.engine.gametime import to_msk
 from app.engine.parsing.trips import TRIP_SPAN
 from app.engine.planner.base import (
-    BATTLE_AFTER,
-    BATTLE_BEFORE,
     READY_SLACK,
     SOURCE,
     TIMER_MARGIN,
@@ -661,23 +659,6 @@ class _Planner(DailyTasks):
             else:
                 self.candidates.append(Candidate(name, params, score, verdict))
         return ok
-
-    def window_verdict(self, end: datetime) -> str | None:
-        """Занятие до `end` не помещается в окно: битва, дедлайн сна, запись на фабрику."""
-        battle = self.battle_time()
-        deadline: datetime | None = self.value("sleep_deadline")
-        if (
-            battle is not None
-            and self.now < battle + BATTLE_AFTER
-            and end > battle - BATTLE_BEFORE
-        ):
-            self.wake(battle + BATTLE_AFTER, "battle")
-            return "battle_window"
-        if deadline is not None and end > deadline:
-            return "sleep_deadline"
-        if self.blocks_factory(end):
-            return "factory_window"
-        return None
 
     # --- поездки
 
