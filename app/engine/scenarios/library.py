@@ -190,7 +190,7 @@ async def tangerine_gifts(
 ) -> ScenarioResult:
     """/gifts → при 🍊 на подарок «🎁 за 10🍊» и самый большой вариант количества → /unbox_t по
     одному. `open` = False (персонаж занят, открытие игра не даст) — только покупка. Покупка
-    и открытие — с экрана подарков, без безопасных точек: открывали их только с него."""
+    и первое открытие идут подряд с экрана подарков; безопасные точки — только между открытиями."""
     async with ctx.lease("tangerine_gifts"):
         screen = require(await ctx.send(GIFTS.command, expect_events(GiftsScreen))).first(
             GiftsScreen
@@ -205,6 +205,8 @@ async def tangerine_gifts(
                 return ScenarioResult("done")
             return ScenarioResult("nothing", "no_gifts" if have <= 0 else "busy")
         for opened in range(min(have, TANGERINE_GIFTS_BATCH)):
+            if opened:
+                await ctx.safe_point()
             step = await ctx.send("/unbox_t", expect_events(TangerineGiftOpened))
             if step.step is not Step.OK:
                 # Купленное или открытое — уже итог запуска; остальное откроет следующий.

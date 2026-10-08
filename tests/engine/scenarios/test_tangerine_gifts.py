@@ -130,3 +130,13 @@ async def test_feature_off_blocks_purchase() -> None:
         result = await run_scenario(tangerine_gifts, context(w), CharacterState(), {})
         assert (result.status, result.reason) == ("stopped", "feature_off:tangerine_gifts")
         assert w.game.payloads() == ["/gifts"]
+
+
+@certifies("tangerine_gifts")
+async def test_safe_point_only_between_openings(world: World) -> None:
+    # Покупка и первое открытие идут подряд, пауза ловит только перед вторым /unbox_t.
+    _shop(world)
+    world.game.on_text("/unbox_t", g.gift_msg(g.OPENED))
+    result = await run_scenario(tangerine_gifts, context(world, paused=True), CharacterState(), {})
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads() == ["/gifts", SHOP, "g_tangerines_small_4", "/unbox_t"]
