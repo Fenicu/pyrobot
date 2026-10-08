@@ -759,6 +759,16 @@ def test_sleep_in_last_night_before_deadline() -> None:
     assert sleep_window(rested(NOON), BULLS, NOON) == msk(0, 30, day=29)
 
 
+def test_last_night_skips_bulls_when_only_evening_fits() -> None:
+    # Дедлайн 29-го в 01:00: лечь не позже 23:00 28-го — 00:30 не успевает, 22:05 того же вечера
+    # успевает: эта ночь без биржевиков, а не сон на сутки раньше.
+    tight = state(NOON, sleep_deadline=msk(1, day=29), sleep_allowed_at=WOKE + timedelta(hours=12))
+    assert sleep_window(tight, BULLS, NOON) == msk(22, 5, day=28)
+    night = msk(22, 5, day=28)
+    decision = decide(state(night, sleep_deadline=msk(1, day=29)), BULLS, night)
+    assert act(decision)[0] == "sleep" and decision.reason == "sleep_night"
+
+
 def test_no_sleep_in_earlier_nights() -> None:
     tonight = msk(22, 5)
     assert "sleep" not in verdicts(decide(rested(tonight), only(), tonight))

@@ -603,12 +603,14 @@ class Obligations(PlannerBase):
         found = None
         while evening <= forced:
             latest = msk_at(evening, SLEEP_WAKE_BY, days=1) - duration
-            preferred = evening
+            starts = [evening]
+            # После биржевиков — если успевает до дедлайна; иначе эта ночь без них, но с 22:05.
             if self.bulls_pending(evening):
-                preferred = msk_at(evening, SLEEP_AFTER_BULLS, days=1)
-            start = max(earliest, min(preferred, latest))
-            if earliest <= latest and start <= forced:
-                found = start
+                starts.append(msk_at(evening, SLEEP_AFTER_BULLS, days=1))
+            for preferred in starts:
+                start = max(earliest, min(preferred, latest))
+                if earliest <= latest and start <= forced:
+                    found = start
             evening += timedelta(days=1)
         return found
 
