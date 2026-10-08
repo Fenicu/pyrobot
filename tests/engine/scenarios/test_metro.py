@@ -34,7 +34,12 @@ from app.engine.types import Button, IncomingMessage
 from tests.engine.fakegame import GAME, Ref, World, running_world
 from tests.engine.metro.sim import hide_events, tree_maze
 from tests.engine.metro.simgame import RUN, SimGame, enter_with_real_frames
-from tests.engine.parsing.test_metro import EARLY_FINISHED, EARLY_FINISHED_1007, LOST_FIGHT
+from tests.engine.parsing.test_metro import (
+    EARLY_FINISHED,
+    EARLY_FINISHED_1007,
+    LOST_FIGHT,
+    METRO_LEFT,
+)
 from tests.engine.parsing.test_profile import MAIN_ANSWER, MAIN_KEYBOARD
 from tests.engine.scenarios.certify import certifies
 from tests.fixtures import game_msg, game_versions
@@ -200,6 +205,15 @@ async def test_enter_buys_token_buffs_and_starts(world: World) -> None:
     assert record["buffs"] == ["fastMove", "strong", "firstAid"]
     assert record["vitals"][0] == {"step": 0, "pos": [0, 0], "stamina": 88, "packs": 7}
     assert world.gateway.lease is None
+
+
+@certifies("metro")
+async def test_left_metro_refused_at_entrance(world: World) -> None:
+    world.game.on_text("🏢Офис", ("screens", 3623175))
+    world.game.on_text("🚇Метро", replace(game_msg("metro", 3624531), text=METRO_LEFT))
+    result = await run(world, ctx(world))
+    assert (result.status, result.reason) == ("refused", "metro_left")
+    assert world.game.payloads() == ["🏢Офис", "🚇Метро"]
 
 
 @certifies("metro")

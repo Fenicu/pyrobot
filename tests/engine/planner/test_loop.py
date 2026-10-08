@@ -15,6 +15,7 @@ from app.engine.metro.store import MemoryMetroRunStore
 from app.engine.notify import Level
 from app.engine.parsing.food import FoodMenu
 from app.engine.planner.base import TIMER_MARGIN
+from app.engine.planner.decide import decide
 from app.engine.planner.loop import (
     DEEDS,
     MAX_RETRY,
@@ -395,6 +396,23 @@ async def test_permanent_refusal_holds_scenario_until_next_game_day(
     other = Rig(world)
     await other.loop._after(act, ScenarioResult("refused", "no_money"), at, at)
     assert other.loop._cooldowns == {act.scenario: at + RETRY_AFTER}
+
+
+async def test_left_metro_refusal_holds_metro_for_an_hour(world: World) -> None:
+    # «Ты уже покинул метро» — кулдаун метро неизвестной длины: не чаще раза в час, а не каждые
+    # RETRY_AFTER; планировщик за это время метро не выбирает.
+    rig = Rig(world)
+    at = moment()
+    metro = Act("metro", {}, "metro_ready")
+    await rig.loop._after(metro, ScenarioResult("refused", "metro_left"), at, at)
+    assert rig.loop._cooldowns == {"metro": at + timedelta(hours=1)}
+    now = OBLIGATIONS_NOON
+    ready = metro_state(now)
+    held = decide(ready, METRO_ALONE, now, cooldowns={"metro": now + timedelta(minutes=59)})
+    assert isinstance(held, Wait)
+    assert [(c.scenario, c.verdict) for c in held.candidates] == [("metro", "cooldown")]
+    over = decide(ready, METRO_ALONE, now, cooldowns={"metro": now})
+    assert isinstance(over, Act) and over.scenario == "metro"
 
 
 async def test_permanent_refusal_does_not_spread_to_other_deeds(world: World) -> None:

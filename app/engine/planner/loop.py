@@ -71,6 +71,9 @@ SHARED_REFUSALS = frozenset(
 # Отказ из-за уровня или профессии за минуты не изменится: пауза сценария до следующих суток. Пауза
 # в памяти, перезапуск её сбрасывает — одна лишняя попытка допустима.
 LONG_REFUSALS = frozenset({"min_level", "not_harvester", "startup_level"})
+# Отказ без срока, который за минуты не пройдёт: «Ты уже покинул метро» — кулдаун метро неизвестной
+# длины; повтор — не чаще раза в час.
+REFUSED_HOLD: dict[tuple[str, str], timedelta] = {("metro", "metro_left"): timedelta(hours=1)}
 
 
 class FixedParams(ValueError):
@@ -777,6 +780,8 @@ class PlannerLoop:
                 if LOTTERY_OPEN <= to_msk(finished).time() < LOTTERY_LATE_OPEN:
                     hold = LOTTERY_LATE_OPEN_HOLD
             self._cooldowns[key] = finished + hold
+        elif result.status == "refused" and (name, result.reason) in REFUSED_HOLD:
+            self._cooldowns[key] = finished + REFUSED_HOLD[(name, result.reason)]
         elif result.status == "refused" and result.reason in LONG_REFUSALS:
             self._cooldowns[key] = day_start(tasks_day(started) + timedelta(days=1))
         else:
