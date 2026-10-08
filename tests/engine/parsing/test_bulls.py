@@ -78,7 +78,7 @@ FIGHT_BUTTONS = (
 @pytest.mark.parametrize(
     ("text", "enemy"), [(WALK_BULL, "bull"), (WALK_BEAR, "bear")], ids=["bull", "bear"]
 )
-def test_walk_encounter_is_an_offer_without_reaction(text: str, enemy: str) -> None:
+def test_walk_encounter_is_an_offer(text: str, enemy: str) -> None:
     msg = make_msg(text, buttons=FIGHT_BUTTONS)
     assert default_parser(ChatsSection()).parse(msg) == [
         BullsEncounter(enemy=enemy, expires_in_s=180)
@@ -88,8 +88,12 @@ def test_walk_encounter_is_an_offer_without_reaction(text: str, enemy: str) -> N
         {},
         (),
     )
-    # Кнопки встречи боту запрещены.
-    assert {classify_callback(b.data or "") for b in FIGHT_BUTTONS} == {CommandClass.FORBIDDEN}
+    # «⚔Драться» — действие (шлюз пропускает его только реакции на встречу), «🚶Пропустить»
+    # боту запрещено.
+    assert [classify_callback(b.data or "") for b in FIGHT_BUTTONS] == [
+        CommandClass.ACTION,
+        CommandClass.FORBIDDEN,
+    ]
 
 
 def test_invite_only_in_invite_chat() -> None:
@@ -126,3 +130,12 @@ def test_invite_chat_shared_with_swinfo_random_message_ignored() -> None:
         text="привет, кто-нибудь ещё играет?",
     )
     assert parser.parse(random_msg) == []
+
+
+def test_invite_with_chosen_chat_switch() -> None:
+    button = Button("⚔Присоединиться", 0, 0, switch_chosen="join_fight_AaBH89kYd2J")
+    invite = replace(
+        game_msg("bulls_invite", 3681068), chat_id=INVITE_CHAT, outgoing=False, inline=(button,)
+    )
+    routed = default_parser(ChatsSection(bulls_invite_chat_id=INVITE_CHAT))
+    assert routed.parse(invite) == [BullsInvite(code="join_fight_AaBH89kYd2J")]

@@ -14,6 +14,8 @@ def _btn(**kw: object) -> NS:
         url=None,
         switch_inline_query=None,
         switch_inline_query_current_chat=None,
+        switch_inline_query_chosen_chat=None,
+        copy_text=None,
     )
     base.update(kw)
     return NS(**base)
@@ -122,3 +124,25 @@ def test_new_message_already_edited_uses_edit_date() -> None:
     msg = to_incoming(_m(edit_date=edited), kind="new", received_at=edited)
     assert (msg.date, msg.created_at, msg.origin) == (edited, T0, T0)
     assert msg.revision == int(edited.timestamp())
+
+
+def test_chosen_chat_switch_and_copy_text_kept() -> None:
+    kb = NS(
+        inline_keyboard=[
+            [
+                _btn(
+                    text="Позвать",
+                    switch_inline_query_chosen_chat=NS(query="join_fight_I16YW9RrvSq"),
+                )
+            ],
+            [_btn(text="Код", copy_text=NS(text="join_fight_I16YW9RrvSq"))],
+        ]
+    )
+    msg = to_incoming(_m(reply_markup=kb), kind="new", received_at=T0)
+    share, code = msg.inline
+    assert share.switch_chosen == "join_fight_I16YW9RrvSq" and share.switch is None
+    assert code.copy == "join_fight_I16YW9RrvSq"
+    # Приглашение с кнопкой выбора чата — тоже приглашение.
+    invite = _m(chat=NS(id=-100500), from_user=NS(id=5), reply_markup=kb, text="Нажми")
+    assert has_join_fight(invite)
+    assert ChatFilter.from_settings(ChatsSection(bulls_invite_chat_id=-100500)).accepts(invite)

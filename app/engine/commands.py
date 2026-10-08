@@ -16,6 +16,8 @@ class CommandClass(StrEnum):
     DONATE = "donate"
     # Пересылка сообщения игры в чат команды: не игровая команда, у шлюза своя политика.
     FORWARD = "forward"
+    # Результат инлайн-режима бота игры в чат приглашений: у шлюза тоже своя политика.
+    INLINE = "inline"
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +59,7 @@ GADGET_UNWEAR = re.compile(r"/unwear_[a-z][0-9]+\Z")
 MAIN = re.compile(r"/main\Z")
 # Кнопка подарков за 🍊: только открывает экран выбора количества (кнопки g_tangerines_small_<N>).
 TANGERINE_GIFT_SHOP = "🎁 за 10🍊"
+FIGHT_ACCEPT = re.compile(r"fight_accept\Z")
 UPGRADE_CLICK = re.compile(rf"up_(?P<slot>{_UP_SLOTS})_(?P<grade>low|middle|high)(?:_1_accept)?\Z")
 
 TEXT_RULES: tuple[Rule, ...] = (
@@ -359,6 +362,8 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"rob_awake_\d+\Z",
         r"tickets_\w+_\d+\Z",
         r"g_tangerines_small_\d+\Z",
+        # «⚔Драться» встречи на ночной прогулке: шлюз пропускает только реакцию на встречу.
+        FIGHT_ACCEPT.pattern,
     ),
 )
 
@@ -440,6 +445,7 @@ _FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"rob_awake_\d+\Z", "robbery_defense"),
         (r"tickets_\w+_\d+\Z", "lottery"),
         (r"g_tangerines_small_\d+\Z", "tangerine_gifts"),
+        (FIGHT_ACCEPT.pattern, "bulls"),
     )
 )
 # Не тратят ничего: блок трат (неизвестный исход, рестарт до сверки) их не держит. Проснуться при

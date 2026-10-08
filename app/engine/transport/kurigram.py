@@ -83,7 +83,20 @@ def _buttons(markup: Any) -> tuple[tuple[Button, ...], tuple[tuple[str, ...], ..
                 if isinstance(data, bytes):
                     data = data.decode("utf-8", "replace")
                 switch = b.switch_inline_query or b.switch_inline_query_current_chat
-                inline.append(Button(b.text, r, c, data=data, url=b.url, switch=switch))
+                chosen = getattr(b, "switch_inline_query_chosen_chat", None)
+                copy = getattr(b, "copy_text", None)
+                inline.append(
+                    Button(
+                        b.text,
+                        r,
+                        c,
+                        data=data,
+                        url=b.url,
+                        switch=switch,
+                        switch_chosen=chosen.query if chosen is not None else None,
+                        copy=copy.text if copy is not None else None,
+                    )
+                )
         return tuple(inline), ()
     if getattr(markup, "keyboard", None) is not None:
         kb = tuple(
@@ -96,7 +109,9 @@ def _buttons(markup: Any) -> tuple[tuple[Button, ...], tuple[tuple[str, ...], ..
 def has_join_fight(m: Any) -> bool:
     inline, _ = _buttons(m.reply_markup)
     return any(
-        INVITE_CODE.match(b.switch or "") or INVITE_CODE.match(b.data or "") for b in inline
+        INVITE_CODE.match(code or "")
+        for b in inline
+        for code in (b.switch, b.switch_chosen, b.data)
     )
 
 
@@ -154,6 +169,15 @@ def _sent_id(updates: Any, random_id: int) -> int:
         if isinstance(update, raw.types.UpdateMessageID) and update.random_id == random_id:
             return int(update.id)
     return 0
+
+
+def _input_user(peer: Any) -> Any:
+    """Пользователь (бот) для запросов, которым нужен InputUser, из его peer."""
+    from pyrogram import raw
+
+    if isinstance(peer, raw.types.InputPeerUser):
+        return raw.types.InputUser(user_id=peer.user_id, access_hash=peer.access_hash)
+    return peer
 
 
 @dataclass(frozen=True)
@@ -1133,6 +1157,66 @@ class KurigramTransport:
         except (errors.BadRequest, errors.Forbidden) as exc:
             raise TransportRejected(str(exc.ID or exc)) from exc
         return _forwarded_id(updates, random_id)
+
+    @_fenced
+    async def send_inline(self, bot_id: int, chat_id: int, query: str) -> int:
+        from pyrogram import errors, raw
+
+        client = self._client
+        random_id = client.rnd_id()
+        try:
+            bot = _input_user(await self._peer(client, bot_id))
+            peer = await self._peer(client, chat_id)
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except Exception as exc:
+            raise TransportRejected(f"peer:{type(exc).__name__}") from exc
+        try:
+            # Запрос из самого чата приглашений: `get_inline_bot_results` kurigram шлёт его из
+            # «Избранного». Результаты ещё ничего не отправляют — сбой здесь только отказ.
+            results = await client.invoke(
+                raw.functions.messages.GetInlineBotResults(
+                    bot=bot, peer=peer, query=query, offset=""
+                ),
+                retries=1,
+                sleep_threshold=0,
+                retry_delay=0,
+            )
+        except TimeoutError as exc:
+            raise TransportRejected("inline_timeout") from exc
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except errors.RPCError as exc:
+            raise TransportRejected(str(exc.ID or exc)) from exc
+        if not results.results:
+            raise TransportRejected("no_inline_results")
+        try:
+            # Одна попытка: повтор после тайм-аута мог бы отправить приглашение дважды.
+            updates = await client.invoke(
+                raw.functions.messages.SendInlineBotResult(
+                    peer=peer,
+                    query_id=results.query_id,
+                    id=results.results[0].id,
+                    random_id=random_id,
+                ),
+                retries=1,
+                sleep_threshold=0,
+                retry_delay=0,
+            )
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except (errors.BadRequest, errors.Forbidden) as exc:
+            raise TransportRejected(str(exc.ID or exc)) from exc
+        return _sent_id(updates, random_id)
 
     @_fenced
     async def check_group(self, chat_id: int) -> GroupInfo:

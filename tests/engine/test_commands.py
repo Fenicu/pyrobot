@@ -113,6 +113,9 @@ def test_classify_text(text: str, expected: CommandClass) -> None:
         ("rob_awake_1106993", A),
         ("rob_awake_", F),
         ("rob_awake_12x", F),
+        ("fight_accept", A),
+        ("fight_decline", F),
+        ("fight_accept_1", F),
         ("mether_buy_coins", D),
         ("unknown_cb", F),
     ],
@@ -294,6 +297,8 @@ def test_feature_of_text(text: str, feature: str | None) -> None:
         ("t_convDets_hard_confirm", "daily_tasks"),
         ("tasksel_decline", None),
         ("rob_awake_35401851", "robbery_defense"),
+        ("fight_accept", "bulls"),
+        ("fight_decline", None),
     ],
 )
 def test_feature_of_callback(data: str, feature: str | None) -> None:

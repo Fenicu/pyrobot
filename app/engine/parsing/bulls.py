@@ -52,8 +52,8 @@ class BullsResult(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class BullsEncounter(Event):
-    """Предложение подраться с биржевиком на прогулке (`bull`, `bear`) и срок на раздумья. Бот на
-    него не отвечает: предложение истекает само."""
+    """Предложение подраться с биржевиком на прогулке (`bull`, `bear`) и срок на раздумья. Отвечает
+    на него реакция `BullsWalk` («⚔Драться» и приглашение в чат приглашений)."""
 
     kind: ClassVar[str] = "bulls_encounter"
     enemy: str
@@ -68,7 +68,7 @@ class BullsRefused(Event):
 
 def recognize_invite(msg: IncomingMessage) -> list[Event]:
     for button in msg.inline:
-        for code in (button.switch, button.data):
+        for code in (button.switch, button.switch_chosen, button.data):
             if code and INVITE_CODE.match(code):
                 return [BullsInvite(code=code)]
     return []

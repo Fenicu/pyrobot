@@ -47,3 +47,20 @@ def test_markup_json_shapes() -> None:
         reply_kb=(("😎Я", "⚔Битва"),),
     )
     assert reply.markup_json() == {"reply": [["😎Я", "⚔Битва"]]}
+
+
+def test_chosen_chat_switch_and_copy_buttons_kept_in_markup() -> None:
+    share = Button("Позвать", 0, 0, switch_chosen="join_fight_AaBH89kYd2J")
+    copy = Button("Код", 1, 0, copy="join_fight_AaBH89kYd2J")
+    assert _msg("x", (share, copy)).markup_json() == {
+        "inline": [
+            ["Позвать", 0, 0, None, None, None, "join_fight_AaBH89kYd2J", None],
+            ["Код", 1, 0, None, None, None, None, "join_fight_AaBH89kYd2J"],
+        ]
+    }
+    # Обычные кнопки — прежние шесть полей: хеши уже записанных сообщений не меняются.
+    plain = _msg("x", (Button("A", 0, 0, data="a"),))
+    assert plain.markup_json() == {"inline": [["A", 0, 0, "a", None, None]]}
+    assert (
+        _msg("x", (share,)).content_hash() != _msg("x", (Button("Позвать", 0, 0),)).content_hash()
+    )

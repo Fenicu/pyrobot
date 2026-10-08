@@ -41,7 +41,15 @@ from tests.engine.helpers import GAME, make_msg, until
 from tests.engine.kurigram_fakes import EXPECTED, FakeClient, rpc_error
 
 pytestmark = pytest.mark.db
-ACCOUNT_TASKS = {"pipeline", "gateway", "reconcile", "reactions", "team-forward", "planner"}
+ACCOUNT_TASKS = {
+    "pipeline",
+    "gateway",
+    "reconcile",
+    "reactions",
+    "team-forward",
+    "bulls-walk",
+    "planner",
+}
 # Задачи движка на kurigram: ещё проба Telegram и сверка истории.
 KURIGRAM_TASKS = ACCOUNT_TASKS | {"tg-probe", "history"}
 BOX = SecretBox(secrets.token_bytes(32))

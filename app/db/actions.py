@@ -22,8 +22,12 @@ from app.engine.gateway.types import ActionRequest, ActionStatus
 
 log = logging.getLogger(__name__)
 
-# Неизвестный исход навигации и пересылки состояние игры не меняет: их не сверяют.
-UNRECONCILED_FREE = (CommandClass.NAV.value, CommandClass.FORWARD.value)
+# Неизвестный исход навигации, пересылки и приглашения состояние игры не меняет: их не сверяют.
+UNRECONCILED_FREE = (
+    CommandClass.NAV.value,
+    CommandClass.FORWARD.value,
+    CommandClass.INLINE.value,
+)
 _FINAL = {
     ActionStatus.CONFIRMED,
     ActionStatus.REFUSED,

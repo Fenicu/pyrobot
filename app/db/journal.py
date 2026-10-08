@@ -17,10 +17,7 @@ from app.engine.types import Button, IncomingMessage
 
 def _restored(row: MessageRow) -> IncomingMessage:
     markup = row.markup or {}
-    inline = tuple(
-        Button(text=b[0], row=b[1], col=b[2], data=b[3], url=b[4], switch=b[5])
-        for b in markup.get("inline", [])
-    )
+    inline = tuple(Button.from_json(b) for b in markup.get("inline", []))
     reply = tuple(tuple(r) for r in markup.get("reply", []))
     return IncomingMessage(
         chat_id=row.chat_id,

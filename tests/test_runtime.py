@@ -119,12 +119,12 @@ async def test_fake_runtime_ready_without_telegram(clean_db: Database) -> None:
             status = (await client.get("/api/v1/accounts/1/engine/status")).json()
             assert status["mode"] == "dry_run" and status["lease_ok"] is True
             assert "lock_ok" not in status and "loop_lag_ms" not in status
-            # Реакция на ограбление и пересылка в чат команды — свои задачи под супервизором
-            # движка аккаунта; сверка хоста, продление аренды и ретеншн — под супервизором
-            # процесса.
+            # Реакции на ограбление и встречу на прогулке, пересылка в чат команды — свои задачи
+            # под супервизором движка аккаунта; сверка хоста, продление аренды и ретеншн — под
+            # супервизором процесса.
             runtime = app.state.runtime
             engine = _engine(runtime)
-            assert {"reactions", "team-forward"} <= set(engine.supervisor._tasks)
+            assert {"reactions", "team-forward", "bulls-walk"} <= set(engine.supervisor._tasks)
             assert {"reconcile", "lease", "lag", "session-purge", "retention"} <= set(
                 runtime.supervisor._tasks
             )

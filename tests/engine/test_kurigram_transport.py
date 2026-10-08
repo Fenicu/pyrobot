@@ -1009,6 +1009,7 @@ def _telegram_calls(t: FakeKurigram) -> list[Callable[[], Awaitable[Any]]]:
         lambda: t.check_group(TEAM),
         lambda: t.fetch(GAME, 7),
         lambda: t.message_sender(TANGERINE, 7),
+        lambda: t.send_inline(GAME, TEAM, "join_fight_GXnJJ0QNK2K"),
     ]
 
 
@@ -1605,3 +1606,89 @@ async def test_chat_message_unresolved_peer_is_refusal(error: Exception) -> None
     with pytest.raises(TransportRejected, match="peer"):
         await t.send_chat_message(TANGERINE, "🍊")
     assert all(name != "SendMessage" for name, _ in t.client.invoked)
+
+
+INVITE = "join_fight_GXnJJ0QNK2K"
+
+
+def _inline_results(*ids: str) -> object:
+    return NS(query_id=5555, results=[NS(id=i) for i in ids])
+
+
+async def test_inline_result_posted_into_target_chat() -> None:
+    from pyrogram import raw
+
+    t = FakeKurigram()
+    await _online(t)
+    # Бот игры — пользователь: его peer из кеша становится InputUser запроса.
+    t._peers[GAME] = raw.types.InputPeerUser(user_id=GAME, access_hash=77)
+    t.client.responses["GetInlineBotResults"] = _inline_results("r1", "r2")
+    t.client.responses["SendInlineBotResult"] = _forwarded(4343)
+    assert await t.send_inline(GAME, TEAM, INVITE) == 4343
+    (q_name, q_kw), (s_name, s_kw) = t.client.invoked[-2:]
+    assert (q_name, s_name) == ("GetInlineBotResults", "SendInlineBotResult")
+    assert q_kw["retries"] == 1 and s_kw == {"retries": 1, "sleep_threshold": 0, "retry_delay": 0}
+    query, sent = t.client.queries[-2:]
+    # Как у человека, который набирает запрос в самом чате приглашений.
+    assert query.bot == raw.types.InputUser(user_id=GAME, access_hash=77)
+    assert query.peer == NS(id=TEAM) and query.query == INVITE and query.offset == ""
+    assert (sent.peer, sent.query_id, sent.id, sent.random_id) == (NS(id=TEAM), 5555, "r1", 1)
+
+
+async def test_inline_without_results_is_refusal() -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.responses["GetInlineBotResults"] = _inline_results()
+    with pytest.raises(TransportRejected, match="no_inline_results"):
+        await t.send_inline(GAME, TEAM, INVITE)
+    assert all(name != "SendInlineBotResult" for name, _ in t.client.invoked)
+
+
+async def test_inline_query_timeout_is_refusal() -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors["GetInlineBotResults"] = TimeoutError()
+    with pytest.raises(TransportRejected, match="inline_timeout"):
+        await t.send_inline(GAME, TEAM, INVITE)
+    assert all(name != "SendInlineBotResult" for name, _ in t.client.invoked)
+
+
+@pytest.mark.parametrize(
+    ("call", "error", "raised"),
+    [
+        ("GetInlineBotResults", "BotResponseTimeout", TransportRejected),
+        ("GetInlineBotResults", "BotInlineDisabled", TransportRejected),
+        ("SendInlineBotResult", "ChatWriteForbidden", TransportRejected),
+        ("SendInlineBotResult", "AuthKeyUnregistered", TransportAuthLost),
+    ],
+)
+async def test_inline_errors_classified(call: str, error: str, raised: type[Exception]) -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.responses["GetInlineBotResults"] = _inline_results("r1")
+    t.client.errors[call] = rpc_error(error)
+    with pytest.raises(raised):
+        await t.send_inline(GAME, TEAM, INVITE)
+
+
+async def test_inline_flood_wait_mapped() -> None:
+    from pyrogram import errors
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors["GetInlineBotResults"] = errors.FloodWait(9)
+    with pytest.raises(FloodWait) as caught:
+        await t.send_inline(GAME, TEAM, INVITE)
+    assert caught.value.seconds == 9.0
+
+
+@pytest.mark.parametrize("error", [KeyError("unknown peer"), OSError("network down")])
+async def test_inline_unresolved_peer_is_refusal(error: Exception) -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors["ResolvePeer"] = error
+    with pytest.raises(TransportRejected, match="peer"):
+        await t.send_inline(GAME, TEAM, INVITE)
+    assert all(
+        name not in ("GetInlineBotResults", "SendInlineBotResult") for name, _ in t.client.invoked
+    )

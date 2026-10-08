@@ -63,6 +63,23 @@ async def test_revisions_of_message_in_journal_order(clean_db: Database) -> None
     assert await journal.revisions(first.chat_id, 404) == []
 
 
+async def test_chosen_chat_switch_and_copy_buttons_restored(clean_db: Database) -> None:
+    from dataclasses import replace
+
+    from app.engine.types import Button
+
+    journal = DbJournal(clean_db, account_id=1)
+    buttons = (
+        Button("Позвать", 0, 0, switch_chosen="join_fight_AaBH89kYd2J"),
+        Button("Код", 1, 0, copy="join_fight_AaBH89kYd2J"),
+        Button("⬆️", 2, 0, data="maze_up"),
+    )
+    msg = replace(make_msg("Позови друзей", msg_id=9), inline=buttons)
+    assert await journal.append(msg, [], None, 1) is not None
+    [restored] = await journal.revisions(msg.chat_id, 9)
+    assert restored.inline == buttons and restored.content_hash() == msg.content_hash()
+
+
 async def test_messages_with_event_give_latest_revision(clean_db: Database) -> None:
     from datetime import timedelta
 

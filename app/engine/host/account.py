@@ -30,6 +30,7 @@ from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
 from app.db.settings_store import DbSettingsStore
 from app.engine.artifact import ArtifactRuns
+from app.engine.bulls_walk import BullsWalk
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
 from app.engine.facade import EngineFacade
@@ -185,6 +186,7 @@ class AccountRuntime:
         self.planner: PlannerLoop | None = None
         self.reactions: RobberyDefense | None = None
         self.team_forward: TeamForward | None = None
+        self.bulls_walk: BullsWalk | None = None
         self.transport: Transport | None = None
         self.history: HistorySync | None = None
         self._kurigram: KurigramTransport | None = None
@@ -346,6 +348,14 @@ class AccountRuntime:
             gateway=gateway, settings=settings, notifier=self.notifier, clock=SystemClock()
         )
         bus.subscribe(self.team_forward.on_delivery, priority=30)
+        self.bulls_walk = BullsWalk(
+            gateway=gateway,
+            settings=settings,
+            state=lambda: load_state(pipeline.state),
+            notifier=self.notifier,
+            clock=SystemClock(),
+        )
+        bus.subscribe(self.bulls_walk.on_delivery, priority=25)
         bus.subscribe(self.planner.on_delivery, priority=90)
         bus.subscribe(StreamFeed(self.stream, lambda: pipeline.state).on_delivery, priority=95)
         fence = self.fence
@@ -373,6 +383,7 @@ class AccountRuntime:
         self.supervisor.start("reconcile", reconciler.run)
         self.supervisor.start("reactions", self.reactions.run)
         self.supervisor.start("team-forward", self.team_forward.run)
+        self.supervisor.start("bulls-walk", self.bulls_walk.run)
         # Без PYROBOT_PLANNER цикл всё равно нужен: он исполняет ручные запуски сценариев.
         self.supervisor.start("planner", self.planner.run)
         if self._kurigram is not None:

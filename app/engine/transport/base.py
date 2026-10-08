@@ -77,6 +77,12 @@ class Transport(Protocol):
         неизвестен)."""
         ...
 
+    async def send_inline(self, bot_id: int, chat_id: int, query: str) -> int:
+        """Первый результат инлайн-запроса `query` к боту `bot_id` — в чат `chat_id`, как его
+        отправил бы человек, набрав запрос в этом чате; id отправленного (0 — неизвестен).
+        Нет результатов или запрос не прошёл — `TransportRejected` (ничего не отправлено)."""
+        ...
+
     async def fetch(self, chat_id: int, message_id: int) -> IncomingMessage | None:
         """Текущая версия сообщения из Telegram; None — сообщения нет."""
         ...

@@ -13,6 +13,7 @@ from typing import Any, Literal
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
 from app.engine.commands import (
+    FIGHT_ACCEPT,
     GADGET_BUY,
     GADGET_WEAR,
     MAIN,
@@ -71,6 +72,9 @@ SOURCE_READ_TIMEOUT_S = 10.0
 # Клик «👍Стартуем!» экрана пересборки артефакта.
 ARTIFACT_ACCEPT = re.compile(r"artr_(book|fax|light)_accept\Z")
 GADGET_SCENARIOS = frozenset({"gadget_buy", "gadget_wear_set", "gadget_upgrade"})
+# Реакция на встречу с биржевиком на ночной прогулке: только она жмёт «⚔Драться» и зовёт в чат
+# приглашений.
+BULLS_WALK = "bulls_walk"
 
 
 class NotSent(Exception):
@@ -128,6 +132,8 @@ def _keyed_manual(req: ActionRequest) -> bool:
 def command_class(req: ActionRequest, own_company: str | None = None) -> CommandClass:
     if req.kind is ActionKind.FORWARD:
         return CommandClass.FORWARD
+    if req.kind is ActionKind.INLINE:
+        return CommandClass.INLINE
     if req.kind is ActionKind.SEND:
         return classify_text(req.text or "", own_company)
     return classify_callback(req.data or "", own_company)
@@ -139,7 +145,7 @@ def _answer_chat(req: ActionRequest) -> int:
 
 
 def spends_nothing(req: ActionRequest) -> bool:
-    if req.kind is ActionKind.FORWARD:
+    if req.kind in (ActionKind.FORWARD, ActionKind.INLINE):
         return True
     if req.kind is ActionKind.SEND:
         return spends_nothing_text(req.text or "")
@@ -149,6 +155,8 @@ def spends_nothing(req: ActionRequest) -> bool:
 def command_feature(req: ActionRequest) -> str | None:
     if req.kind is ActionKind.FORWARD:
         return None
+    if req.kind is ActionKind.INLINE:
+        return "bulls"
     if req.kind is ActionKind.SEND:
         text = req.text or ""
         # Продажа акций шагом покупки гаджета — под флагом покупки, а не слива.
@@ -167,6 +175,14 @@ def _metro_main(req: ActionRequest) -> bool:
         and req.kind is ActionKind.SEND
         and MAIN.match((req.text or "").strip()) is not None
     )
+
+
+def _bulls_walk(req: ActionRequest) -> bool:
+    return req.source is Source.URGENT and req.scenario == BULLS_WALK
+
+
+def _fight_accept(req: ActionRequest) -> bool:
+    return req.kind is ActionKind.CLICK and FIGHT_ACCEPT.match(req.data or "") is not None
 
 
 class ActionGateway:
@@ -451,10 +467,14 @@ class ActionGateway:
             return ActionStatus.SUPPRESSED, "shutdown"
         if cls is CommandClass.FORWARD:
             return self._forward_checks(req)
+        if cls is CommandClass.INLINE:
+            return self._inline_checks(req)
         if cls in (CommandClass.FORBIDDEN, CommandClass.DONATE):
             return ActionStatus.REJECTED, cls.value
         if req.chat_id not in self._allowed_chats():
             return ActionStatus.REJECTED, "chat_not_allowed"
+        if _fight_accept(req) and not _bulls_walk(req):
+            return ActionStatus.REJECTED, "bulls_walk_only"
         if cls is CommandClass.RISKY and not (
             (req.source is Source.MANUAL and req.risky_confirmed)
             or self._artifact_start(req)
@@ -507,6 +527,33 @@ class ActionGateway:
         cannot = self._can_send()
         if cannot is not None:
             return ActionStatus.REJECTED, cannot
+        if current.engine.mode == "dry_run" or req.dry_run:
+            return ActionStatus.SUPPRESSED, "dry_run"
+        return None
+
+    def _inline_checks(self, req: ActionRequest) -> Blocked | None:
+        """Приглашение через инлайн-режим бота игры — только от реакции на встречу и только в
+        текущий чат приглашений (сверяется и перед каждой попыткой). Kill и пауза — как у
+        любого действия, флаг `bulls`, dry_run подавляет; блок трат не мешает: в игре
+        приглашение ничего не тратит."""
+        current = self._settings.current
+        invites = current.chats.bulls_invite_chat_id
+        if not _bulls_walk(req):
+            return ActionStatus.REJECTED, "bulls_walk_only"
+        if not (req.text or "").strip():
+            return ActionStatus.REJECTED, "inline_invalid"
+        if invites is None:
+            return ActionStatus.REJECTED, "invite_chat_off"
+        if req.chat_id != invites:
+            return ActionStatus.REJECTED, "invite_chat_changed"
+        if self._kill_reason is not None or current.engine.killed:
+            return ActionStatus.REJECTED, "kill_switch"
+        cannot = self._can_send()
+        if cannot is not None:
+            return ActionStatus.REJECTED, cannot
+        blocked = self._policy_checks(req)
+        if blocked is not None:
+            return blocked
         if current.engine.mode == "dry_run" or req.dry_run:
             return ActionStatus.SUPPRESSED, "dry_run"
         return None
@@ -603,8 +650,12 @@ class ActionGateway:
 
     def _eligible(self, p: _Pending) -> bool:
         lease = self._lease
-        # Пересылка экран игры не трогает: шагам сценария под арендой она не мешает.
-        if lease is None or p.req.lease_token == lease.token or p.cls is CommandClass.FORWARD:
+        # Пересылка и приглашение экран игры не трогают: шагам сценария под арендой не мешают.
+        if (
+            lease is None
+            or p.req.lease_token == lease.token
+            or p.cls in (CommandClass.FORWARD, CommandClass.INLINE)
+        ):
             return True
         return lease.safe and p.req.source in (Source.URGENT, Source.MANUAL)
 
@@ -841,6 +892,11 @@ class ActionGateway:
         if req.kind is ActionKind.SEND:
             await self._transport.send_text(req.chat_id, req.text or "", req.reply_to)
             return None
+        if req.kind is ActionKind.INLINE:
+            # Ответ — id приглашения в чате (0 — Telegram его не вернул).
+            game = self._settings.current.chats.game_chat_id
+            sent = await self._transport.send_inline(game, req.chat_id, req.text or "")
+            return str(sent) if sent else None
         return await self._transport.click(
             req.chat_id, req.message_id or 0, req.data or "", click_timeout
         )

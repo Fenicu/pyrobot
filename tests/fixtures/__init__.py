@@ -21,6 +21,8 @@ def _markup(raw: dict[str, Any] | None) -> tuple[tuple[Button, ...], tuple[tuple
             data=b.get("data"),
             url=b.get("url"),
             switch=b.get("switch"),
+            switch_chosen=b.get("switch_chosen"),
+            copy=b.get("copy"),
         )
         for r, row in enumerate(raw.get("inline") or [])
         for c, b in enumerate(row)

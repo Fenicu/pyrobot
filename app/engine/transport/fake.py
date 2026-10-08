@@ -24,7 +24,7 @@ from app.engine.types import IncomingMessage
 
 @dataclass(frozen=True, slots=True)
 class Sent:
-    kind: Literal["send", "click", "forward"]
+    kind: Literal["send", "click", "forward", "inline"]
     chat_id: int
     payload: str
     message_id: int | None
@@ -100,6 +100,11 @@ class FakeTransport:
 
     async def forward(self, from_chat_id: int, message_id: int, to_chat_id: int) -> int:
         self._deliver(Sent("forward", to_chat_id, str(from_chat_id), message_id, time.monotonic()))
+        self._next_id += 1
+        return self._next_id
+
+    async def send_inline(self, bot_id: int, chat_id: int, query: str) -> int:
+        self._deliver(Sent("inline", chat_id, query, None, time.monotonic()))
         self._next_id += 1
         return self._next_id
 

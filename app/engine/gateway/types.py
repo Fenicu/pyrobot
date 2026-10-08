@@ -19,6 +19,8 @@ class ActionKind(StrEnum):
     SEND = "send"
     CLICK = "click"
     FORWARD = "forward"
+    # Результат инлайн-режима бота игры в чат (`text` — запрос): приглашение на биржевиков.
+    INLINE = "inline"
 
 
 class ActionStatus(StrEnum):

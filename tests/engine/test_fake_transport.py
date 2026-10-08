@@ -66,3 +66,11 @@ async def test_message_sender_from_table_and_recorded() -> None:
     with pytest.raises(FloodWait):
         await t.message_sender(-1001377961602, 7)
     assert t.sender_lookups == [(-1001377961602, 7), (-1001377961602, 8), (-1001377961602, 7)]
+
+
+async def test_inline_recorded_with_new_id() -> None:
+    t = FakeTransport()
+    first = await t.send_inline(227859379, -100500, "join_fight_GXnJJ0QNK2K")
+    assert first > 0
+    [sent] = t.sent
+    assert (sent.kind, sent.chat_id, sent.payload) == ("inline", -100500, "join_fight_GXnJJ0QNK2K")
