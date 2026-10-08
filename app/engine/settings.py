@@ -102,6 +102,7 @@ class FeaturesSection(BaseModel):
     seasonal: bool = False
     trips: bool = True
     gadgets_buy: bool = False
+    startup: bool = False
 
 
 Deed = Literal["harvest", "job", "learn", "dconv", "walk", "confa", "rob"]

@@ -79,6 +79,7 @@ export const SCENARIO: Record<string, string> = {
 	'deed:walk': '🚶 прогулка',
 	'deed:confa': '📚 конференция',
 	'deed:rob': '🔫 грабёж',
+	'deed:startup': '🖥 пилить стартап',
 	state: '👤 занятость',
 	deeds: '⛏ дела'
 };
@@ -158,7 +159,9 @@ export const VERDICT: Record<string, string> = {
 	dump_window: 'окно слива акций',
 	gorbushka_meeting: 'встреча на Горбушке',
 	upgrade_running: 'на слоте идёт заточка',
-	shop_mismatch: 'витрина не сходится с каталогом'
+	shop_mismatch: 'витрина не сходится с каталогом',
+	no_knowledge: 'нет 📚',
+	startup_locked: 'стартапы — с 18🎚'
 };
 
 /** Поля состояния в вердикте `stale:<поле>`. */
@@ -188,7 +191,8 @@ const FIELD_TEXT: Record<string, string> = {
 	upgrade_info: 'экран апгрейдов',
 	stock_holdings: 'портфель акций',
 	stock_quotes: 'котировки',
-	stock_limits: 'лимиты биржи'
+	stock_limits: 'лимиты биржи',
+	startup: 'стартап'
 };
 
 /** Отклонённый командный вариант главы: `team <тип> <N>🔥` или `team <тип> ?🔥`. */

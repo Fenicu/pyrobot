@@ -40,6 +40,7 @@ from tests.engine.planner.test_obligations import (
     state,
 )
 from tests.engine.planner.test_obligations import NOON as OBLIGATIONS_NOON
+from tests.engine.startup_texts import MAX_REFUSAL, REFUSAL_LOW_LEVEL, SCREEN_MAX, startup_msg
 from tests.fixtures import game_msg
 
 
@@ -1237,3 +1238,32 @@ async def test_perform_passes_task_id_state_and_settings(
     act = Act(scenario, {"task_id": 3}, "test")
     await rig.loop._execute(act, await rig.store.record(datetime.now(UTC), act), dry_run=False)
     assert seen == [(task_id, True, True)]
+
+
+async def test_startup_max_turns_off_flag_and_notifies(world: World) -> None:
+    await world.settings.update(
+        lambda s: s.model_copy(
+            update={"features": s.features.model_copy(update={"startup": True})}
+        ),
+        changed_by="test",
+    )
+    await world.game.show(startup_msg(SCREEN_MAX))
+    await world.game.show(startup_msg(MAX_REFUSAL))
+    rig = Rig(world)
+    await rig.loop.step()
+    assert world.settings.current.features.startup is False
+    assert "startup_maxed" in rig.notes.codes
+
+
+async def test_startup_locked_notifies_once_per_episode(world: World) -> None:
+    await world.settings.update(
+        lambda s: s.model_copy(
+            update={"features": s.features.model_copy(update={"startup": True})}
+        ),
+        changed_by="test",
+    )
+    await world.game.show(startup_msg(REFUSAL_LOW_LEVEL))
+    rig = Rig(world)
+    await rig.loop.step()
+    await rig.loop.step()
+    assert rig.notes.codes.count("startup_locked") == 1

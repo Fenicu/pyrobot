@@ -16,6 +16,7 @@ from app.engine.state.model import (
     GorbushkaState,
     Obs,
     PriceState,
+    StartupState,
 )
 
 NOW = datetime(2026, 9, 26, 10, 0, tzinfo=UTC)
@@ -656,3 +657,84 @@ def test_simultaneous_timers_wait_for_first_reason_by_name() -> None:
     state = awake(stamina=10, cards=3, fastfood_ready_at=at, card_ready_at=at, motivation=0)
     decision = decide(state, BASE, NOW)
     assert decision == Wait(r(10), "card_ready", decision.candidates)
+
+
+def startup_state(**over: Any) -> CharacterState:
+    """Состояние с свежем экран «🔮Стартапы» (level, max, прогресс, цены пилю)."""
+    fields: dict[str, Any] = {
+        "level": 6,
+        "max": False,
+        "progress": 0,
+        "progress_needed": 1200,
+    }
+    fields.update(over)
+    state = awake(raw=5)
+    return state.model_copy(update={"startup": obs(StartupState(**fields), age_min=0)})
+
+
+STARTUP_ON = config({"features": {"startup": True}})
+
+
+def test_startup_pills_when_resources_allow() -> None:
+    decision = decide(startup_state(), STARTUP_ON, NOW)
+    assert act(decision) == ("deed:startup", {})
+    assert decision.reason == "startup level 6"  # type: ignore[union-attr]
+
+
+def test_startup_priority_over_ordinary_deeds() -> None:
+    # Ресурсов хватает и на «Пилить», и на дела: «Пилить» выше.
+    assert act(decide(startup_state(), STARTUP_ON, NOW)) == ("deed:startup", {})
+
+
+@pytest.mark.parametrize(
+    ("over", "verdict"),
+    [
+        ({"motivation": 1}, "no_motivation"),
+        ({"knowledge": 3}, "no_knowledge"),
+        ({"raw": 1}, "no_raw"),
+    ],
+)
+def test_startup_rejects_by_resource(over: dict[str, Any], verdict: str) -> None:
+    state = startup_state().model_copy(update={k: obs(v, age_min=0) for k, v in over.items()})
+    decision = decide(state, STARTUP_ON, NOW)
+    assert verdicts(decision)["deed:startup"] == verdict
+    assert act(decision)[0] != "deed:startup"
+
+
+def test_startup_reserved_when_only_reserve_blocks() -> None:
+    # 2🔥 держатся под бой Горбушки: «Пилить» (2🔥) мешает только запас.
+    g = GorbushkaState(state="waiting", won=1, total=4, next_fight_at=m(30), fight_cost=2)
+    state = startup_state().model_copy(
+        update={"gorbushka": obs(g, age_min=0), "motivation": obs(2, age_min=0)}
+    )
+    decision = decide(state, STARTUP_ON, NOW)
+    assert isinstance(decision, Wait)
+    assert verdicts(decision)["deed:startup"] == "reserved"
+
+
+def test_startup_not_when_max() -> None:
+    state = startup_state(max=True)
+    decision = decide(state, STARTUP_ON, NOW)
+    assert "deed:startup" not in verdicts(decision)
+    assert act(decision)[0] != "deed:startup"
+
+
+def test_startup_not_when_busy() -> None:
+    state = startup_state().model_copy(
+        update={"busy": obs(BusyState(activity="job", until=m(4)), age_min=0)}
+    )
+    decision = decide(state, STARTUP_ON, NOW)
+    assert isinstance(decision, Wait) and decision.until == w(4)
+    assert "deed:startup" not in verdicts(decision)
+
+
+def test_startup_locked_below_character_level() -> None:
+    state = startup_state().model_copy(update={"level": obs(10, age_min=0)})
+    decision = decide(state, STARTUP_ON, NOW)
+    assert verdicts(decision)["deed:startup"] == "startup_locked"
+    assert act(decision)[0] != "deed:startup"
+
+
+def test_startup_never_when_flag_off() -> None:
+    decision = decide(startup_state(), BASE, NOW)
+    assert "deed:startup" not in verdicts(decision)

@@ -4,11 +4,22 @@ import pytest
 
 from app.engine.scenarios.library import deed, free_item, refresh, run_scenario
 from app.engine.state.model import CharacterState
-from tests.engine.fakegame import World
+from tests.engine.fakegame import LIVE, World, running_world
 from tests.engine.parsing.test_activities import DCONV_DOG, HARVEST_DOG, JOB_SHORT, LEARN_LIGHT
 from tests.engine.scenarios.certify import certifies
 from tests.engine.scenarios.conftest import context
+from tests.engine.startup_texts import MAX_REFUSAL, SCREEN_MAX, START, startup_msg
 from tests.fixtures import game_msg
+
+
+@pytest.fixture
+async def startup_world() -> World:
+    settings = LIVE.model_copy(
+        update={"features": LIVE.features.model_copy(update={"startup": True})}
+    )
+    async for w in running_world(settings):
+        yield w
+
 
 STARTS = {
     "harvest": ("/harvest", 3517276),
@@ -59,6 +70,26 @@ async def test_deed_started_live_variants(
     assert (result.status, world.game.payloads()) == ("done", [command])
     busy = world.state.busy
     assert busy is not None and busy.value is not None and busy.value.activity == activity
+
+
+@certifies("deed:startup")
+async def test_startup_deed_starts_with_dos(startup_world: World) -> None:
+    startup_world.game.on_text("/dos", startup_msg(START))
+    result = await run_scenario(
+        deed, context(startup_world), CharacterState(), {"activity": "startup"}
+    )
+    assert (result.status, startup_world.game.payloads()) == ("done", ["/dos"])
+    busy = startup_world.state.busy
+    assert busy is not None and busy.value is not None and busy.value.activity == "startup"
+
+
+@certifies("deed:startup")
+async def test_startup_deed_refused_at_game_cap(startup_world: World) -> None:
+    startup_world.game.on_text("/dos", startup_msg(MAX_REFUSAL))
+    result = await run_scenario(
+        deed, context(startup_world), CharacterState(), {"activity": "startup"}
+    )
+    assert (result.status, result.reason) == ("refused", "startup_max")
 
 
 @certifies("deed:walk", "deed:confa")
@@ -254,6 +285,7 @@ REFRESHES = {
     "food": ("/to_eat", ("food", 3624997)),
     "gifts": ("/gifts", ("items", 3623585)),
     "gorbushka": ("/gorbushka", ("gorbushka", 3516741)),
+    "startup": ("🔮Стартап", startup_msg(SCREEN_MAX)),
 }
 
 

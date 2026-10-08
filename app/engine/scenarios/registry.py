@@ -113,7 +113,9 @@ class ScenarioSpec:
         return sorted(k for k, ok in self.required.items() if k not in params or not ok(params[k]))
 
 
-_CERTIFIED_DEEDS = frozenset({"harvest", "job", "learn", "dconv", "eat", "walk", "confa"})
+_CERTIFIED_DEEDS = frozenset(
+    {"harvest", "job", "learn", "dconv", "eat", "walk", "confa", "startup"}
+)
 
 
 def _specs() -> dict[str, ScenarioSpec]:

@@ -107,6 +107,7 @@ def test_catalog_specs() -> None:
             "gorbushka",
             "inventory",
             "profile",
+            "startup",
             "stocks",
             "upgrades",
         ],

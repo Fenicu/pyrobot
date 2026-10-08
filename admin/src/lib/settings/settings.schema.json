@@ -580,6 +580,11 @@
      "title": "Smoothie",
      "type": "boolean"
     },
+    "startup": {
+     "default": false,
+     "title": "Startup",
+     "type": "boolean"
+    },
     "stocks_dump": {
      "default": true,
      "title": "Stocks Dump",

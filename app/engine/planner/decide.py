@@ -50,6 +50,13 @@ NextWhy = Literal["personal", "team", "focus", "best", "artifact"]
 ARTIFACT_REREAD = timedelta(hours=3)
 # Экран «Транспорт» старше 6 часов перечитывается: новые сезонные виды, цены.
 TRIPS_MAX_AGE = timedelta(hours=6)
+# «Пилить»: раздел стартапов открыт с 18🎚; за заход уходит до 7📚; 🔩 — 2 до 7-го уровня стартапа,
+# дальше 3.
+STARTUP_MIN_LEVEL = 18
+STARTUP_KNOWLEDGE = 7
+STARTUP_RAW_FALLBACK = 3
+STARTUP_RAW_LEVEL = 7
+STARTUP_RAW_LOW = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,6 +333,7 @@ class _Planner(DailyTasks):
             self.metro,
             self.artifact_refresh,
             self.trip,
+            self.startup,
             self.gadget_wear_set,
             self.gadget_buy,
             self.deeds,
@@ -530,6 +538,50 @@ class _Planner(DailyTasks):
             + cfg.weight_resources * resources / cfg.resource_scale
         )
         return value / max(price.motivation, 1)
+
+    def startup(self, busy: BusyState | None) -> Decision | None:
+        """«Пилить» стартап: выше обычных дел, ниже метро и поездок. Уровень стартапа неизвестен —
+        перечитать экран; потолок игры — ничего (флаг выключит цикл); персонаж ниже 18🎚 —
+        отказ без /dos."""
+        if not self.cfg.features.startup or busy is not None:
+            return None
+        if (field := self.stale_of("startup", "motivation", "knowledge", "raw")) is not None:
+            return self.refresh("startup", field)
+        seen = self.s.startup
+        state = seen.value if seen is not None else None
+        if state is None or state.level is None:
+            return self.refresh("startup", "startup")
+        if state.max:
+            return None
+        char_level = self.value("level")
+        if char_level is not None and char_level < STARTUP_MIN_LEVEL:
+            self.reject("deed:startup", {}, "startup_locked")
+            return None
+        price = self.price("startup")
+        raw_needed = STARTUP_RAW_LOW if state.level < STARTUP_RAW_LEVEL else STARTUP_RAW_FALLBACK
+        end = self.now + self.duration("startup", price)
+        verdict = self.window_verdict(end)
+        have = self.value("motivation")
+        if verdict is None:
+            if have - self.motivation_reserve() - self.metro_reserve() < price.motivation:
+                alone = (
+                    have >= price.motivation
+                    and self.value("knowledge") >= STARTUP_KNOWLEDGE
+                    and self.value("raw") >= raw_needed
+                    and not self.gated("deed:startup")
+                )
+                verdict = "reserved" if alone else "no_motivation"
+                self.wake(self.value("motivation_next_at"), "motivation")
+            elif self.value("knowledge") < STARTUP_KNOWLEDGE:
+                verdict = "no_knowledge"
+            elif self.value("raw") < raw_needed:
+                verdict = "no_raw"
+            else:
+                verdict = self.gate("deed:startup")
+        if verdict is not None:
+            self.reject("deed:startup", {}, verdict)
+            return None
+        return self.act("deed:startup", {}, f"startup level {state.level}")
 
     def deeds(self, busy: BusyState | None) -> Decision | None:
         if not self.feature_on("deed:") or busy is not None:

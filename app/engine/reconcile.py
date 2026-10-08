@@ -22,6 +22,7 @@ from app.engine.gateway.types import (
     Verdict,
 )
 from app.engine.notify import NotifierPort
+from app.engine.parsing.activities import StartupScreen
 from app.engine.parsing.artifacts import ArtifactsScreen
 from app.engine.parsing.food import FoodMenu
 from app.engine.parsing.gadgets import UpgradesScreen
@@ -64,6 +65,7 @@ UPGRADES = RefreshSource("upgrades", "/upgrades", UpgradesScreen, ("upgrades", "
 STOCKS = RefreshSource(
     "stocks", "/stock", StockScreen, ("stock_holdings", "stock_quotes", "stock_limits")
 )
+STARTUP = RefreshSource("startup", "🔮Стартап", StartupScreen, ("startup",))
 _FOOD_COMMANDS = frozenset({"🌭Хот-дог", "🍕Пицца", "🍔Бургер", "🍌Банан", "/eat", "🍴Есть"})
 _INVENTORY_COMMANDS = frozenset({"/read_exp", "/use_card", "/unbox"})
 _GADGET_COMMANDS = ("/buy_", "/wear_", "/unwear_")

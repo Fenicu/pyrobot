@@ -183,6 +183,8 @@ class PlannerLoop:
         self._last_wait: DecisionRecord | None = None
         # Нехватка, которую последний запуск лотереи увидел сверх запасов: (тираж, валюты).
         self._lottery_short: tuple[int, dict[str, int]] | None = None
+        # Отказ «раздел стартапов закрыт» уже показан владельцу.
+        self._startup_locked_told = False
         self.current: str | None = None
         self.current_params: dict[str, Any] | None = None
         self.next_wake: datetime | None = None
@@ -224,6 +226,7 @@ class PlannerLoop:
 
     async def run(self) -> None:
         self.running = True
+        self._startup_locked_told = False
         try:
             while True:
                 self._wake.clear()
@@ -240,6 +243,7 @@ class PlannerLoop:
         # Без собственных решений цикл всё равно закрывает сбор артефакта по сроку.
         await self._artifact_tick()
         await self._gadget_tick()
+        await self._startup_tick()
         return self._max_idle_s
 
     async def run_manual(self) -> None:
@@ -300,6 +304,7 @@ class PlannerLoop:
         now = self._clock.now()
         await self._artifact_tick()
         await self._gadget_tick()
+        await self._startup_tick()
         if (ready := self._ready()) is not None:
             self.next_wake = None
             self._waiting = None
@@ -379,6 +384,42 @@ class PlannerLoop:
             await self._gadgets.tick()
         except Exception:
             log.exception("gadget tick failed")
+
+    async def _startup_tick(self) -> None:
+        """Режим прокачки стартапа по состоянию: стартап на потолке игры — флаг выключается и
+        приходит уведомление; отказ «раздел закрыт по уровню» — одно уведомление."""
+        if not self._settings.current.features.startup:
+            return
+        state = self._state()
+        seen = state.startup
+        startup = seen.value if seen is not None else None
+        if startup is not None and startup.max:
+            level = startup.level if startup.level is not None else "?"
+            await self._settings.update(
+                lambda s: s.model_copy(
+                    update={"features": s.features.model_copy(update={"startup": False})}
+                ),
+                changed_by="engine",
+            )
+            await self._notifier.notify(
+                "info",
+                "startup_maxed",
+                f"startup reached the game cap (level {level}), startup mode switched off",
+            )
+            return
+        refusal = state.last_refusal
+        if (
+            refusal is not None
+            and refusal.value is not None
+            and refusal.value.reason == "startup_level"
+            and not self._startup_locked_told
+        ):
+            self._startup_locked_told = True
+            await self._notifier.notify(
+                "warn",
+                "startup_locked",
+                "startup needs character level 18; startup mode paused",
+            )
 
     async def outlook(self) -> PlanView:
         """«План бота»: проход планировщика и состояние цикла."""

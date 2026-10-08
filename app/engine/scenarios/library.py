@@ -28,6 +28,7 @@ from app.engine.reconcile import (
     GORBUSHKA,
     INVENTORY,
     PROFILE,
+    STARTUP,
     STOCKS,
     UPGRADES,
 )
@@ -66,6 +67,7 @@ DEED_COMMANDS = {
     "walk": "/walk",
     "confa": "/confa",
     "rob": "🔫Грабить",
+    "startup": "/dos",
 }
 FOOD_BUTTONS = {
     "hotdog": "🌭Хот-дог",
@@ -74,7 +76,8 @@ FOOD_BUTTONS = {
     "banana": "🍌Банан",
 }
 REFRESH = {
-    s.name: s for s in (PROFILE, INVENTORY, FOOD, GIFTS, GORBUSHKA, ARTIFACTS, UPGRADES, STOCKS)
+    s.name: s
+    for s in (PROFILE, INVENTORY, FOOD, GIFTS, GORBUSHKA, ARTIFACTS, UPGRADES, STOCKS, STARTUP)
 }
 
 

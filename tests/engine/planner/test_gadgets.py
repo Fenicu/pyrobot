@@ -121,6 +121,7 @@ def test_step_order() -> None:
     names = [s.__name__ for s in planner(awake(), flags()).steps()]
     assert names[names.index("trip") :] == [
         "trip",
+        "startup",
         "gadget_wear_set",
         "gadget_buy",
         "deeds",

@@ -58,6 +58,7 @@ SOURCE = {
     **dict.fromkeys(("containers_small", "containers_medium"), "gifts"),
     "gorbushka": "gorbushka",
     **dict.fromkeys(("artifacts", "artifact_collect"), "artifacts"),
+    "startup": "startup",
     **dict.fromkeys(("gadgets", "bag", "bag_cap"), "inventory"),
     **dict.fromkeys(("upgrades", "upgrade_info"), "upgrades"),
     **dict.fromkeys(("stock_holdings", "stock_quotes", "stock_limits"), "stocks"),
