@@ -1248,9 +1248,11 @@ async def test_startup_max_turns_off_flag_and_notifies(world: World) -> None:
         ),
         changed_by="test",
     )
-    await world.game.show(startup_msg(SCREEN_LEVEL6))
-    await world.game.show(startup_msg(MAX_REFUSAL))
     rig = Rig(world)
+    # Снимок потолка — свежий относительно часов цикла, иначе тест зависит от времени запуска.
+    now = rig.clock.now()
+    await world.game.show(replace(startup_msg(SCREEN_LEVEL6), date=now))
+    await world.game.show(replace(startup_msg(MAX_REFUSAL), msg_id=2, date=now))
     await rig.loop.step()
     assert world.settings.current.features.startup is False
     assert "startup_maxed" in rig.notes.codes
