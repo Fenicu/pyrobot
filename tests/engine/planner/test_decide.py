@@ -27,6 +27,7 @@ QUIET = {
     "factory": False,
     "bulls": False,
     "tangerine": False,
+    "tangerine_gifts": False,
     "smoothie": False,
     "metro": False,
     "daily_tasks": False,
@@ -346,6 +347,56 @@ def test_containers_and_prizebox_during_deed() -> None:
     assert act(decide(awake(prizebox=True, busy=busy), BASE, NOW)) == ("prizebox", {})
     locked = awake(prizebox=True, prizebox_ready_at=m(90), busy=busy)
     assert decide(locked, BASE, NOW).until == w(4)  # type: ignore[union-attr]
+
+
+GIFTS_ON = config({"features": {"tangerine_gifts": True}})
+
+
+def test_tangerine_gifts_buy_and_open() -> None:
+    # 🍊 на подарок или подарки есть — запуск; занятый только покупает, без 🍊 — ждёт.
+    decision = decide(awake(tangerines=42, tangerine_gifts=0), GIFTS_ON, NOW)
+    assert act(decision) == ("tangerine_gifts", {})
+    assert isinstance(decision, Act) and decision.reason == "tangerines"
+    decision = decide(awake(tangerines=2, tangerine_gifts=3), GIFTS_ON, NOW)
+    assert act(decision) == ("tangerine_gifts", {})
+    assert isinstance(decision, Act) and decision.reason == "have"
+    busy = BusyState(activity="harvest", until=m(4))
+    state = awake(tangerines=42, tangerine_gifts=3, busy=busy)
+    assert act(decide(state, GIFTS_ON, NOW)) == ("tangerine_gifts", {"open": False})
+    during = decide(awake(tangerines=9, tangerine_gifts=3, busy=busy), GIFTS_ON, NOW)
+    assert during == Wait(w(4), "busy", during.candidates)
+    assert verdicts(during)["tangerine_gifts"] == "busy"
+    idle = decide(awake(tangerines=9, tangerine_gifts=0), GIFTS_ON, NOW)
+    assert "tangerine_gifts" not in verdicts(idle)
+
+
+def test_tangerine_gifts_refresh_and_flag() -> None:
+    decision = decide(awake(tangerines=42), GIFTS_ON, NOW)
+    assert act(decision) == ("refresh", {"source": "gifts"})
+    assert verdicts(decision)["tangerine_gifts"] == "stale:tangerine_gifts"
+    old = awake(tangerines=Obs(value=42, at=m(-7 * 60)), tangerine_gifts=0)
+    assert verdicts(decide(old, GIFTS_ON, NOW))["tangerine_gifts"] == "stale:tangerines"
+    off = decide(awake(tangerines=42, tangerine_gifts=3), BASE, NOW)
+    assert "tangerine_gifts" not in verdicts(off)
+
+
+def test_tangerine_gifts_after_prizebox() -> None:
+    state = awake(tangerines=42, tangerine_gifts=0, prizebox=True)
+    assert act(decide(state, GIFTS_ON, NOW)) == ("prizebox", {})
+    assert (
+        act(
+            decide(
+                awake(
+                    tangerines=42,
+                    tangerine_gifts=0,
+                    gorbushka=GorbushkaState(state="meeting", fight_cost=1),
+                ),
+                GIFTS_ON,
+                NOW,
+            )
+        )[0]
+        == "tangerine_gifts"
+    )
 
 
 def test_uncertified_candidate_is_skipped() -> None:

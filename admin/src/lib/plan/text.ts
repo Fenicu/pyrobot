@@ -54,6 +54,7 @@ export const SCENARIO: Record<string, string> = {
 	factory_report: '🏭 отчёт о фабрике',
 	bulls_join: '🐂 бой с биржевиками',
 	tangerine: '🍊 мандарин',
+	tangerine_gifts: '🎁 подарки за 🍊',
 	smoothie: '🍹 смузи',
 	metro: '🚇 метро',
 	daily_refresh: '📋 перечитать задания',
@@ -195,7 +196,9 @@ const FIELD_TEXT: Record<string, string> = {
 	stock_holdings: 'портфель акций',
 	stock_quotes: 'котировки',
 	stock_limits: 'лимиты биржи',
-	startup: 'стартап'
+	startup: 'стартап',
+	tangerines: '🍊',
+	tangerine_gifts: 'подарки за 🍊'
 };
 
 /** Отклонённый командный вариант главы: `team <тип> <N>🔥` или `team <тип> ?🔥`. */

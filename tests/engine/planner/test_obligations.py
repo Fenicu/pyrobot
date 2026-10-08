@@ -27,6 +27,7 @@ PHASE4 = (
     "factory",
     "bulls",
     "tangerine",
+    "tangerine_gifts",
     "smoothie",
     "metro",
     "lottery",

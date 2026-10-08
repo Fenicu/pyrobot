@@ -55,7 +55,9 @@ SOURCE = {
         "inventory",
     ),
     **dict.fromkeys(("food_stock", "fastfood_ready_at"), "food"),
-    **dict.fromkeys(("containers_small", "containers_medium"), "gifts"),
+    **dict.fromkeys(
+        ("containers_small", "containers_medium", "tangerines", "tangerine_gifts"), "gifts"
+    ),
     "gorbushka": "gorbushka",
     **dict.fromkeys(("artifacts", "artifact_collect"), "artifacts"),
     "startup": "startup",
@@ -80,6 +82,7 @@ FEATURE = {
     "factory_report": "factory",
     "bulls_join": "bulls",
     "tangerine": "tangerine",
+    "tangerine_gifts": "tangerine_gifts",
     "smoothie": "smoothie",
     "metro": "metro",
     "metro_resume": "metro",

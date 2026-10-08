@@ -5,10 +5,17 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from app.engine.bus import Delivery
+from app.engine.commands import TANGERINE_GIFT_SHOP
 from app.engine.events import Event
 from app.engine.gateway.types import Match, Verdict
 from app.engine.parsing.activities import ActivityStarted
 from app.engine.parsing.food import FastfoodEaten, FoodMenu
+from app.engine.parsing.gifts import (
+    TANGERINE_GIFT_PRICE,
+    TangerineGiftBought,
+    TangerineGiftOpened,
+    TangerineGiftShop,
+)
 from app.engine.parsing.gorbushka import GorbushkaFight, GorbushkaNotice, GorbushkaScreen
 from app.engine.parsing.items import (
     BookRead,
@@ -39,6 +46,7 @@ from app.engine.scenarios.context import (
     Step,
     StepResult,
     expect_button,
+    expect_edit,
     expect_events,
 )
 from app.engine.state.model import CharacterState
@@ -171,6 +179,62 @@ async def _open_container(ctx: ScenarioContext, item: str) -> ScenarioResult:
         if count == 0:
             return ScenarioResult("nothing", "no_containers")
         return finish(await ctx.send(command, expect_events(ContainerOpened)))
+
+
+# За запуск открывается не больше 10 подарков за 🍊 — остальные следующим.
+TANGERINE_GIFTS_BATCH = 10
+
+
+async def tangerine_gifts(
+    ctx: ScenarioContext, state: CharacterState, params: Params
+) -> ScenarioResult:
+    """/gifts → при 🍊 на подарок «🎁 за 10🍊» и самый большой вариант количества → /unbox_t по
+    одному. `open` = False (персонаж занят, открытие игра не даст) — только покупка. Покупка
+    и открытие — с экрана подарков, без безопасных точек: открывали их только с него."""
+    async with ctx.lease("tangerine_gifts"):
+        screen = require(await ctx.send(GIFTS.command, expect_events(GiftsScreen))).first(
+            GiftsScreen
+        )
+        if screen is None:
+            raise ScenarioStopped("unexpected_screen")
+        have, bought = screen.tangerine_gifts or 0, 0
+        if (screen.tangerines or 0) >= TANGERINE_GIFT_PRICE:
+            have, bought = await _buy_tangerine_gifts(ctx)
+        if have <= 0 or not params.get("open", True):
+            if bought:
+                return ScenarioResult("done")
+            return ScenarioResult("nothing", "no_gifts" if have <= 0 else "busy")
+        for opened in range(min(have, TANGERINE_GIFTS_BATCH)):
+            step = await ctx.send("/unbox_t", expect_events(TangerineGiftOpened))
+            if step.step is not Step.OK:
+                # Купленное или открытое — уже итог запуска; остальное откроет следующий.
+                return ScenarioResult("done", step.reason) if bought or opened else finish(step)
+        return ScenarioResult("done")
+
+
+async def _buy_tangerine_gifts(ctx: ScenarioContext) -> tuple[int, int]:
+    """Экран покупки и клик по самому большому варианту (на сколько хватает 🍊): подарков после
+    покупки и сколько куплено. Кнопок нет (🍊 не хватает) — без покупки."""
+    step = require(await ctx.send(TANGERINE_GIFT_SHOP, expect_events(TangerineGiftShop)))
+    shop = step.first(TangerineGiftShop)
+    if shop is None or step.delivery is None:
+        raise ScenarioStopped("unexpected_screen", step)
+    if not shop.options:
+        return shop.gifts, 0
+    msg = step.delivery.msg
+    clicked = require(
+        await ctx.click(
+            msg.msg_id,
+            f"g_tangerines_small_{shop.options[-1]}",
+            expect_edit(msg.msg_id, TangerineGiftBought),
+            msg.revision,
+            content=msg.content_hash(),
+        )
+    )
+    bought, after = clicked.first(TangerineGiftBought), clicked.first(TangerineGiftShop)
+    if bought is None or after is None:
+        raise ScenarioStopped("unexpected_screen", clicked)
+    return after.gifts, bought.count
 
 
 async def refresh(ctx: ScenarioContext, state: CharacterState, params: Params) -> ScenarioResult:

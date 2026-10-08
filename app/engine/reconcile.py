@@ -79,7 +79,7 @@ def sources_for(obligation: Obligation) -> tuple[RefreshSource, ...]:
         return (PROFILE, FOOD)
     if text in _INVENTORY_COMMANDS:
         return (PROFILE, INVENTORY)
-    if text.startswith("/unbox_"):
+    if text.startswith("/unbox_") or data.startswith("g_tangerines_"):
         return (PROFILE, GIFTS)
     if data.startswith("gorbushka_"):
         return (PROFILE, GORBUSHKA)

@@ -147,6 +147,8 @@ def _specs() -> dict[str, ScenarioSpec]:
             required={"chat": _int(), "reply_to": _int()},
         ),
         ScenarioSpec("smoothie", obligations.smoothie, True, required={"recipe": _recipe}),
+        # `open` необязательный (у `Param` нет типа bool): без него — и покупка, и открытие.
+        ScenarioSpec("tangerine_gifts", library.tangerine_gifts, True),
         ScenarioSpec("metro", metro.metro, True),
         ScenarioSpec("daily_refresh", daily.daily_refresh, True),
         ScenarioSpec("daily_pick", daily.daily_pick, True, required={"task": _task}),

@@ -595,6 +595,11 @@
      "title": "Tangerine",
      "type": "boolean"
     },
+    "tangerine_gifts": {
+     "default": true,
+     "title": "Tangerine Gifts",
+     "type": "boolean"
+    },
     "team_pick": {
      "default": true,
      "title": "Team Pick",

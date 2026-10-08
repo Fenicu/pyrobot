@@ -191,7 +191,8 @@ describe('значимые поля state', () => {
 	});
 
 	it('поля, которых планировщик не читает, план не перечитывают', () => {
-		expect(significant({ exp: 1, skills: {}, tangerines: 3, glory: 5 })).toBe(false);
+		expect(significant({ exp: 1, skills: {}, glory: 5 })).toBe(false);
+		expect(significant({ tangerines: 3 })).toBe(true);
 		expect(significant({ exp: 1, money: 5 })).toBe(true);
 	});
 });

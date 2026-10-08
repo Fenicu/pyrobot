@@ -64,6 +64,8 @@ def _snapshot() -> dict[str, Any]:
     data["motivation"] = _seen(5)
     data["sleep_deadline"] = _seen(_iso(NOW + timedelta(hours=8)), "derived")
     data["metro_ready_at"] = _seen(_iso(NOW + timedelta(minutes=50)), "derived")
+    # Подарков за 🍊 на том же экране подарков нет (в снимке с прода этого поля ещё не было).
+    data["tangerine_gifts"] = {**data["containers_small"], "value": 0}
     # Транспорт с экрана минуту назад: оба вида на кулдауне — в плане таймеры готовности.
     data["trips"] = _seen(
         {

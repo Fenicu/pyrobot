@@ -91,6 +91,7 @@ class FeaturesSection(BaseModel):
     stocks_dump: bool = True
     smoothie: bool = True
     tangerine: bool = True
+    tangerine_gifts: bool = True
     lottery: bool = True
     casino: bool = Field(default=False, json_schema_extra=UNUSED)
     arena: bool = Field(default=False, json_schema_extra=UNUSED)

@@ -113,6 +113,7 @@ QUIET = LIVE.model_copy(
                 "factory": False,
                 "bulls": False,
                 "tangerine": False,
+                "tangerine_gifts": False,
                 "smoothie": False,
                 "sleep": False,
                 "metro": False,

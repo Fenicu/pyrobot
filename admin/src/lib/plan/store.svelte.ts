@@ -15,7 +15,6 @@ export const IGNORED = new Set([
 	'schema_version',
 	'exp',
 	'exp_next',
-	'tangerines',
 	'skills',
 	'woke_at',
 	'last_refusal',

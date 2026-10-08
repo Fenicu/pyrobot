@@ -55,6 +55,8 @@ GADGET_UNWEAR = re.compile(r"/unwear_[a-z][0-9]+\Z")
 # «К персонажу» из итога метро: выход из забега, если игра его не завершила. Без подтверждения
 # шлюз пропускает только шаг сценария метро.
 MAIN = re.compile(r"/main\Z")
+# Кнопка подарков за 🍊: только открывает экран выбора количества (кнопки g_tangerines_small_<N>).
+TANGERINE_GIFT_SHOP = "🎁 за 10🍊"
 UPGRADE_CLICK = re.compile(rf"up_(?P<slot>{_UP_SLOTS})_(?P<grade>low|middle|high)(?:_1_accept)?\Z")
 
 TEXT_RULES: tuple[Rule, ...] = (
@@ -120,7 +122,6 @@ TEXT_RULES: tuple[Rule, ...] = (
         "🔩Разрабатывать",
         "⚪️ → 🔵",
         "🔵 → 🔴",
-        "🎁 за 10🍊",
     ),
     *_exact(
         _N,
@@ -299,6 +300,7 @@ TEXT_RULES: tuple[Rule, ...] = (
         "📚 => 🤑",
         "🔩 => 🤑",
         "⚙️ => 🤑",
+        TANGERINE_GIFT_SHOP,
     ),
     *_re(
         _A,
@@ -356,6 +358,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"ts_\w+_confirm\Z",
         r"rob_awake_\d+\Z",
         r"tickets_\w+_\d+\Z",
+        r"g_tangerines_small_\d+\Z",
     ),
 )
 
@@ -402,6 +405,7 @@ _FEATURE_TEXT: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         ("(?:" + "|".join(re.escape(v.button) for v in VEHICLES.values()) + r")\Z", "trips"),
         (r"/read_exp\Z", "books"),
         (r"(🌭Хот-дог|🍕Пицца|🍔Бургер|🍌Банан)\Z", "fastfood"),
+        ("(/unbox_t|" + re.escape(TANGERINE_GIFT_SHOP) + r")\Z", "tangerine_gifts"),
         (r"(/use_card|/unbox(_\w+)?)\Z", "cards_containers"),
         (r"(/levelup|\+1 🔨Практика|\+1 🎓Теория|\+1 🐿Хитрость|\+1 🐢Мудрость)\Z", "levelup"),
         (r"(/tickets_all|(💵|📚|🔩|⚙️) => 🤑)\Z", "lottery"),
@@ -435,6 +439,7 @@ _FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"ts_\w+_confirm\Z", "daily_tasks"),
         (r"rob_awake_\d+\Z", "robbery_defense"),
         (r"tickets_\w+_\d+\Z", "lottery"),
+        (r"g_tangerines_small_\d+\Z", "tangerine_gifts"),
     )
 )
 # Не тратят ничего: блок трат (неизвестный исход, рестарт до сверки) их не держит. Проснуться при
@@ -446,8 +451,8 @@ _SPEND_FREE_CALLBACK = re.compile(
     r"|npc_low_accept|npc_low_decline|npc_high_accept|npc_high_decline))\Z"
 )
 
-# /main только показывает профиль.
-_SPEND_FREE_TEXT = (MAIN,)
+# /main только показывает профиль, «🎁 за 10🍊» — экран выбора количества подарков.
+_SPEND_FREE_TEXT = (MAIN, re.compile(re.escape(TANGERINE_GIFT_SHOP) + r"\Z"))
 
 
 def feature_of_text(text: str) -> str | None:

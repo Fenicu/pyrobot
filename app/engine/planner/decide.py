@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from app.engine.gametime import to_msk
+from app.engine.parsing.gifts import TANGERINE_GIFT_PRICE
 from app.engine.parsing.trips import TRIP_SPAN
 from app.engine.planner.base import (
     READY_SLACK,
@@ -330,6 +331,7 @@ class _Planner(DailyTasks):
             self.card,
             self.containers,
             self.prizebox,
+            self.tangerine_gifts,
             self.gorbushka,
             self.tangerine,
             self.smoothie,
@@ -480,6 +482,22 @@ class _Planner(DailyTasks):
             self.wake(ready, "prizebox_ready")
             return None
         return self.act("prizebox", {}, "prizebox_ready")
+
+    def tangerine_gifts(self, busy: BusyState | None) -> Decision | None:
+        """Подарки за 🍊: купить на все 🍊 и открыть. 🔥 не тратят; покупку игра даёт и занятому
+        (`open` = False — только она), открытие — только свободному."""
+        if not self.feature_on("tangerine_gifts"):
+            return None
+        if (field := self.stale_of("tangerines", "tangerine_gifts")) is not None:
+            return self.refresh("tangerine_gifts", field)
+        buy = self.value("tangerines") >= TANGERINE_GIFT_PRICE
+        if not buy and self.value("tangerine_gifts") <= 0:
+            return None
+        if busy is not None and not buy:
+            self.reject("tangerine_gifts", {}, "busy")
+            return None
+        params = {} if busy is None else {"open": False}
+        return self.act("tangerine_gifts", params, "tangerines" if buy else "have")
 
     # --- платное
 

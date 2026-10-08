@@ -48,6 +48,8 @@ describe('словари плана', () => {
 		expect(verdictText('stale:motivation')).toBe('нужно обновить: 🔥');
 		expect(verdictText('stale:woke_at')).toBe('нужно обновить: woke_at');
 		expect(verdictText('stale:trips')).toBe('нужно обновить: транспорт');
+		expect(verdictText('stale:tangerine_gifts')).toBe('нужно обновить: подарки за 🍊');
+		expect(scenarioText('tangerine_gifts')).toBe('🎁 подарки за 🍊');
 	});
 
 	it('поездки: готовность вида, ожидание итога, обновление экрана транспорта', () => {

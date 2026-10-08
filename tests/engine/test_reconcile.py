@@ -149,6 +149,8 @@ def test_sources_mapping() -> None:
     assert sources_for(ob("🌭Хот-дог")) == (PROFILE, FOOD)
     assert sources_for(ob("/read_exp")) == (PROFILE, INVENTORY)
     assert sources_for(ob("/unbox_ls")) == (PROFILE, GIFTS)
+    assert sources_for(ob("/unbox_t")) == (PROFILE, GIFTS)
+    assert sources_for(ob(data="g_tangerines_small_5")) == (PROFILE, GIFTS)
     assert sources_for(ob(data="gorbushka_fight")) == (PROFILE, GORBUSHKA)
 
 

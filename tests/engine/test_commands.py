@@ -432,3 +432,23 @@ def test_spends_nothing_text(text: str, free: bool) -> None:
     from app.engine.commands import spends_nothing_text
 
     assert spends_nothing_text(text) is free
+
+
+def test_tangerine_gift_commands() -> None:
+    # Покупка подарков за 🍊: кнопка экрана и выбор количества — действия механики tangerine_gifts,
+    # как и открытие /unbox_t; контейнеры остаются за cards_containers.
+    from app.engine.commands import spends_nothing_text
+
+    assert classify_text("🎁 за 10🍊") is A
+    assert classify_text("/unbox_t") is A
+    for n in ("1", "3", "23"):
+        assert classify_callback(f"g_tangerines_small_{n}") is A
+        assert feature_of_callback(f"g_tangerines_small_{n}") == "tangerine_gifts"
+    assert classify_callback("g_tangerines_small_") is F
+    assert classify_callback("g_tangerines_big_1") is F
+    assert feature_of_text("🎁 за 10🍊") == feature_of_text("/unbox_t") == "tangerine_gifts"
+    assert feature_of_text("/unbox_ls") == feature_of_text("/unbox_lm") == "cards_containers"
+    assert feature_of_text("/unbox") == "cards_containers"
+    # Кнопка только открывает экран выбора: неизвестный исход не держит траты.
+    assert spends_nothing_text("🎁 за 10🍊")
+    assert not spends_nothing_callback("g_tangerines_small_1")
