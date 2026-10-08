@@ -115,6 +115,22 @@ def test_legs_showcase() -> None:
     assert (e.offers[1].name, e.offers[1].level, e.offers[1].price) == ("Термо-штаны", 11, 79)
 
 
+def test_head_showcase_with_worn_item() -> None:
+    e = only(ShopScreen, texts.SHOP_HEAD_WORN_PROD)
+    assert (e.slot, len(e.offers), e.money) == ("head", 14, 315)
+    assert e.offers[1] == ShopOffer(
+        tier=2,
+        name="Очки с диоптриями",
+        bonuses={"theory": 2, "wisdom": 2},
+        level=11,
+        price=79,
+        worn=True,
+    )
+    assert e.offers[2] == ShopOffer(
+        tier=3, name="Монокль", bonuses={"theory": 4, "wisdom": 3}, level=12, price=314
+    )
+
+
 def test_no_money_refusal() -> None:
     assert events(NO_MONEY_RIGHT14) == [Refused(reason="gadget_no_money", need=59444)]
 

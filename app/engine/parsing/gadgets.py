@@ -14,8 +14,10 @@ _SHOP_NOTE = (
     "Если гаджет разработан какой-либо компанией, то 10% от цены покупки поступает на счёт "
     "этой компании."
 )
+# Надетый гаджет на витрине — со значком слота впереди и « - надет» в конце.
 _OFFER = re.compile(
-    r"^(?P<name>[^\n]+?) \((?P<stats>[^()\n]*)\)\n"
+    r"^(?:[^\w\s]\ufe0f?[ \xa0])?(?P<name>[^\n]+?) \((?P<stats>[^()\n]*)"
+    r"\)(?P<worn> - надет)?\n"
     r"(?:Требования: (?P<level>\d+) уровень\n)?"
     r"💵Цена: \$(?P<price>" + NUM + r")\n/buy_(?P<slot>[a-z]+?)(?P<tier>\d+)$",
     re.M,
@@ -66,11 +68,13 @@ class ShopOffer:
     bonuses: dict[str, int]
     level: int | None
     price: int
+    worn: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ShopScreen(Event):
-    """Витрина слота: позиции по порядку тиров и деньги (`💵Твои деньги`)."""
+    """Витрина слота: позиции по порядку тиров и деньги (`💵Твои деньги`); надетый гаджет
+    помечен значком слота и « - надет» (`ShopOffer.worn`)."""
 
     kind: ClassVar[str] = "gadget_shop"
     slot: str
@@ -198,6 +202,7 @@ def _shop(text: str) -> list[Event]:
                 bonuses=parsed[0],
                 level=int(m["level"]) if m["level"] else None,
                 price=num(m["price"]),
+                worn=m["worn"] is not None,
             )
         )
         slots.add(m["slot"])

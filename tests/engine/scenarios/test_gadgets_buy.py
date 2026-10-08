@@ -22,6 +22,7 @@ from tests.engine.gadget_texts import (
     INV_BOUGHT,
     NETWORK,
     NO_MONEY_RIGHT14,
+    SHOP_HEAD_WORN_PROD,
     SHOP_LEGS,
     SHOP_MENU,
     SHOP_RIGHT,
@@ -193,6 +194,15 @@ def shop_legs(world: World) -> None:
     world.game.on_text("/buy_legs2", game_text(BOUGHT_WORN_LEGS2))
 
 
+def shop_head(world: World) -> None:
+    world.game.on_text("🕸Сеть", game_text(NETWORK))
+    world.game.on_text("🏪Магазин", game_text(SHOP_MENU))
+    world.game.on_text("🕶Голова", game_text(SHOP_HEAD_WORN_PROD))
+    bought = BOUGHT_RIGHT1.replace("Китайская мобила (+1🔨)", "Монокль (+4🎓, +3🐢)")
+    assert bought != BOUGHT_RIGHT1
+    world.game.on_text("/buy_head3", game_text(bought))
+
+
 @certifies("gadget_buy")
 async def test_buy_into_empty_slot_is_worn_by_game(live_buying: World) -> None:
     shop_legs(live_buying)
@@ -210,6 +220,18 @@ async def test_buy_into_empty_slot_is_worn_by_game(live_buying: World) -> None:
         "sold": [],
     }
     assert live_buying.game.payloads() == ["🕸Сеть", "🏪Магазин", "👞Ноги", "/buy_legs2"]
+
+
+@certifies("gadget_buy")
+async def test_replace_head_from_showcase_with_worn_item(live_buying: World) -> None:
+    # Витрина с надетым гаджетом («🕶 … - надет») разбирается, покупка идёт по каталогу.
+    shop_head(live_buying)
+    status, reason, details = await run(
+        live_buying, rule="replace", slot="head", tier=3, price=314, reserve=0, wear=False
+    )
+    assert (status, reason) == ("done", "bought")
+    assert details["bought"] == "Монокль" and details["worn"] is False
+    assert live_buying.game.payloads() == ["🕸Сеть", "🏪Магазин", "🕶Голова", "/buy_head3"]
 
 
 @certifies("gadget_buy")
