@@ -46,6 +46,8 @@ _ENTRANCE = re.compile(
 _COOLDOWN = re.compile(
     r"\AТы уже побывал в метро недавно\. До следующего спуска (?P<t>" + DURATION + r")"
 )
+# Ответ на «🚇Метро», когда персонаж уже снаружи (08.10: через 3,5 ч после выброса обвалом).
+_LEFT_METRO = "Ты уже покинул метро"
 _BUFFS = re.compile(
     r"\AБафы для метро\n.*?^У тебя\n🌐Sw-coin: (?P<coins>" + NUM + r")\n"
     r"🕳Жетоны: (?P<tokens>" + NUM + r")\Z",
@@ -404,6 +406,8 @@ def recognize_metro(msg: IncomingMessage) -> list[Event]:
         return [MetroEntrance(cost=int(m["cost"]), motivation=int(m["mot"]))]
     if m := _COOLDOWN.match(text):
         return [Refused(reason="metro_cooldown", left_s=dur(m["t"]))]
+    if text.startswith(_LEFT_METRO):
+        return [Refused(reason="metro_left")]
     if text.startswith("Бафы для метро\n"):
         return _buffs(msg, text)
     if m := _LOOT.match(text):

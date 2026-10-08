@@ -996,6 +996,13 @@ CONFIRM_BUTTONS = (
     Button("👎Боюсь", 0, 1, "up_right_low_decline"),
 )
 
+# Подтверждение продажи гаджета из рюкзака (06.10.2026, аккаунт 1, вручную; journal 22421).
+SELL_CONFIRM = "Ты собираешься продать б/у ⚪️3\xa0Китайская мобила (+1🔨) по цене $1\xa0💵."
+SELL_CONFIRM_BUTTONS = (
+    Button("👍Продаю!", 0, 0, "sell_11_accept"),
+    Button("👎Потом", 0, 1, "default_no_action"),
+)
+
 
 def game_edit(
     text: str,

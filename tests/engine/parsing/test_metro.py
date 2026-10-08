@@ -25,6 +25,7 @@ from app.engine.parsing.metro import (
 )
 from app.engine.parsing.refusals import Refused
 from app.engine.types import Button, IncomingMessage
+from tests.engine.artifact_texts import game_text
 from tests.fixtures import game_msg, game_versions
 
 RUN = 3624441
@@ -93,6 +94,16 @@ def test_entrance_and_cooldown() -> None:
     assert recognize_metro(game_msg("metro", 3624531)) == [
         Refused(reason="metro_cooldown", left_s=15 * 3600 + 30 * 60)
     ]
+
+
+# Ответ на «🚇Метро» через 3,5 ч после выброса обвалом (08.10.2026, аккаунт 3): персонаж снаружи.
+METRO_LEFT = "Ты уже покинул метро"
+
+
+def test_metro_left_refusal() -> None:
+    msg = game_text(METRO_LEFT)
+    assert recognize_metro(msg) == [Refused(reason="metro_left")]
+    assert [r.__name__ for r in game_recognizers() if r(msg)] == ["recognize_metro"]
 
 
 def test_buffs_screens() -> None:

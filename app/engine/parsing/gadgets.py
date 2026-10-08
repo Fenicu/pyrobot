@@ -56,6 +56,11 @@ _DECLINED = re.compile(r"\A👎Отказался от улучшения\.\n\n"
 _CONFIRM_SET = re.compile(
     r"\AПодтверждение при наложении апгрейдов (?P<state>включено|отключено)\."
 )
+# Подтверждение продажи гаджета из рюкзака; ответ кнопками sell_<N>_accept / default_no_action.
+_SELL_CONFIRM = re.compile(
+    r"\AТы собираешься продать б/у (?:(?P<grade>[^\w\s]+)(?P<level>\d+)[ \xa0])?(?P<name>[^\n]+?)"
+    r" \((?P<stats>[^()\n]*)\) по цене \$(?P<price>" + NUM + r")[\xa0 ]?💵\.\Z"
+)
 _UP_BUTTON = re.compile(
     r"^up_(?P<slot>[a-z]+)_(?P<kind>low|middle|high)(?:_(?P<n>\d+)_accept|_decline)?$"
 )
@@ -185,6 +190,18 @@ class UpgradeDeclined(Event):
 class UpgradeConfirmSet(Event):
     kind: ClassVar[str] = "upgrade_confirm_set"
     on: bool
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class GadgetSellConfirm(Event):
+    """Запрос подтверждения продажи гаджета: бот его не продаёт, экран только узнаётся."""
+
+    kind: ClassVar[str] = "gadget_sell_confirm"
+    name: str
+    grade: str | None
+    level: int | None
+    bonuses: dict[str, int]
+    price: int
 
 
 def _shop(text: str) -> list[Event]:
@@ -356,6 +373,21 @@ def _declined(text: str, slot: str) -> list[Event]:
     return [UpgradeDeclined(up_slot=slot, name=m["name"], grade=m["grade"], level=_level(m) or 0)]
 
 
+def _sell_confirm(m: re.Match[str]) -> list[Event]:
+    parsed = gadget_stats(m["stats"])
+    if parsed is None:
+        return []
+    return [
+        GadgetSellConfirm(
+            name=m["name"],
+            grade=m["grade"],
+            level=_level(m),
+            bonuses=parsed[0],
+            price=num(m["price"]),
+        )
+    ]
+
+
 def recognize_gadgets(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     if _SHOP_NOTE in text:
@@ -368,6 +400,8 @@ def recognize_gadgets(msg: IncomingMessage) -> list[Event]:
         return _upgrades(text)
     if m := _CONFIRM_SET.match(text):
         return [UpgradeConfirmSet(on=m["state"] == "включено")]
+    if m := _SELL_CONFIRM.match(text):
+        return _sell_confirm(m)
     slot = _up_slot(msg)
     if slot is None:
         return []

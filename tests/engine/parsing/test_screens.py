@@ -3,6 +3,7 @@ from dataclasses import replace
 import pytest
 
 from app.engine.events import Event
+from app.engine.parsing import game_recognizers
 from app.engine.parsing.common import Rewards
 from app.engine.parsing.screens import (
     BattleMenu,
@@ -16,6 +17,7 @@ from app.engine.parsing.screens import (
     TopWorker,
     recognize_screens,
 )
+from tests.engine import info_texts as info
 from tests.engine.artifact_texts import game_text
 from tests.engine.gadget_texts import SHOP_MENU, UPGRADES
 from tests.engine.scenarios.test_deeds import FULL_PROFILE
@@ -64,6 +66,23 @@ def test_full_profile_with_ceo_message() -> None:
 
 def test_upgrades_screen_is_not_info_anymore() -> None:
     assert recognize_screens(game_text(UPGRADES)) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "name"),
+    [
+        ("REFERRAL", "referral"),
+        ("REFERRAL_INVITE", "referral"),
+        ("REFERRAL_LINK", "referral"),
+        ("HELP_SETS", "help"),
+        ("HELP_FAQ", "help"),
+        ("HELP_SPRING", "help"),
+    ],
+)
+def test_referral_and_help_pages_are_info(text: str, name: str) -> None:
+    msg = game_text(getattr(info, text))
+    assert recognize_screens(msg) == [InfoScreen(name=name)]
+    assert [r.__name__ for r in game_recognizers() if r(msg)] == ["recognize_screens"]
 
 
 def test_shop_menu_is_info() -> None:

@@ -6,6 +6,7 @@ from app.engine.events import Event, Unrecognized
 from app.engine.parsing import default_parser
 from app.engine.parsing.gadgets import (
     GadgetBought,
+    GadgetSellConfirm,
     GadgetUnworn,
     GadgetWorn,
     ShopOffer,
@@ -39,6 +40,8 @@ from tests.engine.gadget_texts import (
     OK_1,
     OK_2,
     OK_3,
+    SELL_CONFIRM,
+    SELL_CONFIRM_BUTTONS,
     SHOP_LEGS,
     SHOP_MENU,
     SHOP_RIGHT,
@@ -272,6 +275,19 @@ def test_confirm_and_decline() -> None:
 def test_confirm_mode_answers() -> None:
     assert events(UCON) == [UpgradeConfirmSet(on=True)]
     assert events(UCOFF) == [UpgradeConfirmSet(on=False)]
+
+
+def test_sell_confirm() -> None:
+    expected = GadgetSellConfirm(
+        name="Китайская мобила", grade="⚪️", level=3, bonuses={"practice": 1}, price=1
+    )
+    assert events(SELL_CONFIRM, buttons=SELL_CONFIRM_BUTTONS) == [expected]
+    plain = SELL_CONFIRM.replace("⚪️3\xa0", "").replace("$1\xa0", "$1 205 ")
+    assert events(plain) == [
+        GadgetSellConfirm(
+            name="Китайская мобила", grade=None, level=None, bonuses={"practice": 1}, price=1205
+        )
+    ]
 
 
 _BUTTONS = {
