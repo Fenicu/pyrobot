@@ -1357,20 +1357,15 @@ def _metro_left(p: _Patch, loot: dict[str, int], stamina: int | None) -> None:
 
 def _exit_confirmed(p: _Patch, events: Sequence[Event]) -> None:
     """Выход после итога подтверждает только ответ, которого в забеге не бывает: профиль (ответ
-    на `/compact` и `/main`) и отказ по кулдауну метро; экран входа и выброс снимают отметку
-    сами. Пуши игры (мандарины, ограбление, конец дела) приходят и в метро — не подтверждают."""
+    на `/compact` и `/main`) и отказ игры на команду (в забеге она молчит: «Нажми /levelup»,
+    кулдаун метро); экран входа и выброс снимают отметку сами. Пуши игры (мандарины,
+    ограбление, конец дела) приходят и в метро — не подтверждают."""
     inside: Obs[MetroRunRef | None] | None = p.get("metro_message")
     run = inside.value if inside is not None else None
-    if run is None or run.exit_at is None or run.message_id == p.msg_id:
+    if run is None or run.exit_at is None or run.message_id == p.msg_id or p.at < run.exit_at:
         return
-    if any(_outside(e) for e in events):
+    if any(isinstance(e, ProfileCompact | Refused | Busy) for e in events):
         p.snap("metro_message", None)
-
-
-def _outside(e: Event) -> bool:
-    return isinstance(e, ProfileCompact) or (
-        isinstance(e, Refused) and e.reason == "metro_cooldown"
-    )
 
 
 def _sale_ends(p: _Patch, draw_in_s: int) -> datetime:

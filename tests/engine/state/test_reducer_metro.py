@@ -379,3 +379,23 @@ def test_kick_after_confirmed_exit_is_not_reversed() -> None:
     state, effects = reducer.reduce(state, _kick(30), PARSER.parse(_kick(30)))
     assert [e.amounts["money"] for e in effects] == [104]
     assert value(state, "money") == money + 104
+
+
+def test_game_refusal_confirms_exit() -> None:
+    # В забеге игра на команды молчит: любой её отказ — персонаж снаружи (07.10 опыт метро
+    # мог дать уровень — /compact получил бы «Нажми /levelup»).
+    reducer = StateReducer()
+    state = _version(reducer, _before_metro(reducer), 5, 4)
+    state = _version(reducer, state, 532, 20)
+    state = feed(reducer, state, "refusals", 3532814, 21)
+    assert value(state, "metro_message") is None
+
+
+def test_profile_older_than_finish_processed_late_does_not_confirm_exit() -> None:
+    reducer = StateReducer()
+    state = _version(reducer, _before_metro(reducer), 5, 4)
+    state = _version(reducer, state, 532, 20)
+    # Профиль от 19:30 при итоге в 20:00 — правки метро позже, отметка свежее.
+    older = fixture_at("profile", 3624478, 19.5)
+    state = reducer.apply(state, older, PARSER.parse(older))
+    assert value(state, "metro_message")["exit_at"] is not None

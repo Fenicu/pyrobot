@@ -24,6 +24,7 @@ from app.engine.parsing.metro import (
     MetroNpc,
     recognize_metro,
 )
+from app.engine.planner.base import exit_unconfirmed
 from app.engine.scenarios.context import ScenarioContext
 from app.engine.scenarios.library import ScenarioResult, run_scenario
 from app.engine.scenarios.metro import metro
@@ -1498,6 +1499,20 @@ async def test_normal_exit_confirmed_by_one_compact(world: World, settle: list[f
     assert world.state.metro_message is not None and world.state.metro_message.value is None
     # «👍Выйти» — не раньше 1.5 с после правки с диалогом выхода.
     assert len(settle) == 1 and 0 < settle[0] <= 1.5
+
+
+@certifies("metro")
+async def test_refusal_to_compact_confirms_exit(world: World) -> None:
+    # Опыт забега дал уровень: на /compact игра отвечает «Нажми /levelup» — она ответила, значит
+    # персонаж снаружи; планировщик не держится и может прокачаться.
+    expected = _leave_by_deadline(world)
+    world.game.on_text("/compact", ("refusals", 3532814))
+    notes = Notes()
+    result = await _run_to_exit(world, notes)
+    assert (result.status, result.reason) == ("done", "finished")
+    assert world.game.payloads() == [*expected, "/compact"]
+    assert world.state.metro_message is not None and world.state.metro_message.value is None
+    assert not exit_unconfirmed(world.state, datetime.now(UTC))
 
 
 @certifies("metro")

@@ -195,9 +195,9 @@ async def metro(ctx: ScenarioContext, state: CharacterState, params: Params) -> 
 
 
 def _answered(step: StepResult) -> bool:
-    """Игра ответила профилем: персонаж вне метро — в забеге она молчит. Отказ выход не
-    подтверждает (отметку забега он не снимает) — исход как у сбоя шага."""
-    return step.step is Step.OK
+    """Игра ответила — профилем или отказом («Нажми /levelup»): в забеге она молчит, значит
+    персонаж снаружи. Отказ шлюза или транспорта (без сообщения игры) — не ответ."""
+    return step.step is Step.OK or (step.step is Step.REFUSED and step.delivery is not None)
 
 
 def _silent(step: StepResult) -> bool:
