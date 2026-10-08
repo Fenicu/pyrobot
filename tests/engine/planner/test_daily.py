@@ -457,9 +457,11 @@ def test_night_sleep_after_midnight_leaves_the_day_for_tasks() -> None:
 
 
 def test_sleep_across_midnight_ends_the_task_day() -> None:
-    # 21:30: сон с 22:05 до 05:05 — на задания 35 мин, переработке нужно 48.
+    # 21:30: сон с 22:05 до 05:05 (дедлайн утром — эта ночь последняя перед ним) — на задания
+    # 35 мин, переработке нужно 48.
     at = datetime(2026, 9, 26, 21, 30, tzinfo=MSK)
-    state = tasks(offers("convDets_hard", "jobMoney_hard"), at=at)
+    deadline = datetime(2026, 9, 27, 10, 0, tzinfo=MSK)
+    state = tasks(offers("convDets_hard", "jobMoney_hard"), at=at, sleep_deadline=deadline)
     assert picked(decide(state, DAILY, at))[1] == {"task": "jobMoney_hard"}
     assert picked(decide(state, NO_SLEEP, at))[1] == {"task": "convDets_hard"}
 

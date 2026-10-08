@@ -103,12 +103,16 @@ def test_manual_run_gets_planner_params() -> None:
 
 
 def test_hotel_reserve_before_night_sleep() -> None:
-    # 19:30: до ночного сна в 22:05 меньше трёх часов, спать — в отеле (3 × 70 уровень = 210).
+    # 19:30: до ночного сна в 22:05 (дедлайн утром — эта ночь последняя перед ним) меньше трёх
+    # часов, спать — в отеле (3 × 70 уровень = 210).
     part = lottery(EVENING, bought={**FULL, "money": 0})
     with_sleep = only("lottery")
-    rich = decide(state(EVENING, lottery=part, money=500), with_sleep, EVENING)
-    assert act(rich) == ("lottery_buy", {**PARAMS, "reserve": 210})
-    poor = decide(state(EVENING, lottery=part, money=230), with_sleep, EVENING)
+    deadline = msk(10, day=27)
+    rich = state(EVENING, lottery=part, money=500, sleep_deadline=deadline)
+    assert act(decide(rich, with_sleep, EVENING)) == ("lottery_buy", {**PARAMS, "reserve": 210})
+    poor = decide(
+        state(EVENING, lottery=part, money=230, sleep_deadline=deadline), with_sleep, EVENING
+    )
     assert verdicts(poor)["lottery_buy"] == "cant_afford"
 
 

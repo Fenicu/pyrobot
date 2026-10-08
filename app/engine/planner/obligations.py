@@ -574,11 +574,17 @@ class Obligations(PlannerBase):
     # --- сон
 
     def sleep_start(self, deadline: datetime) -> datetime:
-        """Начало сна: ночное окно без битв, но не позже, чем требует дедлайн."""
+        return self.sleep_plan(deadline)[0]
+
+    def sleep_plan(self, deadline: datetime) -> tuple[datetime, bool]:
+        """Начало сна и решает ли его дедлайн: последнее ночное окно, в которое можно лечь до
+        дедлайна с запасом, а если ни одно не успевает — дедлайн минус запас."""
         forced = deadline - timedelta(minutes=self.cfg.sleep.lead_min)
         allowed: datetime | None = self.value("sleep_allowed_at")
         earliest = max(self.now, allowed) if allowed is not None else self.now
-        return self.after_factory(min(forced, self.night_slot(earliest)), deadline)
+        night = self.last_night(earliest, forced)
+        start = forced if night is None else night
+        return self.after_factory(start, deadline), night is None
 
     def after_factory(self, start: datetime, deadline: datetime) -> datetime:
         """Сон, накрывающий запись на фабрику, ждёт её конца, если дедлайн это позволяет."""
@@ -588,22 +594,23 @@ class Obligations(PlannerBase):
             return start
         return closes if closes + AFTER_FACTORY_MARGIN <= deadline else start
 
-    def night_slot(self, earliest: datetime) -> datetime:
+    def last_night(self, earliest: datetime, forced: datetime) -> datetime | None:
+        """Начало сна в последнюю ночь, где лечь можно не раньше `earliest` и не позже `forced`."""
         duration = timedelta(hours=self.cfg.sleep.duration_h)
         local = to_msk(earliest)
         # Ночь начинается вечером базового дня; до полудня — это ночь прошлого вечера.
         evening = msk_at(earliest, SLEEP_NIGHT_OPEN, days=0 if local.hour >= 12 else -1)
-        for _ in range(2):
-            wake_by = msk_at(evening, SLEEP_WAKE_BY, days=1)
+        found = None
+        while evening <= forced:
+            latest = msk_at(evening, SLEEP_WAKE_BY, days=1) - duration
             preferred = evening
             if self.bulls_pending(evening):
                 preferred = msk_at(evening, SLEEP_AFTER_BULLS, days=1)
-            latest = wake_by - duration
-            preferred = min(preferred, latest)
-            if earliest <= latest:
-                return max(earliest, preferred)
+            start = max(earliest, min(preferred, latest))
+            if earliest <= latest and start <= forced:
+                found = start
             evening += timedelta(days=1)
-        return earliest
+        return found
 
     def bulls_pending(self, evening: datetime) -> bool:
         """Инвайтов биржевиков стоит ждать в ночь, начинающуюся вечером `evening`."""

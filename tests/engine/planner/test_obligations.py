@@ -700,42 +700,97 @@ def test_sleep_waits_for_factory_signup_if_deadline_allows() -> None:
     assert act(decide(tight, only("factory"), now))[0] == "sleep"
 
 
+# Дедлайн сна утром 27-го: последняя ночь перед ним — сегодняшняя.
+TONIGHT_LAST = msk(10, day=27)
+
+
 def test_sleep_waits_for_night_window() -> None:
-    decision = decide(state(NOON), only(), NOON)
+    decision = decide(state(NOON, sleep_deadline=TONIGHT_LAST), only(), NOON)
     assert isinstance(decision, Wait)
     assert decision.until == msk(22, 5) + TIMER_MARGIN
 
 
 def test_sleep_after_bulls_when_invites_come() -> None:
     cfg = only("bulls", chats={"bulls_invite_chat_id": -100500})
-    decision = decide(state(NOON), cfg, NOON)
+    decision = decide(state(NOON, sleep_deadline=TONIGHT_LAST), cfg, NOON)
     assert isinstance(decision, Wait)
     assert decision.until == msk(0, 30, day=27) + TIMER_MARGIN
 
 
 def test_last_night_bulls_win_does_not_cancel_tonight() -> None:
     cfg = only("bulls", chats={"bulls_invite_chat_id": -100500})
-    decision = decide(state(NOON, bulls_won_at=msk(1, 0)), cfg, NOON)
+    decision = decide(state(NOON, bulls_won_at=msk(1, 0), sleep_deadline=TONIGHT_LAST), cfg, NOON)
     assert isinstance(decision, Wait)
     assert decision.until == msk(0, 30, day=27) + TIMER_MARGIN
 
 
 def test_sleep_in_night_window() -> None:
     now = msk(1, 0, day=27)
-    assert act(decide(state(now), only(), now))[0] == "sleep"
+    decision = decide(state(now, sleep_deadline=TONIGHT_LAST), only(), now)
+    assert act(decision)[0] == "sleep" and decision.reason == "sleep_night"
 
 
 def test_deadline_beats_night_window() -> None:
     soon = state(NOON, sleep_deadline=NOON + timedelta(hours=1))
-    assert act(decide(soon, only(), NOON))[0] == "sleep"
+    decision = decide(soon, only(), NOON)
+    assert act(decision)[0] == "sleep" and decision.reason == "sleep_deadline"
+
+
+# Подъём в 05:05 26-го: лечь снова игра разрешит через 12 часов, дедлайн — через 72 часа.
+WOKE = msk(5, 5)
+BULLS = only("bulls", chats={"bulls_invite_chat_id": -100500})
+
+
+def rested(now: datetime, awake_h: int = 72) -> CharacterState:
+    return state(
+        now,
+        sleep_deadline=WOKE + timedelta(hours=awake_h),
+        sleep_allowed_at=WOKE + timedelta(hours=12),
+    )
+
+
+def sleep_window(s: CharacterState, cfg: Settings, now: datetime) -> datetime:
+    view = outlook(s, cfg, now)
+    return next(w.at for w in view.wakeups if w.kind == "sleep_window") - TIMER_MARGIN
+
+
+def test_sleep_in_last_night_before_deadline() -> None:
+    assert sleep_window(rested(NOON), only(), NOON) == msk(22, 5, day=28)
+    assert sleep_window(rested(NOON), BULLS, NOON) == msk(0, 30, day=29)
+
+
+def test_no_sleep_in_earlier_nights() -> None:
+    tonight = msk(22, 5)
+    assert "sleep" not in verdicts(decide(rested(tonight), only(), tonight))
+    assert sleep_window(rested(tonight), only(), tonight) == msk(22, 5, day=28)
+    midnight = msk(1, 0, day=28)
+    assert sleep_window(rested(midnight), only(), midnight) == msk(22, 5, day=28)
+
+
+def test_last_night_sleep_has_night_reason() -> None:
+    night = msk(22, 5, day=28)
+    decision = decide(rested(night), only(), night)
+    assert act(decision)[0] == "sleep" and decision.reason == "sleep_night"
+
+
+def test_deadline_before_any_night_sleeps_at_deadline_minus_lead() -> None:
+    near = state(NOON, sleep_deadline=msk(23), sleep_allowed_at=WOKE + timedelta(hours=12))
+    assert sleep_window(near, only(), NOON) == msk(21)
+    late = msk(21)
+    decision = decide(state(late, sleep_deadline=msk(23)), only(), late)
+    assert act(decision)[0] == "sleep" and decision.reason == "sleep_deadline"
+
+
+def test_longer_deadline_moves_sleep_to_later_night() -> None:
+    assert sleep_window(rested(NOON, awake_h=120), only(), NOON) == msk(22, 5, day=30)
 
 
 def test_long_sleep_must_end_before_battle() -> None:
     cfg = only(sleep={"duration_h": 12})
     early = msk(0, 40, day=27)
-    assert act(decide(state(early), cfg, early))[0] == "sleep"
+    assert act(decide(state(early, sleep_deadline=TONIGHT_LAST), cfg, early))[0] == "sleep"
     late = msk(1, 0, day=27)
-    decision = decide(state(late), cfg, late)
+    decision = decide(state(late, sleep_deadline=msk(10, day=28)), cfg, late)
     assert isinstance(decision, Wait)
     assert decision.until == msk(22, 5, day=27) + TIMER_MARGIN
 

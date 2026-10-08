@@ -394,7 +394,7 @@ class _Planner(DailyTasks):
         deadline: datetime | None = self.value("sleep_deadline")
         if deadline is None:
             return None
-        start = self.sleep_start(deadline)
+        start, forced = self.sleep_plan(deadline)
         if self.now < start:
             self.wake(start, "sleep_window")
             return None
@@ -413,7 +413,7 @@ class _Planner(DailyTasks):
             "hotel_threshold": self.cfg.sleep.hotel_if_cash_after_reserve_ge,
             "ticket_reserve": self.ticket_reserve(),
         }
-        return self.act("sleep", params, "sleep_deadline")
+        return self.act("sleep", params, "sleep_deadline" if forced else "sleep_night")
 
     def book(self, busy: BusyState | None) -> Decision | None:
         return self._cooled_item("book", "books", "book_ready_at", "book_ready", busy)

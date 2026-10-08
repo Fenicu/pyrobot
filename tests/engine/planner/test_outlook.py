@@ -281,7 +281,8 @@ def test_hints_follow_settings_and_money() -> None:
 
 def test_asleep_timers_during_sleep_happen_on_wake() -> None:
     # Сон 22:30–05:10 МСК через полночь: сброс заданий в 00:02 и возврат Горбушки в 03:30
-    # случатся при подъёме, а слив перед битвой в 01:00 и окно сна к подъёму пройдут.
+    # случатся при подъёме, а слив перед битвой в 01:00 и окно сна этой ночи (последней перед
+    # дедлайном) к подъёму пройдут.
     at = datetime(2026, 9, 26, 19, 30, tzinfo=UTC)
     woke = datetime(2026, 9, 27, 2, 10, tzinfo=UTC)
     settings = config({"features": {"daily_tasks": True, "stocks_dump": True}})
@@ -291,6 +292,7 @@ def test_asleep_timers_during_sleep_happen_on_wake() -> None:
         busy=BusyState(activity="sleep_bridge", until=woke),
         books=3,
         book_ready_at=book,
+        sleep_deadline=woke + timedelta(hours=10),
     )
     view = outlook(state, settings, at)
     assert view.decision == decide(state, settings, at)
