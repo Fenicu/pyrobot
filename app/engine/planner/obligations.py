@@ -561,10 +561,12 @@ class Obligations(PlannerBase):
             self.reject("metro", {}, "reserved" if alone else "no_motivation")
             self.wake(self.value("motivation_next_at"), "motivation")
             return None
-        # Метро на паузе (кулдаун, сбой, сертификация): есть «перед метро» незачем.
+        # Метро на паузе (кулдаун, сбой, сертификация): есть «перед метро» незачем; и если после
+        # еды метро уже не помещается до битвы, тоже.
         if (
             not self.cfg.features.fastfood
             and not self.gated("metro")
+            and self.metro_fits(self.now + self.duration("eat", self.price("eat")))
             and (eat := self.eat_up("metro_stamina", None))
         ):
             return eat

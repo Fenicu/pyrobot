@@ -19,7 +19,7 @@ _BOUGHT = re.compile(
     r"^👍Ты приобрёл (?P<n>" + NUM + r") шт\. подарков\. Заплатил (?P<paid>" + NUM + r")🍊\.$",
     re.M,
 )
-_SHORT = re.compile(r"^❌Тебе не хватает (?P<n>\d+)🍊 для покупки\.$", re.M)
+_SHORT = re.compile(r"^❌Тебе не хватает (?P<n>" + NUM + r")🍊 для покупки\.$", re.M)
 # Цена подарка за 🍊 (Малый — единственный тип на экране покупки).
 TANGERINE_GIFT_PRICE = 10
 _OPTION = re.compile(r"g_tangerines_small_(?P<n>\d+)\Z")
@@ -84,7 +84,7 @@ def recognize_gifts(msg: IncomingMessage) -> list[Event]:
             gifts=num(m["gifts"]),
             tangerines=num(m["tangerines"]),
             options=_options(msg),
-            short=int(short["n"]) if short else None,
+            short=num(short["n"]) if short else None,
         )
         bought = _BOUGHT.search(text)
         if bought is None:

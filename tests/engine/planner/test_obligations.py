@@ -936,6 +936,19 @@ def test_metro_entry_eat_skipped_while_metro_on_hold() -> None:
     assert "deed:eat" not in verdicts(uncertified)
 
 
+def test_metro_entry_eat_skipped_when_metro_no_longer_fits_after_it() -> None:
+    # Метро помещается впритык (60 + 25 мин до битвы); еда на 5 минут отняла бы запас.
+    now = msk(12, 35)
+    battle = msk(14)
+    tight = metro_state(now, stamina=70, battle_at=battle)
+    decision = decide(tight, METRO, now)
+    assert act(decision) == ("metro", {**METRO_PARAMS, "battle_at": battle.isoformat()})
+    assert "deed:eat" not in verdicts(decision)
+    # Запаса хватает и на еду: ест, как раньше.
+    roomy = metro_state(msk(12, 30), stamina=70, battle_at=battle)
+    assert act(decide(roomy, METRO, msk(12, 30))) == ("deed:eat", {})
+
+
 def test_eat_rejection_listed_once_when_battle_and_metro_both_want_it() -> None:
     now = msk(12, 40)
     both = Settings.model_validate(

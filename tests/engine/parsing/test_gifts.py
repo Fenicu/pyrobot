@@ -47,6 +47,11 @@ def test_shop_short_from_start() -> None:
     assert events(g.SHORT) == [TangerineGiftShop(gifts=0, tangerines=2, short=8)]
 
 
+def test_shop_short_with_spaced_number() -> None:
+    text = g.SHORT.replace("не хватает 8🍊", "не хватает 1 208🍊")
+    assert events(text) == [TangerineGiftShop(gifts=0, tangerines=2, short=1208)]
+
+
 def test_shop_short_fixture() -> None:
     parsed = default_parser(ChatsSection()).parse(game_msg("screens", 3584848))
     assert parsed == [TangerineGiftShop(gifts=0, tangerines=2, short=8)]
