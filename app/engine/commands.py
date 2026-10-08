@@ -52,12 +52,16 @@ _UP_SLOTS = "right|left|legs|head|chest|torso|ring|book|pbank|pants"
 GADGET_BUY = re.compile(r"/buy_(?:right|left|legs|head|chest|torso)(?:1[0-4]|[1-9])\Z")
 GADGET_WEAR = re.compile(r"/wear_[0-9]+_[a-z][0-9]+\Z")
 GADGET_UNWEAR = re.compile(r"/unwear_[a-z][0-9]+\Z")
+# «К персонажу» из итога метро: выход из забега, если игра его не завершила. Без подтверждения
+# шлюз пропускает только шаг сценария метро.
+MAIN = re.compile(r"/main\Z")
 UPGRADE_CLICK = re.compile(rf"up_(?P<slot>{_UP_SLOTS})_(?P<grade>low|middle|high)(?:_1_accept)?\Z")
 
 TEXT_RULES: tuple[Rule, ...] = (
     Rule(GADGET_BUY, _R),
     Rule(GADGET_WEAR, _R),
     Rule(GADGET_UNWEAR, _R),
+    Rule(MAIN, _R),
     *_re(_N, rf"/up_(?:{_UP_SLOTS})\Z"),
     *_re(
         _F,
@@ -80,7 +84,6 @@ TEXT_RULES: tuple[Rule, ...] = (
         r"/v_off\Z",
         r"/mouse_name\Z",
         r"/dog_name\Z",
-        r"/main\Z",
         r"/class\Z",
         r"/keysbuy\Z",
     ),

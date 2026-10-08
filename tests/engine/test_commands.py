@@ -65,7 +65,7 @@ N, A, R, F, D = (
         ("/up_head", N),
         ("/wear_1_t501", R),
         ("🎯 Дартс", F),
-        ("/main", F),
+        ("/main", R),
         ("/fullt", F),
         ("/finish", D),
         ("/donate", D),

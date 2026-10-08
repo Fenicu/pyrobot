@@ -566,3 +566,40 @@ async def test_deadline_passed_rejects(rig: Rig) -> None:
     res = await rig.gw.submit(_gadget_send("/buy_right1", "gadget_buy", deadline=past))
     assert (res.status, res.reason) == (ActionStatus.REJECTED, "deadline")
     assert rig.transport.sent == []
+
+
+def _main(scenario: str | None, source: Source = Source.SCENARIO, **kw: Any) -> ActionRequest:
+    return send("/main", source=source, scenario=scenario, expect=expect_text("Битва"), **kw)
+
+
+async def test_main_from_metro_scenario_passes_without_confirm(rig: Rig) -> None:
+    rig.reply_with("Битва через 4ч. 21 мин.!")
+    res = await rig.gw.submit(_main("metro"))
+    assert res.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["/main"]
+
+
+@pytest.mark.parametrize(
+    ("scenario", "source"),
+    [
+        ("metro", Source.PLANNER),
+        ("metro", Source.MANUAL),
+        ("metro", Source.URGENT),
+        (None, Source.PLANNER),
+        (None, Source.SCENARIO),
+        ("gadget_buy", Source.SCENARIO),
+        ("refresh", Source.PLANNER),
+    ],
+)
+async def test_main_elsewhere_needs_confirm(
+    rig: Rig, scenario: str | None, source: Source
+) -> None:
+    res = await rig.gw.submit(_main(scenario, source))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    assert rig.transport.sent == []
+
+
+async def test_main_by_hand_with_confirmation_passes(rig: Rig) -> None:
+    rig.reply_with("Битва через 4ч. 21 мин.!")
+    res = await rig.gw.submit(_main(None, Source.MANUAL, risky_confirmed=True))
+    assert res.status is ActionStatus.CONFIRMED

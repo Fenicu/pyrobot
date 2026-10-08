@@ -15,6 +15,7 @@ from app.engine.clock import Clock
 from app.engine.commands import (
     GADGET_BUY,
     GADGET_WEAR,
+    MAIN,
     STOCK_SELL,
     UPGRADE_CLICK,
     CommandClass,
@@ -153,6 +154,16 @@ def command_feature(req: ActionRequest) -> str | None:
             return "gadgets_buy"
         return feature_of_text(text)
     return feature_of_callback(req.data or "")
+
+
+def _metro_main(req: ActionRequest) -> bool:
+    """/main без подтверждения — только шагом сценария метро (выход из незавершённого забега)."""
+    return (
+        req.source is Source.SCENARIO
+        and req.scenario == "metro"
+        and req.kind is ActionKind.SEND
+        and MAIN.match((req.text or "").strip()) is not None
+    )
 
 
 class ActionGateway:
@@ -442,7 +453,9 @@ class ActionGateway:
         if req.chat_id not in self._allowed_chats():
             return ActionStatus.REJECTED, "chat_not_allowed"
         if cls is CommandClass.RISKY and not (
-            (req.source is Source.MANUAL and req.risky_confirmed) or self._artifact_start(req)
+            (req.source is Source.MANUAL and req.risky_confirmed)
+            or self._artifact_start(req)
+            or _metro_main(req)
         ):
             refused = self._gadget_step(req)
             if refused is not None:
