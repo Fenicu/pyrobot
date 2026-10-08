@@ -31,6 +31,7 @@
 	// История перечитывается с каждой новой версией: своё сохранение, перечитывание после чужого
 	// изменения или известная чужая версия при несохранённых правках.
 	const historyKey = $derived(editor.conflict ?? editor.version ?? 0);
+	const replyTo = (v: unknown) => (typeof v === 'number' ? v : null);
 
 	// Разделы, где после полей «только чтение» ничего не осталось (запись сбора артефакта), в меню
 	// не попадают.
@@ -189,7 +190,13 @@
 				{#each editable(section.fields) as f (pathKey(f.path))}
 					<SettingField {editor} field={f} />
 					{#if pathKey(f.path) === 'chats.tangerine_reply_to' && accountId !== undefined}
-						<TangerineExchange {api} {accountId} {accounts} onpaired={() => void editor.refresh()} />
+						<TangerineExchange
+							{api}
+							{accountId}
+							{accounts}
+							replyTo={replyTo(editor.serverValue(f.path))}
+							onpaired={() => void editor.refresh()}
+						/>
 					{/if}
 				{/each}
 			{/if}

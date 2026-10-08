@@ -109,6 +109,12 @@ describe('«Обмен мандаринами»', () => {
 		expect(screen.getByRole('button', PAIR)).toBeDisabled();
 	});
 
+	it('адресат не задан — строки адресата нет и запроса тоже', () => {
+		const { fetch } = block();
+		expect(fetch.calls).toEqual([]);
+		expect(screen.queryByText(/🍊/)).toBeNull();
+	});
+
 	it('других аккаунтов нет — так и написано, связывать не с кем', () => {
 		const fetch = mockFetch(() => json({}));
 		render(TangerineExchange, { api: createAccountApi(hooks, 1, fetch), accountId: 1, accounts: [account(1, 'main')], onpaired: vi.fn() });
@@ -246,6 +252,12 @@ describe('«Обмен мандаринами» в настройках', () => 
 				current = paired;
 				return json({ account: { id: 1, message_id: 10 }, partner: { id: 2, message_id: 11 } });
 			}
+			if (c.url === '/api/v1/accounts/1/tangerine/partner') {
+				const replyTo = (current.values.chats as { tangerine_reply_to: number }).tangerine_reply_to;
+				return replyTo === 11
+					? json({ reply_to: 11, sender: { tg_user_id: 102, name: 'Твинк', username: null }, account: { id: 2, name: 'twink' }, status: 'ok' })
+					: json({ reply_to: replyTo, sender: { tg_user_id: 9, name: 'Анна', username: 'anna' }, account: null, status: 'ok' });
+			}
 			return json(current);
 		});
 		const api = createAccountApi(hooks, 1, fetch);
@@ -261,9 +273,14 @@ describe('«Обмен мандаринами» в настройках', () => 
 		const field = within(section).getByRole('spinbutton', { name: 'Сообщение для /gt' });
 		expect(field.compareDocumentPosition(exchange) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(field).toHaveValue(927136);
+		expect(await within(exchange).findByText('🍊 дарим: Анна (@anna)')).toBeTruthy();
 		await pair(user);
 		await screen.findByText('Связано: main ↔ twink');
 		await vi.waitFor(() => expect(within(section).getByRole('spinbutton', { name: 'Сообщение для /gt' })).toHaveValue(11));
 		expect(editor.version).toBe(14);
+		// Адресат сменился — строка перечитана: теперь это свой аккаунт, со ссылкой.
+		const link = await within(exchange).findByRole('link', { name: '🍊 обмен с twink' });
+		expect(link.getAttribute('href')).toBe('/a/2');
+		expect(fetch.calls.filter((c) => c.url.endsWith('/tangerine/partner'))).toHaveLength(2);
 	});
 });

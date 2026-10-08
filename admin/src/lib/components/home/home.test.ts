@@ -32,6 +32,27 @@ describe('Главная на снимке с прода', () => {
 		expect(within(card).getByText('💵 деньги').parentElement).toHaveTextContent('(устарело)');
 	});
 
+	it('🍊: запас и кому дарим — со ссылкой на свой аккаунт; перечитывается с версией настроек', async () => {
+		const hooks = { csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} };
+		let partner: unknown = {
+			reply_to: 7,
+			sender: { tg_user_id: 42, name: 'Анна', username: null },
+			account: { id: 2, name: 'twink' },
+			status: 'ok'
+		};
+		const fetch = mockFetch(() => json(partner));
+		const state = { ...prod.state, tangerines: { at: prod.now, src: 'screen' as const, value: 203 } };
+		const props = { state, stale: [], now: NOW, api: createAccountApi(hooks, 1, fetch), settingsVersion: 3 };
+		const { rerender } = render(CharacterCard, props);
+		const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
+		expect(within(card).getByText('🍊 мандарины').parentElement).toHaveTextContent('203');
+		expect((await within(card).findByRole('link', { name: '🍊 обмен с twink' })).getAttribute('href')).toBe('/a/2');
+		partner = { reply_to: 8, sender: null, account: null, status: 'missing' };
+		await rerender({ ...props, settingsVersion: 4 });
+		expect(await within(card).findByText('🍊 сообщение не найдено — дарить некуда')).toBeTruthy();
+		expect(fetch.calls).toHaveLength(2);
+	});
+
 	it('опыт набран, уровень не повышен — ждёт повышения', () => {
 		const exp = { ...prod.state.exp!, value: 18_200_000 };
 		render(CharacterCard, { state: { ...prod.state, exp }, stale: [], now: NOW });

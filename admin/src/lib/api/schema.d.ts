@@ -758,6 +758,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{account_id}/tangerine/partner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tangerine Partner
+         * @description Кому аккаунт дарит 🍊: автор сообщения `chats.tangerine_reply_to` в чате мандаринов и,
+         *     если это аккаунт той же учётки, он сам (`account`). `unset` — адресат не задан, `missing` —
+         *     сообщения нет, `offline` — движок не запущен, Telegram не в сети или чат не читается.
+         *     Ответ Telegram запоминается до смены адресата.
+         */
+        get: operations["tangerine_partner_api_v1_accounts__account_id__tangerine_partner_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/tangerine/post": {
         parameters: {
             query?: never;
@@ -3297,6 +3320,13 @@ export interface components {
             /** Wakeups */
             wakeups: components["schemas"]["PlanTimerOut"][];
         };
+        /** OwnAccountOut */
+        OwnAccountOut: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
         /** PairedAccountOut */
         PairedAccountOut: {
             /** Id */
@@ -3959,6 +3989,18 @@ export interface components {
             /** Written */
             written: number[];
         };
+        /** TangerinePartnerOut */
+        TangerinePartnerOut: {
+            account: components["schemas"]["OwnAccountOut"] | null;
+            /** Reply To */
+            reply_to: number | null;
+            sender: components["schemas"]["TgSenderOut"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "missing" | "unset" | "offline";
+        };
         /** TangerinePostIn */
         TangerinePostIn: {
             /**
@@ -4060,6 +4102,15 @@ export interface components {
             attempt_id: string;
             /** Password */
             password: string;
+        };
+        /** TgSenderOut */
+        TgSenderOut: {
+            /** Name */
+            name: string;
+            /** Tg User Id */
+            tg_user_id: number;
+            /** Username */
+            username: string | null;
         };
         /**
          * TgState
@@ -7096,6 +7147,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"] | components["schemas"]["TangerinePairPartialOut"];
+                };
+            };
+        };
+    };
+    tangerine_partner_api_v1_accounts__account_id__tangerine_partner_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TangerinePartnerOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -5,6 +5,7 @@
 	import type { AccountOut } from '$lib/api/types';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
+	import TangerinePartner from '../TangerinePartner.svelte';
 
 	interface Props {
 		api: AccountApi;
@@ -13,8 +14,10 @@
 		accounts: AccountOut[] | null;
 		/** Настройка `chats.tangerine_reply_to` этого аккаунта записана парой — перечитать форму. */
 		onpaired: () => void;
+		/** Сохранённый `chats.tangerine_reply_to`: задан — под заголовком, кому дарим. */
+		replyTo?: number | null;
 	}
-	let { api, accountId, accounts, onpaired }: Props = $props();
+	let { api, accountId, accounts, onpaired, replyTo = null }: Props = $props();
 
 	interface PairPartial {
 		detail: 'tangerine_pair_partial';
@@ -144,6 +147,7 @@
 
 <section class="mt-4 space-y-3 rounded-lg border border-line p-3 text-sm" aria-labelledby="tangerine-exchange-title">
 	<h3 id="tangerine-exchange-title" class="font-medium">Обмен мандаринами</h3>
+	{#if replyTo !== null}<TangerinePartner {api} refresh={replyTo} />{/if}
 	<label class="block space-y-1">
 		<span class="label">Текст сообщения</span>
 		<input class="input" type="text" bind:value={text} />

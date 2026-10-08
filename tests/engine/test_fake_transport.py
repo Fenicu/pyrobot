@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from app.engine.transport.base import FloodWait, TransportRejected
+from app.engine.transport.base import FloodWait, Sender, TransportRejected
 from app.engine.transport.fake import FakeTransport, Sent
 
 
@@ -55,3 +55,14 @@ async def test_join_chat_with_other_id_is_mismatch_without_join() -> None:
         await t.join_chat("mandarinkaSW", -1001377961602)
     assert t.joins == []
     assert await t.join_chat("mandarinkaSW", -1001) == "joined"
+
+
+async def test_message_sender_from_table_and_recorded() -> None:
+    t = FakeTransport()
+    t.senders[(-1001377961602, 7)] = Sender(42, "Анна", "К", "anna")
+    assert await t.message_sender(-1001377961602, 7) == Sender(42, "Анна", "К", "anna")
+    assert await t.message_sender(-1001377961602, 8) is None
+    t.sender_fail_with.append(FloodWait(3))
+    with pytest.raises(FloodWait):
+        await t.message_sender(-1001377961602, 7)
+    assert t.sender_lookups == [(-1001377961602, 7), (-1001377961602, 8), (-1001377961602, 7)]

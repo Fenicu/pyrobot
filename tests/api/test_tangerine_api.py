@@ -6,7 +6,13 @@ from app.db.base import Database
 from app.db.settings_store import DbSettingsStore
 from app.engine.fence import LeaseLost
 from app.engine.settings import ChatIsSelf, SettingsConflict
-from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
+from app.engine.transport.base import (
+    ChatUnavailable,
+    FloodWait,
+    Sender,
+    TransportAuthLost,
+    TransportRejected,
+)
 from app.engine.transport.fake import FakeTransport
 from tests.api.conftest import A1, Api, make_user, run_engine
 from tests.engine.test_facade import build
@@ -16,6 +22,8 @@ pytestmark = pytest.mark.db
 TANGERINE = -1001377961602
 POST = f"{A1}/tangerine/post"
 PAIR = f"{A1}/tangerine/pair"
+PARTNER = f"{A1}/tangerine/partner"
+ANNA = Sender(42, "Анна", "К", "anna")
 
 
 async def _engine(
@@ -347,3 +355,127 @@ async def test_partner_list_is_own_accounts_with_telegram_status(api: Api) -> No
     await api.container.accounts.create(bob, "Боб", capacity=10)
     rows = (await api.client.get("/api/v1/accounts")).json()
     assert [(a["id"], a["tg"]["online"]) for a in rows] == [(1, True), (partner, False)]
+
+
+async def _reply_to(api: Api, message_id: int | None, account_id: int = 1) -> None:
+    url = f"/api/v1/accounts/{account_id}/settings"
+    version = (await api.client.get(url)).json()["version"]
+    patch = {"version": version, "changes": {"chats": {"tangerine_reply_to": message_id}}}
+    r = await api.client.patch(url, headers=api.headers, json=patch)
+    assert r.status_code == 200, r.text
+
+
+async def _partner(api: Api) -> dict[str, Any]:
+    r = await api.client.get(PARTNER)
+    assert r.status_code == 200, r.text
+    body: dict[str, Any] = r.json()
+    return body
+
+
+async def test_partner_unset_without_lookup(api: Api) -> None:
+    transport, _ = await _engine(api)
+    assert await _partner(api) == {
+        "reply_to": None,
+        "sender": None,
+        "account": None,
+        "status": "unset",
+    }
+    assert transport.sender_lookups == []
+
+
+async def test_partner_foreign_player(api: Api) -> None:
+    transport, _ = await _engine(api)
+    transport.senders[(TANGERINE, 7)] = ANNA
+    await _reply_to(api, 7)
+    assert await _partner(api) == {
+        "reply_to": 7,
+        "sender": {"tg_user_id": 42, "name": "Анна К", "username": "anna"},
+        "account": None,
+        "status": "ok",
+    }
+
+
+async def test_partner_own_account_by_telegram_user(api: Api) -> None:
+    partner = await _second(api)
+    await api.container.accounts.bind_telegram(partner, 42)
+    transport, _ = await _engine(api)
+    transport.senders[(TANGERINE, 7)] = Sender(42, "Анна", None, None)
+    await _reply_to(api, 7)
+    body = await _partner(api)
+    assert body["account"] == {"id": partner, "name": "Второй"}
+    assert body["sender"] == {"tg_user_id": 42, "name": "Анна", "username": None}
+    assert body["status"] == "ok"
+
+
+async def test_partner_never_reveals_foreign_owner_account(api: Api, clean_db: Database) -> None:
+    bob = await make_user(api.container, "bob")
+    bob_acc = (await api.container.accounts.create(bob, "Боб", capacity=10)).id
+    await api.container.accounts.bind_telegram(bob_acc, 42)
+    transport, _ = await _engine(api)
+    transport.senders[(TANGERINE, 7)] = ANNA
+    await _reply_to(api, 7)
+    body = await _partner(api)
+    assert body["account"] is None and body["sender"]["tg_user_id"] == 42
+
+
+async def test_partner_missing_message(api: Api) -> None:
+    await _engine(api)
+    await _reply_to(api, 7)
+    assert await _partner(api) == {
+        "reply_to": 7,
+        "sender": None,
+        "account": None,
+        "status": "missing",
+    }
+
+
+async def test_partner_cached_until_reply_to_changes(api: Api) -> None:
+    transport, _ = await _engine(api)
+    transport.senders[(TANGERINE, 7)] = ANNA
+    transport.senders[(TANGERINE, 9)] = Sender(43, "Борис")
+    await _reply_to(api, 7)
+    await _partner(api)
+    await _partner(api)
+    assert transport.sender_lookups == [(TANGERINE, 7)]
+    await _reply_to(api, 9)
+    body = await _partner(api)
+    assert (body["reply_to"], body["sender"]["name"]) == (9, "Борис")
+    assert transport.sender_lookups == [(TANGERINE, 7), (TANGERINE, 9)]
+
+
+async def test_partner_without_engine_is_offline(api: Api) -> None:
+    assert (await _partner(api))["status"] == "unset"
+    await _reply_to(api, 7)
+    assert await _partner(api) == {
+        "reply_to": 7,
+        "sender": None,
+        "account": None,
+        "status": "offline",
+    }
+
+
+async def test_partner_telegram_offline(api: Api) -> None:
+    transport, _ = await _engine(api, authorized=False)
+    await _reply_to(api, 7)
+    body = await _partner(api)
+    assert (body["reply_to"], body["status"]) == (7, "offline")
+    assert transport.sender_lookups == []
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        FloodWait(30),
+        ChatUnavailable(TANGERINE, "PeerIdInvalid"),
+        TransportAuthLost("revoked"),
+        LeaseLost("lease"),
+    ],
+)
+async def test_partner_read_failure_is_offline_and_retried(api: Api, failure: Exception) -> None:
+    transport, _ = await _engine(api)
+    transport.senders[(TANGERINE, 7)] = ANNA
+    transport.sender_fail_with = [failure]
+    await _reply_to(api, 7)
+    body = await _partner(api)
+    assert (body["reply_to"], body["sender"], body["status"]) == (7, None, "offline")
+    assert (await _partner(api))["status"] == "ok"

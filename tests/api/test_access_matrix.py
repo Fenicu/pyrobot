@@ -82,6 +82,7 @@ def test_matrix_covers_spec_table(app: FastAPI) -> None:
         "/gadgets/upgrade/stop",
         "/tangerine/post",
         "/tangerine/pair",
+        "/tangerine/partner",
     ):
         assert f"{PREFIX}{tail}" in paths
     # Каталог сценариев общий.

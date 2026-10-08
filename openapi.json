@@ -5084,6 +5084,24 @@
         "title": "OutlookOut",
         "type": "object"
       },
+      "OwnAccountOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "OwnAccountOut",
+        "type": "object"
+      },
       "PairedAccountOut": {
         "properties": {
           "id": {
@@ -7311,6 +7329,59 @@
         "title": "TangerinePairPartialOut",
         "type": "object"
       },
+      "TangerinePartnerOut": {
+        "properties": {
+          "account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OwnAccountOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TgSenderOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "missing",
+              "unset",
+              "offline"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reply_to",
+          "sender",
+          "account",
+          "status"
+        ],
+        "title": "TangerinePartnerOut",
+        "type": "object"
+      },
       "TangerinePostIn": {
         "properties": {
           "text": {
@@ -7590,6 +7661,36 @@
           "password"
         ],
         "title": "TgPasswordIn",
+        "type": "object"
+      },
+      "TgSenderOut": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tg_user_id": {
+            "title": "Tg User Id",
+            "type": "integer"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "tg_user_id",
+          "name",
+          "username"
+        ],
+        "title": "TgSenderOut",
         "type": "object"
       },
       "TgState": {
@@ -12651,6 +12752,69 @@
           }
         },
         "summary": "Tangerine Pair",
+        "tags": [
+          "tangerine"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/tangerine/partner": {
+      "get": {
+        "description": "Кому аккаунт дарит 🍊: автор сообщения `chats.tangerine_reply_to` в чате мандаринов и,\nесли это аккаунт той же учётки, он сам (`account`). `unset` — адресат не задан, `missing` —\nсообщения нет, `offline` — движок не запущен, Telegram не в сети или чат не читается.\nОтвет Telegram запоминается до смены адресата.",
+        "operationId": "tangerine_partner_api_v1_accounts__account_id__tangerine_partner_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TangerinePartnerOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Tangerine Partner",
         "tags": [
           "tangerine"
         ]

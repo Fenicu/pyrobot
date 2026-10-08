@@ -42,6 +42,7 @@ export type AccountOut = S['AccountOut'];
 export type ArtifactOut = S['ArtifactOut'];
 export type GadgetsState = S['GadgetsState'];
 export type GadgetsOut = S['GadgetsOut'];
+export type TangerinePartnerOut = S['TangerinePartnerOut'];
 export type GadgetOut = S['GadgetOut'];
 export type GadgetTarget = S['TargetOut'];
 export type GadgetBuyPlan = S['BuyPlanOut'];

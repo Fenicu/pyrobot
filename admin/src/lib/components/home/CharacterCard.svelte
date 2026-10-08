@@ -1,9 +1,11 @@
 <script lang="ts">
+	import type { AccountApi } from '$lib/api/account';
 	import type { DayOut, PublicState } from '$lib/api/types';
 	import { levelForecast, levelForecastText } from '$lib/daily/forecast';
 	import { fmtCompact, fmtNum, fmtRelative } from '$lib/util/format';
 	import { busyText, COMPANY } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
+	import TangerinePartner from '../TangerinePartner.svelte';
 	import Row from './Row.svelte';
 
 	interface Props {
@@ -12,8 +14,12 @@
 		now: Date;
 		/** Дни «Итогов дня»: по ним считается темп опыта для прогноза уровня. */
 		days?: DayOut[];
+		/** Клиент аккаунта: под запасом 🍊 — кому аккаунт их дарит. */
+		api?: AccountApi;
+		/** Версия настроек: сменилась — адресат 🍊 перечитывается. */
+		settingsVersion?: number | null;
 	}
-	let { state, stale, now, days = [] }: Props = $props();
+	let { state, stale, now, days = [], api, settingsVersion = null }: Props = $props();
 
 	const level = $derived(val(state, 'level'));
 	const exp = $derived(val(state, 'exp'));
@@ -77,6 +83,8 @@
 			{/if}
 		</Row>
 		<Row label="🔋 выносливость" stale={isStale('stamina')}>{fmtNum(val(state, 'stamina'))}</Row>
+		<Row label="🍊 мандарины" stale={isStale('tangerines')}>{fmtNum(val(state, 'tangerines'))}</Row>
+		{#if api}<div class="text-right"><TangerinePartner {api} refresh={settingsVersion} /></div>{/if}
 		<Row label="📚 🔩 ⚙️" stale={isStale('knowledge') || isStale('raw') || isStale('details')}>
 			{fmtNum(val(state, 'knowledge'))} · {fmtNum(val(state, 'raw'))} · {fmtNum(val(state, 'details'))}
 		</Row>

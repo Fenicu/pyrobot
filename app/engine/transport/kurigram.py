@@ -29,6 +29,7 @@ from app.engine.transport.base import (
     FloodWait,
     GroupInfo,
     JoinStatus,
+    Sender,
     TransportAuthLost,
     TransportRejected,
 )
@@ -1207,6 +1208,32 @@ class KurigramTransport:
             return None
         kind: MessageKind = "edit" if message.edit_date else "new"
         return to_incoming(message, kind=kind, received_at=datetime.now(UTC))
+
+    @_fenced
+    async def message_sender(self, chat_id: int, message_id: int) -> Sender | None:
+        from pyrogram import errors
+
+        client = self._client
+        try:
+            message = await client.get_messages(chat_id, message_id)
+        except errors.FloodWait as exc:
+            raise FloodWait(float(exc.seconds or 0)) from exc
+        except errors.Unauthorized as exc:
+            await self._lose_auth(client)
+            raise TransportAuthLost(str(exc)) from exc
+        except (
+            errors.ChannelInvalid,
+            errors.ChannelPrivate,
+            errors.PeerIdInvalid,
+            errors.UserNotParticipant,
+        ) as exc:
+            raise ChatUnavailable(chat_id, type(exc).__name__) from exc
+        if message is None or getattr(message, "empty", False):
+            return None
+        user = message.from_user
+        if user is None:
+            return None
+        return Sender(int(user.id), user.first_name, user.last_name, user.username)
 
     @_fenced
     async def latest(self, reader: Reader) -> int | None:

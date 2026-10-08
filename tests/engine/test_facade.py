@@ -13,6 +13,7 @@ from app.engine.facade import (
     EngineFacade,
     GameChatWatch,
     LockLostError,
+    TangerinePartner,
     TangerinePost,
     TgNotOnline,
 )
@@ -46,7 +47,7 @@ from app.engine.state.model import (
     dump_state,
 )
 from app.engine.tg_auth import TgAuthBackend, TgState
-from app.engine.transport.base import TransportRejected
+from app.engine.transport.base import FloodWait, Sender, TransportRejected
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from tests.engine.helpers import GAME, tg_auth, until
 
@@ -246,6 +247,54 @@ async def test_tangerine_reply_to_goes_through_patch_with_retry_on_conflict() ->
     upd = await f.set_tangerine_reply_to(777, by="admin")
     assert settings.current.chats.tangerine_reply_to == 777
     assert upd.version == 2 and upd.changed == {"chats.tangerine_reply_to": [None, 777]}
+
+
+async def test_tangerine_partner_unset_asks_nothing() -> None:
+    transport = FakeTransport()
+    f = build(authorized=False, transport=transport)
+    await f.tg.boot()
+    assert await f.tangerine_partner() == TangerinePartner(reply_to=None, sender=None)
+    assert transport.sender_lookups == []
+
+
+async def test_tangerine_partner_cached_until_reply_to_changes() -> None:
+    transport = FakeTransport()
+    anna = Sender(42, "Анна", None, "anna")
+    transport.senders[(-1001377961602, 7)] = anna
+    f = build(transport=transport)
+    await f.tg.boot()
+    await f.set_tangerine_reply_to(7, by="admin")
+    assert await f.tangerine_partner() == TangerinePartner(7, anna)
+    assert await f.tangerine_partner() == TangerinePartner(7, anna)
+    assert transport.sender_lookups == [(-1001377961602, 7)]
+    # Сообщения нет — тоже запоминается до смены адресата.
+    await f.set_tangerine_reply_to(8, by="admin")
+    assert await f.tangerine_partner() == TangerinePartner(8, None)
+    assert await f.tangerine_partner() == TangerinePartner(8, None)
+    assert transport.sender_lookups == [(-1001377961602, 7), (-1001377961602, 8)]
+
+
+async def test_tangerine_partner_failure_not_cached() -> None:
+    transport = FakeTransport()
+    anna = Sender(42, "Анна", None, "anna")
+    transport.senders[(-1001377961602, 7)] = anna
+    transport.sender_fail_with.append(FloodWait(3))
+    f = build(transport=transport)
+    await f.tg.boot()
+    await f.set_tangerine_reply_to(7, by="admin")
+    with pytest.raises(FloodWait):
+        await f.tangerine_partner()
+    assert await f.tangerine_partner() == TangerinePartner(7, anna)
+
+
+async def test_tangerine_partner_needs_online_telegram() -> None:
+    transport = FakeTransport()
+    settings = StaticSettings(Settings.model_validate({"chats": {"tangerine_reply_to": 7}}))
+    f = build(authorized=False, transport=transport, settings=settings)
+    await f.tg.boot()
+    with pytest.raises(TgNotOnline):
+        await f.tangerine_partner()
+    assert transport.sender_lookups == []
 
 
 async def test_kill_latches_even_if_persist_fails() -> None:

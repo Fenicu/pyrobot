@@ -32,6 +32,8 @@
 	// «Метро — прохождение»: живой кадр забега, пока открыта главная.
 	const metro = new MetroLiveStore(api);
 	const metroShown = $derived(shown(metro.frame, metro.receivedAt, now.getTime()));
+	// Версия настроек из потока: сменилась — «Персонаж» перечитывает, кому дарятся 🍊.
+	let settingsVersion = $state<number | null>(null);
 
 	// Готовность цикла (tg_offline, spending_blocked, lock_lost, pipeline_unhealthy) не шлёт своего
 	// кадра потока — её доходит только опрос статуса движка (раз в 15 с). Пауза и kill уже приходят
@@ -59,6 +61,7 @@
 			artifact.onEvent(e);
 			gadgets.onEvent(e);
 			metro.onEvent(e);
+			if (e.type === 'settings') settingsVersion = e.data.version;
 		});
 		return () => {
 			clearInterval(t);
@@ -104,7 +107,14 @@
 	/>
 	<div class="grid gap-3 md:grid-cols-2">
 		<div class="space-y-3">
-			<CharacterCard state={character.state} stale={character.stale} {now} days={daily.data?.days ?? []} />
+			<CharacterCard
+				state={character.state}
+				stale={character.stale}
+				{now}
+				days={daily.data?.days ?? []}
+				{api}
+				{settingsVersion}
+			/>
 			<GadgetsCard
 				{api}
 				state={character.state}

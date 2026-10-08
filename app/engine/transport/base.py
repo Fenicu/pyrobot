@@ -26,6 +26,16 @@ class GroupInfo:
     title: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class Sender:
+    """Автор сообщения в чате — пользователь Telegram."""
+
+    tg_user_id: int
+    first_name: str | None
+    last_name: str | None = None
+    username: str | None = None
+
+
 class FloodWait(Exception):
     def __init__(self, seconds: float) -> None:
         super().__init__(f"flood wait {seconds}s")
@@ -78,6 +88,11 @@ class Transport(Protocol):
     async def join_chat(self, username: str, expect_id: int) -> JoinStatus:
         """Вступление в публичный чат по username; чат с другим id — отказ `chat_mismatch`
         без вступления."""
+        ...
+
+    async def message_sender(self, chat_id: int, message_id: int) -> Sender | None:
+        """Автор сообщения в чате; None — сообщения нет (удалено) или его автор не
+        пользователь. Чат не читается — `ChatUnavailable`."""
         ...
 
     async def send_saved(self, text: str) -> None:

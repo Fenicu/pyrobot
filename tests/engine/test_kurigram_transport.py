@@ -33,6 +33,7 @@ from app.engine.transport.base import (
     ChatUnavailable,
     FloodWait,
     GroupInfo,
+    Sender,
     TransportAuthLost,
     TransportRejected,
 )
@@ -46,6 +47,7 @@ from tests.engine.test_history_sync import FakeSource, MemoryMarks
 
 TEAM = -1001149209877
 SWINFO = -1001109615116
+TANGERINE = -1001377961602
 SW_USER = 376592453
 BOX = SecretBox(secrets.token_bytes(32))
 
@@ -635,6 +637,52 @@ async def test_fetch_unauthorized_resets_client() -> None:
     assert lost == [1]
 
 
+async def test_message_sender_reads_author_of_message() -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.stored[(TANGERINE, 7)] = NS(
+        id=7,
+        empty=False,
+        from_user=NS(id=42, first_name="Анна", last_name=None, username="anna"),
+    )
+    t.client.stored[(TANGERINE, 8)] = NS(id=8, empty=True, from_user=None)
+    t.client.stored[(TANGERINE, 9)] = NS(id=9, empty=False, from_user=None)
+    assert await t.message_sender(TANGERINE, 7) == Sender(42, "Анна", None, "anna")
+    # Удалено, нет вовсе, автор — не пользователь (канал от имени чата).
+    assert await t.message_sender(TANGERINE, 8) is None
+    assert await t.message_sender(TANGERINE, 10) is None
+    assert await t.message_sender(TANGERINE, 9) is None
+
+
+@pytest.mark.parametrize(
+    ("error", "raised"),
+    [
+        ("FloodWait", FloodWait),
+        ("PeerIdInvalid", ChatUnavailable),
+        ("ChannelPrivate", ChatUnavailable),
+    ],
+)
+async def test_message_sender_errors(error: str, raised: type[Exception]) -> None:
+    from pyrogram import errors
+
+    t = FakeKurigram()
+    await _online(t)
+    exc = errors.FloodWait(5) if error == "FloodWait" else rpc_error(error)
+    t.client.errors["GetMessages"] = exc
+    with pytest.raises(raised):
+        await t.message_sender(TANGERINE, 7)
+
+
+async def test_message_sender_unauthorized_resets_client() -> None:
+    t = FakeKurigram()
+    lost = await _online(t)
+    t.client.errors["GetMessages"] = rpc_error("AuthKeyUnregistered")
+    with pytest.raises(TransportAuthLost):
+        await t.message_sender(TANGERINE, 7)
+    _assert_reset(t)
+    assert lost == [1]
+
+
 def _forwarded(new_id: int) -> object:
     from pyrogram import raw
 
@@ -960,6 +1008,7 @@ def _telegram_calls(t: FakeKurigram) -> list[Callable[[], Awaitable[Any]]]:
         lambda: t.forward(GAME, 77, TEAM),
         lambda: t.check_group(TEAM),
         lambda: t.fetch(GAME, 7),
+        lambda: t.message_sender(TANGERINE, 7),
     ]
 
 

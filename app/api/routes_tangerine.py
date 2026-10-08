@@ -3,17 +3,18 @@
 действие владельца."""
 
 import logging
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 from app.api.container import Container
-from app.api.deps import SessionContext, container, require_csrf
+from app.api.deps import SessionContext, container, current_session, require_csrf
 from app.api.errors import (
     ACCOUNT_DELETING,
     ACCOUNT_NOT_FOUND,
+    AUTH,
     CHAT_IS_SELF,
     CSRF,
     ENGINE,
@@ -29,11 +30,17 @@ from app.api.errors import (
     error,
 )
 from app.api.scope import AccountScope, account_router, account_scope, running
-from app.engine.facade import EngineFacade, TangerinePost, TgNotOnline
+from app.engine.facade import EngineFacade, TangerinePartner, TangerinePost, TgNotOnline
 from app.engine.fence import LeaseLost
 from app.engine.settings import ChatIsSelf, SettingsConflict
 from app.engine.tg_auth import TgState
-from app.engine.transport.base import FloodWait, TransportAuthLost, TransportRejected
+from app.engine.transport.base import (
+    ChatUnavailable,
+    FloodWait,
+    Sender,
+    TransportAuthLost,
+    TransportRejected,
+)
 
 log = logging.getLogger(__name__)
 router = account_router("tangerine")
@@ -69,6 +76,27 @@ class PairedAccountOut(BaseModel):
 class TangerinePairOut(BaseModel):
     account: PairedAccountOut
     partner: PairedAccountOut
+
+
+class TgSenderOut(BaseModel):
+    tg_user_id: int
+    # Имя и фамилия в Telegram.
+    name: str
+    username: str | None
+
+
+class OwnAccountOut(BaseModel):
+    id: int
+    name: str
+
+
+class TangerinePartnerOut(BaseModel):
+    reply_to: int | None
+    # Автор сообщения `reply_to`; null — адресат не задан, сообщения нет или Telegram не спросить.
+    sender: TgSenderOut | None
+    # Аккаунт той же учётки, привязанный к этому пользователю Telegram.
+    account: OwnAccountOut | None
+    status: Literal["ok", "missing", "unset", "offline"]
 
 
 class _PostFailed(Exception):
@@ -129,6 +157,63 @@ async def tangerine_post(
     f = await running(scope)
     post = await _post_or_raise(f, body.text)
     return TangerinePostOut(chat_id=post.chat_id, message_id=post.message_id)
+
+
+@router.get("/tangerine/partner", response_model=TangerinePartnerOut, responses=AUTH)
+async def tangerine_partner(
+    ctx: Annotated[SessionContext, Depends(current_session)],
+    scope: Annotated[AccountScope, Depends(account_scope)],
+    c: Annotated[Container, Depends(container)],
+) -> TangerinePartnerOut:
+    """Кому аккаунт дарит 🍊: автор сообщения `chats.tangerine_reply_to` в чате мандаринов и,
+    если это аккаунт той же учётки, он сам (`account`). `unset` — адресат не задан, `missing` —
+    сообщения нет, `offline` — движок не запущен, Telegram не в сети или чат не читается.
+    Ответ Telegram запоминается до смены адресата."""
+    f = scope.facade
+    if f is None:
+        values, _ = await scope.reads.settings()
+        chats = values.get("chats")
+        stored = chats.get("tangerine_reply_to") if isinstance(chats, dict) else None
+        if not isinstance(stored, int):
+            return _partner_out(None, "unset")
+        return _partner_out(stored, "offline")
+    reply_to = f.settings.current.chats.tangerine_reply_to
+    try:
+        partner = await f.tangerine_partner()
+    except (TgNotOnline, TransportAuthLost, FloodWait, ChatUnavailable, LeaseLost) as exc:
+        log.info("tangerine partner unavailable: %s", type(exc).__name__)
+        return _partner_out(reply_to, "offline")
+    return await _resolved(partner, ctx.user_id, c)
+
+
+async def _resolved(partner: TangerinePartner, owner_id: int, c: Container) -> TangerinePartnerOut:
+    if partner.reply_to is None:
+        return _partner_out(None, "unset")
+    sender = partner.sender
+    if sender is None:
+        return _partner_out(partner.reply_to, "missing")
+    own = next(
+        (a for a in await c.accounts.owned(owner_id) if a.tg_user_id == sender.tg_user_id), None
+    )
+    return TangerinePartnerOut(
+        reply_to=partner.reply_to,
+        sender=_sender_out(sender),
+        account=OwnAccountOut(id=own.id, name=own.name) if own is not None else None,
+        status="ok",
+    )
+
+
+def _partner_out(
+    reply_to: int | None, verdict: Literal["missing", "unset", "offline"]
+) -> TangerinePartnerOut:
+    return TangerinePartnerOut(reply_to=reply_to, sender=None, account=None, status=verdict)
+
+
+def _sender_out(sender: Sender) -> TgSenderOut:
+    name = " ".join(p for p in (sender.first_name, sender.last_name) if p)
+    return TgSenderOut(
+        tg_user_id=sender.tg_user_id, name=name or str(sender.tg_user_id), username=sender.username
+    )
 
 
 @router.post(

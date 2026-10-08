@@ -12,7 +12,13 @@ from app.engine.tg_auth import (
     PasswordRequired,
     SentCodeInfo,
 )
-from app.engine.transport.base import GroupCheck, GroupInfo, JoinStatus, TransportRejected
+from app.engine.transport.base import (
+    GroupCheck,
+    GroupInfo,
+    JoinStatus,
+    Sender,
+    TransportRejected,
+)
 from app.engine.types import IncomingMessage
 
 
@@ -58,6 +64,10 @@ class FakeTransport:
         self.chat_ids: dict[str, int] = {}
         # Сообщения в чаты мимо шлюза (`send_chat_message`): чат и текст.
         self.posted: list[tuple[int, str]] = []
+        # Авторы сообщений по (чат, id), запросы автора и ошибки очередных запросов.
+        self.senders: dict[tuple[int, int], Sender] = {}
+        self.sender_lookups: list[tuple[int, int]] = []
+        self.sender_fail_with: list[BaseException] = []
         self._next_id = 1000
         self._tasks: set[asyncio.Future[None]] = set()
 
@@ -100,6 +110,12 @@ class FakeTransport:
         if self.fetch_fail_with:
             raise self.fetch_fail_with.pop(0)
         return self.messages.get((chat_id, message_id))
+
+    async def message_sender(self, chat_id: int, message_id: int) -> Sender | None:
+        self.sender_lookups.append((chat_id, message_id))
+        if self.sender_fail_with:
+            raise self.sender_fail_with.pop(0)
+        return self.senders.get((chat_id, message_id))
 
     async def check_group(self, chat_id: int) -> GroupInfo:
         self.group_checks.append(chat_id)

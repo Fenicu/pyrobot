@@ -35,6 +35,7 @@ from app.engine.transport.base import (
     GAME_CHAT_USERNAME,
     TANGERINE_CHAT_USERNAME,
     JoinStatus,
+    Sender,
     Transport,
     TransportRejected,
 )
@@ -115,6 +116,15 @@ class TangerinePost:
 
 
 @dataclass(frozen=True)
+class TangerinePartner:
+    """Адресат мандаринов: `chats.tangerine_reply_to` и автор этого сообщения (None — адресат не
+    задан или сообщения нет)."""
+
+    reply_to: int | None
+    sender: Sender | None
+
+
+@dataclass(frozen=True)
 class SettingsUpdate:
     settings: Settings
     version: int
@@ -162,6 +172,8 @@ class EngineFacade:
         self._history = history
         self._bounds = bounds
         self._outlook: tuple[tuple[int, int, int], float, datetime, Outlook] | None = None
+        # Автор сообщения-адресата мандаринов по (чат, id сообщения).
+        self._partner: tuple[tuple[int, int], Sender | None] | None = None
         self.artifacts = artifacts or ArtifactRuns(
             settings=settings,
             state=lambda: load_state(pipeline.state),
@@ -256,6 +268,23 @@ class EngineFacade:
                 if attempt >= _REPLY_TO_ATTEMPTS:
                     raise
                 attempt += 1
+
+    async def tangerine_partner(self) -> TangerinePartner:
+        """Кому аккаунт дарит 🍊: автор сообщения `chats.tangerine_reply_to` в чате мандаринов.
+        Ответ Telegram (и «сообщения нет») запоминается, пока адресат не сменится; ошибки
+        чтения — нет."""
+        chats = self.settings.current.chats
+        reply_to = chats.tangerine_reply_to
+        if reply_to is None:
+            return TangerinePartner(None, None)
+        key = (chats.tangerine_chat_id, reply_to)
+        if self._partner is not None and self._partner[0] == key:
+            return TangerinePartner(reply_to, self._partner[1])
+        if self._transport is None or self.tg.status().state is not TgState.ONLINE:
+            raise TgNotOnline
+        sender = await self._transport.message_sender(*key)
+        self._partner = (key, sender)
+        return TangerinePartner(reply_to, sender)
 
     def ready(self) -> bool:
         st = self.status()
