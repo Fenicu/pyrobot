@@ -660,6 +660,8 @@ async def test_message_sender_reads_author_of_message() -> None:
         ("FloodWait", FloodWait),
         ("PeerIdInvalid", ChatUnavailable),
         ("ChannelPrivate", ChatUnavailable),
+        ("ChannelBanned", ChatUnavailable),
+        ("MessageIdInvalid", ChatUnavailable),
     ],
 )
 async def test_message_sender_errors(error: str, raised: type[Exception]) -> None:

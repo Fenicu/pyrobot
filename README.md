@@ -3785,8 +3785,8 @@ identity (`get_me`) проверяется до запуска апдейтов,
 сообщений не меняются). Автор сообщения в чате — `message_sender(chat_id, message_id)`:
 `get_messages` через ограду аренды, ответ `Sender` (id пользователя Telegram, имя, фамилия,
 username); сообщения нет (удалено) или автор не пользователь — None, чат не читается
-(`CHANNEL_INVALID`, `CHANNEL_PRIVATE`, `PEER_ID_INVALID`, `USER_NOT_PARTICIPANT`) —
-`ChatUnavailable`.
+(`CHANNEL_INVALID`, `CHANNEL_PRIVATE`, `PEER_ID_INVALID`, `USER_NOT_PARTICIPANT` и прочие отказы
+Telegram, кроме flood wait и потери авторизации) — `ChatUnavailable`.
 
 **Сессия Telegram — в базе, а не в файле.** `PgSessionStorage` (`app/db/tg_storage.py`,
 `storage_engine` клиента kurigram) пишет поля сессии (`dc_id`, `api_id`, `test_mode`, `auth_key`,
@@ -4386,10 +4386,12 @@ Telegram не вернул id отправленного сообщения), 50
 "account": {"id", "name"} | null, "status"}`: `account` — аккаунт **той же учётки**, привязанный к
 этому пользователю Telegram (`accounts.tg_user_id`; чужие учётки не раскрываются); `status` — `ok`,
 `missing` (сообщения нет или его автор не пользователь), `unset` (адресат не задан, Telegram не
-спрашивается), `offline` (движок не запущен, Telegram не в сети, flood wait, чат не читается или
-потеряна аренда — без ошибки, `reply_to` из настроек). Ответ Telegram (и `missing`) движок помнит,
-пока не сменится `chats.tangerine_reply_to` или `chats.tangerine_chat_id`; сбой чтения не
-запоминается.
+спрашивается), `offline` (движок не запущен, Telegram не в сети, flood wait, чат не читается,
+потеряна аренда или любой другой сбой чтения — без ошибки, `reply_to` из настроек; непредвиденный
+сбой — строка `warning` в логе). Ответ Telegram (и `missing`) движок помнит, пока не сменится
+`chats.tangerine_reply_to` или `chats.tangerine_chat_id`; сбой чтения — 60 с (`PARTNER_RETRY_S`) или
+сколько просит flood wait, если дольше: загрузки главной и настроек в это время Telegram не
+спрашивают. Одновременные запросы одного адресата ждут один запрос к Telegram.
 
 `GET
 /readyz` (без авторизации) — 200 `{"status":"ready"}`, если процесс готов (база отвечает, соединение

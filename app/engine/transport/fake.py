@@ -68,6 +68,8 @@ class FakeTransport:
         self.senders: dict[tuple[int, int], Sender] = {}
         self.sender_lookups: list[tuple[int, int]] = []
         self.sender_fail_with: list[BaseException] = []
+        # Выполняется посреди запроса автора: что меняется, пока ответ Telegram в пути.
+        self.on_sender: Callable[[], Awaitable[None]] | None = None
         self._next_id = 1000
         self._tasks: set[asyncio.Future[None]] = set()
 
@@ -118,6 +120,8 @@ class FakeTransport:
 
     async def message_sender(self, chat_id: int, message_id: int) -> Sender | None:
         self.sender_lookups.append((chat_id, message_id))
+        if self.on_sender is not None:
+            await self.on_sender()
         if self.sender_fail_with:
             raise self.sender_fail_with.pop(0)
         return self.senders.get((chat_id, message_id))

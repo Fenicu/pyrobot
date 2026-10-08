@@ -167,8 +167,9 @@ async def tangerine_partner(
 ) -> TangerinePartnerOut:
     """Кому аккаунт дарит 🍊: автор сообщения `chats.tangerine_reply_to` в чате мандаринов и,
     если это аккаунт той же учётки, он сам (`account`). `unset` — адресат не задан, `missing` —
-    сообщения нет, `offline` — движок не запущен, Telegram не в сети или чат не читается.
-    Ответ Telegram запоминается до смены адресата."""
+    сообщения нет, `offline` — движок не запущен, Telegram не в сети, чат не читается или иной
+    сбой чтения. Ответ Telegram запоминается до смены адресата, сбой — на минуту (или flood
+    wait)."""
     f = scope.facade
     if f is None:
         values, _ = await scope.reads.settings()
@@ -182,6 +183,10 @@ async def tangerine_partner(
         partner = await f.tangerine_partner()
     except (TgNotOnline, TransportAuthLost, FloodWait, ChatUnavailable, LeaseLost) as exc:
         log.info("tangerine partner unavailable: %s", type(exc).__name__)
+        return _partner_out(reply_to, "offline")
+    except Exception as exc:
+        # Строка на главной и в настройках — подсказка: сбой чтения не роняет страницу.
+        log.warning("tangerine partner lookup failed: %r", exc)
         return _partner_out(reply_to, "offline")
     return await _resolved(partner, ctx.user_id, c)
 

@@ -47,7 +47,7 @@ from app.engine.state.model import (
     dump_state,
 )
 from app.engine.tg_auth import TgAuthBackend, TgState
-from app.engine.transport.base import FloodWait, Sender, TransportRejected
+from app.engine.transport.base import ChatUnavailable, FloodWait, Sender, TransportRejected
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from tests.engine.helpers import GAME, tg_auth, until
 
@@ -274,17 +274,97 @@ async def test_tangerine_partner_cached_until_reply_to_changes() -> None:
     assert transport.sender_lookups == [(-1001377961602, 7), (-1001377961602, 8)]
 
 
-async def test_tangerine_partner_failure_not_cached() -> None:
+class Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.mark.parametrize(
+    ("failure", "hold"),
+    [
+        (ChatUnavailable(-1001377961602, "PeerIdInvalid"), 60.0),
+        (FloodWait(3), 60.0),
+        (FloodWait(300), 300.0),
+    ],
+)
+async def test_tangerine_partner_failure_held_then_retried(
+    failure: Exception, hold: float
+) -> None:
     transport = FakeTransport()
     anna = Sender(42, "Анна", None, "anna")
     transport.senders[(-1001377961602, 7)] = anna
-    transport.sender_fail_with.append(FloodWait(3))
+    transport.sender_fail_with.append(failure)
+    clock = Clock()
+    f = build(transport=transport, monotonic=clock)
+    await f.tg.boot()
+    await f.set_tangerine_reply_to(7, by="admin")
+    with pytest.raises(type(failure)):
+        await f.tangerine_partner()
+    # Сбой помнится: Telegram не спрашивается до конца паузы.
+    clock.now += hold - 1
+    with pytest.raises(type(failure)):
+        await f.tangerine_partner()
+    assert transport.sender_lookups == [(-1001377961602, 7)]
+    clock.now += 1
+    assert await f.tangerine_partner() == TangerinePartner(7, anna)
+    assert len(transport.sender_lookups) == 2
+
+
+async def test_tangerine_partner_failure_held_only_for_its_target() -> None:
+    transport = FakeTransport()
+    transport.sender_fail_with.append(RuntimeError("boom"))
+    f = build(transport=transport, monotonic=Clock())
+    await f.tg.boot()
+    await f.set_tangerine_reply_to(7, by="admin")
+    with pytest.raises(RuntimeError):
+        await f.tangerine_partner()
+    await f.set_tangerine_reply_to(8, by="admin")
+    assert await f.tangerine_partner() == TangerinePartner(8, None)
+    assert transport.sender_lookups == [(-1001377961602, 7), (-1001377961602, 8)]
+
+
+async def test_tangerine_partner_concurrent_lookups_share_one_request() -> None:
+    transport = FakeTransport()
+    anna = Sender(42, "Анна", None, "anna")
+    transport.senders[(-1001377961602, 7)] = anna
+    gate = asyncio.Event()
+
+    async def held() -> None:
+        await gate.wait()
+
+    transport.on_sender = held
     f = build(transport=transport)
     await f.tg.boot()
     await f.set_tangerine_reply_to(7, by="admin")
-    with pytest.raises(FloodWait):
-        await f.tangerine_partner()
-    assert await f.tangerine_partner() == TangerinePartner(7, anna)
+    first = asyncio.create_task(f.tangerine_partner())
+    second = asyncio.create_task(f.tangerine_partner())
+    await until(lambda: len(transport.sender_lookups) == 1)
+    gate.set()
+    assert await first == await second == TangerinePartner(7, anna)
+    assert transport.sender_lookups == [(-1001377961602, 7)]
+
+
+async def test_tangerine_partner_concurrent_failure_reaches_both() -> None:
+    transport = FakeTransport()
+    gate = asyncio.Event()
+
+    async def held() -> None:
+        await gate.wait()
+
+    transport.on_sender = held
+    transport.sender_fail_with.append(FloodWait(5))
+    f = build(transport=transport)
+    await f.tg.boot()
+    await f.set_tangerine_reply_to(7, by="admin")
+    calls = [asyncio.create_task(f.tangerine_partner()) for _ in range(2)]
+    await until(lambda: len(transport.sender_lookups) == 1)
+    gate.set()
+    results = await asyncio.gather(*calls, return_exceptions=True)
+    assert [type(r) for r in results] == [FloodWait, FloodWait]
+    assert transport.sender_lookups == [(-1001377961602, 7)]
 
 
 async def test_tangerine_partner_needs_online_telegram() -> None:

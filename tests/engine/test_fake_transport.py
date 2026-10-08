@@ -66,6 +66,14 @@ async def test_message_sender_from_table_and_recorded() -> None:
     with pytest.raises(FloodWait):
         await t.message_sender(-1001377961602, 7)
     assert t.sender_lookups == [(-1001377961602, 7), (-1001377961602, 8), (-1001377961602, 7)]
+    inside: list[int] = []
+
+    async def hook() -> None:
+        inside.append(len(t.sender_lookups))
+
+    t.on_sender = hook
+    assert await t.message_sender(-1001377961602, 7) == Sender(42, "Анна", "К", "anna")
+    assert inside == [4]
 
 
 async def test_inline_recorded_with_new_id() -> None:

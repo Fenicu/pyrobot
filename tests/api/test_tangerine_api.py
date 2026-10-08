@@ -469,13 +469,17 @@ async def test_partner_telegram_offline(api: Api) -> None:
         ChatUnavailable(TANGERINE, "PeerIdInvalid"),
         TransportAuthLost("revoked"),
         LeaseLost("lease"),
+        RuntimeError("boom"),
+        ConnectionError("reset"),
     ],
 )
-async def test_partner_read_failure_is_offline_and_retried(api: Api, failure: Exception) -> None:
+async def test_partner_read_failure_is_offline_and_held(api: Api, failure: Exception) -> None:
     transport, _ = await _engine(api)
     transport.senders[(TANGERINE, 7)] = ANNA
     transport.sender_fail_with = [failure]
     await _reply_to(api, 7)
-    body = await _partner(api)
-    assert (body["reply_to"], body["sender"], body["status"]) == (7, None, "offline")
-    assert (await _partner(api))["status"] == "ok"
+    offline = {"reply_to": 7, "sender": None, "account": None, "status": "offline"}
+    assert await _partner(api) == offline
+    # Сбой помнится: следующая загрузка страницы Telegram не спрашивает.
+    assert await _partner(api) == offline
+    assert transport.sender_lookups == [(TANGERINE, 7)]

@@ -34,6 +34,7 @@ from app.engine.tg_auth import TgAuthManager, TgState, TgStatus
 from app.engine.transport.base import (
     GAME_CHAT_USERNAME,
     TANGERINE_CHAT_USERNAME,
+    FloodWait,
     JoinStatus,
     Sender,
     Transport,
@@ -51,6 +52,9 @@ log = logging.getLogger(__name__)
 _REPLY_TO_ATTEMPTS = 3
 # «План бота» не пересчитывается чаще: несколько вкладок не гоняют проход планировщика.
 OUTLOOK_TTL_S = 5.0
+# Сбой чтения адресата мандаринов помнится столько (или сколько просит flood wait, если дольше):
+# главная и настройки не спрашивают Telegram на каждой загрузке.
+PARTNER_RETRY_S = 60.0
 
 
 def _always() -> bool:
@@ -174,6 +178,10 @@ class EngineFacade:
         self._outlook: tuple[tuple[int, int, int], float, datetime, Outlook] | None = None
         # Автор сообщения-адресата мандаринов по (чат, id сообщения).
         self._partner: tuple[tuple[int, int], Sender | None] | None = None
+        # Сорвавшийся запрос автора: ключ, до какого момента не повторять и ошибка.
+        self._partner_failed: tuple[tuple[int, int], float, Exception] | None = None
+        # Запрос автора в пути: одновременные чтения того же адресата ждут его.
+        self._partner_flight: tuple[tuple[int, int], asyncio.Future[Sender | None]] | None = None
         self.artifacts = artifacts or ArtifactRuns(
             settings=settings,
             state=lambda: load_state(pipeline.state),
@@ -271,8 +279,9 @@ class EngineFacade:
 
     async def tangerine_partner(self) -> TangerinePartner:
         """Кому аккаунт дарит 🍊: автор сообщения `chats.tangerine_reply_to` в чате мандаринов.
-        Ответ Telegram (и «сообщения нет») запоминается, пока адресат не сменится; ошибки
-        чтения — нет."""
+        Ответ Telegram (и «сообщения нет») запоминается, пока адресат не сменится; сбой чтения —
+        на `PARTNER_RETRY_S` (или flood wait, если дольше). Одновременные чтения одного адресата —
+        один запрос."""
         chats = self.settings.current.chats
         reply_to = chats.tangerine_reply_to
         if reply_to is None:
@@ -280,11 +289,36 @@ class EngineFacade:
         key = (chats.tangerine_chat_id, reply_to)
         if self._partner is not None and self._partner[0] == key:
             return TangerinePartner(reply_to, self._partner[1])
-        if self._transport is None or self.tg.status().state is not TgState.ONLINE:
+        failed = self._partner_failed
+        if failed is not None and failed[0] == key and self._monotonic() < failed[1]:
+            raise failed[2].with_traceback(None)
+        transport = self._transport
+        if transport is None or self.tg.status().state is not TgState.ONLINE:
             raise TgNotOnline
-        sender = await self._transport.message_sender(*key)
-        self._partner = (key, sender)
+        flight = self._partner_flight
+        if flight is None or flight[0] != key:
+            task = asyncio.ensure_future(self._lookup_partner(transport, key))
+            # Все ждавшие отменены — ошибка задачи всё равно прочитана.
+            task.add_done_callback(lambda t: t.cancelled() or t.exception())
+            flight = self._partner_flight = (key, task)
+        sender = await asyncio.shield(flight[1])
         return TangerinePartner(reply_to, sender)
+
+    async def _lookup_partner(self, transport: Transport, key: tuple[int, int]) -> Sender | None:
+        try:
+            sender = await transport.message_sender(*key)
+        except Exception as exc:
+            hold = PARTNER_RETRY_S
+            if isinstance(exc, FloodWait):
+                hold = max(hold, exc.seconds)
+            self._partner_failed = (key, self._monotonic() + hold, exc)
+            raise
+        else:
+            self._partner = (key, sender)
+            return sender
+        finally:
+            if self._partner_flight is not None and self._partner_flight[0] == key:
+                self._partner_flight = None
 
     def ready(self) -> bool:
         st = self.status()

@@ -1333,6 +1333,9 @@ class KurigramTransport:
             errors.UserNotParticipant,
         ) as exc:
             raise ChatUnavailable(chat_id, type(exc).__name__) from exc
+        except errors.RPCError as exc:
+            # Прочие отказы Telegram (бан в канале, неверный id) — чат тоже не прочитать.
+            raise ChatUnavailable(chat_id, type(exc).__name__) from exc
         if message is None or getattr(message, "empty", False):
             return None
         user = message.from_user

@@ -769,8 +769,9 @@ export interface paths {
          * Tangerine Partner
          * @description Кому аккаунт дарит 🍊: автор сообщения `chats.tangerine_reply_to` в чате мандаринов и,
          *     если это аккаунт той же учётки, он сам (`account`). `unset` — адресат не задан, `missing` —
-         *     сообщения нет, `offline` — движок не запущен, Telegram не в сети или чат не читается.
-         *     Ответ Telegram запоминается до смены адресата.
+         *     сообщения нет, `offline` — движок не запущен, Telegram не в сети, чат не читается или иной
+         *     сбой чтения. Ответ Telegram запоминается до смены адресата, сбой — на минуту (или flood
+         *     wait).
          */
         get: operations["tangerine_partner_api_v1_accounts__account_id__tangerine_partner_get"];
         put?: never;
