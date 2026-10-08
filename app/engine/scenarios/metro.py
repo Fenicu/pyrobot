@@ -30,6 +30,7 @@ from app.engine.parsing.metro import (
     MetroNpc,
     recognize_metro,
 )
+from app.engine.parsing.profile import ProfileCompact
 from app.engine.parsing.refusals import Busy, Refused
 from app.engine.parsing.screens import InfoScreen
 from app.engine.scenarios.context import (
@@ -70,6 +71,11 @@ MOVING_POLL_S = 2.0
 STUCK_WAIT_MIN_S = 60.0
 STUCK_STEP_FACTOR = 3.0
 MOVES = ("maze_up", "maze_down", "maze_left", "maze_right")
+# «👍Выйти» — не раньше 1.5 с после правки с диалогом выхода (07.10 клик через 28 мс после неё
+# дал итог «досрочно», а персонаж остался в метро).
+EXIT_SETTLE = timedelta(seconds=1.5)
+RELEASED = "metro: /main answered, out of the run"
+_settle_sleep = asyncio.sleep
 OPPOSITE: dict[str, tuple[str, tuple[int, int]]] = {
     "left": ("right", (2, 3)),
     "right": ("left", (2, 1)),
@@ -164,6 +170,8 @@ async def metro(ctx: ScenarioContext, state: CharacterState, params: Params) -> 
     С `params["resume"]` (id сообщения забега) — продолжение после рестарта или остановки.
     """
     async with ctx.lease("metro"):
+        if (probe := params.get("probe")) is not None:
+            return await _probe(ctx, str(probe))
         if (resume := params.get("resume")) is not None:
             return await _resume(ctx, params, int(resume))
         # 🚇Метро — кнопка меню офиса: без безопасной точки после него.
@@ -184,6 +192,77 @@ async def metro(ctx: ScenarioContext, state: CharacterState, params: Params) -> 
             return await _buy_and_start(ctx, params, opened.delivery.msg, _buffs_of(opened))
         except Halted as halted:
             return await _halt(ctx, halted.reason)
+
+
+def _answered(step: StepResult) -> bool:
+    """Игра ответила (профилем или отказом): персонаж вне метро — в забеге она молчит."""
+    return step.step in (Step.OK, Step.REFUSED)
+
+
+def _silent(step: StepResult) -> bool:
+    return step.step is Step.FAILED and step.reason == "timeout"
+
+
+async def _probe(ctx: ScenarioContext, probe: str) -> ScenarioResult:
+    """Проверка выхода по решению планировщика (итог забега без подтверждённого выхода): `/main`
+    или `/compact` перед битвой. Ответ снимает отметку забега в состоянии сам."""
+    step = await ctx.send(f"/{probe}", expect_events(ProfileCompact))
+    if _answered(step):
+        if probe == "main":
+            await ctx.notify(
+                "info", "metro_main_released", "metro: /main answered, out of the run"
+            )
+        return ScenarioResult("done", "released")
+    if not _silent(step):
+        return finish(step)
+    if probe == "compact":
+        text = (
+            "metro: no kick and no answer 10 min before the battle; "
+            "sending nothing until the game answers"
+        )
+        await ctx.notify("error", "metro_stuck_unresolved", text)
+    return ScenarioResult("nothing", "still_inside")
+
+
+async def _exit_checked(
+    ctx: ScenarioContext,
+    result: ScenarioResult,
+    solver: MetroSolver,
+    record: Callable[[str], dict[str, Any]],
+    *,
+    anomaly: bool,
+) -> ScenarioResult:
+    """Итог забега ещё не выход: в забеге игра на команды не отвечает. `/compact`, без ответа —
+    `/main` («К персонажу»), без ответа и на неё — персонаж застрял в метро до выброса."""
+    if anomaly:
+        text = "metro: the normal exit dialog was answered with the early-exit result"
+        await ctx.notify("warn", "metro_exit_anomaly", text)
+    compact = await ctx.send("/compact", expect_events(ProfileCompact))
+    if _answered(compact):
+        return result
+    if not _silent(compact):
+        return stopped(ScenarioStopped(compact.reason, compact), record(compact.reason))
+    main = await ctx.send("/main", expect_events(ProfileCompact))
+    if _answered(main):
+        await ctx.notify("info", "metro_main_released", RELEASED)
+        return result
+    if not _silent(main):
+        # Исход /main неизвестен: мог и вывести — застрявшим не считаем.
+        return stopped(ScenarioStopped(main.reason, main), record(main.reason))
+    kick = solver.budget.kick_at()
+    when = kick.isoformat() if kick is not None else "unknown"
+    text = (
+        "metro: still inside after the finish, no answer to /compact and /main; "
+        f"kick expected at {when}"
+    )
+    await ctx.notify("warn", "metro_stuck_after_exit", text)
+    return ScenarioResult("stopped", "exit_unconfirmed", record("exit_unconfirmed"))
+
+
+async def _settle(ctx: ScenarioContext, shown: IncomingMessage) -> None:
+    left = (shown.date + EXIT_SETTLE - ctx.clock.now()).total_seconds()
+    if left > 0:
+        await _settle_sleep(left)
 
 
 async def _decline(
@@ -558,6 +637,12 @@ async def _walk(
             run["stuck_recovered"] = list(stages)
         return {"metro": run}
 
+    async def left(result: ScenarioResult, *, anomaly: bool = False) -> ScenarioResult:
+        if (result.status, result.reason) != ("done", "finished"):
+            return result
+        return await _exit_checked(ctx, result, solver, record, anomaly=anomaly)
+
+    shown: Event | None = None
     try:
         while True:
             if _stuck(ctx, current, stuck_s):
@@ -566,7 +651,7 @@ async def _walk(
                     ctx, message, current, buffs, solver, stages, record
                 )
                 if isinstance(recovered, ScenarioResult):
-                    return recovered
+                    return await left(recovered)
                 solver.cancel()
                 solver.resync()
                 current = recovered
@@ -574,6 +659,7 @@ async def _walk(
             screen = metro_screen(current)
             if screen is None:
                 return await _halt(ctx, "unexpected_screen", record("unexpected_screen"))
+            before, shown = shown, screen
             move = solver.next(screen, ctx.clock.now())
             live.update()
             for alert in solver.alerts:
@@ -581,9 +667,19 @@ async def _walk(
                     notified.add(alert)
                     await ctx.notify("warn", f"metro_{alert}", ALERTS.get(alert, alert))
             if isinstance(move, Done):
-                return ScenarioResult("done", move.reason, record(move.reason))
+                # Итог «досрочно» в ответ на обычный диалог выхода, а не на 🚪: ошибка игры.
+                anomaly = (
+                    isinstance(screen, MetroFinished)
+                    and screen.early
+                    and isinstance(before, MetroExit)
+                )
+                return await left(
+                    ScenarioResult("done", move.reason, record(move.reason)), anomaly=anomaly
+                )
             if not isinstance(move, Click):
                 return await _halt(ctx, move.reason, record(move.reason))
+            if move.data == "maze_exit_accept" and isinstance(screen, MetroExit):
+                await _settle(ctx, current)
             await ctx.safe_point()
             latest = ctx.latest(message)
             if latest is not None and not _same(latest, current):
@@ -614,7 +710,7 @@ async def _walk(
                     ctx, message, latest, buffs, solver, stages, record
                 )
                 if isinstance(recovered, ScenarioResult):
-                    return recovered
+                    return await left(recovered)
                 solver.cancel()
                 solver.resync()
                 current = recovered

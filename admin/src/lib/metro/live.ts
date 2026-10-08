@@ -96,6 +96,7 @@ const STOP_TEXT: Record<string, string> = {
 	unexpected_screen: 'незнакомый экран',
 	screen_changed: 'экран сменили вручную',
 	stuck_unknown: 'завис ход',
+	exit_unconfirmed: 'выход не подтверждён',
 	moving: 'ход не закончился',
 	timeout: 'игра не ответила'
 };

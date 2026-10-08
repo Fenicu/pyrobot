@@ -30,10 +30,11 @@ from app.engine.scenarios.metro import metro
 from app.engine.settings import MetroSection
 from app.engine.state.model import CharacterState
 from app.engine.types import Button, IncomingMessage
-from tests.engine.fakegame import GAME, World, running_world
+from tests.engine.fakegame import GAME, Ref, World, running_world
 from tests.engine.metro.sim import hide_events, tree_maze
 from tests.engine.metro.simgame import RUN, SimGame, enter_with_real_frames
-from tests.engine.parsing.test_metro import EARLY_FINISHED, LOST_FIGHT
+from tests.engine.parsing.test_metro import EARLY_FINISHED, EARLY_FINISHED_1007, LOST_FIGHT
+from tests.engine.parsing.test_profile import MAIN_ANSWER, MAIN_KEYBOARD
 from tests.engine.scenarios.certify import certifies
 from tests.fixtures import game_msg, game_versions
 
@@ -104,6 +105,23 @@ def start_at(world: World, run: int, version: int) -> None:
     world.game.on_click("maze_start", edit=("metro", run, version))
 
 
+# Компактный профиль: ответ игры вне метро на /compact и /main.
+PROFILE = ("profile", 3624478)
+MAIN_REPLY = replace(game_msg(*PROFILE), text=MAIN_ANSWER, inline=(), reply_kb=MAIN_KEYBOARD)
+
+
+@pytest.fixture(autouse=True)
+def settle(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Пауза перед «👍Выйти» — без настоящего ожидания: только её длина."""
+    waited: list[float] = []
+
+    async def record(seconds: float) -> None:
+        waited.append(seconds)
+
+    monkeypatch.setattr(metro_module, "_settle_sleep", record)
+    return waited
+
+
 class Live:
     """Приёмник живых кадров; часы `monotonic` идут на 1.5 с за вызов — троттлинг не мешает
     видеть каждый кадр."""
@@ -157,6 +175,7 @@ def ctx(
         clock=live,
         publish=live,
         run_id=41 if live is not None else None,
+        scenario="metro",
     )
 
 
@@ -279,6 +298,7 @@ async def test_live_frame_on_cancel_is_cancelled_not_failure(world: World) -> No
 @certifies("metro")
 async def test_live_frame_at_finish_takes_found_from_exit_screen(world: World) -> None:
     replay(world, 529, 532)
+    world.game.on_text("/compact", PROFILE)
     live = Live()
     battle = datetime.now(UTC) + timedelta(minutes=25)
     context = ctx(world, live=live)
@@ -308,12 +328,13 @@ async def test_exit_declined_while_cells_remain(world: World) -> None:
 async def test_leaves_by_deadline_and_collects(world: World) -> None:
     expected = replay(world, 529, 532)
     assert expected[-1] == "maze_exit_accept"
+    world.game.on_text("/compact", PROFILE)
     notes = Notes()
     battle = datetime.now(UTC) + timedelta(minutes=25)
     context = ctx(world, notes=notes)
     result = await run(world, context, battle_at=battle.isoformat(), margin_min=25)
     assert (result.status, result.reason) == ("done", "finished")
-    assert world.game.payloads() == expected
+    assert world.game.payloads() == [*expected, "/compact"]
     assert result.details is not None
     record = result.details["metro"]
     assert record["leave_reason"] == "deadline" and record["result"]["money"] == 157
@@ -377,6 +398,7 @@ async def test_lost_fight_without_packs_leaves_early(world: World) -> None:
     world.game.on_click("maze_continue", edit=stuck)
     world.game.on_click("maze_exit", edit=("metro", RUN2, 390))
     world.game.on_click("maze_exit_accept", edit=finished)
+    world.game.on_text("/compact", PROFILE)
     notes = Notes()
     result = await run(world, ctx(world, notes=notes))
     assert (result.status, result.reason) == ("done", "finished")
@@ -388,7 +410,10 @@ async def test_lost_fight_without_packs_leaves_early(world: World) -> None:
         "maze_continue",
         "maze_exit",
         "maze_exit_accept",
+        "/compact",
     ]
+    # «досрочно» после 🚪 — обычный итог досрочного выхода, не ошибка игры.
+    assert ("warn", "metro_exit_anomaly") not in notes.sent
     assert notes.sent == []
     assert result.details is not None
     assert result.details["metro"]["leave_reason"] == "no_stamina"
@@ -670,12 +695,19 @@ async def test_early_exit_before_kick(
     start_at(world, RUN2, 388)
     world.game.on_click("maze_exit", edit=("metro", RUN2, 390))
     world.game.on_click("maze_exit_accept", edit=answer)
+    world.game.on_text("/compact", PROFILE)
     notes = Notes()
     battle = datetime.now(UTC) + timedelta(minutes=15, seconds=50)
     context = ctx(world, notes=notes)
     result = await run(world, context, battle_at=battle.isoformat(), margin_min=25)
     assert result.status == status
-    assert world.game.payloads()[len(ENTRY) :] == ["maze_start", "maze_exit", "maze_exit_accept"]
+    checked = ["/compact"] if status == "done" else []
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_exit",
+        "maze_exit_accept",
+        *checked,
+    ]
     assert result.details is not None
     assert result.details["metro"]["leave_reason"] == "early_exit"
     if status == "stopped":
@@ -887,6 +919,7 @@ async def maze_world() -> AsyncIterator[World]:
 async def test_long_run_on_simulator(maze_world: World) -> None:
     game = maze_world.game
     assert isinstance(game, SimGame)
+    game.on_text("/compact", PROFILE)
     result = await run(maze_world, ctx(maze_world))
     assert (result.status, result.reason) == ("done", "finished")
     assert game.sim.finished
@@ -896,7 +929,10 @@ async def test_long_run_on_simulator(maze_world: World) -> None:
     record = result.details["metro"]
     assert len(record["grid"]["visited"]) == len(game.sim.maze.floor())
     assert record["result"] == game.sim.bank
-    assert maze_world.state.money is None
+    # Итог без известных денег их не выдумывает: 💵 — из профиля после выхода.
+    profile = game_msg(*PROFILE)
+    assert maze_world.state.money is not None
+    assert f"💵${maze_world.state.money.value} " in (profile.text or "").replace("\xa0", "")
 
 
 def test_policy_params_default_to_metro_settings() -> None:
@@ -1030,6 +1066,7 @@ async def test_stuck_step_both_unanswered_exits_with_notification(
     world.game.on_click("maze_exit", edit=early_exit)
     finished = replace(game_msg("metro", RUN, 6), text=STUCK_FINISHED_TEXT, inline=())
     world.game.on_click("maze_exit_accept", edit=finished)
+    world.game.on_text("/compact", PROFILE)
     notes = Notes()
     result = await run(world, ctx(world, notes=notes))
     assert (result.status, result.reason) == ("done", "finished")
@@ -1040,6 +1077,7 @@ async def test_stuck_step_both_unanswered_exits_with_notification(
         "maze_exit",
         "maze_exit_decline",
         "maze_exit_accept",
+        "/compact",
     ]
     assert ("warn", "metro_stuck_exit") in notes.sent
     assert any("back_step" in t and "exit_decline" in t for t in notes.texts)
@@ -1138,6 +1176,7 @@ async def test_stuck_step_door_unanswered_on_step2_recovers_on_step3(
     # Ступень 3: maze_exit ответил early_exit, затем maze_exit_accept ответил finished
     world.game.on_click("maze_exit", edit=early_exit)
     world.game.on_click("maze_exit_accept", edit=finished)
+    world.game.on_text("/compact", PROFILE)
     notes = Notes()
     result = await run(world, ctx(world, notes=notes))
     assert (result.status, result.reason) == ("done", "finished")
@@ -1148,6 +1187,7 @@ async def test_stuck_step_door_unanswered_on_step2_recovers_on_step3(
         "maze_exit",
         "maze_exit",
         "maze_exit_accept",
+        "/compact",
     ]
     assert ("warn", "metro_stuck_exit") in notes.sent
     assert any("back_step" in t and "exit_decline" in t for t in notes.texts)
@@ -1428,3 +1468,91 @@ async def test_pause_inside_ladder_on_resume_keeps_run_record(
     assert (result.status, result.reason) == ("stopped", "paused")
     assert world.game.payloads() == ["maze_left"]
     assert result.details is not None and result.details["metro"]["outcome"] == "paused"
+
+
+# --- проверка выхода после итога
+
+
+def _leave_by_deadline(world: World, finish: IncomingMessage | None = None) -> list[str]:
+    """Забег уходит к выходу по сроку; `finish` — ответ игры на «👍Выйти» вместо записанного."""
+    if finish is None:
+        return replay(world, 529, 532)
+    expected = replay(world, 529, 531)
+    world.game.on_click("maze_exit_accept", edit=finish)
+    return [*expected, "maze_exit_accept"]
+
+
+async def _run_to_exit(world: World, notes: Notes) -> ScenarioResult:
+    battle = datetime.now(UTC) + timedelta(minutes=25)
+    return await run(world, ctx(world, notes=notes), battle_at=battle.isoformat(), margin_min=25)
+
+
+INCIDENT_FINISH = replace(game_msg("metro", RUN, 532), text=EARLY_FINISHED_1007, inline=())
+
+
+@certifies("metro")
+async def test_normal_exit_confirmed_by_one_compact(world: World, settle: list[float]) -> None:
+    expected = _leave_by_deadline(world)
+    world.game.on_text("/compact", PROFILE)
+    notes = Notes()
+    result = await _run_to_exit(world, notes)
+    assert (result.status, result.reason) == ("done", "finished")
+    assert world.game.payloads() == [*expected, "/compact"]
+    assert notes.sent == []
+    assert world.state.metro_message is not None and world.state.metro_message.value is None
+    # «👍Выйти» — не раньше 1.5 с после правки с диалогом выхода.
+    assert len(settle) == 1 and 0 < settle[0] <= 1.5
+
+
+@certifies("metro")
+async def test_incident_exit_without_answer_marks_stuck(world: World) -> None:
+    """07.10: на «👍Выйти» обычного диалога игра ответила итогом «досрочно», а персонаж остался в
+    метро и молчал на команды до выброса."""
+    expected = _leave_by_deadline(world, INCIDENT_FINISH)
+    notes = Notes()
+    result = await _run_to_exit(world, notes)
+    assert (result.status, result.reason) == ("stopped", "exit_unconfirmed")
+    assert world.game.payloads() == [*expected, "/compact", "/main"]
+    assert notes.sent == [("warn", "metro_exit_anomaly"), ("warn", "metro_stuck_after_exit")]
+    assert "kick expected at" in notes.texts[-1]
+    seen = world.state.metro_message
+    assert seen is not None and seen.value is not None and seen.value.exit_at is not None
+    assert result.details is not None and result.details["metro"]["outcome"] == "exit_unconfirmed"
+
+
+@certifies("metro")
+async def test_incident_exit_released_by_main(world: World) -> None:
+    expected = _leave_by_deadline(world, INCIDENT_FINISH)
+    world.game.on_text("/main", MAIN_REPLY)
+    notes = Notes()
+    result = await _run_to_exit(world, notes)
+    assert (result.status, result.reason) == ("done", "finished")
+    assert world.game.payloads() == [*expected, "/compact", "/main"]
+    assert notes.sent == [("warn", "metro_exit_anomaly"), ("info", "metro_main_released")]
+    assert world.state.metro_message is not None and world.state.metro_message.value is None
+
+
+@pytest.mark.parametrize(
+    ("probe", "answer", "expected", "sent"),
+    [
+        ("main", MAIN_REPLY, ("done", "released"), [("info", "metro_main_released")]),
+        ("main", None, ("nothing", "still_inside"), []),
+        ("compact", PROFILE, ("done", "released"), []),
+        ("compact", None, ("nothing", "still_inside"), [("error", "metro_stuck_unresolved")]),
+    ],
+)
+async def test_exit_probe(
+    world: World,
+    probe: str,
+    answer: Ref | None,
+    expected: tuple[str, str],
+    sent: list[tuple[str, str]],
+) -> None:
+    command = f"/{probe}"
+    if answer is not None:
+        world.game.on_text(command, answer)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes), probe=probe)
+    assert (result.status, result.reason) == expected
+    assert world.game.payloads() == [command]
+    assert notes.sent == sent

@@ -178,6 +178,7 @@ export const EVENT_TEXT: Record<string, string> = {
 	metro_exit: 'выход',
 	leave: 'уход к выходу',
 	metro_finished: 'финиш',
+	metro_collapsed: 'выброс обвалом',
 	metro_entrance: 'вход',
 	metro_buffs: 'бафы'
 };
