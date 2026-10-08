@@ -38,6 +38,7 @@ from app.engine.gateway.types import (
     Source,
     Verdict,
 )
+from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.settings import SettingsProvider
 from app.engine.transport.base import (
     FloodWait,
@@ -532,15 +533,16 @@ class ActionGateway:
         return None
 
     def _inline_checks(self, req: ActionRequest) -> Blocked | None:
-        """Приглашение через инлайн-режим бота игры — только от реакции на встречу и только в
-        текущий чат приглашений (сверяется и перед каждой попыткой). Kill и пауза — как у
+        """Приглашение через инлайн-режим бота игры — только от реакции на встречу, только по коду
+        `join_fight_<11 символов>` и только в текущий чат приглашений (сверяется и перед каждой
+        попыткой). Kill и пауза — как у
         любого действия, флаг `bulls`, dry_run подавляет; блок трат не мешает: в игре
         приглашение ничего не тратит."""
         current = self._settings.current
         invites = current.chats.bulls_invite_chat_id
         if not _bulls_walk(req):
             return ActionStatus.REJECTED, "bulls_walk_only"
-        if not (req.text or "").strip():
+        if INVITE_CODE.match(req.text or "") is None:
             return ActionStatus.REJECTED, "inline_invalid"
         if invites is None:
             return ActionStatus.REJECTED, "invite_chat_off"

@@ -52,7 +52,7 @@ class PlanTimerOut(BaseModel):
 class PlanLoopOut(BaseModel):
     paused: bool
     # Причина, по которой цикл не исполняет решения (`paused`, `killed`, `spending_blocked`,
-    # `pipeline_unhealthy`, `lock_lost`, `tg_offline`), или null.
+    # `pipeline_unhealthy`, `lock_lost`, `tg_offline`, `bulls_walk`), или null.
     ready: str | None
     # Планировщик принимает свои решения (иначе цикл исполняет только ручные запуски).
     auto: bool

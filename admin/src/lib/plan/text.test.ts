@@ -124,7 +124,15 @@ describe('словари плана', () => {
 
 	it('причины неготовности цикла', () => {
 		expect(Object.keys(READY).sort()).toEqual(
-			['killed', 'lock_lost', 'paused', 'pipeline_unhealthy', 'spending_blocked', 'tg_offline'].sort()
+			[
+				'bulls_walk',
+				'killed',
+				'lock_lost',
+				'paused',
+				'pipeline_unhealthy',
+				'spending_blocked',
+				'tg_offline'
+			].sort()
 		);
 	});
 

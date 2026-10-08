@@ -234,7 +234,8 @@ export const READY: Record<string, string> = {
 	spending_blocked: 'траты заблокированы до сверки',
 	pipeline_unhealthy: 'конвейер сообщений нездоров',
 	lock_lost: 'потеряна аренда аккаунта',
-	tg_offline: 'Telegram не в сети'
+	tg_offline: 'Telegram не в сети',
+	bulls_walk: 'встреча с биржевиком на прогулке'
 };
 
 export function readyText(reason: string): string {

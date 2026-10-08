@@ -171,6 +171,24 @@ def _sent_id(updates: Any, random_id: int) -> int:
     return 0
 
 
+def _carries(result: Any, query: str) -> bool:
+    """Результат инлайн-режима несёт запрос: кнопка с ним (переключение, callback, url) или он
+    отдельным словом в тексте сообщения."""
+    sent = getattr(result, "send_message", None)
+    markup = getattr(sent, "reply_markup", None)
+    for row in getattr(markup, "rows", None) or ():
+        for button in getattr(row, "buttons", None) or ():
+            for name in ("query", "data", "url"):
+                value = getattr(button, name, None)
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8", "replace")
+                if value == query:
+                    return True
+    text = getattr(sent, "message", None)
+    word = re.compile(rf"(?<![\w-]){re.escape(query)}(?![\w-])")
+    return isinstance(text, str) and word.search(text) is not None
+
+
 def _input_user(peer: Any) -> Any:
     """Пользователь (бот) для запросов, которым нужен InputUser, из его peer."""
     from pyrogram import raw
@@ -1196,6 +1214,9 @@ class KurigramTransport:
             raise TransportRejected(str(exc.ID or exc)) from exc
         if not results.results:
             raise TransportRejected("no_inline_results")
+        if not _carries(results.results[0], query):
+            # Первый результат — не то сообщение, что ждали: не отправляем.
+            raise TransportRejected("inline_result_mismatch")
         try:
             # Одна попытка: повтор после тайм-аута мог бы отправить приглашение дважды.
             updates = await client.invoke(

@@ -95,6 +95,9 @@ async def test_invite_posted_once_and_message_id_kept(rig: Rig) -> None:
     [
         ({"chat_id": GAME}, "invite_chat_changed"),
         ({"text": ""}, "inline_invalid"),
+        ({"text": "premium"}, "inline_invalid"),
+        ({"text": "join_fight_short"}, "inline_invalid"),
+        ({"text": f"{CODE} spam"}, "inline_invalid"),
         ({"scenario": None}, "bulls_walk_only"),
         ({"source": Source.MANUAL}, "bulls_walk_only"),
     ],

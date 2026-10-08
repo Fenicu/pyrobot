@@ -153,3 +153,16 @@ async def test_planner_not_ready_reason_offline_before_spending_block(
     cannot = runtime._can_send()
     assert cannot is not None
     assert runtime._planner_ready() == cannot
+
+
+async def test_planner_held_while_walk_offer_handled(runtime: AccountRuntime) -> None:
+    # Встреча с биржевиком на прогулке в работе: очередная /walk попала бы в экран после клика.
+    runtime.pipeline = SimpleNamespace(healthy=True)  # type: ignore[assignment]
+    runtime.gateway = SimpleNamespace(  # type: ignore[assignment]
+        kill_reason=None, spending_blocked=None
+    )
+    runtime._can_send = lambda: None  # type: ignore[method-assign]
+    runtime.bulls_walk = SimpleNamespace(holding=True)  # type: ignore[assignment]
+    assert runtime._planner_ready() == "bulls_walk"
+    runtime.bulls_walk = SimpleNamespace(holding=False)  # type: ignore[assignment]
+    assert runtime._planner_ready() is None

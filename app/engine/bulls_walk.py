@@ -22,7 +22,7 @@ from app.engine.gateway.types import (
     Verdict,
 )
 from app.engine.notify import Level, NotifierPort
-from app.engine.parsing.bulls import BullsEncounter
+from app.engine.parsing.bulls import INVITE_CODE, BullsEncounter
 from app.engine.planner.obligations import metro_inside, night_start
 from app.engine.settings import SettingsProvider
 from app.engine.state.model import CharacterState
@@ -39,30 +39,21 @@ ANSWER_TIMEOUT_S = 30.0
 FOLLOW_S = 15.0
 INVITE_TTL_S = 60.0
 FIGHT_ACCEPT = "fight_accept"
-_CODE_IN_TEXT = re.compile(r"join_fight_[A-Za-z0-9_-]{11}(?![A-Za-z0-9_-])")
+_CODE_IN_TEXT = re.compile(r"(?<![A-Za-z0-9_-])join_fight_[A-Za-z0-9_-]{11}(?![A-Za-z0-9_-])")
 HEAD_LEN = 160
 
 
-def answers_offer(offer: IncomingMessage, msg: IncomingMessage) -> bool:
-    """Ответ игры на клик по встрече: правка самой встречи или новое сообщение после неё."""
-    if msg.chat_id != offer.chat_id or msg.outgoing:
-        return False
-    if msg.msg_id == offer.msg_id:
-        return msg.content_hash() != offer.content_hash()
-    return msg.msg_id > offer.msg_id
-
-
 def share_query(msg: IncomingMessage) -> str | None:
-    """Запрос инлайн-режима, которым игра предлагает позвать друзей: кнопка переключения в
-    инлайн-режим (в любой чат или с выбором чата) или код `join_fight_…` в тексте и кнопке
-    копирования. None — приглашения в сообщении нет."""
+    """Код приглашения `join_fight_<11 символов>`, которым игра предлагает позвать друзей:
+    запрос кнопки переключения в инлайн-режим (в любой чат или с выбором чата), кнопка
+    копирования или текст. Другой запрос — не приглашение: что по нему отдаст инлайн-режим,
+    неизвестно, в чат приглашений оно не уходит. None — приглашения в сообщении нет."""
     for button in msg.inline:
-        query = (button.switch_chosen or button.switch or "").strip()
-        if query:
-            return query
-    for source in (msg.text, *(b.copy for b in msg.inline)):
-        if source and (m := _CODE_IN_TEXT.search(source)):
-            return m[0]
+        for query in (button.switch_chosen, button.switch, button.copy):
+            if query and INVITE_CODE.match(query.strip()):
+                return query.strip()
+    if msg.text and (m := _CODE_IN_TEXT.search(msg.text)):
+        return m[0]
     return None
 
 
@@ -88,14 +79,30 @@ def _head(text: str | None) -> str:
 
 @dataclass(eq=False)
 class _Watch:
-    """Сообщения игры после клика «⚔Драться», по одному на ревизию."""
+    """Сообщения игры после клика «⚔Драться», по одному на ревизию. Новое сообщение после первой
+    своей команды в чате игры — уже ответ на неё, а не на клик."""
 
     offer: IncomingMessage
     seen: dict[tuple[int, int, str], IncomingMessage] = field(default_factory=dict)
     changed: asyncio.Event = field(default_factory=asyncio.Event)
+    own_after: int | None = None
+
+    def answers(self, msg: IncomingMessage) -> bool:
+        """Ответ игры на клик: правка самой встречи или новое сообщение после неё и до первой
+        своей команды."""
+        offer = self.offer
+        if msg.chat_id != offer.chat_id or msg.outgoing:
+            return False
+        if msg.msg_id == offer.msg_id:
+            return msg.content_hash() != offer.content_hash()
+        own = self.own_after
+        return msg.msg_id > offer.msg_id and (own is None or msg.msg_id < own)
 
     def feed(self, msg: IncomingMessage) -> None:
-        if not answers_offer(self.offer, msg):
+        if msg.outgoing and msg.chat_id == self.offer.chat_id and msg.msg_id > self.offer.msg_id:
+            self.own_after = min(msg.msg_id, self.own_after or msg.msg_id)
+            return
+        if not self.answers(msg):
             return
         self.seen.setdefault((msg.msg_id, msg.revision, msg.content_hash()), msg)
         self.changed.set()
@@ -120,7 +127,10 @@ class BullsWalk:
     сообщениях (кнопка переключения в инлайн-режим или код `join_fight_…`). Не нашлось — больше
     ничего не жмёт: предупреждение `bulls_walk_unknown` с началом ответа (сам ответ — в
     нераспознанных). Подписчик шины ставит встречу в очередь, кликает `run` — задача под
-    супервизором. Встречи прошлого процесса не поднимаются: на раздумья всего 3 минуты."""
+    супервизором. Пока встреча в очереди и в работе (клик, разбор ответа, окно следующих
+    сообщений, приглашение), реакция держит планировщик (`holding`): его очередная `/walk`
+    попала бы в неизвестный экран после «⚔Драться»; `released` будит его после. Встречи
+    прошлого процесса не поднимаются: на раздумья всего 3 минуты."""
 
     def __init__(
         self,
@@ -132,7 +142,9 @@ class BullsWalk:
         clock: Clock | None = None,
         answer_timeout_s: float = ANSWER_TIMEOUT_S,
         follow_s: float = FOLLOW_S,
+        released: Callable[[], None] | None = None,
     ) -> None:
+        self._released = released
         self._gateway = gateway
         self._settings = settings
         self._state = state
@@ -148,6 +160,11 @@ class BullsWalk:
     @property
     def idle(self) -> bool:
         return not self._queued
+
+    @property
+    def holding(self) -> bool:
+        """Встреча в очереди или в работе: планировщику ждать."""
+        return bool(self._queued)
 
     async def on_delivery(self, delivery: Delivery) -> None:
         msg = delivery.msg
@@ -183,6 +200,8 @@ class BullsWalk:
                 while len(self._done) > DONE_CAPACITY:
                     self._done.popitem(last=False)
                 self._queued.discard(msg_id)
+                if not self._queued and self._released is not None:
+                    self._released()
 
     async def _handle(self, item: _Offer) -> None:
         msg = item.msg
@@ -301,7 +320,7 @@ def _answered(watch: _Watch) -> Predicate:
     """Любой ответ игры на клик подтверждает его: что это за экран, разбирает реакция."""
 
     def predicate(delivery: Delivery) -> Match | None:
-        if not answers_offer(watch.offer, delivery.msg):
+        if not watch.answers(delivery.msg):
             return None
         watch.feed(delivery.msg)
         return Match(Verdict.CONFIRMED, "answered")

@@ -354,6 +354,7 @@ class AccountRuntime:
             state=lambda: load_state(pipeline.state),
             notifier=self.notifier,
             clock=SystemClock(),
+            released=self.planner.wake,
         )
         bus.subscribe(self.bulls_walk.on_delivery, priority=25)
         bus.subscribe(self.planner.on_delivery, priority=90)
@@ -526,6 +527,10 @@ class AccountRuntime:
             return "pipeline_unhealthy"
         if (cannot := self._can_send()) is not None:
             return cannot
+        # Встреча с биржевиком на прогулке в работе: очередная /walk попала бы в экран после
+        # «⚔Драться».
+        if self.bulls_walk is not None and self.bulls_walk.holding:
+            return "bulls_walk"
         # Последней: под блоком трат цикл ещё может продолжить забег метро.
         if gateway is not None and gateway.spending_blocked is not None:
             return "spending_blocked"

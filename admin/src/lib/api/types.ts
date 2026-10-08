@@ -84,8 +84,18 @@ export interface Observed<T> {
 	src: 'screen' | 'derived' | 'doubtful';
 }
 
-/** Кнопки сообщения: `[текст, ряд, колонка, data, url, switch]` (как в журнале и SSE). */
-export type InlineButton = [string, number, number, string | null, string | null, string | null];
+/** Кнопки сообщения: `[текст, ряд, колонка, data, url, switch]` (как в журнале и SSE); у кнопок с
+ * выбором чата и копированием ещё `switch_chosen` и `copy`. */
+export type InlineButton = [
+	string,
+	number,
+	number,
+	string | null,
+	string | null,
+	string | null,
+	(string | null)?,
+	(string | null)?
+];
 export interface Markup {
 	inline?: InlineButton[];
 	reply?: string[][];

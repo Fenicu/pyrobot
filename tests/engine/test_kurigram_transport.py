@@ -1611,8 +1611,14 @@ async def test_chat_message_unresolved_peer_is_refusal(error: Exception) -> None
 INVITE = "join_fight_GXnJJ0QNK2K"
 
 
-def _inline_results(*ids: str) -> object:
-    return NS(query_id=5555, results=[NS(id=i) for i in ids])
+def _invite_message(switch: str = INVITE, text: str = "Я встретил банду 🐻Медведей…") -> object:
+    button = NS(text="⚔Присоединиться", query=switch)
+    return NS(message=text, reply_markup=NS(rows=[NS(buttons=[button])]))
+
+
+def _inline_results(*ids: str, message: object = None) -> object:
+    sent = message if message is not None else _invite_message()
+    return NS(query_id=5555, results=[NS(id=i, send_message=sent) for i in ids])
 
 
 async def test_inline_result_posted_into_target_chat() -> None:
@@ -1692,3 +1698,27 @@ async def test_inline_unresolved_peer_is_refusal(error: Exception) -> None:
     assert all(
         name not in ("GetInlineBotResults", "SendInlineBotResult") for name, _ in t.client.invoked
     )
+
+
+@pytest.mark.parametrize(
+    ("message", "posted"),
+    [
+        (_invite_message(), True),
+        (_invite_message(switch="other", text=f"Код: {INVITE}."), True),
+        (_invite_message(switch="join_fight_AaBH89kYd2J"), False),
+        (_invite_message(switch="other", text=f"Код: {INVITE}x"), False),
+        (NS(message="Купи премиум", reply_markup=None), False),
+    ],
+    ids=["button", "text", "other_code", "longer_word", "unrelated"],
+)
+async def test_inline_result_must_carry_the_code(message: object, posted: bool) -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.responses["GetInlineBotResults"] = _inline_results("r1", message=message)
+    t.client.responses["SendInlineBotResult"] = _forwarded(4343)
+    if posted:
+        assert await t.send_inline(GAME, TEAM, INVITE) == 4343
+        return
+    with pytest.raises(TransportRejected, match="inline_result_mismatch"):
+        await t.send_inline(GAME, TEAM, INVITE)
+    assert all(name != "SendInlineBotResult" for name, _ in t.client.invoked)

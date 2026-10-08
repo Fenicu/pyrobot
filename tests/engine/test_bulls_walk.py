@@ -63,6 +63,7 @@ class WalkRig:
         self.gw = Rig(settings, clock=self.clock)
         self.notes = Notes()
         self.state = CharacterState()
+        self.released = 0
         self.reaction = BullsWalk(
             gateway=self.gw.gw,
             settings=self.gw.settings,
@@ -71,8 +72,12 @@ class WalkRig:
             clock=self.clock,
             answer_timeout_s=0.3,
             follow_s=0.3,
+            released=self._released,
         )
         self.tasks: list[asyncio.Task[None]] = []
+
+    def _released(self) -> None:
+        self.released += 1
 
     def start(self) -> None:
         self.gw.start()
@@ -366,3 +371,63 @@ def test_own_invite_joined_by_other_accounts() -> None:
     assert act(decision) == ("bulls_join", {"code": CODE})
     # Сам инициатор своё приглашение не подхватывает: у него оно исходящее.
     assert parser.parse(replace(seen, outgoing=True)) == []
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        edited("Позови друзей!", Button("⚔Позвать", 0, 0, switch="premium")),
+        new("Позови друзей!", Button("⚔Позвать", 0, 0, switch_chosen="join_fight_x")),
+        new("Позови друзей!", Button("Код", 0, 0, copy=f"{CODE} и ещё")),
+    ],
+    ids=["other_query", "short_code", "copy_with_tail"],
+)
+async def test_only_invite_code_is_shared(rig: WalkRig, answer: IncomingMessage) -> None:
+    rig.answer_with(answer)
+    await rig.deliver(offer())
+    await rig.settled()
+    assert rig.invites() == []
+    assert rig.notes.codes == [("warn", "bulls_walk_unknown")]
+
+
+async def test_planner_held_until_answer_and_follow_window_end(rig: WalkRig) -> None:
+    rig.answer_with(edited("Ты встал в боевую стойку."))
+    assert not rig.reaction.holding
+    await rig.deliver(offer())
+    # С постановки встречи: планировщик уже не шлёт /walk.
+    assert rig.reaction.holding
+    await until(lambda: rig.clicks() == ["fight_accept"])
+    await asyncio.sleep(0.15)
+    # Ответ разобран, но окно следующих сообщений ещё идёт.
+    assert rig.reaction.holding and rig.released == 0
+    await rig.settled()
+    assert not rig.reaction.holding and rig.released == 1
+
+
+async def test_skipped_offer_releases_planner_at_once(rig: WalkRig) -> None:
+    await _settings(rig, "chats", bulls_invite_chat_id=None)
+    await rig.deliver(offer())
+    await rig.settled()
+    assert rig.released == 1 and rig.gw.transport.sent == []
+
+
+async def test_reply_to_own_command_does_not_confirm_click(rig: WalkRig) -> None:
+    async def responder(rec: Sent) -> None:
+        if rec.kind != "click":
+            return
+        # Своя команда (например, /walk) и ответ игры на неё — не ответ на клик.
+        await rig.deliver(replace(new("/walk", msg_id=OFFER + 1), outgoing=True))
+        await rig.deliver(
+            replace(new("Ты отправился гулять. Вернёшься через 5 минут.", msg_id=OFFER + 2))
+        )
+        await rig.deliver(new(f"Позови друзей: {CODE}", msg_id=OFFER + 3))
+
+    rig.gw.transport.responder = responder
+    await rig.deliver(offer())
+    await rig.settled()
+    [click] = [r for r in rig.gw.store.rows.values() if r.req.data == "fight_accept"]
+    assert click.status.value == "outcome_unknown"
+    assert rig.invites() == []
+    [(level, code, text)] = rig.notes.items
+    assert (level, code) == ("warn", "bulls_walk_unknown")
+    assert "Ты отправился гулять" not in text
