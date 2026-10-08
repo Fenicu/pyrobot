@@ -43,7 +43,7 @@ _CARD = re.compile(
 _GIFTS = re.compile(
     r"\A🗳Контейнеры:\nМалые: (?P<small>\d+)\n(?:/unbox_ls\n)?Средние: (?P<medium>\d+)"
 )
-_GIFTS_TANGERINES = re.compile(r"🍊У тебя: (?P<n>\d+) шт")
+_GIFTS_TANGERINES = re.compile(r"🍊У тебя: (?P<n>" + NUM + r") шт")
 _GIFTS_FOR_TANGERINES = re.compile(r"^🎁Твои за 🍊: (?P<n>" + NUM + r") шт", re.M)
 _CONTAINER = re.compile(r"\AТы открыл (?P<size>Малый|Средний) 🗳контейнер")
 _CONTENTS = re.compile(r"^Внутри ты обнаружил:\n(?P<body>.*?)(?:\n\n|\Z)", re.M | re.S)
@@ -268,7 +268,7 @@ def recognize_items(msg: IncomingMessage) -> list[Event]:
             GiftsScreen(
                 containers_small=int(m["small"]),
                 containers_medium=int(m["medium"]),
-                tangerines=int(tangerines["n"]) if tangerines else None,
+                tangerines=num(tangerines["n"]) if tangerines else None,
                 tangerine_gifts=num(gifts["n"]) if gifts else None,
             )
         ]

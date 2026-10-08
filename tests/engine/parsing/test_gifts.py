@@ -103,3 +103,10 @@ def test_opened_fixture() -> None:
 )
 def test_open_refusals(text: str, expected: Event) -> None:
     assert events(text) == [expected]
+
+
+def test_gifts_screen_tangerines_with_thousands_separator() -> None:
+    text = g.GIFTS_WITH_TANGERINE_GIFTS.replace("🍊У тебя: 2 шт", "🍊У тебя: 1 234 шт")
+    assert text != g.GIFTS_WITH_TANGERINE_GIFTS
+    [screen] = events(text)
+    assert isinstance(screen, GiftsScreen) and screen.tangerines == 1234
