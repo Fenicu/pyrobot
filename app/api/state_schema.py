@@ -45,6 +45,8 @@ class Observed[T](BaseModel):
 class MetroRunRefOut(BaseModel):
     message_id: int
     battle_at: Observed[datetime] | None = None
+    # Итог забега показан, выход ещё не подтверждён ответом игры.
+    exit_at: datetime | None = None
 
 
 class PublicState(BaseModel):

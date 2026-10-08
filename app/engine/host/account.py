@@ -222,7 +222,7 @@ class AccountRuntime:
         await actions.mark_unfinished_unknown()
         bus = Bus()
         react_age = self.settings.current.engine.recovered_react_max_age_min
-        reducer = StateReducer()
+        reducer = StateReducer(game_chat_id=started.chats.game_chat_id)
         journal = DbJournal(db, self.account_id, fence=self.fence)
         self.pipeline = Pipeline(
             journal=journal,

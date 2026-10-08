@@ -6,7 +6,8 @@ from dataclasses import asdict, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
-from app.engine.events import Event, Unrecognized
+import app.engine.parsing.metro as metro_parsing
+from app.engine.events import AntiFlood, Event, Unrecognized
 from app.engine.gadget_catalog import SHOP, slot_of_icon
 from app.engine.gametime import MSK, tasks_day, to_msk
 from app.engine.parsing.activities import (
@@ -1239,11 +1240,14 @@ def _metro_entered(p: _Patch, e: MetroEntered) -> None:
 
 
 def _inside(p: _Patch) -> None:
-    # Персонаж в метро: какое сообщение — экран забега (для продолжения после рестарта).
+    # Персонаж в метро: какое сообщение — экран забега (для продолжения после рестарта). Экран
+    # забега после итога — забег идёт: итог не был выходом.
     inside: Obs[MetroRunRef | None] | None = p.get("metro_message")
     run = inside.value if inside is not None else None
     if run is None or run.message_id != p.msg_id:
         run = MetroRunRef(message_id=p.msg_id, battle_at=p.get("battle_at"))
+    elif run.exit_at is not None:
+        run = run.model_copy(update={"exit_at": None, "exit_loot": {}})
     p.snap("metro_message", run)
 
 
@@ -1277,17 +1281,46 @@ for _screen in (
 
 @_on(MetroFinished)
 def _metro_finished(p: _Patch, e: MetroFinished) -> None:
+    # Итог ещё не выход: отметка забега остаётся с моментом итога, пока ответ игры вне метро не
+    # подтвердит выход (`_exit_confirmed`).
+    inside: Obs[MetroRunRef | None] | None = p.get("metro_message")
+    run = inside.value if inside is not None else None
+    if run is None or run.message_id != p.msg_id:
+        run = MetroRunRef(message_id=p.msg_id, battle_at=p.get("battle_at"))
     _metro_left(p, e.loot, e.stamina)
+    p.snap("metro_message", run.model_copy(update={"exit_at": p.at, "exit_loot": dict(e.loot)}))
 
 
 @_on(MetroCollapsed)
 def _metro_collapsed(p: _Patch, e: MetroCollapsed) -> None:
+    inside: Obs[MetroRunRef | None] | None = p.get("metro_message")
+    run = inside.value if inside is not None else None
+    if run is not None and run.exit_at is not None:
+        _metro_reversed(p, run)
     _metro_left(p, e.loot, None)
+    p.snap("metro_message", None)
 
 
-def _metro_left(p: _Patch, loot: dict[str, int], stamina: int | None) -> None:
-    """Персонаж вне метро: начислить полученное, отсчитать кулдаун, снять отметку забега."""
-    found_rewards = Rewards(
+# Ресурсы, которые итог забега мог начислить ложно: сомнительные до следующего экрана.
+_METRO_DOUBTED = ("money", "knowledge", "raw", "details", "food_stock")
+
+
+def _metro_reversed(p: _Patch, run: MetroRunRef) -> None:
+    """Выброс после неподтверждённого выхода: итог был ложным (персонаж оставался в метро, выброс
+    посчитан от всего найденного). Его начисление снимается встречным эффектом `metro`, ресурсы
+    — сомнительные: сколько дошло на самом деле, покажет профиль."""
+    assert run.exit_at is not None
+    lost = _loot_rewards({k: -v for k, v in run.exit_loot.items()}, None)
+    p.rewards(lost)
+    _food_found(p, {k: -v for k, v in run.exit_loot.items()})
+    key = f"metro_reversal:{run.message_id}:{run.exit_at.isoformat()}"
+    p.effect("metro", amounts(lost), key=key)
+    for name in _METRO_DOUBTED:
+        p.doubt(name)
+
+
+def _loot_rewards(loot: dict[str, int], stamina: int | None) -> Rewards:
+    return Rewards(
         exp=loot.get("exp", 0),
         money=loot.get("money", 0),
         knowledge=loot.get("knowledge", 0),
@@ -1298,7 +1331,9 @@ def _metro_left(p: _Patch, loot: dict[str, int], stamina: int | None) -> None:
         upgrades_blue=loot.get("upgrades_blue", 0),
         upgrades_red=loot.get("upgrades_red", 0),
     )
-    p.rewards(found_rewards)
+
+
+def _food_found(p: _Patch, loot: dict[str, int]) -> None:
     food = {kind: n for kind in FOOD_KINDS if (n := loot.get(kind, 0))}
     stock: Obs[dict[str, FoodStockState]] | None = p.get("food_stock")
     if food and stock is not None and all(kind in stock.value for kind in food):
@@ -1310,9 +1345,30 @@ def _metro_left(p: _Patch, loot: dict[str, int], stamina: int | None) -> None:
             }
 
         p.change("food_stock", found)
+
+
+def _metro_left(p: _Patch, loot: dict[str, int], stamina: int | None) -> None:
+    """Итог забега: начислить полученное и отсчитать кулдаун."""
+    found_rewards = _loot_rewards(loot, stamina)
+    p.rewards(found_rewards)
+    _food_found(p, loot)
     p.snap("metro_ready_at", p.at + METRO_COOLDOWN, src="derived")
-    p.snap("metro_message", None)
     p.effect("metro", amounts(found_rewards))
+
+
+def _exit_confirmed(p: _Patch, events: Sequence[Event]) -> None:
+    """Распознанный ответ игры вне метро подтверждает выход после итога: в забеге игра на
+    команды не отвечает. Кадры метро, нераспознанное и антифлуд выход не подтверждают."""
+    inside: Obs[MetroRunRef | None] | None = p.get("metro_message")
+    run = inside.value if inside is not None else None
+    if run is None or run.exit_at is None or run.message_id == p.msg_id or not events:
+        return
+    if any(
+        isinstance(e, Unrecognized | AntiFlood) or type(e).__module__ == metro_parsing.__name__
+        for e in events
+    ):
+        return
+    p.snap("metro_message", None)
 
 
 def _sale_ends(p: _Patch, draw_in_s: int) -> datetime:
@@ -1573,9 +1629,11 @@ def _revision_key(applied: dict[str, datetime], base: str, revision: int) -> str
 
 
 class StateReducer:
-    def __init__(self) -> None:
+    def __init__(self, *, game_chat_id: int | None = None) -> None:
         # Конвейер передаёт обратно тот же словарь, что вернул apply: не разбираем его заново.
         self._cache: tuple[dict[str, Any], CharacterState] | None = None
+        # Чат игры: выход из метро подтверждает только её ответ (None — любой чат).
+        self._game = game_chat_id
 
     def _load(self, state: dict[str, Any]) -> CharacterState:
         if self._cache is not None and self._cache[0] is state:
@@ -1607,6 +1665,8 @@ class StateReducer:
                     continue
                 applied[key] = patch.origin
             handler(patch, event)
+        if self._game is None or msg.chat_id == self._game:
+            _exit_confirmed(patch, events)
         kept = {k: t for k, t in applied.items() if t >= horizon}
         if kept != current.applied:
             patch.updates["applied"] = kept

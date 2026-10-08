@@ -146,6 +146,10 @@ class MetroRunRef(_Frozen):
 
     message_id: int
     battle_at: Obs[datetime] | None = None
+    # Итог забега показан (момент итога), но выход ещё не подтвердил ответ игры вне метро: 07.10
+    # игра показала итог, а персонаж остался в метро до выброса. `exit_loot` — что итог начислил.
+    exit_at: datetime | None = None
+    exit_loot: dict[str, int] = {}
 
 
 class LotteryState(_Frozen):
