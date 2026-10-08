@@ -926,6 +926,29 @@ def test_metro_entry_eat_follows_deed_rules() -> None:
     assert act(cooled) == ("metro", METRO_PARAMS)
 
 
+def test_metro_entry_eat_skipped_while_metro_on_hold() -> None:
+    # Метро на кулдауне (отказ, сбой): «есть перед метро» бессмысленно.
+    tired = metro_state(NOON, stamina=70)
+    held = decide(tired, METRO, NOON, cooldowns={"metro": NOON + timedelta(minutes=5)})
+    assert "deed:eat" not in verdicts(held)
+    assert verdicts(held)["metro"] == "cooldown"
+    uncertified = decide(tired, METRO, NOON, certified=frozenset({"deed:eat"}))
+    assert "deed:eat" not in verdicts(uncertified)
+
+
+def test_eat_rejection_listed_once_when_battle_and_metro_both_want_it() -> None:
+    now = msk(12, 40)
+    both = Settings.model_validate(
+        {
+            "features": {**dict.fromkeys(PHASE4, False), "metro": True, "daily_tasks": False},
+            "metro": {"min_budget_min": 1, "extra_margin_min": 0},
+        }
+    )
+    poor = metro_state(now, stamina=60, battle_at=msk(13), money=4)
+    decision = decide(poor, both, now)
+    assert [c.scenario for c in decision.candidates].count("deed:eat") == 1
+
+
 def test_metro_budget_counts_from_start_of_battle_hour() -> None:
     # «Битва через 1 ч 24 мин» в 12:00 — это битва в 14:00 (отсчёт округлён вниз), а не 13:24.
     rounded_down = metro_state(NOON, battle_at=NOON + timedelta(minutes=84))

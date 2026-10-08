@@ -197,7 +197,9 @@ class Obligations(PlannerBase):
         if verdict is None and money < price.money:
             verdict = "no_money"
         if verdict is not None:
-            self.reject("deed:eat", {}, verdict)
+            # Битва и метро спрашивают про еду за один проход: отказ записывается один раз.
+            if not any(c.scenario == "deed:eat" and c.verdict == verdict for c in self.candidates):
+                self.reject("deed:eat", {}, verdict)
             return None
         return self.act("deed:eat", {}, reason)
 
@@ -559,7 +561,12 @@ class Obligations(PlannerBase):
             self.reject("metro", {}, "reserved" if alone else "no_motivation")
             self.wake(self.value("motivation_next_at"), "motivation")
             return None
-        if not self.cfg.features.fastfood and (eat := self.eat_up("metro_stamina", None)):
+        # Метро на паузе (кулдаун, сбой, сертификация): есть «перед метро» незачем.
+        if (
+            not self.cfg.features.fastfood
+            and not self.gated("metro")
+            and (eat := self.eat_up("metro_stamina", None))
+        ):
             return eat
         return self.act("metro", self.metro_params(battle), "metro_ready")
 
