@@ -429,6 +429,23 @@ async def test_reconcile_waits_unbounded_for_unconfirmed_exit() -> None:
         await _stop(w, task)
 
 
+async def test_reconcile_waits_for_unconfirmed_exit_without_known_battle() -> None:
+    # Битва забега неизвестна (профиля не было): то же правило, что у планировщика, — 3 ч после
+    # итога, а не «до выброса».
+    w = World(answer=False, metro_wait_s=0.05)
+    await w.pipeline.process(_metro_frame(STUCK_MAP_GOING_LEFT))
+    await w.pipeline.process(_metro_frame(STUCK_FINISHED_TEXT))
+    pending = w.pipeline.state["metro_message"]["value"]
+    assert pending["exit_at"] is not None and pending["battle_at"] is None
+    task = await _running(w)
+    try:
+        await _uncertain(w, "/harvest")
+        await asyncio.sleep(0.6)
+        assert w.sent() == ["/harvest"]
+    finally:
+        await _stop(w, task)
+
+
 async def test_reconcile_metro_wait_is_bounded() -> None:
     w = World(answer=False, metro_wait_s=0.15)
     await _in_metro(w, _metro_frame(STUCK_MAP_GOING_LEFT))

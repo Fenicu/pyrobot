@@ -30,7 +30,8 @@ from app.engine.parsing.gorbushka import GorbushkaScreen
 from app.engine.parsing.items import GiftsScreen, Inventory
 from app.engine.parsing.profile import ProfileCompact
 from app.engine.parsing.stocks import StockScreen
-from app.engine.planner.obligations import metro_inside, metro_live
+from app.engine.planner.base import exit_unconfirmed
+from app.engine.planner.obligations import metro_live
 from app.engine.settings import SettingsProvider
 from app.engine.state.model import MetroRunRef, load_state
 from app.engine.types import IncomingMessage
@@ -243,8 +244,8 @@ class Reconciler:
         конвейером, тоже снимает ожидание; после METRO_WAIT — обычная сверка с её неудачами."""
         now = self._clock.now()
         if self._exit_unconfirmed(now):
-            # Итог забега показан, выход не подтверждён, выброса ещё не было: персонаж, возможно,
-            # в метро — /compact ушёл бы впустую. Выход проверяет сценарий метро; срока нет.
+            # Итог забега показан, выход не подтверждён, битва забега не началась: персонаж,
+            # возможно, в метро — /compact ушёл бы впустую. Выход проверяет сценарий метро.
             return True
         run = self._metro_run(now)
         if run is None:
@@ -266,8 +267,8 @@ class Reconciler:
         return True
 
     def _exit_unconfirmed(self, now: datetime) -> bool:
-        inside = metro_inside(load_state(dict(self._state())), now)
-        return inside is not None and inside[0].exit_at is not None
+        # То же правило, что у планировщика: до битвы забега (неизвестна — 3 ч после итога).
+        return exit_unconfirmed(load_state(dict(self._state())), now)
 
     def _metro_run(self, now: datetime) -> MetroRunRef | None:
         return metro_live(load_state(dict(self._state())), now)

@@ -1450,3 +1450,18 @@ async def test_main_probe_release_notified_only_after_stuck_run(
     rig.loop._clock = FixedClock(first)
     await rig.loop.step()
     assert ("metro_main_released" in rig.notes.codes) is stuck
+
+
+async def test_stuck_metro_run_not_reported_as_failed(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # О застревании уже уведомил сценарий (`metro_stuck_after_exit`): `scenario_failed` — лишний.
+    async def fake_metro(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        return ScenarioResult("stopped", "exit_unconfirmed")
+
+    monkeypatch.setitem(loop_module.SCENARIOS, "metro", ScenarioSpec("metro", fake_metro, True))
+    rig = Rig(world)
+    decision = await rig.store.record(datetime.now(UTC), Act("metro", {}, "metro_ready"))
+    await rig.loop._execute(Act("metro", {}, "metro_ready"), decision, dry_run=False)
+    assert "scenario_failed" not in rig.notes.codes
+    assert "metro" in rig.loop._cooldowns

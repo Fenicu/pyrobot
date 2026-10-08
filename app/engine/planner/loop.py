@@ -21,7 +21,7 @@ from app.engine.planner.base import METRO_PROBE
 from app.engine.planner.daily import UNKNOWN_FIRE
 from app.engine.planner.decide import Outlook, decide, lottery_params, outlook, resume_metro
 from app.engine.planner.obligations import LOTTERY_OPEN, METRO_PROBES
-from app.engine.planner.store import DecisionRecord, PlannerStore
+from app.engine.planner.store import EXIT_UNCONFIRMED, DecisionRecord, PlannerStore
 from app.engine.planner.types import Act, Wait
 from app.engine.scenarios.context import History, Publish, Reread, ScenarioContext
 from app.engine.scenarios.library import ScenarioResult, run_scenario
@@ -798,8 +798,9 @@ class PlannerLoop:
         self._failures[key] = count
         retry = RETRY_AFTER * 2 ** min(count - 1, 10)
         self._cooldowns[key] = finished + min(retry, MAX_RETRY)
-        if count == 1:
-            # Одно уведомление на серию неудач, до следующего успеха.
+        if count == 1 and (key, result.reason) != ("metro", EXIT_UNCONFIRMED):
+            # Одно уведомление на серию неудач, до следующего успеха. Застревание в метро после
+            # итога сценарий уже сообщил (`metro_stuck_after_exit`).
             await self._notifier.notify(
                 "warn", "scenario_failed", f"{key}: {result.status} {result.reason}"
             )
