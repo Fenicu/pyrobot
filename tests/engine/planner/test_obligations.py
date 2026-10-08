@@ -769,6 +769,20 @@ def test_last_night_skips_bulls_when_only_evening_fits() -> None:
     assert act(decision)[0] == "sleep" and decision.reason == "sleep_night"
 
 
+def test_last_night_not_before_sleep_allowed() -> None:
+    # Разрешение лечь посреди последней ночи — сон с разрешения.
+    mid = state(NOON, sleep_deadline=msk(5, 5, day=29), sleep_allowed_at=msk(1, day=29))
+    assert sleep_window(mid, only(), NOON) == msk(1, day=29)
+    # Разрешение после последней ночи — сон за lead_min до дедлайна.
+    late = state(NOON, sleep_deadline=msk(17, day=29), sleep_allowed_at=msk(6, day=29))
+    assert sleep_window(late, only(), NOON) == msk(15, day=29)
+    then = msk(15, day=29)
+    decision = decide(
+        state(then, sleep_deadline=msk(17, day=29), sleep_allowed_at=msk(6, day=29)), only(), then
+    )
+    assert act(decision)[0] == "sleep" and decision.reason == "sleep_deadline"
+
+
 def test_no_sleep_in_earlier_nights() -> None:
     tonight = msk(22, 5)
     assert "sleep" not in verdicts(decide(rested(tonight), only(), tonight))
