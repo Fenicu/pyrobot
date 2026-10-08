@@ -12,6 +12,11 @@ _MENU = "Поздравляю с новым уровнем!"
 _SKILL = re.compile(r"\AТы увеличил навык (?P<skill>" + SKILL + r")")
 _DONE = re.compile(r"За уровень ты получил:\n💵Деньги: \$(?P<money>\d+)")
 _MOTIVATION = "На радостях ты восстановил +1🔥"
+# Приглашённый игрок достиг уровня: запас 🔥 растёт.
+_REFERRAL = re.compile(
+    r"\A(?P<name>[^\n]+?) достиг (?P<level>\d+) уровня\.\n"
+    r"Ты получаешь \+(?P<amount>\d+) к запасу 🔥Мотивации\Z"
+)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -22,6 +27,15 @@ class LevelUpStep(Event):
     skill: str | None = None
     money: int = 0
     motivation: int = 0
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MotivationCapRaised(Event):
+    kind: ClassVar[str] = "motivation_cap_raised"
+    outcome: ClassVar[bool] = True
+    name: str
+    level: int
+    amount: int
 
 
 def recognize_levelup(msg: IncomingMessage) -> list[Event]:
@@ -43,4 +57,13 @@ def recognize_levelup(msg: IncomingMessage) -> list[Event]:
     return []
 
 
-RECOGNIZERS = (recognize_levelup,)
+def recognize_referral(msg: IncomingMessage) -> list[Event]:
+    text = msg.text or ""
+    if m := _REFERRAL.match(text):
+        return [
+            MotivationCapRaised(name=m["name"], level=int(m["level"]), amount=int(m["amount"]))
+        ]
+    return []
+
+
+RECOGNIZERS = (recognize_levelup, recognize_referral)

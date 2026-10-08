@@ -53,7 +53,7 @@ from app.engine.parsing.items import (
     Inventory,
     PrizeboxOpened,
 )
-from app.engine.parsing.levelup import LevelUpStep
+from app.engine.parsing.levelup import LevelUpStep, MotivationCapRaised
 from app.engine.parsing.lottery import LotteryBought, LotteryCurrency, LotteryScreen
 from app.engine.parsing.metro import (
     METRO_COOLDOWN,
@@ -882,6 +882,11 @@ def _levelup(p: _Patch, e: LevelUpStep) -> None:
         p.effect("levelup", amounts(money=e.money))
     if e.skill is not None and e.skill in Skills.model_fields:
         _add_skills(p, {e.skill: 1})
+
+
+@_on(MotivationCapRaised)
+def _motivation_cap_raised(p: _Patch, e: MotivationCapRaised) -> None:
+    p.delta("motivation_max", e.amount)
 
 
 @_on(BattleMenu)

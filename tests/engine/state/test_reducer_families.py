@@ -1,6 +1,8 @@
 from dataclasses import replace
 
 from app.engine.state.reducer import StateReducer
+from app.engine.types import IncomingMessage
+from tests.engine.parsing.test_levelup import REFERRAL
 from tests.engine.state.helpers import PARSER, at, feed, fixture_at, value
 from tests.fixtures import game_versions
 
@@ -323,3 +325,22 @@ def test_levelup_skill_needs_known_skills() -> None:
     reducer = StateReducer()
     state = feed(reducer, {}, "levelup", 3532818, 1)
     assert value(state, "skills") is None
+
+
+def test_referral_raises_motivation_cap() -> None:
+    reducer = StateReducer()
+    state = {
+        "schema_version": 1,
+        "motivation_max": {"value": 66, "at": "2026-09-26T09:00:00Z", "src": "screen"},
+    }
+    msg = IncomingMessage(
+        chat_id=227859379,
+        msg_id=1,
+        revision=0,
+        kind="new",
+        date=at(1),
+        received_at=at(1),
+        text=REFERRAL,
+    )
+    state = reducer.apply(state, msg, PARSER.parse(msg))
+    assert value(state, "motivation_max") == 67
