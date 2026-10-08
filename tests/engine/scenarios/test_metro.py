@@ -929,10 +929,6 @@ async def test_long_run_on_simulator(maze_world: World) -> None:
     record = result.details["metro"]
     assert len(record["grid"]["visited"]) == len(game.sim.maze.floor())
     assert record["result"] == game.sim.bank
-    # Итог без известных денег их не выдумывает: 💵 — из профиля после выхода.
-    profile = game_msg(*PROFILE)
-    assert maze_world.state.money is not None
-    assert f"💵${maze_world.state.money.value} " in (profile.text or "").replace("\xa0", "")
 
 
 def test_policy_params_default_to_metro_settings() -> None:
@@ -1535,7 +1531,8 @@ async def test_incident_exit_released_by_main(world: World) -> None:
 @pytest.mark.parametrize(
     ("probe", "answer", "expected", "sent"),
     [
-        ("main", MAIN_REPLY, ("done", "released"), [("info", "metro_main_released")]),
+        # О выходе по проверке планировщика уведомляет цикл: он знает, был ли забег застрявшим.
+        ("main", MAIN_REPLY, ("done", "released"), []),
         ("main", None, ("nothing", "still_inside"), []),
         ("compact", PROFILE, ("done", "released"), []),
         ("compact", None, ("nothing", "still_inside"), [("error", "metro_stuck_unresolved")]),

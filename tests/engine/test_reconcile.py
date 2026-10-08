@@ -361,8 +361,7 @@ def _metro_frame(text: str, *, minutes_ago: float = 0.0) -> IncomingMessage:
     )
 
 
-async def _in_metro(w: World, frame: IncomingMessage) -> None:
-    # Битва из профиля (через 11 ч) — забег, из которого игра ещё не выкинула.
+async def _profile(w: World) -> None:
     moment = now()
     profile = replace(
         game_msg("profile", 3624478),
@@ -372,6 +371,11 @@ async def _in_metro(w: World, frame: IncomingMessage) -> None:
         received_at=moment,
     )
     await w.pipeline.process(profile)
+
+
+async def _in_metro(w: World, frame: IncomingMessage) -> None:
+    # Битва из профиля (через 11 ч) — забег, из которого игра ещё не выкинула.
+    await _profile(w)
     await w.pipeline.process(frame)
     assert w.pipeline.state["metro_message"]["value"]["message_id"] == METRO_MSG
 
@@ -398,8 +402,29 @@ async def test_reconcile_waits_for_live_metro_run_to_finish() -> None:
         assert w.sent() == ["/harvest"]
         assert "reconcile_stuck" not in w.notes.codes
         await w.pipeline.process(_metro_frame(STUCK_FINISHED_TEXT))
+        # Итог ещё не выход: ждём, пока ответ игры (профиль) его подтвердит.
+        await asyncio.sleep(0.1)
+        assert w.sent() == ["/harvest"]
+        await _profile(w)
         await until(lambda: w.rig.gw.spending_blocked is None)
         assert w.sent() == ["/harvest", "/compact"]
+    finally:
+        await _stop(w, task)
+
+
+async def test_reconcile_waits_unbounded_for_unconfirmed_exit() -> None:
+    """07.10: итог показан, персонаж в метро до выброса. Сверка не шлёт /compact и не копит
+    неудачи сверх METRO_WAIT, пока выход не подтвердит ответ игры."""
+    w = World(answer=False, metro_wait_s=0.05)
+    await _in_metro(w, _metro_frame(STUCK_MAP_GOING_LEFT))
+    await w.pipeline.process(_metro_frame(STUCK_FINISHED_TEXT))
+    assert w.pipeline.state["metro_message"]["value"]["exit_at"] is not None
+    task = await _running(w)
+    try:
+        await _uncertain(w, "/harvest")
+        await asyncio.sleep(0.6)
+        assert w.sent() == ["/harvest"]
+        assert "reconcile_stuck" not in w.notes.codes
     finally:
         await _stop(w, task)
 
@@ -452,6 +477,10 @@ async def test_reconcile_rereads_metro_message_and_sees_run_over() -> None:
     task = await _running(w)
     try:
         await _uncertain(w, "/harvest")
+        await until(lambda: bool(reads))
+        await asyncio.sleep(0.05)
+        assert w.sent() == ["/harvest"]
+        await _profile(w)
         await until(lambda: w.rig.gw.spending_blocked is None)
         assert reads == [(GAME, METRO_MSG)]
         assert w.sent() == ["/harvest", "/compact"]

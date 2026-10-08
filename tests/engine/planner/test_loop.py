@@ -1400,3 +1400,53 @@ async def test_metro_probe_count_store_failure_sends_no_main(world: World) -> No
     rig.loop._clock = FixedClock(first)
     await rig.loop.step()
     assert rig.store.runs == []
+
+
+async def test_metro_exit_probe_runs_under_reconcile_block(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Под блоком трат сверка ждёт подтверждения выхода — проверять его некому, кроме цикла.
+    seen: list[dict[str, Any]] = []
+
+    async def fake_metro(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        seen.append(dict(params))
+        return ScenarioResult("nothing", "still_inside")
+
+    monkeypatch.setitem(loop_module.SCENARIOS, "metro", ScenarioSpec("metro", fake_metro, True))
+    await world.settings.update(
+        lambda s: s.model_copy(update={"features": METRO_ALONE.features}), changed_by="test"
+    )
+    world.gateway.block_spending(RECONCILE_REASON)
+    rig = Rig(world, ready="spending_blocked")
+    first = EXIT_AT + timedelta(minutes=31)
+    rig.loop._state = lambda: stuck_state(first)
+    rig.loop._clock = FixedClock(first)
+    await rig.loop.step()
+    await rig.loop.step()
+    assert [p.get("probe") for p in seen] == ["main"]
+
+
+@pytest.mark.parametrize("stuck", [True, False])
+async def test_main_probe_release_notified_only_after_stuck_run(
+    world: World, monkeypatch: pytest.MonkeyPatch, stuck: bool
+) -> None:
+    # Итог без подтверждения бывает и у выхода вручную: «вывел /main» — только если забег
+    # перед этим остановился с exit_unconfirmed.
+    async def fake_metro(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        return ScenarioResult("done", "released")
+
+    monkeypatch.setitem(loop_module.SCENARIOS, "metro", ScenarioSpec("metro", fake_metro, True))
+    await world.settings.update(
+        lambda s: s.model_copy(update={"features": METRO_ALONE.features}), changed_by="test"
+    )
+    store = MemoryPlannerStore()
+    if stuck:
+        decided = await store.record(EXIT_AT, Act("metro", {}, "metro_ready"))
+        run = await store.run_started(decided, "metro", {}, EXIT_AT - timedelta(minutes=50))
+        await store.run_finished(run, "stopped", "exit_unconfirmed", EXIT_AT)
+    rig = Rig(world, store=store)
+    first = EXIT_AT + timedelta(minutes=31)
+    rig.loop._state = lambda: stuck_state(first)
+    rig.loop._clock = FixedClock(first)
+    await rig.loop.step()
+    assert ("metro_main_released" in rig.notes.codes) is stuck

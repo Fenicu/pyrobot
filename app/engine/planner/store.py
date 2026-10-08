@@ -17,6 +17,8 @@ CLOSED_ON_RESTART = {"running": "interrupted", "queued": "cancelled"}
 # Запуски из очереди, которые так и не начались, и запуски, которые подавил kill switch или
 # остановка: команда реально не ушла, в дневной бюджет не считаются.
 NOT_STARTED = ("queued", "cancelled", "suppressed")
+# Остановка забега: после итога игра не ответила ни на /compact, ни на /main.
+EXIT_UNCONFIRMED = "exit_unconfirmed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +90,11 @@ class PlannerStore(Protocol):
     async def metro_probes(self, since: datetime) -> list[str]:
         """Проверки выхода из метро (`params.probe` запусков `metro`), начатые не раньше `since`,
         по порядку: с любым исходом, кроме так и не ушедших."""
+        ...
+
+    async def metro_stuck_since(self, since: datetime) -> bool:
+        """Забег `metro`, закончившийся не раньше `since` остановкой `exit_unconfirmed`: после
+        итога игра не ответила ни на `/compact`, ни на `/main`."""
         ...
 
 
@@ -205,3 +212,12 @@ class MemoryPlannerStore:
             key=lambda run: run.started_at,
         )
         return [str(run.params["probe"]) for run in runs]
+
+    async def metro_stuck_since(self, since: datetime) -> bool:
+        return any(
+            run.scenario == "metro"
+            and run.reason == EXIT_UNCONFIRMED
+            and run.finished_at is not None
+            and run.finished_at >= since
+            for run in self.runs
+        )

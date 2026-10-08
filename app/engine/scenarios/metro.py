@@ -195,8 +195,9 @@ async def metro(ctx: ScenarioContext, state: CharacterState, params: Params) -> 
 
 
 def _answered(step: StepResult) -> bool:
-    """Игра ответила (профилем или отказом): персонаж вне метро — в забеге она молчит."""
-    return step.step in (Step.OK, Step.REFUSED)
+    """Игра ответила профилем: персонаж вне метро — в забеге она молчит. Отказ выход не
+    подтверждает (отметку забега он не снимает) — исход как у сбоя шага."""
+    return step.step is Step.OK
 
 
 def _silent(step: StepResult) -> bool:
@@ -208,10 +209,7 @@ async def _probe(ctx: ScenarioContext, probe: str) -> ScenarioResult:
     или `/compact` перед битвой. Ответ снимает отметку забега в состоянии сам."""
     step = await ctx.send(f"/{probe}", expect_events(ProfileCompact))
     if _answered(step):
-        if probe == "main":
-            await ctx.notify(
-                "info", "metro_main_released", "metro: /main answered, out of the run"
-            )
+        # О выходе по `/main` уведомляет цикл: был ли забег застрявшим, знает журнал запусков.
         return ScenarioResult("done", "released")
     if not _silent(step):
         return finish(step)
@@ -260,7 +258,7 @@ async def _exit_checked(
 
 
 async def _settle(ctx: ScenarioContext, shown: IncomingMessage) -> None:
-    left = (shown.date + EXIT_SETTLE - ctx.clock.now()).total_seconds()
+    left = (shown.received_at + EXIT_SETTLE - ctx.clock.now()).total_seconds()
     if left > 0:
         await _settle_sleep(left)
 

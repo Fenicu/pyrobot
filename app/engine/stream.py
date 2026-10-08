@@ -311,6 +311,9 @@ class PublishingPlannerStore:
     async def metro_probes(self, since: datetime) -> list[str]:
         return await self.inner.metro_probes(since)
 
+    async def metro_stuck_since(self, since: datetime) -> bool:
+        return await self.inner.metro_stuck_since(since)
+
     def _run(
         self,
         run_id: int,

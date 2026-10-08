@@ -30,7 +30,7 @@ from app.engine.parsing.gorbushka import GorbushkaScreen
 from app.engine.parsing.items import GiftsScreen, Inventory
 from app.engine.parsing.profile import ProfileCompact
 from app.engine.parsing.stocks import StockScreen
-from app.engine.planner.obligations import metro_live
+from app.engine.planner.obligations import metro_inside, metro_live
 from app.engine.settings import SettingsProvider
 from app.engine.state.model import MetroRunRef, load_state
 from app.engine.types import IncomingMessage
@@ -242,6 +242,10 @@ class Reconciler:
         забега обновит отметку). Сообщение забега перечитывается — конец, пропущенный
         конвейером, тоже снимает ожидание; после METRO_WAIT — обычная сверка с её неудачами."""
         now = self._clock.now()
+        if self._exit_unconfirmed(now):
+            # Итог забега показан, выход не подтверждён, выброса ещё не было: персонаж, возможно,
+            # в метро — /compact ушёл бы впустую. Выход проверяет сценарий метро; срока нет.
+            return True
         run = self._metro_run(now)
         if run is None:
             self._metro_since = self._metro_read_at = None
@@ -257,8 +261,13 @@ class Reconciler:
                 await self._reread(self._game, run.message_id)
             except Exception:
                 log.warning("metro message %d not reread", run.message_id)
-            return self._metro_run(self._clock.now()) is not None
+            after = self._clock.now()
+            return self._exit_unconfirmed(after) or self._metro_run(after) is not None
         return True
+
+    def _exit_unconfirmed(self, now: datetime) -> bool:
+        inside = metro_inside(load_state(dict(self._state())), now)
+        return inside is not None and inside[0].exit_at is not None
 
     def _metro_run(self, now: datetime) -> MetroRunRef | None:
         return metro_live(load_state(dict(self._state())), now)

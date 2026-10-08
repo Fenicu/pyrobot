@@ -210,3 +210,18 @@ async def test_metro_probes_since_exit(clean_db: Database, kind: str) -> None:
     other = await store.run_started(decided, "refresh", {"probe": "main"}, exit_at)
     await store.run_finished(other, "done", "", exit_at)
     assert await store.metro_probes(exit_at) == ["main", "main", "compact"]
+
+
+@pytest.mark.parametrize("kind", ["db", "memory"])
+async def test_metro_stuck_since_exit(clean_db: Database, kind: str) -> None:
+    store: DbPlannerStore | MemoryPlannerStore = (
+        DbPlannerStore(clean_db, account_id=1) if kind == "db" else MemoryPlannerStore()
+    )
+    exit_at = datetime(2026, 10, 7, 21, 8, tzinfo=UTC)
+    decided = await store.record(exit_at, Act("metro", {}, "metro_ready"))
+    assert not await store.metro_stuck_since(exit_at)
+    # Забег начат до итога, остановлен после: выход не подтвердился.
+    run = await store.run_started(decided, "metro", {}, exit_at - timedelta(minutes=50))
+    await store.run_finished(run, "stopped", "exit_unconfirmed", exit_at + timedelta(seconds=40))
+    assert await store.metro_stuck_since(exit_at)
+    assert not await store.metro_stuck_since(exit_at + timedelta(minutes=1))

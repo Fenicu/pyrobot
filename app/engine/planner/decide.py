@@ -884,9 +884,11 @@ def resume_metro(
     cooldowns: Mapping[str, datetime] | None = None,
     last_done: Mapping[str, datetime] | None = None,
     metro_durations: Sequence[float] = (),
+    metro_probes: Sequence[str] = (),
 ) -> Act | None:
-    """Только продолжение забега метро — решение под блоком трат до сверки: ходы метро ничего
-    не тратят, а сверка ждёт конца забега."""
+    """Только метро — решение под блоком трат до сверки: проверка выхода после итога и
+    продолжение забега. Ходы метро и `/main` ничего не тратят, а сверка ждёт конца забега и
+    подтверждения выхода."""
     planner = _Planner(
         state,
         settings,
@@ -897,8 +899,9 @@ def resume_metro(
         last_done or {},
         metro_durations,
         None,
+        metro_probes,
     )
-    decision = planner.metro_resume(None)
+    decision = planner.metro_probe() or planner.metro_resume(None)
     return decision if isinstance(decision, Act) else None
 
 

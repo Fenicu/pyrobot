@@ -12,6 +12,7 @@ from app.engine.gametime import day_start
 from app.engine.planner.store import (
     CLOSED_ON_RESTART,
     DEED_PREFIX,
+    EXIT_UNCONFIRMED,
     LAST_DONE,
     NOT_STARTED,
     DecisionRecord,
@@ -186,6 +187,16 @@ class DbPlannerStore:
         async with self._db.sessions() as session:
             rows: list[dict[str, Any]] = list(await session.scalars(query))
         return [str(params["probe"]) for params in rows if "probe" in params]
+
+    async def metro_stuck_since(self, since: datetime) -> bool:
+        query = select(ScenarioRunRow.id).where(
+            ScenarioRunRow.account_id == self._account_id,
+            ScenarioRunRow.scenario == "metro",
+            ScenarioRunRow.reason == EXIT_UNCONFIRMED,
+            ScenarioRunRow.finished_at >= since,
+        )
+        async with self._db.sessions() as session:
+            return await session.scalar(query.limit(1)) is not None
 
     async def runs_on_day(self, scenario: str, day: date) -> int:
         start = day_start(day)

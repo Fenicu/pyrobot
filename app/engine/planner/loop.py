@@ -25,6 +25,7 @@ from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Act, Wait
 from app.engine.scenarios.context import History, Publish, Reread, ScenarioContext
 from app.engine.scenarios.library import ScenarioResult, run_scenario
+from app.engine.scenarios.metro import RELEASED
 from app.engine.scenarios.registry import CERTIFIED, SCENARIOS
 from app.engine.settings import SettingsProvider
 from app.engine.state.model import SLOW_MAX_AGE, CharacterState, is_fresh
@@ -358,7 +359,8 @@ class PlannerLoop:
         return None
 
     async def _resume_metro(self, now: datetime) -> bool:
-        """Под блоком трат до сверки — только продолжение забега метро: сверка ждёт его конца."""
+        """Под блоком трат до сверки — только метро: проверка выхода после итога и продолжение
+        забега; сверка ждёт конца забега и подтверждения выхода."""
         if self._gateway.spending_blocked != RECONCILE_REASON:
             return False
         settings = self._settings.current
@@ -366,14 +368,16 @@ class PlannerLoop:
             self._last_done = await self._store.last_done()
         if self._metro_durations is None:
             self._metro_durations = await self._load_metro_durations()
+        observed = self._observed()
         act = resume_metro(
-            self._observed(),
+            observed,
             settings,
             now,
             certified=CERTIFIED if settings.engine.mode == "live" else None,
             cooldowns=self._blocked(),
             last_done=self._last_done,
             metro_durations=self._metro_durations,
+            metro_probes=await self._probes(observed, keep=True),
         )
         if act is None:
             return False
@@ -489,6 +493,17 @@ class PlannerLoop:
         )
         return now, view
 
+    async def _main_released(self, exit_at: datetime | None) -> None:
+        """`/main` вывел из забега: уведомление, только если забег перед этим застрял
+        (`exit_unconfirmed`) — итог без подтверждения бывает и у выхода вручную."""
+        try:
+            stuck = exit_at is not None and await self._store.metro_stuck_since(exit_at)
+        except Exception:
+            log.exception("metro stuck run since %s not loaded", exit_at)
+            return
+        if stuck:
+            await self._notifier.notify("info", "metro_main_released", RELEASED)
+
     async def _probes(self, state: CharacterState, *, keep: bool) -> list[str]:
         """Проверки выхода после итога в состоянии; `keep` — запомнить прочитанное из хранилища
         (план только читает кеш). Хранилище недоступно — как будто обе `/main` уже были: лишняя
@@ -603,6 +618,8 @@ class PlannerLoop:
         self.current = act.scenario
         self.current_params = dict(act.params)
         self.revision += 1
+        # Ответ на проверку снимет отметку забега: момент итога — до запуска.
+        exit_at = _exit_at(self._state())
         try:
             result = await run_scenario(spec.fn, ctx, self._state(), act.params)
         except Exception:
@@ -620,6 +637,8 @@ class PlannerLoop:
             # Исход неизвестен — проверка всё равно считается: /main мог дойти до игры.
             if self._metro_probes is not None:
                 self._metro_probes[1].append(str(act.params["probe"]))
+            if act.params["probe"] == "main" and result.reason == "released":
+                await self._main_released(exit_at)
         finished = self._clock.now()
         try:
             # Подавленный ручной запуск о планах ничего не говорит: откладывать сценарий незачем.
