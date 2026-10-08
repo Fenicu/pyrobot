@@ -15,6 +15,7 @@ from app.engine.parsing.smoothie import recipe_need
 from app.engine.planner.base import (
     BATTLE_AFTER,
     BATTLE_BEFORE,
+    METRO_PROBE,
     READY_SLACK,
     PlannerBase,
     battle_hour,
@@ -51,6 +52,11 @@ METRO_SAFETY = 1.5
 # Забег, прерванный рестартом, продолжается, если последний его экран свежий и игра ещё не
 # выкинула персонажа.
 METRO_STALE = timedelta(hours=2)
+# Итог забега без подтверждённого выхода: сценарий проверяет выход сам (`/compact`, затем
+# `/main`), планировщик — `/main` через 30 минут и 2 часа после итога и `/compact` за 10 минут до
+# битвы, если выброса так и не было. Вместе с `/main` самого забега — не больше трёх.
+METRO_PROBES = (timedelta(minutes=30), timedelta(hours=2))
+METRO_FINAL_CHECK = timedelta(minutes=10)
 
 
 def metro_inside(s: CharacterState, now: datetime) -> tuple[MetroRunRef, datetime] | None:
@@ -71,7 +77,8 @@ def metro_live(s: CharacterState, now: datetime) -> MetroRunRef | None:
     inside = metro_inside(s, now)
     if inside is None or seen is None or seen.src == "doubtful" or now - seen.at > METRO_STALE:
         return None
-    return inside[0]
+    # Итог уже показан: продолжать нечего, выход проверяют `metro_probe`.
+    return inside[0] if inside[0].exit_at is None else None
 
 
 def p90(values: Sequence[float]) -> float:
@@ -526,7 +533,7 @@ class Obligations(PlannerBase):
     def metro_resume(self, busy: BusyState | None) -> Decision | None:
         """Персонаж остался в метро (рестарт, остановка сценария): продолжить забег сразу."""
         seen = self.s.metro_message
-        if not self.feature_on("metro_resume") or seen is None:
+        if not self.feature_on("metro_resume") or seen is None or self.exit_unconfirmed:
             return None
         if (inside := self.metro_inside()) is None or self.now - seen.at > METRO_STALE:
             return None
@@ -537,6 +544,30 @@ class Obligations(PlannerBase):
             return None
         params = {**self.metro_params(battle), "resume": run.message_id}
         return self.act("metro", params, "metro_resume")
+
+    def metro_probe(self) -> Decision | None:
+        """Итог забега без подтверждённого выхода: проверка `/main` через 30 минут и 2 часа после
+        итога, `/compact` за 10 минут до битвы забега; после неё без ответа — ничего, пока игра
+        не ответит сама (выброс, отчёт битвы). Проверки с неизвестным исходом тоже считаются."""
+        seen = self.s.metro_message
+        run = seen.value if seen is not None else None
+        if run is None or run.exit_at is None or "compact" in self.metro_probes:
+            return None
+        known = run.battle_at
+        final = (
+            battle_hour(known.value, known.at) - METRO_FINAL_CHECK if known is not None else None
+        )
+        if final is not None and self.due(final):
+            return self.act("metro", {"probe": "compact"}, "metro_stuck", METRO_PROBE)
+        mains = sum(1 for p in self.metro_probes if p == "main")
+        if mains < len(METRO_PROBES):
+            at = run.exit_at + METRO_PROBES[mains]
+            if final is None or at < final:
+                if self.due(at):
+                    return self.act("metro", {"probe": "main"}, "metro_stuck", METRO_PROBE)
+                self.wake(at, "metro_probe")
+        self.wake(final, "metro_probe")
+        return None
 
     # --- сон
 

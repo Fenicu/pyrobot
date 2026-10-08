@@ -92,6 +92,8 @@ FEATURE = {
     "gadget_buy": "gadgets_buy",
     "gadget_wear_set": "gadgets_buy",
 }
+# Ключ кулдауна проверок выхода из метро: свой, не общий с забегом.
+METRO_PROBE = "metro_probe"
 # В режиме сбора артефакта 🔥 тратят только его дела: вход в метро и бой Горбушки выключены.
 ARTIFACT_OFF = frozenset({"gorbushka", "metro"})
 
@@ -121,6 +123,7 @@ class PlannerBase:
         last_done: Mapping[str, datetime],
         metro_durations: Sequence[float] = (),
         done_today: Mapping[str, int] | None = None,
+        metro_probes: Sequence[str] = (),
     ) -> None:
         self.s = state
         self.cfg = settings
@@ -131,6 +134,14 @@ class PlannerBase:
         self.last_done = last_done
         self.metro_durations = metro_durations
         self.done_today: Mapping[str, int] = done_today or {}
+        # Проверки выхода из метро (`/main`, `/compact`), сделанные после итога забега.
+        self.metro_probes: Sequence[str] = metro_probes
+        # Итог забега показан, выход не подтверждён: персонаж, возможно, ещё в метро и игра молчит
+        # на команды — шлём только проверки выхода.
+        seen = state.metro_message
+        self.exit_unconfirmed = (
+            seen is not None and seen.value is not None and seen.value.exit_at is not None
+        )
         self.volatile_age = timedelta(minutes=settings.engine.state_stale_after_min)
         self.stale = self.find_stale()
         self.refresh_every = timedelta(seconds=settings.engine.refresh_min_interval_s)
@@ -248,6 +259,9 @@ class PlannerBase:
     def act(
         self, scenario: str, params: Mapping[str, Any], reason: str, key: str | None = None
     ) -> Act | None:
+        if self.exit_unconfirmed and key != METRO_PROBE:
+            self.reject(scenario, params, "metro_stuck")
+            return None
         if (why := self.gate(scenario, key)) is not None:
             self.reject(scenario, params, why)
             return None

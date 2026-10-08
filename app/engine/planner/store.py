@@ -85,6 +85,11 @@ class PlannerStore(Protocol):
         начатых из очереди)."""
         ...
 
+    async def metro_probes(self, since: datetime) -> list[str]:
+        """Проверки выхода из метро (`params.probe` запусков `metro`), начатые не раньше `since`,
+        по порядку: с любым исходом, кроме так и не ушедших."""
+        ...
+
 
 @dataclass
 class MemoryRun:
@@ -186,3 +191,17 @@ class MemoryPlannerStore:
             and run.status not in NOT_STARTED
             and tasks_day(run.started_at) == day
         )
+
+    async def metro_probes(self, since: datetime) -> list[str]:
+        runs = sorted(
+            (
+                run
+                for run in self.runs
+                if run.scenario == "metro"
+                and "probe" in run.params
+                and run.status not in NOT_STARTED
+                and run.started_at >= since
+            ),
+            key=lambda run: run.started_at,
+        )
+        return [str(run.params["probe"]) for run in runs]

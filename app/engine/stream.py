@@ -308,6 +308,9 @@ class PublishingPlannerStore:
     async def runs_on_day(self, scenario: str, day: date) -> int:
         return await self.inner.runs_on_day(scenario, day)
 
+    async def metro_probes(self, since: datetime) -> list[str]:
+        return await self.inner.metro_probes(since)
+
     def _run(
         self,
         run_id: int,

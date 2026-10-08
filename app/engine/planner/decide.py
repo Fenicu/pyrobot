@@ -126,6 +126,8 @@ class Outlook:
 
 class _Planner(DailyTasks):
     def decide(self) -> Decision:
+        if (probe := self.metro_probe()) is not None:
+            return probe
         busy = self.busy()
         # Идущее дело (в т.ч. многочасовой сон) известно до `until` — старым не считается.
         if busy is None and (field := self.stale_of("busy")) is not None:
@@ -143,6 +145,9 @@ class _Planner(DailyTasks):
     def outlook(self, fresh: Callable[[], _Planner]) -> Outlook:
         """Ветки занятости — как в `decide`; `fresh` — такой же планировщик с чистыми
         кандидатами и таймерами для прохода «после пробуждения» и подсказок."""
+        if (probe := self.metro_probe()) is not None:
+            busy = self.busy()
+            return self.view("free" if busy is None else "busy", busy, probe, (), fresh)
         busy = self.busy()
         if busy is None and (field := self.stale_of("busy")) is not None:
             decision = self.refresh("state", field) or self.wait()
@@ -597,6 +602,10 @@ class _Planner(DailyTasks):
         ok = self.doable_deeds()
         if not ok:
             return None
+        if self.exit_unconfirmed:
+            for candidate in ok:
+                self.reject(candidate.scenario, candidate.params, "metro_stuck")
+            return None
         chosen, reason = self.personal_deed(ok) or self.team_deed(ok) or self.main_deed(ok)
         for candidate in ok:
             verdict = "chosen" if candidate is chosen else "ok"
@@ -842,12 +851,14 @@ def decide(
     last_done: Mapping[str, datetime] | None = None,
     metro_durations: Sequence[float] = (),
     done_today: Mapping[str, int] | None = None,
+    metro_probes: Sequence[str] = (),
 ) -> Decision:
     """Следующий шаг: сценарий или ожидание. `certified=None` — без ограничения (dry_run).
 
     `last_done` — момент последнего успешного запуска каждого сценария (журнал запусков);
     `metro_durations` — длительности прошлых забегов метро в секундах (бюджет по p90);
-    `done_today` — успешные запуски дел за текущий день MSK (чередование основных дел).
+    `done_today` — успешные запуски дел за текущий день MSK (чередование основных дел);
+    `metro_probes` — проверки выхода из метро после итога забега, которого выход не подтвердил.
     """
     planner = _Planner(
         state,
@@ -859,6 +870,7 @@ def decide(
         last_done or {},
         metro_durations,
         done_today,
+        metro_probes,
     )
     return planner.decide()
 
@@ -901,6 +913,7 @@ def outlook(
     last_done: Mapping[str, datetime] | None = None,
     metro_durations: Sequence[float] = (),
     done_today: Mapping[str, int] | None = None,
+    metro_probes: Sequence[str] = (),
 ) -> Outlook:
     """«План бота» на тех же входах, что `decide`: его решение и то, что за ним. В цикле не
     используется."""
@@ -916,6 +929,7 @@ def outlook(
             last_done or {},
             metro_durations,
             done_today,
+            metro_probes,
         )
 
     return planner().outlook(planner)

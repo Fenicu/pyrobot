@@ -166,6 +166,18 @@ def test_no_trip_inside_metro() -> None:
     assert not (isinstance(decision, Act) and decision.scenario == "trip")
 
 
+def test_no_trip_while_metro_exit_unconfirmed() -> None:
+    now = msk(13)
+    pending = run_in(now - timedelta(minutes=10))
+    pending = pending.model_copy(
+        update={"value": pending.value.model_copy(update={"exit_at": now - timedelta(minutes=10)})}
+    )
+    s = with_trips(transport(at=now, tram=ready(TRAM, now)), at=now, metro_message=pending)
+    decision = decide(s, config({"features": {"trips": True, "metro": True}}), now)
+    assert verdicts(decision)["trip"] == "in_metro"
+    assert not isinstance(decision, Act)
+
+
 def test_needs_raw_for_price() -> None:
     decision = decide(with_trips(transport(tram=ready(TRAM)), raw=9), TRIPS, NOW)
     assert act(decision)[0] == "deed:job"

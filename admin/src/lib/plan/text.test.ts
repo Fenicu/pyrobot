@@ -39,7 +39,7 @@ describe('словари плана', () => {
 			'chosen', 'ok', 'busy', 'eating', 'no_motivation', 'no_money', 'no_details', 'no_value',
 			'battle_window', 'sleep_deadline', 'factory_window', 'uncertified', 'cooldown', 'rate_limited',
 			'not_feasible', 'no_hard_offer', 'cant_afford', 'sleep_not_allowed', 'market_closed', 'no_stock',
-			'not_player', 'in_metro', 'metro_unknown_screen', 'reserved', 'no_team', 'company_unknown',
+			'not_player', 'in_metro', 'metro_unknown_screen', 'metro_stuck', 'reserved', 'no_team', 'company_unknown',
 			'artifact_run', 'no_raw', 'motivation_cap', 'trip_pending', 'no_hard_team_offer',
 			'bag_full', 'saving', 'no_upgrade', 'target_blocked', 'dump_window', 'gorbushka_meeting',
 			'upgrade_running', 'shop_mismatch'
@@ -64,6 +64,12 @@ describe('словари плана', () => {
 		const withResult: Outlook = { ...plan, wakeups: [...plan.wakeups, result] };
 		expect(candidateDetail(pending, withResult)).toMatch(/^до /);
 		expect(actDetail('trip', { vehicle: 'bike' }, plan)).toBe('🚲 велосипед');
+	});
+
+	it('метро: проверка выхода после итога', () => {
+		expect(actDetail('metro', { probe: 'main' }, plan)).toBe('проверка выхода: /main');
+		expect(actDetail('metro', {}, plan)).toBe('');
+		expect(verdictText('metro_stuck')).toBe('выход из метро не подтверждён');
 	});
 
 	it('гаджеты: сценарии, вердикты, пробуждения и обновления', () => {

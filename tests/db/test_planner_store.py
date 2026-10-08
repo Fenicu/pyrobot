@@ -185,3 +185,28 @@ async def test_runs_on_day_excludes_suppressed_runs(clean_db: Database, kind: st
     run = await store.run_started(decided, "factory_report", {}, midnight + timedelta(hours=1))
     await store.run_finished(run, "suppressed", "killed", midnight + timedelta(hours=1))
     assert await store.runs_on_day("factory_report", date(2026, 9, 27)) == 0
+
+
+@pytest.mark.parametrize("kind", ["db", "memory"])
+async def test_metro_probes_since_exit(clean_db: Database, kind: str) -> None:
+    store: DbPlannerStore | MemoryPlannerStore = (
+        DbPlannerStore(clean_db, account_id=1) if kind == "db" else MemoryPlannerStore()
+    )
+    exit_at = datetime(2026, 10, 7, 21, 8, tzinfo=UTC)
+    decided = await store.record(exit_at, Act("metro", {"probe": "main"}, "metro_stuck"))
+    runs = [
+        ({"probe": "main"}, "nothing", exit_at - timedelta(minutes=1)),
+        ({"resume": 1458898}, "done", exit_at + timedelta(minutes=1)),
+        ({"probe": "main"}, "nothing", exit_at + timedelta(minutes=30)),
+        # Исход неизвестен (рестарт): /main мог дойти — считается.
+        ({"probe": "main"}, "interrupted", exit_at + timedelta(hours=2)),
+        # Подавлена — не ушла.
+        ({"probe": "compact"}, "suppressed", exit_at + timedelta(hours=12)),
+        ({"probe": "compact"}, "nothing", exit_at + timedelta(hours=12, minutes=1)),
+    ]
+    for params, status, started in runs:
+        run = await store.run_started(decided, "metro", params, started)
+        await store.run_finished(run, status, "", started)
+    other = await store.run_started(decided, "refresh", {"probe": "main"}, exit_at)
+    await store.run_finished(other, "done", "", exit_at)
+    assert await store.metro_probes(exit_at) == ["main", "main", "compact"]

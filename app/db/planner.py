@@ -172,6 +172,21 @@ class DbPlannerStore:
             rows = await session.execute(query)
         return {scenario: int(n) for scenario, n in rows.all()}
 
+    async def metro_probes(self, since: datetime) -> list[str]:
+        query = (
+            select(ScenarioRunRow.params)
+            .where(
+                ScenarioRunRow.account_id == self._account_id,
+                ScenarioRunRow.scenario == "metro",
+                ScenarioRunRow.status.not_in(NOT_STARTED),
+                ScenarioRunRow.started_at >= since,
+            )
+            .order_by(ScenarioRunRow.started_at, ScenarioRunRow.id)
+        )
+        async with self._db.sessions() as session:
+            rows: list[dict[str, Any]] = list(await session.scalars(query))
+        return [str(params["probe"]) for params in rows if "probe" in params]
+
     async def runs_on_day(self, scenario: str, day: date) -> int:
         start = day_start(day)
         query = select(func.count()).where(

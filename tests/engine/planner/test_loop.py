@@ -33,11 +33,13 @@ from app.engine.state.model import CharacterState, Obs, RefusalState, StartupSta
 from tests.engine.fakegame import LIVE, Ref, World, running_world
 from tests.engine.helpers import until
 from tests.engine.planner.test_obligations import (
+    EXIT_AT,
     METRO_ALONE,
     metro_state,
     only,
     run_in,
     state,
+    stuck_state,
 )
 from tests.engine.planner.test_obligations import NOON as OBLIGATIONS_NOON
 from tests.engine.startup_texts import MAX_REFUSAL, REFUSAL_LOW_LEVEL, SCREEN_LEVEL6, startup_msg
@@ -1341,3 +1343,60 @@ async def test_startup_locked_notification_respects_level(
     )
     await rig.loop.step()
     assert notes.codes.count("startup_locked") == (1 if notified else 0)
+
+
+async def test_metro_exit_probes_counted_across_restart(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Итог забега без подтверждённого выхода: `/main` через 30 минут и 2 часа после итога —
+    счёт проверок переживает рестарт (хранилище запусков), тишина не уведомляет как сбой и не
+    откладывает забег."""
+    probes: list[str] = []
+
+    async def fake_metro(ctx: Any, state: Any, params: Any) -> ScenarioResult:
+        probes.append(str(params["probe"]))
+        return ScenarioResult("nothing", "still_inside")
+
+    monkeypatch.setitem(loop_module.SCENARIOS, "metro", ScenarioSpec("metro", fake_metro, True))
+    await world.settings.update(
+        lambda s: s.model_copy(update={"features": METRO_ALONE.features}), changed_by="test"
+    )
+    store = MemoryPlannerStore()
+    rig = Rig(world, store=store)
+    first = EXIT_AT + timedelta(minutes=31)
+    rig.loop._state = lambda: stuck_state(first)
+    rig.loop._clock = FixedClock(first)
+    await rig.loop.step()
+    await rig.loop.step()
+    assert probes == ["main"]
+    assert "metro" not in rig.loop._cooldowns and "scenario_failed" not in rig.notes.codes
+    # Рестарт: новый цикл на том же хранилище не повторяет первую проверку.
+    again = Rig(world, store=store)
+    again.loop._state = lambda: stuck_state(first)
+    again.loop._clock = FixedClock(first + timedelta(minutes=5))
+    await again.loop.step()
+    assert probes == ["main"]
+    second = EXIT_AT + timedelta(hours=2, minutes=1)
+    again.loop._state = lambda: stuck_state(second)
+    again.loop._clock = FixedClock(second)
+    await again.loop.step()
+    await again.loop.step()
+    assert probes == ["main", "main"]
+
+
+async def test_metro_probe_count_store_failure_sends_no_main(world: World) -> None:
+    await world.settings.update(
+        lambda s: s.model_copy(update={"features": METRO_ALONE.features}), changed_by="test"
+    )
+    store = MemoryPlannerStore()
+
+    async def broken(since: datetime) -> list[str]:
+        raise RuntimeError("db down")
+
+    store.metro_probes = broken  # type: ignore[method-assign]
+    rig = Rig(world, store=store)
+    first = EXIT_AT + timedelta(minutes=31)
+    rig.loop._state = lambda: stuck_state(first)
+    rig.loop._clock = FixedClock(first)
+    await rig.loop.step()
+    assert rig.store.runs == []

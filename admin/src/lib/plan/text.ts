@@ -33,6 +33,7 @@ export const WAKE: Record<WakeKind, WakeText> = {
 	lottery_open: { icon: '🤑', text: 'Лотерея: купить билеты' },
 	metro_kick: { icon: '🚇', text: 'Метро: игра выкинет перед битвой' },
 	metro_ready: { icon: '🚇', text: 'Метро доступно' },
+	metro_probe: { icon: '🚇', text: 'Метро: проверить выход после итога' },
 	artifact_end: { icon: '👾', text: 'Сбор артефакта кончается' },
 	trip_ready: { icon: '🚦', text: 'Можно ехать' },
 	trip_result: { icon: '🚦', text: 'Итог поездки' },
@@ -146,6 +147,7 @@ export const VERDICT: Record<string, string> = {
 	not_player: 'адресат не играет',
 	in_metro: 'уже в метро',
 	metro_unknown_screen: 'незнакомый экран метро',
+	metro_stuck: 'выход из метро не подтверждён',
 	reserved: '🔥 в запасе',
 	no_team: 'не в команде',
 	company_unknown: 'своя компания не распознана',
@@ -326,6 +328,8 @@ export function actDetail(scenario: string, params: Record<string, unknown>, pla
 		}
 		case 'gorbushka':
 			return params.buy === true ? 'купить билет' : '';
+		case 'metro':
+			return typeof params.probe === 'string' ? `проверка выхода: /${params.probe}` : '';
 		case 'trip':
 			return typeof params.vehicle === 'string' ? (VEHICLE[params.vehicle] ?? params.vehicle) : '';
 		default:

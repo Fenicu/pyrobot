@@ -17,9 +17,10 @@ from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.gateway.types import Source
 from app.engine.metro.store import METRO_HISTORY, MetroRunStore
 from app.engine.notify import NotifierPort
+from app.engine.planner.base import METRO_PROBE
 from app.engine.planner.daily import UNKNOWN_FIRE
 from app.engine.planner.decide import Outlook, decide, lottery_params, outlook, resume_metro
-from app.engine.planner.obligations import LOTTERY_OPEN
+from app.engine.planner.obligations import LOTTERY_OPEN, METRO_PROBES
 from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Act, Wait
 from app.engine.scenarios.context import History, Publish, Reread, ScenarioContext
@@ -115,10 +116,19 @@ class PlanView:
 
 
 def cooldown_key(act: Act) -> str:
-    """Кулдаун и серия неудач рефреша — свои у каждого источника."""
+    """Кулдаун и серия неудач рефреша — свои у каждого источника, проверки выхода из метро — свои,
+    не забега."""
     if act.scenario == "refresh":
         return f"refresh:{act.params['source']}"
+    if act.scenario == "metro" and "probe" in act.params:
+        return METRO_PROBE
     return act.scenario
+
+
+def _exit_at(state: CharacterState) -> datetime | None:
+    """Момент итога забега, выход из которого не подтверждён; None — такого нет."""
+    seen = state.metro_message
+    return seen.value.exit_at if seen is not None and seen.value is not None else None
 
 
 class PlannerLoop:
@@ -181,6 +191,9 @@ class PlannerLoop:
         # из хранилища, дальше — по итогам своих запусков.
         self._done_today: tuple[date, dict[str, int]] | None = None
         self._last_wait: DecisionRecord | None = None
+        # Проверки выхода из метро после итога (момент итога, проверки): из хранилища при новом
+        # итоге — рестарт счёт не обнуляет, дальше — по своим запускам.
+        self._metro_probes: tuple[datetime, list[str]] | None = None
         # Нехватка, которую последний запуск лотереи увидел сверх запасов: (тираж, валюты).
         self._lottery_short: tuple[int, dict[str, int]] | None = None
         # Отказ «раздел стартапов закрыт» уже показан владельцу.
@@ -321,8 +334,9 @@ class PlannerLoop:
         if settings.engine.mode != self._mode:
             self._held.clear()
             self._mode = settings.engine.mode
+        observed = self._observed()
         decision = decide(
-            self._observed(),
+            observed,
             settings,
             now,
             certified=CERTIFIED if settings.engine.mode == "live" else None,
@@ -331,6 +345,7 @@ class PlannerLoop:
             last_done=self._last_done,
             metro_durations=self._metro_durations,
             done_today=done_today,
+            metro_probes=await self._probes(observed, keep=True),
         )
         if isinstance(decision, Wait):
             return await self._wait(now, decision)
@@ -458,8 +473,10 @@ class PlannerLoop:
         done_today = await self._peek_today(now)
         # Смена режима снимет отсрочки подавления на следующем решении — план их уже не видит.
         held = settings.engine.mode == self._mode
+        observed = self._observed()
+        probes = await self._probes(observed, keep=False)
         view = outlook(
-            self._observed(),
+            observed,
             settings,
             now,
             certified=CERTIFIED if settings.engine.mode == "live" else None,
@@ -468,8 +485,28 @@ class PlannerLoop:
             last_done=last_done,
             metro_durations=durations,
             done_today=done_today,
+            metro_probes=probes,
         )
         return now, view
+
+    async def _probes(self, state: CharacterState, *, keep: bool) -> list[str]:
+        """Проверки выхода после итога в состоянии; `keep` — запомнить прочитанное из хранилища
+        (план только читает кеш). Хранилище недоступно — как будто обе `/main` уже были: лишняя
+        `/main` хуже пропущенной."""
+        exit_at = _exit_at(state)
+        if exit_at is None:
+            return []
+        known = self._metro_probes
+        if known is not None and known[0] == exit_at:
+            return known[1]
+        try:
+            probes = await self._store.metro_probes(exit_at)
+        except Exception:
+            log.exception("metro probes since %s not loaded", exit_at)
+            return ["main"] * len(METRO_PROBES)
+        if keep:
+            self._metro_probes = (exit_at, probes)
+        return probes
 
     def loop_view(self) -> LoopView:
         return LoopView(
@@ -579,6 +616,10 @@ class PlannerLoop:
             result = replace(result, status="stopped")
         if act.scenario == "lottery_buy":
             self._lottery_short = _lottery_short(result)
+        if cooldown_key(act) == METRO_PROBE and result.status != "suppressed":
+            # Исход неизвестен — проверка всё равно считается: /main мог дойти до игры.
+            if self._metro_probes is not None:
+                self._metro_probes[1].append(str(act.params["probe"]))
         finished = self._clock.now()
         try:
             # Подавленный ручной запуск о планах ничего не говорит: откладывать сценарий незачем.

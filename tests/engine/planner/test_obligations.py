@@ -1028,3 +1028,90 @@ def test_unknown_last_run_screen_blocks_resume() -> None:
 def test_left_metro_is_not_resumed() -> None:
     left = metro_state(NOON, metro_message=None, metro_ready_at=NOON + DAY)
     assert isinstance(decide(left, METRO_ALONE, NOON), Wait)
+
+
+# --- метро: итог без подтверждённого выхода
+
+EXIT_AT = NOON - timedelta(minutes=5)
+PROBE_KEY = "metro_probe"
+
+
+def exited(at: datetime = EXIT_AT, battle: datetime = BATTLE_EVENING) -> Obs[MetroRunRef]:
+    """Итог забега в `at`, выход ещё не подтвердил ответ игры."""
+    known = Obs(value=battle, at=at - timedelta(hours=1))
+    run = MetroRunRef(message_id=3624441, battle_at=known, exit_at=at, exit_loot={"money": 156})
+    return Obs(value=run, at=at)
+
+
+def stuck_state(now: datetime, **over: Any) -> CharacterState:
+    fields: dict[str, Any] = {
+        "metro_message": exited(),
+        "metro_ready_at": Obs(value=EXIT_AT + timedelta(hours=16), at=EXIT_AT, src="derived"),
+        # Профиль старый: без отметки забега планировщик его обновил бы.
+        "busy": Obs(value=None, at=now - timedelta(hours=3)),
+    }
+    return metro_state(now, **{**fields, **over})
+
+
+def test_unconfirmed_exit_holds_every_send_and_resume() -> None:
+    decision = decide(stuck_state(NOON), METRO_ALONE, NOON)
+    assert isinstance(decision, Wait)
+    assert (decision.until, decision.reason) == (
+        EXIT_AT + timedelta(minutes=30) + TIMER_MARGIN,
+        "metro_probe",
+    )
+    assert ("refresh", "metro_stuck") in candidates(decision)
+    free = stuck_state(NOON, busy=None)
+    decision = decide(free, METRO_ALONE, NOON)
+    assert isinstance(decision, Wait)
+    assert ("metro", "in_metro") in candidates(decision)
+    assert not any(c.params.get("resume") for c in decision.candidates)
+
+
+def test_unconfirmed_exit_probed_with_main_at_30_min_and_2_hours() -> None:
+    first = EXIT_AT + timedelta(minutes=31)
+    decision = decide(stuck_state(first), METRO_ALONE, first)
+    assert act(decision) == ("metro", {"probe": "main"})
+    assert isinstance(decision, Act) and decision.reason == "metro_stuck"
+    # Первая проверка сделана — следующая через 2 часа после итога.
+    decision = decide(stuck_state(first), METRO_ALONE, first, metro_probes=["main"])
+    assert isinstance(decision, Wait)
+    assert decision.until == EXIT_AT + timedelta(hours=2) + TIMER_MARGIN
+    second = EXIT_AT + timedelta(hours=2, minutes=1)
+    decision = decide(stuck_state(second), METRO_ALONE, second, metro_probes=["main"])
+    assert act(decision) == ("metro", {"probe": "main"})
+    # Две проверки /main сделаны (третья — шаг самого забега): дальше — только к битве.
+    later = EXIT_AT + timedelta(hours=3)
+    decision = decide(stuck_state(later), METRO_ALONE, later, metro_probes=["main", "main"])
+    assert isinstance(decision, Wait)
+    assert decision.until == BATTLE_EVENING - timedelta(minutes=10) + TIMER_MARGIN
+
+
+def test_unconfirmed_exit_checked_with_compact_10_min_before_battle() -> None:
+    check = BATTLE_EVENING - timedelta(minutes=9)
+    decision = decide(stuck_state(check), METRO_ALONE, check, metro_probes=["main", "main"])
+    assert act(decision) == ("metro", {"probe": "compact"})
+    # Проверка перед битвой важнее несделанной /main.
+    decision = decide(stuck_state(check), METRO_ALONE, check, metro_probes=["main"])
+    assert act(decision) == ("metro", {"probe": "compact"})
+    # Проверка перед битвой без ответа: больше ничего не шлём до ответа игры.
+    after = BATTLE_EVENING + timedelta(minutes=30)
+    decision = decide(stuck_state(after), METRO_ALONE, after, metro_probes=["main", "compact"])
+    assert isinstance(decision, Wait)
+    assert ("refresh", "metro_stuck") in candidates(decision)
+    assert not [w for w in candidates(decision) if w[1] == "chosen"]
+
+
+def test_probe_cooldown_is_its_own() -> None:
+    first = EXIT_AT + timedelta(minutes=31)
+    held = {PROBE_KEY: first + timedelta(minutes=1), "metro": first + timedelta(hours=1)}
+    decision = decide(stuck_state(first), METRO_ALONE, first, cooldowns=held)
+    assert isinstance(decision, Wait) and decision.reason == f"cooldown:{PROBE_KEY}"
+    decision = decide(stuck_state(first), METRO_ALONE, first, cooldowns={"metro": held["metro"]})
+    assert act(decision) == ("metro", {"probe": "main"})
+
+
+def test_confirmed_exit_lifts_hold() -> None:
+    left = stuck_state(NOON, metro_message=Obs(value=None, at=NOON))
+    decision = decide(left, METRO_ALONE, NOON)
+    assert not any(c.verdict == "metro_stuck" for c in decision.candidates)
