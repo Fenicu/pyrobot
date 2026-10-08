@@ -46,6 +46,7 @@ from app.engine.parsing.gadgets import (
     UpgradeScreen,
     UpgradesScreen,
 )
+from app.engine.parsing.gifts import TangerineGiftOpened, TangerineGiftShop
 from app.engine.parsing.gorbushka import GorbushkaFight, GorbushkaScreen
 from app.engine.parsing.items import (
     BookRead,
@@ -168,7 +169,7 @@ LOTTERY_CURRENCIES = ("money", "knowledge", "raw", "details")
 # Битва за фабрику — в 18:30 MSK: отчёт о ней (/fb) датируется ею.
 FACTORY_BATTLE = time(18, 30)
 # Ответы с изменением ресурсов → вид эффекта журнала прихода.
-_RESULT_KINDS = {"symbol_exchange": "exchange", "tangerine_gift": "tangerine_gift"}
+_RESULT_KINDS = {"symbol_exchange": "exchange"}
 # Бой с биржевиками: итог приходит через ~5 мин после присоединения (медиана 292 с).
 BULLS_FIGHT = timedelta(minutes=5)
 FOOD_KINDS = ("hotdog", "pizza", "burger", "banana")
@@ -821,6 +822,23 @@ def _gifts(p: _Patch, e: GiftsScreen) -> None:
     p.snap("containers_medium", e.containers_medium)
     if e.tangerines is not None:
         p.snap("tangerines", e.tangerines)
+    if e.tangerine_gifts is not None:
+        p.snap("tangerine_gifts", e.tangerine_gifts)
+
+
+@_on(TangerineGiftShop)
+def _tangerine_gift_shop(p: _Patch, e: TangerineGiftShop) -> None:
+    # Правка после покупки показывает подарки и 🍊 уже после неё: снимок, а не приращение.
+    p.snap("tangerine_gifts", e.gifts)
+    p.snap("tangerines", e.tangerines)
+
+
+@_on(TangerineGiftOpened)
+def _tangerine_gift_opened(p: _Patch, e: TangerineGiftOpened) -> None:
+    p.delta("tangerine_gifts", -1)
+    p.rewards(e.rewards)
+    _food_found(p, e.food)
+    p.effect("tangerine_gift", amounts(e.rewards), e.rewards.items)
 
 
 @_on(ContainerOpened)

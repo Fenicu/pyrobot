@@ -44,6 +44,7 @@ _GIFTS = re.compile(
     r"\A🗳Контейнеры:\nМалые: (?P<small>\d+)\n(?:/unbox_ls\n)?Средние: (?P<medium>\d+)"
 )
 _GIFTS_TANGERINES = re.compile(r"🍊У тебя: (?P<n>\d+) шт")
+_GIFTS_FOR_TANGERINES = re.compile(r"^🎁Твои за 🍊: (?P<n>" + NUM + r") шт", re.M)
 _CONTAINER = re.compile(r"\AТы открыл (?P<size>Малый|Средний) 🗳контейнер")
 _CONTENTS = re.compile(r"^Внутри ты обнаружил:\n(?P<body>.*?)(?:\n\n|\Z)", re.M | re.S)
 # Предмет в контейнере: «Флюс», «Пьезодинамик - 3 шт.»; строки с двоеточием — ресурсы и улучшения.
@@ -117,6 +118,8 @@ class GiftsScreen(Event):
     containers_small: int
     containers_medium: int
     tangerines: int | None
+    # Подарки за 🍊 («🎁Твои за 🍊: N шт.»); None — строки на экране нет.
+    tangerine_gifts: int | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -260,11 +263,13 @@ def recognize_items(msg: IncomingMessage) -> list[Event]:
         return [CardUsed(money=int(m["money"]), next_in_s=dur(m["t"]))]
     if m := _GIFTS.match(text):
         tangerines = _GIFTS_TANGERINES.search(text)
+        gifts = _GIFTS_FOR_TANGERINES.search(text)
         return [
             GiftsScreen(
                 containers_small=int(m["small"]),
                 containers_medium=int(m["medium"]),
                 tangerines=int(tangerines["n"]) if tangerines else None,
+                tangerine_gifts=num(gifts["n"]) if gifts else None,
             )
         ]
     if m := _CONTAINER.match(text):

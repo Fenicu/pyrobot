@@ -3630,6 +3630,7 @@ export interface components {
             stock_holdings?: components["schemas"]["Observed_dict_str__int__"] | null;
             stock_limits?: components["schemas"]["Observed_StockLimits_"] | null;
             stock_quotes?: components["schemas"]["Observed_dict_str__int__"] | null;
+            tangerine_gifts?: components["schemas"]["Observed_int_"] | null;
             tangerine_not_player?: components["schemas"]["Observed_str_"] | null;
             tangerine_ready_at?: components["schemas"]["Observed_datetime_"] | null;
             tangerines?: components["schemas"]["Observed_int_"] | null;

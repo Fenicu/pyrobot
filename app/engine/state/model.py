@@ -292,6 +292,8 @@ class CharacterState(_Frozen):
     bag: Obs[int] | None = None
     bag_cap: Obs[int] | None = None
     tangerines: Obs[int] | None = None
+    # Подарки за 🍊: экран /gifts и экран их покупки.
+    tangerine_gifts: Obs[int] | None = None
     skills: Obs[Skills] | None = None
     battle_at: Obs[datetime] | None = None
     battle_target: Obs[str | None] | None = None

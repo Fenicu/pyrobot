@@ -42,7 +42,6 @@ from tests.fixtures import game_msg
         (3559757, InfoScreen(name="pets")),
         (3624063, InfoScreen(name="network")),
         (3615665, InfoScreen(name="market")),
-        (3584848, InfoScreen(name="gifts_shop")),
         (3603396, InfoScreen(name="tops")),
         (3585192, InfoScreen(name="viruses")),
         (3623175, InfoScreen(name="office")),
@@ -109,10 +108,6 @@ def test_gadgets_screen_without_sale_line_has_no_money() -> None:
             ResourcesChanged(
                 source="symbol_exchange", rewards=Rewards(money=516, upgrades_white=2)
             ),
-        ),
-        (
-            3550799,
-            ResourcesChanged(source="tangerine_gift", rewards=Rewards(money=73, upgrades_white=2)),
         ),
         (
             3528604,

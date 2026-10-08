@@ -6350,6 +6350,16 @@
               }
             ]
           },
+          "tangerine_gifts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_int_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "tangerine_not_player": {
             "anyOf": [
               {

@@ -91,9 +91,18 @@ WORN = _inventory(INV_PROD_1).gadgets
         ),
         (3516680, BookRead(exp=457, next_in_s=3000)),
         (3516678, CardUsed(money=597, next_in_s=3000)),
-        (3516682, GiftsScreen(containers_small=0, containers_medium=0, tangerines=2)),
-        (3623585, GiftsScreen(containers_small=5, containers_medium=0, tangerines=2)),
-        (3611231, GiftsScreen(containers_small=0, containers_medium=1, tangerines=2)),
+        (
+            3516682,
+            GiftsScreen(containers_small=0, containers_medium=0, tangerines=2, tangerine_gifts=0),
+        ),
+        (
+            3623585,
+            GiftsScreen(containers_small=5, containers_medium=0, tangerines=2, tangerine_gifts=0),
+        ),
+        (
+            3611231,
+            GiftsScreen(containers_small=0, containers_medium=1, tangerines=2, tangerine_gifts=0),
+        ),
         (
             3517971,
             ContainerOpened(

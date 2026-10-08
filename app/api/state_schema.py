@@ -70,6 +70,7 @@ class PublicState(BaseModel):
     bag: Observed[int] | None = None
     bag_cap: Observed[int] | None = None
     tangerines: Observed[int] | None = None
+    tangerine_gifts: Observed[int] | None = None
     skills: Observed[Skills] | None = None
     battle_at: Observed[datetime] | None = None
     battle_target: Observed[str | None] | None = None
