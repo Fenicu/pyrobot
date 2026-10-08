@@ -1,9 +1,10 @@
 from dataclasses import replace
 from typing import Any
 
+from app.engine.state.ledger import Effect
 from app.engine.state.model import load_state
 from app.engine.state.reducer import StateReducer
-from tests.engine.parsing.test_metro import CONTINUE, NO_STAMINA
+from tests.engine.parsing.test_metro import COLLAPSED, CONTINUE, NO_STAMINA
 from tests.engine.state.helpers import PARSER, at, feed, value
 from tests.fixtures import game_versions
 
@@ -167,3 +168,40 @@ def test_entrance_without_run_leaves_run_mark_absent() -> None:
     state = _entrance_later(reducer, before, 50)
     assert state["metro_message"] is None
     assert value(state, "metro_ready_at") == "2026-09-26T09:50:00Z"
+
+
+def test_collapse_credits_what_was_given_and_ends_run() -> None:
+    reducer = StateReducer()
+    before = _before_metro(reducer)
+    state = _version(reducer, before, 5, 4)
+    assert value(state, "metro_message")["message_id"] == 3624441
+    kick = replace(
+        RUN[532], msg_id=3700001, text=COLLAPSED, inline=(), date=at(30), created_at=at(30)
+    )
+    state, effects = reducer.reduce(state, kick, PARSER.parse(kick))
+    assert value(state, "money") == value(before, "money") + 104
+    assert value(state, "details") == value(before, "details") + 19
+    assert value(state, "knowledge") == value(before, "knowledge") + 4
+    assert value(state, "raw") == value(before, "raw") + 3
+    assert value(state, "upgrades")["white"] == value(before, "upgrades")["white"] + 1
+    # Строки выносливости в тексте обвала нет: 🔋 остаётся как была на карте.
+    assert value(state, "stamina") == 88
+    stock, old = value(state, "food_stock"), value(before, "food_stock")
+    assert [stock[k]["count"] - old[k]["count"] for k in ("burger", "hotdog", "pizza")] == [
+        1,
+        4,
+        3,
+    ]
+    assert value(state, "metro_message") is None and "metro_message" in state
+    assert value(state, "metro_ready_at") == "2026-09-27T01:30:00Z"
+    assert state["metro_ready_at"]["src"] == "derived"
+    assert effects == (
+        Effect(
+            "metro",
+            {"money": 104, "knowledge": 4, "details": 19, "raw": 3, "upgrades_white": 1},
+        ),
+    )
+    again = replace(kick, revision=1, date=at(31))
+    assert value(reducer.apply(state, again, PARSER.parse(again)), "money") == value(
+        state, "money"
+    )

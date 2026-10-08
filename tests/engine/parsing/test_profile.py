@@ -2,6 +2,7 @@ from dataclasses import replace
 
 import pytest
 
+from app.engine.parsing import game_recognizers
 from app.engine.parsing.battle import DEFENSE
 from app.engine.parsing.profile import ProfileCompact, recognize_compact
 from tests.engine import trip_texts
@@ -295,3 +296,39 @@ def test_profile_with_other_profession_icon() -> None:
     p = _recognized(_BUYER)
     assert (p.level, p.exp, p.exp_next, p.money) == (71, 17432582, 18155142, 228)
     assert (p.busy_kind, p.company, p.team_tag) == ("sleep_bridge", "bmesa", "SU")
+
+
+# Ответ игры на /main (06.10, аккаунт 1): компактный профиль и главная reply-клавиатура.
+MAIN_ANSWER = (
+    "Битва через 4ч. 21 мин.!\n\n"
+    "☣️[SU]\xa0Fenicu 🐀\n"
+    "🎚71   🧵16 (🪡)\n"
+    "💡17\xa0663\xa0927 из 18\xa0155\xa0142\n"
+    "💵$555 🔋100% /to_eat\n"
+    "📚22\xa0391\xa0\xa0 🔩22\xa0390\xa0\xa0 ⚙️137\xa0050\n"
+    "🔥0 из 85 (/pr) (26 мин.)\n"
+    "🎒11 из 24 /inv\n"
+    "🍊8 /gifts\n\n"
+    "🔨\xa0461    🎓\xa0460\n"
+    "🐿\xa0346    🐢\xa0346\n"
+    "⭐️⭐️⭐️ /cool\n\n"
+    "🛌 Через 2д. 14ч.\n"
+    "🛡Защита\n"
+    "Полный профиль /full"
+)
+MAIN_KEYBOARD = (
+    ("😎Я", "⚔Битва", "🏢Офис"),
+    ("🎒Рюкзак", "🧬Вирусы", "🐾Петы"),
+    ("🕸Сеть", "⏳Дела", "👫Команда"),
+)
+
+
+def test_main_answer_is_compact_profile() -> None:
+    msg = replace(
+        game_msg("profile", 3624478), text=MAIN_ANSWER, inline=(), reply_kb=MAIN_KEYBOARD
+    )
+    assert [r.__name__ for r in game_recognizers() if r(msg)] == ["recognize_compact"]
+    [p] = recognize_compact(msg)
+    assert isinstance(p, ProfileCompact)
+    assert (p.battle_in_s, p.level, p.money, p.stamina, p.motivation) == (15660, 71, 555, 100, 0)
+    assert (p.company, p.team_tag, p.battle_target) == ("bmesa", "SU", DEFENSE)

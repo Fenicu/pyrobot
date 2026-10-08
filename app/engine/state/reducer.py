@@ -62,6 +62,7 @@ from app.engine.parsing.metro import (
     MetroBuffs,
     MetroChest,
     MetroChestOpened,
+    MetroCollapsed,
     MetroEarlyExit,
     MetroEntered,
     MetroEntrance,
@@ -1276,14 +1277,23 @@ for _screen in (
 
 @_on(MetroFinished)
 def _metro_finished(p: _Patch, e: MetroFinished) -> None:
-    loot = e.loot
+    _metro_left(p, e.loot, e.stamina)
+
+
+@_on(MetroCollapsed)
+def _metro_collapsed(p: _Patch, e: MetroCollapsed) -> None:
+    _metro_left(p, e.loot, None)
+
+
+def _metro_left(p: _Patch, loot: dict[str, int], stamina: int | None) -> None:
+    """Персонаж вне метро: начислить полученное, отсчитать кулдаун, снять отметку забега."""
     found_rewards = Rewards(
         exp=loot.get("exp", 0),
         money=loot.get("money", 0),
         knowledge=loot.get("knowledge", 0),
         details=loot.get("details", 0),
         raw=loot.get("raw", 0),
-        stamina=e.stamina,
+        stamina=stamina,
         upgrades_white=loot.get("upgrades_white", 0),
         upgrades_blue=loot.get("upgrades_blue", 0),
         upgrades_red=loot.get("upgrades_red", 0),

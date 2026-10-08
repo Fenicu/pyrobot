@@ -89,10 +89,13 @@ _EARLY_EXIT = re.compile(
     r"Выходишь\?\Z"
 )
 _FINISHED = re.compile(
-    r"\A(?:Ты вышел из метро досрочно\. Но при этом потерял половину найденного\.\n\n)?"
+    r"\A(?P<early>Ты вышел из метро досрочно\. Но при этом потерял половину найденного\.\n\n)?"
     r"Получено\n(?P<items>(?:[^\n]+\n)*?)🔋Осталось выносливости: (?P<st>\d+)%\n\n"
     r"К персонажу - /main\.\Z"
 )
+# Выброс обвалом: «Найдено» — копилка забега, «Получено» — что досталось (треть).
+_COLLAPSED = "Тебя завалило обрушившимся потолком, "
+_LOOT_BLOCKS = ("Найдено", "Получено")
 
 Footer = Literal[
     "entry",
@@ -236,6 +239,18 @@ class MetroFinished(Event):
     outcome: ClassVar[bool] = True
     loot: dict[str, int] = field(default_factory=dict)
     stamina: int
+    # Итог досрочного выхода («потерял половину»): после 🚪 или, по ошибке игры, после «👍Выйти».
+    early: bool = False
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MetroCollapsed(Event):
+    """Выброс обвалом («Тебя завалило…»): забег окончен, начисляется только `loot`."""
+
+    kind: ClassVar[str] = "metro_collapsed"
+    outcome: ClassVar[bool] = True
+    found: dict[str, int] = field(default_factory=dict)
+    loot: dict[str, int] = field(default_factory=dict)
 
 
 def tokens(line: str) -> list[str]:
@@ -363,6 +378,21 @@ def _chest_opened(text: str) -> list[Event]:
     return []
 
 
+def _collapsed(text: str) -> list[Event]:
+    head, *blocks = text.split("\n\n")
+    if "\n" in head:
+        return []
+    found: dict[str, dict[str, int]] = {}
+    for block in blocks:
+        title, *lines = block.split("\n")
+        if title not in _LOOT_BLOCKS or title in found:
+            return []
+        if not all(_ITEM_LINE.fullmatch(line) for line in lines):
+            return []
+        found[title] = items(block)
+    return [MetroCollapsed(found=found.get("Найдено", {}), loot=found.get("Получено", {}))]
+
+
 def recognize_metro(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     if text.startswith("🔋"):
@@ -403,7 +433,11 @@ def recognize_metro(msg: IncomingMessage) -> list[Event]:
     if m := _EARLY_EXIT.match(text):
         return [MetroEarlyExit(found=items(m["found"]), half=items(m["half"]))]
     if m := _FINISHED.match(text):
-        return [MetroFinished(loot=items(m["items"]), stamina=int(m["st"]))]
+        return [
+            MetroFinished(loot=items(m["items"]), stamina=int(m["st"]), early=bool(m["early"]))
+        ]
+    if text.startswith(_COLLAPSED):
+        return _collapsed(text)
     return []
 
 

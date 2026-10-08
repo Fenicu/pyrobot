@@ -9,6 +9,7 @@ from app.engine.parsing.metro import (
     MetroBuffs,
     MetroChest,
     MetroChestOpened,
+    MetroCollapsed,
     MetroEarlyExit,
     MetroEntered,
     MetroEntrance,
@@ -374,7 +375,89 @@ def test_cancelled_move_footer_stays_on_the_cell() -> None:
 
 def test_finish_after_early_exit() -> None:
     msg = replace(frame(532), text=EARLY_FINISHED, inline=())
-    assert recognize_metro(msg) == [MetroFinished(loot={"burger": 1}, stamina=0)]
+    assert recognize_metro(msg) == [MetroFinished(loot={"burger": 1}, stamina=0, early=True)]
+
+
+def test_normal_finish_is_not_early() -> None:
+    [finished] = recognize_metro(frame(532))
+    assert isinstance(finished, MetroFinished) and finished.early is False
+    [finished] = recognize_metro(FRAMES2[398])
+    assert isinstance(finished, MetroFinished) and finished.early is False
+
+
+# Забег 07.10 (аккаунт 3): на «👍Выйти» обычного диалога выхода игра ответила итогом досрочного
+# выхода, а персонаж остался в метро; утром его выбросило обвалом. Тексты — как пришли от игры.
+FOUND_1007 = (
+    "📚Знания: 11\n🕳Жетоны: 68\n🔩Сырьё: 9\n🍔Бургер: 2\n💵Деньги: 311\n⚙️Детали: 57\n"
+    "⚪️Улучшения: 3\n🍕Пицца: 7\n🌭Хот-дог: 10\n"
+)
+EARLY_FINISHED_1007 = (
+    "Ты вышел из метро досрочно. Но при этом потерял половину найденного.\n\n"
+    "Получено\n📚Знания: 6\n🕳Жетоны: 34\n🔩Сырьё: 5\n🍔Бургер: 1\n💵Деньги: 156\n"
+    "⚙️Детали: 29\n⚪️Улучшения: 2\n🍕Пицца: 4\n🌭Хот-дог: 5\n"
+    "🔋Осталось выносливости: 100%\n\n"
+    "К персонажу - /main."
+)
+COLLAPSED = (
+    "Тебя завалило обрушившимся потолком, но спасатели вовремя тебя вытащили. В награду они "
+    "забрали две трети найденного.\n\n"
+    "Найдено\n" + FOUND_1007 + "\n"
+    "Получено\n📚Знания: 4\n🕳Жетоны: 23\n🔩Сырьё: 3\n🍔Бургер: 1\n💵Деньги: 104\n"
+    "⚙️Детали: 19\n⚪️Улучшения: 1\n🍕Пицца: 3\n🌭Хот-дог: 4"
+)
+
+
+def test_early_finish_after_normal_exit_dialog() -> None:
+    msg = replace(frame(532), text=EARLY_FINISHED_1007, inline=())
+    loot = {
+        "knowledge": 6,
+        "tokens": 34,
+        "raw": 5,
+        "burger": 1,
+        "money": 156,
+        "details": 29,
+        "upgrades_white": 2,
+        "pizza": 4,
+        "hotdog": 5,
+    }
+    assert recognize_metro(msg) == [MetroFinished(loot=loot, stamina=100, early=True)]
+
+
+def test_collapse_kick_out() -> None:
+    msg = replace(frame(532), text=COLLAPSED, inline=())
+    found = {
+        "knowledge": 11,
+        "tokens": 68,
+        "raw": 9,
+        "burger": 2,
+        "money": 311,
+        "details": 57,
+        "upgrades_white": 3,
+        "pizza": 7,
+        "hotdog": 10,
+    }
+    loot = {
+        "knowledge": 4,
+        "tokens": 23,
+        "raw": 3,
+        "burger": 1,
+        "money": 104,
+        "details": 19,
+        "upgrades_white": 1,
+        "pizza": 3,
+        "hotdog": 4,
+    }
+    assert recognize_metro(msg) == [MetroCollapsed(found=found, loot=loot)]
+    assert [r.__name__ for r in game_recognizers() if r(msg)] == ["recognize_metro"]
+
+
+def test_collapse_blocks_are_optional_but_strict() -> None:
+    head = COLLAPSED.split("\n\n", 1)[0]
+    assert recognize_metro(replace(frame(532), text=head, inline=())) == [MetroCollapsed()]
+    odd = COLLAPSED + "\n\nЧто-то новое"
+    assert recognize_metro(replace(frame(532), text=odd, inline=())) == []
+    odd_line = COLLAPSED.replace("🍕Пицца: 3", "🍕Пицца: три")
+    assert recognize_metro(replace(frame(532), text=odd_line, inline=())) == []
 
 
 NO_STAMINA = (
