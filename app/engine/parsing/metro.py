@@ -96,6 +96,7 @@ _FINISHED = re.compile(
 # Выброс обвалом: «Найдено» — копилка забега, «Получено» — что досталось (треть).
 _COLLAPSED = "Тебя завалило обрушившимся потолком, "
 _LOOT_BLOCKS = ("Найдено", "Получено")
+_NOTHING_FOUND = "В метро ничего не нашёл."
 
 Footer = Literal[
     "entry",
@@ -382,6 +383,8 @@ def _collapsed(text: str) -> list[Event]:
     head, *blocks = text.split("\n\n")
     if "\n" in head:
         return []
+    if blocks == [_NOTHING_FOUND]:
+        return [MetroCollapsed()]
     found: dict[str, dict[str, int]] = {}
     for block in blocks:
         title, *lines = block.split("\n")

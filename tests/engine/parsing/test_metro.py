@@ -406,6 +406,13 @@ COLLAPSED = (
     "⚙️Детали: 19\n⚪️Улучшения: 1\n🍕Пицца: 3\n🌭Хот-дог: 4"
 )
 
+# Выброс обвалом без находок (аккаунт 1, 04.09.2024).
+COLLAPSED_EMPTY = (
+    "Тебя завалило обрушившимся потолком, но спасатели вовремя тебя вытащили. В награду они "
+    "забрали две трети найденного.\n\n"
+    "В метро ничего не нашёл."
+)
+
 
 def test_early_finish_after_normal_exit_dialog() -> None:
     msg = replace(frame(532), text=EARLY_FINISHED_1007, inline=())
@@ -449,6 +456,14 @@ def test_collapse_kick_out() -> None:
     }
     assert recognize_metro(msg) == [MetroCollapsed(found=found, loot=loot)]
     assert [r.__name__ for r in game_recognizers() if r(msg)] == ["recognize_metro"]
+
+
+def test_collapse_with_nothing_found() -> None:
+    msg = replace(frame(532), text=COLLAPSED_EMPTY, inline=())
+    assert recognize_metro(msg) == [MetroCollapsed(found={}, loot={})]
+    assert [r.__name__ for r in game_recognizers() if r(msg)] == ["recognize_metro"]
+    mixed = COLLAPSED + "\n\nВ метро ничего не нашёл."
+    assert recognize_metro(replace(frame(532), text=mixed, inline=())) == []
 
 
 def test_collapse_blocks_are_optional_but_strict() -> None:

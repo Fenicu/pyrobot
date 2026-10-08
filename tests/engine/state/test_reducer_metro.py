@@ -4,7 +4,12 @@ from typing import Any
 from app.engine.state.ledger import Effect
 from app.engine.state.model import load_state
 from app.engine.state.reducer import StateReducer
-from tests.engine.parsing.test_metro import COLLAPSED, CONTINUE, NO_STAMINA
+from tests.engine.parsing.test_metro import (
+    COLLAPSED,
+    COLLAPSED_EMPTY,
+    CONTINUE,
+    NO_STAMINA,
+)
 from tests.engine.state.helpers import PARSER, at, feed, value
 from tests.fixtures import game_versions
 
@@ -205,3 +210,17 @@ def test_collapse_credits_what_was_given_and_ends_run() -> None:
     assert value(reducer.apply(state, again, PARSER.parse(again)), "money") == value(
         state, "money"
     )
+
+
+def test_collapse_with_nothing_found_still_ends_run() -> None:
+    reducer = StateReducer()
+    before = _before_metro(reducer)
+    state = _version(reducer, before, 5, 4)
+    kick = replace(
+        RUN[532], msg_id=3700002, text=COLLAPSED_EMPTY, inline=(), date=at(30), created_at=at(30)
+    )
+    state, effects = reducer.reduce(state, kick, PARSER.parse(kick))
+    assert value(state, "money") == value(before, "money")
+    assert value(state, "metro_message") is None and "metro_message" in state
+    assert value(state, "metro_ready_at") == "2026-09-27T01:30:00Z"
+    assert effects == ()
