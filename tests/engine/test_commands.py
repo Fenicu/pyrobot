@@ -454,6 +454,14 @@ def test_tangerine_gift_commands() -> None:
     assert feature_of_text("🎁 за 10🍊") == feature_of_text("/unbox_t") == "tangerine_gifts"
     assert feature_of_text("/unbox_ls") == feature_of_text("/unbox_lm") == "cards_containers"
     assert feature_of_text("/unbox") == "cards_containers"
-    # Кнопка только открывает экран выбора: неизвестный исход не держит траты.
+    # Кнопка открывает экран выбора, количество — подтверждение: неизвестный исход не держит траты.
+    # Покупает только «👍Покупаю!» `g_tangerines_small_<N>_accept`; «👎Откажусь» бот не жмёт.
     assert spends_nothing_text("🎁 за 10🍊")
-    assert not spends_nothing_callback("g_tangerines_small_1")
+    assert spends_nothing_callback("g_tangerines_small_62")
+    for n in ("1", "62"):
+        assert classify_callback(f"g_tangerines_small_{n}_accept") is A
+        assert feature_of_callback(f"g_tangerines_small_{n}_accept") == "tangerine_gifts"
+        assert not spends_nothing_callback(f"g_tangerines_small_{n}_accept")
+    assert classify_callback("g_tangerines_small__accept") is F
+    assert classify_callback("g_tangerines_small_decline") is F
+    assert feature_of_callback("g_tangerines_small_decline") is None

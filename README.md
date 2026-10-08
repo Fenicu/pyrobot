@@ -2573,8 +2573,9 @@ tools/settings_schema.py [файл]`. Файл лежит в репозитор�
 `/unbox_ls`/`/unbox_lm` только с него; по экрану коробки нет, она заперта таймером или нужных
 контейнеров 0 — `nothing` без команды открытия), `tangerine_gifts` (`/gifts` → при 🍊 на подарок
 «🎁 за 10🍊» → клик по самому большому варианту количества `g_tangerines_small_<N>` — на сколько
-хватает 🍊 → `/unbox_t` по одному, не больше 10 за запуск; `open: false` — только покупка: персонаж
-занят; без безопасных точек — подарки открывали только с экранов подарков и покупки; ни 🍊 на
+хватает 🍊 → «👍Покупаю!» `g_tangerines_small_<N>_accept` с правки-подтверждения (ответ сразу покупкой
+тоже принимается; подтверждение другого количества — `stopped` `unexpected_screen`) → `/unbox_t`
+по одному, не больше 10 за запуск; `open: false` — только покупка: персонаж занят; без безопасных точек — подарки открывали только с экранов подарков и покупки; ни 🍊 на
 подарок, ни подарков — `nothing` `no_gifts`; отказ открытия («занят», «несуществующий подарок») после
 покупки или открытого подарка — `done` с его причиной, первым же шагом — `refused`), `daily_refresh` (`/crew` → `⏳Задания`: кнопка
 заданий работает только из меню команды; итог `done` или неудача `failed` `wrong_screen`, если игра
@@ -3898,13 +3899,16 @@ Telegram, кроме flood wait и потери авторизации) — `Cha
 кнопки количества
 `tickets_<валюта>_<n>` — `action` механики `lottery`, `cancel_inline` — `nav`; кнопка экрана `🤑Купить все` не разрешена — «купить все» шлёт команда `/tickets_all`.
 Подарки за 🍊: кнопка `🎁 за 10🍊` (только открывает выбор количества), кнопки количества
-`g_tangerines_small_<N>` и открытие `/unbox_t` — `action` механики `tangerine_gifts`; прочие
+`g_tangerines_small_<N>` (только открывают подтверждение), покупка `g_tangerines_small_<N>_accept` и
+открытие `/unbox_t` — `action` механики `tangerine_gifts`; «👎Откажусь» `g_tangerines_small_decline`
+бот не жмёт, она не разрешена; прочие
 `/unbox…` — механики `cards_containers`.
 Кнопка «Проснуться» при ограблении `rob_awake_<число>` — `action` механики `robbery_defense`; она
 ничего не тратит, поэтому блок трат её не держит (`spends_nothing_callback`). Так же — ходы и диалоги
 метро: `maze_up/down/left/right`, `maze_start`, `maze_continue`, `maze_cancel_move`,
 `maze_enter_decline`, `maze_exit`, `maze_exit_accept/decline`, `maze_first_aid`,
-`maze_first_aid_accept/decline`, `maze_chest_accept/decline`, `maze_npc_low|high_accept/decline`;
+`maze_first_aid_accept/decline`, `maze_chest_accept/decline`, `maze_npc_low|high_accept/decline` и
+количество подарков за 🍊 `g_tangerines_small_<N>` (покупает только `…_accept`);
 покупки в метро (`maze_buf_tokens_*`, донат `maze_buf_coins_*`) и вход `maze_enter_accept` блок трат
 держит. Из текстовых команд ничего не тратят `/main` (только показывает профиль) и `🎁 за 10🍊`
 (экран выбора количества; `spends_nothing_text`): блок трат их не держит, неизвестный исход блок не

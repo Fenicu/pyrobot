@@ -361,7 +361,7 @@ CALLBACK_RULES: tuple[Rule, ...] = (
         r"ts_\w+_confirm\Z",
         r"rob_awake_\d+\Z",
         r"tickets_\w+_\d+\Z",
-        r"g_tangerines_small_\d+\Z",
+        r"g_tangerines_small_\d+(_accept)?\Z",
         # «⚔Драться» встречи на ночной прогулке: шлюз пропускает только реакцию на встречу.
         FIGHT_ACCEPT.pattern,
     ),
@@ -444,14 +444,16 @@ _FEATURE_CALLBACK: tuple[tuple[re.Pattern[str], str], ...] = tuple(
         (r"ts_\w+_confirm\Z", "daily_tasks"),
         (r"rob_awake_\d+\Z", "robbery_defense"),
         (r"tickets_\w+_\d+\Z", "lottery"),
-        (r"g_tangerines_small_\d+\Z", "tangerine_gifts"),
+        (r"g_tangerines_small_\d+(_accept)?\Z", "tangerine_gifts"),
         (FIGHT_ACCEPT.pattern, "bulls"),
     )
 )
 # Не тратят ничего: блок трат (неизвестный исход, рестарт до сверки) их не держит. Проснуться при
-# ограблении — единственный способ не потерять 30% 💵; ходы и диалоги в метро ничего не тратят.
+# ограблении — единственный способ не потерять 30% 💵; ходы и диалоги в метро ничего не тратят;
+# количество подарков за 🍊 только открывает подтверждение (покупает `…_accept`).
 _SPEND_FREE_CALLBACK = re.compile(
     r"(?:rob_awake_\d+"
+    r"|g_tangerines_small_\d+"
     r"|maze_(?:up|down|left|right|start|continue|cancel_move|enter_decline|exit|exit_accept"
     r"|exit_decline|first_aid|first_aid_accept|first_aid_decline|chest_accept|chest_decline"
     r"|npc_low_accept|npc_low_decline|npc_high_accept|npc_high_decline))\Z"

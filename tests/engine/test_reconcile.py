@@ -151,6 +151,7 @@ def test_sources_mapping() -> None:
     assert sources_for(ob("/unbox_ls")) == (PROFILE, GIFTS)
     assert sources_for(ob("/unbox_t")) == (PROFILE, GIFTS)
     assert sources_for(ob(data="g_tangerines_small_5")) == (PROFILE, GIFTS)
+    assert sources_for(ob(data="g_tangerines_small_5_accept")) == (PROFILE, GIFTS)
     assert sources_for(ob(data="gorbushka_fight")) == (PROFILE, GORBUSHKA)
 
 

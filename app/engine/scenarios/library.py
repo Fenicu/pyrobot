@@ -13,6 +13,7 @@ from app.engine.parsing.food import FastfoodEaten, FoodMenu
 from app.engine.parsing.gifts import (
     TANGERINE_GIFT_PRICE,
     TangerineGiftBought,
+    TangerineGiftConfirm,
     TangerineGiftOpened,
     TangerineGiftShop,
 )
@@ -215,24 +216,39 @@ async def tangerine_gifts(
 
 
 async def _buy_tangerine_gifts(ctx: ScenarioContext) -> tuple[int, int]:
-    """Экран покупки и клик по самому большому варианту (на сколько хватает 🍊): подарков после
-    покупки и сколько куплено. Кнопок нет (🍊 не хватает) — без покупки."""
+    """Экран покупки и клик по самому большому варианту (на сколько хватает 🍊), затем
+    «👍Покупаю!» с правки-подтверждения (игра без него — покупка сразу): подарков после покупки и
+    сколько куплено. Кнопок нет (🍊 не хватает) — без покупки."""
     step = require(await ctx.send(TANGERINE_GIFT_SHOP, expect_events(TangerineGiftShop)))
     shop = step.first(TangerineGiftShop)
     if shop is None or step.delivery is None:
         raise ScenarioStopped("unexpected_screen", step)
     if not shop.options:
         return shop.gifts, 0
-    msg = step.delivery.msg
+    msg, count = step.delivery.msg, shop.options[-1]
+    data = f"g_tangerines_small_{count}"
     clicked = require(
         await ctx.click(
             msg.msg_id,
-            f"g_tangerines_small_{shop.options[-1]}",
-            expect_edit(msg.msg_id, TangerineGiftBought),
+            data,
+            expect_edit(msg.msg_id, TangerineGiftBought, TangerineGiftConfirm),
             msg.revision,
             content=msg.content_hash(),
         )
     )
+    if (asked := clicked.first(TangerineGiftConfirm)) is not None and clicked.delivery is not None:
+        if asked.count != count:
+            raise ScenarioStopped("unexpected_screen", clicked)
+        confirm = clicked.delivery.msg
+        clicked = require(
+            await ctx.click(
+                msg.msg_id,
+                f"{data}_accept",
+                expect_edit(msg.msg_id, TangerineGiftBought),
+                confirm.revision,
+                content=confirm.content_hash(),
+            )
+        )
     bought, after = clicked.first(TangerineGiftBought), clicked.first(TangerineGiftShop)
     if bought is None or after is None:
         raise ScenarioStopped("unexpected_screen", clicked)
