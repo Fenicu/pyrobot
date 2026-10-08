@@ -15,6 +15,8 @@ AMOUNT_KEYS = (
     "knowledge",
     "details",
     "raw",
+    "startup_progress",
+    "keys",
     "upgrades_white",
     "upgrades_blue",
     "upgrades_red",

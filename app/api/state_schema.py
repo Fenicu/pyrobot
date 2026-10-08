@@ -23,6 +23,7 @@ from app.engine.state.model import (
     Skills,
     SmoothieRecipeState,
     Src,
+    StartupState,
     StockLimits,
     TargetSet,
     TeamTask,
@@ -72,6 +73,7 @@ class PublicState(BaseModel):
     battle_target: Observed[str | None] | None = None
     battle_target_set: Observed[TargetSet] | None = None
     busy: Observed[BusyState | None] | None = None
+    startup: Observed[StartupState | None] | None = None
     sleep_deadline: Observed[datetime | None] | None = None
     woke_at: Observed[datetime] | None = None
     sleep_allowed_at: Observed[datetime | None] | None = None

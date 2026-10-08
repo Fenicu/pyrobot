@@ -16,6 +16,14 @@ _GADGET_NO_MONEY = re.compile(
     + r")[\xa0 ]?💵\. Скоро накопишь!"
 )
 _LEFT = re.compile(r"(?:Ещё|Осталось|через) (?P<t>" + DURATION + r")")
+# Стартап на потолке игры; проверяется раньше похожего отказа артефакта.
+_STARTUP_MAX = re.compile(r"\A❗️Твой стартап уже максимального уровня\. Некуда больше расти\.")
+# Раздел стартапов закрыт по уровню игрока: need — нужный 🎚.
+_STARTUP_LEVEL = re.compile(
+    r"\A❗️Твой уровень слишком низок для 1-го стартапа\. Докачайся до (?P<need>"
+    + NUM
+    + r")🎚 уровня"
+)
 # Ответ на /artr_<x> при 100 уровне: «📕 Букварь Стартапера уже максимального уровня. …».
 _ARTIFACT_MAX = re.compile(r"\A\S+ ?[^\n]* уже максимального уровня\.")
 _PREFIXES: tuple[tuple[str, str], ...] = (
@@ -63,6 +71,10 @@ def recognize_refusals(msg: IncomingMessage) -> list[Event]:
         return [Refused(reason="no_money", need=num(m["need"]))]
     if m := _GADGET_NO_MONEY.match(text):
         return [Refused(reason="gadget_no_money", need=num(m["need"]))]
+    if _STARTUP_MAX.match(text):
+        return [Refused(reason="startup_max")]
+    if m := _STARTUP_LEVEL.match(text):
+        return [Refused(reason="startup_level", need=num(m["need"]))]
     if _ARTIFACT_MAX.match(text):
         return [Refused(reason="artifact_max")]
     for reason, prefix in _PREFIXES:

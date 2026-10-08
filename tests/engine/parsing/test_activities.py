@@ -14,6 +14,7 @@ from app.engine.parsing.activities import (
     MotivationFull,
     Price,
     PricesScreen,
+    StartupScreen,
     WorkshopScreen,
 )
 from tests.fixtures import game_msg
@@ -244,7 +245,8 @@ def test_startup_workshop_profession_prices() -> None:
                 "learn": Price(motivation=2, minutes=7),
                 "confa": Price(motivation=3, money=7, minutes=8),
             },
-        )
+        ),
+        StartupScreen(level=8, max=True, progress=None, progress_needed=None, price=None),
     ]
     assert _events(3624750) == [
         PricesScreen(
@@ -276,7 +278,6 @@ def test_startup_workshop_profession_prices() -> None:
     [
         (3610643, "🔫Грабить — 1🔥, 8 ⏰"),
         (3610643, "🔋Выносливость: 100%"),
-        (3624645, "Требования: 3🔥, 7 💵, 8 ⏰"),
         (3624750, "⚪️ простые:"),
         (3624750, "🔵 → 🔴 - создать уникальные улучшения из редких."),
     ],
@@ -286,6 +287,15 @@ def test_partial_screen_gives_nothing(msg_id: int, drop: str) -> None:
     assert msg.text is not None and drop in msg.text
     broken = replace(msg, text=msg.text.replace(drop, "…"))
     assert [e for recognize in RECOGNIZERS for e in recognize(broken)] == []
+
+
+def test_startup_screen_without_confa_price_keeps_its_own_snapshot() -> None:
+    # Без цены Конфы цен дел нет, но уровень и потолок стартапа разбираются.
+    msg = game_msg("activities", 3624645)
+    broken = replace(msg, text=msg.text.replace("Требования: 3🔥, 7 💵, 8 ⏰", "…"))
+    assert [e for recognize in RECOGNIZERS for e in recognize(broken)] == [
+        StartupScreen(level=8, max=True, progress=None, progress_needed=None, price=None)
+    ]
 
 
 @pytest.mark.parametrize(

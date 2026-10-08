@@ -71,6 +71,16 @@ class RefusalState(_Frozen):
     need: int | None = None
 
 
+class StartupState(_Frozen):
+    """Стартап с экрана «🔮Стартапы»: уровень, потолок игры (`max`), прогресс к следующему уровню
+    и его порог (None — порог скрыт «???» или сброшен повышением уровня)."""
+
+    level: int | None = None
+    max: bool = False
+    progress: int | None = None
+    progress_needed: int | None = None
+
+
 class TaskOfferState(_Frozen):
     type: str
     level: str
@@ -257,6 +267,8 @@ DEFAULT_PRICES = {
     "walk": PriceState(motivation=1, minutes=5),
     "confa": PriceState(motivation=3, money=7, minutes=10),
     "rob": PriceState(motivation=1, minutes=8),
+    # «Пилить»: 🔥 и ⏰ (🔩 в PriceState не хранится).
+    "startup": PriceState(motivation=2, minutes=8),
 }
 
 
@@ -281,6 +293,8 @@ class CharacterState(_Frozen):
     battle_target: Obs[str | None] | None = None
     battle_target_set: Obs[TargetSet] | None = None
     busy: Obs[BusyState | None] | None = None
+    # Стартап с экрана «🔮Стартапы» (None — раздел не открывался).
+    startup: Obs[StartupState | None] | None = None
     sleep_deadline: Obs[datetime | None] | None = None
     woke_at: Obs[datetime] | None = None
     sleep_allowed_at: Obs[datetime | None] | None = None

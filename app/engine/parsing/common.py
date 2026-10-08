@@ -10,8 +10,8 @@ _DUR_PART = re.compile(r"(\d+)\s*(д|ч|мин|сек)")
 # ⚙ игра пишет и без VS16 (до 2023, отчёт фабрики), и с двойным (содержимое контейнера).
 _REWARD = re.compile(
     r"^(?P<k>💡Опыт|💵[\xa0 ]?Деньги|📚[\xa0 ]?Знания|⚙\ufe0f{0,2}[\xa0 ]?Детали|🔩[\xa0 ]?Сырьё"
-    r"|🔋Выносливость|🔋Осталось выносливости)(?: за [^:\n]+)?: ?(?P<sign>[+-])?\s?\$?"
-    r"(?P<v>\d[\d\xa0 ]*)%?",
+    r"|🔋Выносливость|🔋Осталось выносливости|⏳Прогресс стартапа|🔑Ключи)(?: за [^:\n]+)?: ?"
+    r"(?P<sign>[+-])?\s?\$?(?P<v>\d[\d\xa0 ]*)%?",
     re.M,
 )
 # «⚪️ Простые улучшения: +3», «⚪️ Улучшения: +1», в отчёте фабрики — «⚪️Простые: +2».
@@ -35,7 +35,15 @@ _PERSONAL_TASK = re.compile(r"🔜Личное" + _TASK_LINE)
 # До 2023 игра писала ⚙ без VS16.
 _RESOURCE_ALIASES = {"⚙": "⚙️"}
 # Ресурс строки награды — по её первому символу (у ⚙ VS16 бывает любым).
-_REWARD_KEYS = {"💡": "exp", "💵": "money", "📚": "knowledge", "⚙": "details", "🔩": "raw"}
+_REWARD_KEYS = {
+    "💡": "exp",
+    "💵": "money",
+    "📚": "knowledge",
+    "⚙": "details",
+    "🔩": "raw",
+    "⏳": "startup_progress",
+    "🔑": "keys",
+}
 # Компании биржи и битв: название на экранах игры → код в командах (/buys_<код>_N).
 COMPANIES = {
     "📯Pied Piper": "piper",
@@ -104,6 +112,9 @@ class Rewards:
     personal_task: tuple[int, int, str] | None = None
     containers_small: int = 0
     containers_medium: int = 0
+    # Итог «Пилить»: ⏳Прогресс стартапа и 🔑Ключи.
+    startup_progress: int = 0
+    keys: int = 0
     # Предметы крафта: название → количество (в состояние не идут, только в журнал прихода).
     items: dict[str, int] = field(default_factory=dict)
 
@@ -158,5 +169,7 @@ def parse_rewards(text: str) -> Rewards:
         personal_task=_task_line(_PERSONAL_TASK, text),
         containers_small=containers["small"],
         containers_medium=containers["medium"],
+        startup_progress=totals["startup_progress"],
+        keys=totals["keys"],
         items=parse_items(text),
     )

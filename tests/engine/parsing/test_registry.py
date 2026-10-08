@@ -62,11 +62,8 @@ def test_one_recognizer_per_message() -> None:
             assert (
                 len(kinds) == 1
                 or kinds == ["prices_screen", "deeds_menu"]
-                or kinds
-                == [
-                    "prices_screen",
-                    "workshop_screen",
-                ]
+                or kinds == ["prices_screen", "workshop_screen"]
+                or kinds == ["prices_screen", "startup_screen"]
             ), (family, msg_id, kinds)
 
 

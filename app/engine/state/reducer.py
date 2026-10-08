@@ -17,6 +17,8 @@ from app.engine.parsing.activities import (
     DeedsMenu,
     MotivationFull,
     PricesScreen,
+    StartupLevelUp,
+    StartupScreen,
     WorkshopScreen,
 )
 from app.engine.parsing.artifacts import (
@@ -135,6 +137,7 @@ from app.engine.state.model import (
     Skills,
     SmoothieRecipeState,
     Src,
+    StartupState,
     StockLimits,
     TargetSet,
     TaskOfferState,
@@ -494,7 +497,43 @@ def _finished(p: _Patch, e: ActivityFinished) -> None:
     p.rewards(e.rewards)
     p.delta("motivation", e.motivation_refund)
     p.stat(e.activity, e.rewards)
+    if e.rewards.startup_progress:
+        known: Obs[StartupState] | None = p.get("startup")
+        if known is not None and known.value.progress is not None:
+            p.change(
+                "startup",
+                lambda s: s.model_copy(
+                    update={"progress": s.progress + e.rewards.startup_progress}
+                ),
+            )
     p.effect("deed", amounts(e.rewards), e.rewards.items)
+
+
+@_on(StartupScreen)
+def _startup_screen(p: _Patch, e: StartupScreen) -> None:
+    p.snap(
+        "startup",
+        StartupState(
+            level=e.level,
+            max=e.max,
+            progress=e.progress,
+            progress_needed=e.progress_needed,
+        ),
+    )
+
+
+@_on(StartupLevelUp)
+def _startup_level_up(p: _Patch, e: StartupLevelUp) -> None:
+    # Новый уровень: прогресс и порог игра показывает заново, до экрана — неизвестны.
+    p.change(
+        "startup",
+        lambda s: StartupState(
+            level=s.level + 1 if s.level is not None else None,
+            max=s.max,
+            progress=None,
+            progress_needed=None,
+        ),
+    )
 
 
 @_on(BonusRewards)
@@ -543,6 +582,10 @@ def _refused(p: _Patch, e: Refused) -> None:
         p.snap("motivation", 0, src="derived")
     elif e.reason == "levelup_required":
         p.snap("levelup_pending", True)
+    elif e.reason == "startup_max":
+        known: Obs[StartupState] | None = p.get("startup")
+        level = known.value.level if known is not None else None
+        p.snap("startup", StartupState(level=level, max=True))
     elif e.reason in _REFUSAL_TIMERS and e.left_s is not None:
         p.snap(_REFUSAL_TIMERS[e.reason], p.later(e.left_s))
 

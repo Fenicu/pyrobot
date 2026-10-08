@@ -4552,6 +4552,42 @@
         "title": "Observed[Union[MetroRunRefOut, NoneType]]",
         "type": "object"
       },
+      "Observed_Union_StartupState__NoneType__": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "src": {
+            "enum": [
+              "screen",
+              "derived",
+              "doubtful"
+            ],
+            "title": "Src",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StartupState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "at",
+          "src"
+        ],
+        "title": "Observed[Union[StartupState, NoneType]]",
+        "type": "object"
+      },
       "Observed_Union_datetime__NoneType__": {
         "additionalProperties": false,
         "properties": {
@@ -6261,6 +6297,16 @@
               }
             ]
           },
+          "startup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_Union_StartupState__NoneType__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "stock_holdings": {
             "anyOf": [
               {
@@ -7052,6 +7098,51 @@
           "bonus"
         ],
         "title": "SmoothieRecipeState",
+        "type": "object"
+      },
+      "StartupState": {
+        "description": "Стартап с экрана «🔮Стартапы»: уровень, потолок игры (`max`), прогресс к следующему уровню\nи его порог (None — порог скрыт «???» или сброшен повышением уровня).",
+        "properties": {
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "max": {
+            "default": false,
+            "title": "Max",
+            "type": "boolean"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "progress_needed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Needed"
+          }
+        },
+        "title": "StartupState",
         "type": "object"
       },
       "StateOut": {

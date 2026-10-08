@@ -68,6 +68,11 @@ _STARTS: tuple[tuple[str, re.Pattern[str]], ...] = (
             re.S,
         ),
     ),
+    # Стартап «Пилить» (дело в разделе 🔮Стартапов, команда /dos).
+    (
+        "startup",
+        re.compile(r'\A"Го пилить стартап!".*?Это займёт (?P<t>' + DURATION + r")", re.S),
+    ),
 )
 # Итог дела классифицируется по строке продолжения: первая строка — случайная шутка.
 _FINISHES: tuple[tuple[str, str], ...] = (
@@ -79,8 +84,15 @@ _FINISHES: tuple[tuple[str, str], ...] = (
     ("walk", "Продолжить 🚶Гулять - /walk"),
     # «Завершить: /finish» в старте конфы — донат, итог от него не зависит.
     ("confa", "На новую 📚Конфу - /confa"),
+    ("startup", "🖥 Пилить стартап дальше - /dos"),
 )
 _FAILED = "Ничего не удалось обнаружить"
+# Ответ на /decline во время «Пилить»: строка продолжения та же, но это отмена, а не итог.
+_STARTUP_DECLINED = (
+    '"Сегодня что-то не идёт разработка", - решил ты и отложил свой стартап на время'
+)
+# Повышение уровня стартапа приходит хвостом итога.
+_STARTUP_LEVELUP = "Отлично! Твой стартап перешёл на новый уровень!"
 _LOGISTIC_REFUND = "Сработал 🗳Сет Логистик и ты восстановил 1 🔥"
 _CANCEL_OK = "👍Задание отменено.\n\nТебе вернулось:\n"
 _CANCEL_REFUND = re.compile(r"^(?:🔥Мотивация: (?P<mot>\d+)|💵Деньги: \$(?P<money>\d+))$", re.M)
@@ -106,6 +118,12 @@ _DEEDS_SLEEP_IN = re.compile(r"Свалишься в сон через (?P<t>[^\
 _DEEDS_SLEEPING = re.compile(
     r"Спишь (?P<where>под мостом|в отеле)\. Закончишь через +(?P<t>[^\n]+)"
 )
+_STARTUP_LEVEL = re.compile(r"^🎚Уровень:\ (?P<level>\d+)$", re.M)
+_STARTUP_MAX = "❗️Максимальный"
+_STARTUP_PROGRESS = re.compile(r"^⏳Прогресс:\ (?P<cur>\d+) из (?P<goal>\d+|\?\?\?)$", re.M)
+_STARTUP_PILL = re.compile(r"^🖥\ Пилить\n.*?Требования:\ (?P<req>[^\n]+)$", re.M | re.S)
+_STARTUP_REQ = re.compile(r"(\d+)\s?(🔥|🔩|⏰)")
+_STARTUP_REQ_KEYS = {"🔥": "motivation", "🔩": "raw", "⏰": "minutes"}
 _STARTUP = re.compile(r"^📚(?P<act>Учиться|Конфа)\n.*?Требования: (?P<req>[^\n]+)$", re.M | re.S)
 _WORKSHOP = re.compile(
     r"^(?P<act>⚙️ → 🔩|⚪️ → 🔵|🔵 → 🔴) - [^\n]+\nТребования: (?P<req>[^\n]+)$", re.M
@@ -219,6 +237,22 @@ class WorkshopScreen(Event):
     upgrades_red: int
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class StartupScreen(Event):
+    kind: ClassVar[str] = "startup_screen"
+    level: int
+    max: bool = False
+    progress: int | None = None
+    progress_needed: int | None = None
+    price: dict[str, int] | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class StartupLevelUp(Event):
+    kind: ClassVar[str] = "startup_level_up"
+    outcome: ClassVar[bool] = True
+
+
 def recognize_start(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     for activity, pattern in _STARTS:
@@ -237,9 +271,11 @@ def recognize_start(msg: IncomingMessage) -> list[Event]:
 
 def recognize_finish(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
+    if _STARTUP_DECLINED in text:
+        return []
     for activity, marker in _FINISHES:
         if marker in text:
-            return [
+            events: list[Event] = [
                 ActivityFinished(
                     activity=activity,
                     failed=_FAILED in text,
@@ -247,6 +283,9 @@ def recognize_finish(msg: IncomingMessage) -> list[Event]:
                     motivation_refund=1 if _LOGISTIC_REFUND in text else 0,
                 )
             ]
+            if _STARTUP_LEVELUP in text:
+                events.append(StartupLevelUp())
+            return events
     return []
 
 
@@ -268,6 +307,8 @@ def recognize_cancel(msg: IncomingMessage) -> list[Event]:
     if text.startswith(_CANCEL_NONE):
         return [ActivityCancelled(result="nothing")]
     if text == _CANCEL_PLAIN:
+        return [ActivityCancelled(result="ok")]
+    if text.startswith(_STARTUP_DECLINED):
         return [ActivityCancelled(result="ok")]
     return []
 
@@ -340,6 +381,25 @@ def _workshop(text: str) -> list[Event]:
     ]
 
 
+def _startup_screen(text: str) -> StartupScreen | None:
+    level = _STARTUP_LEVEL.search(text)
+    if level is None:
+        return None
+    progress = _STARTUP_PROGRESS.search(text)
+    pill = _STARTUP_PILL.search(text)
+    price: dict[str, int] | None = None
+    if pill is not None:
+        found = {_STARTUP_REQ_KEYS[unit]: int(n) for n, unit in _STARTUP_REQ.findall(pill["req"])}
+        price = found or None
+    return StartupScreen(
+        level=int(level["level"]),
+        max=_STARTUP_MAX in text,
+        progress=num(progress["cur"]) if progress else None,
+        progress_needed=num(progress["goal"]) if progress and progress["goal"] != "???" else None,
+        price=price,
+    )
+
+
 def recognize_screens(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     if text.startswith(("💻Работать —", "Ну, граждане алкоголики")):
@@ -348,9 +408,13 @@ def recognize_screens(msg: IncomingMessage) -> list[Event]:
         prices = {
             _PRICE_KEYS[m["act"]]: parse_requirements(m["req"]) for m in _STARTUP.finditer(text)
         }
-        return (
+        events: list[Event] = (
             [PricesScreen(screen="startup", prices=prices)] if _complete("startup", prices) else []
         )
+        screen = _startup_screen(text)
+        if screen is not None:
+            events.append(screen)
+        return events
     if text.startswith("🛠Мастерская"):
         return _workshop(text)
     if text.startswith("🧵") and (prof := _PROFESSION.search(text)):

@@ -3060,6 +3060,20 @@ export interface components {
             src: "screen" | "derived" | "doubtful";
             value: components["schemas"]["MetroRunRefOut"] | null;
         };
+        /** Observed[Union[StartupState, NoneType]] */
+        Observed_Union_StartupState__NoneType__: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Src
+             * @enum {string}
+             */
+            src: "screen" | "derived" | "doubtful";
+            value: components["schemas"]["StartupState"] | null;
+        };
         /** Observed[Union[datetime, NoneType]] */
         Observed_Union_datetime__NoneType__: {
             /**
@@ -3610,6 +3624,7 @@ export interface components {
             smoothie_ingredients?: components["schemas"]["Observed_dict_str__int__"] | null;
             smoothie_recipe?: components["schemas"]["Observed_SmoothieRecipeState_"] | null;
             stamina?: components["schemas"]["Observed_int_"] | null;
+            startup?: components["schemas"]["Observed_Union_StartupState__NoneType__"] | null;
             stock_holdings?: components["schemas"]["Observed_dict_str__int__"] | null;
             stock_limits?: components["schemas"]["Observed_StockLimits_"] | null;
             stock_quotes?: components["schemas"]["Observed_dict_str__int__"] | null;
@@ -3859,6 +3874,24 @@ export interface components {
             bonus: string;
             /** Recipe */
             recipe: string;
+        };
+        /**
+         * StartupState
+         * @description Стартап с экрана «🔮Стартапы»: уровень, текущ щель игры (`max`), прогресс к следо уровен
+         *     и его порог (None — «???» скрыт или резет по хроеой уровня).
+         */
+        StartupState: {
+            /** Level */
+            level?: number | null;
+            /**
+             * Max
+             * @default false
+             */
+            max: boolean;
+            /** Progress */
+            progress?: number | null;
+            /** Progress Needed */
+            progress_needed?: number | null;
         };
         /** StateOut */
         StateOut: {
