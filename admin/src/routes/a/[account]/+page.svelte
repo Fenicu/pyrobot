@@ -1,8 +1,10 @@
 <script lang="ts">
+	import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 	import { onMount, type Snippet } from 'svelte';
-	import { page } from '$app/state';
+	import { beforeNavigate, goto } from '$app/navigation';
+	import { errorText } from '$lib/api/errors';
 	import { ArtifactStore } from '$lib/artifact/store.svelte';
-	import { current } from '$lib/app.svelte';
+	import { current, homeLayout, session } from '$lib/app.svelte';
 	import DailyCard from '$lib/components/daily/DailyCard.svelte';
 	import ArtifactCard from '$lib/components/home/ArtifactCard.svelte';
 	import CharacterCard from '$lib/components/home/CharacterCard.svelte';
@@ -15,10 +17,14 @@
 	import { DailyStore } from '$lib/daily/store.svelte';
 	import { GadgetsStore } from '$lib/gadgets/store.svelte';
 	import type { BlockId } from '$lib/home/blocks';
+	import EditBar from '$lib/home/EditBar.svelte';
 	import HomeGrid from '$lib/home/HomeGrid.svelte';
-	import { DEFAULT_LAYOUT, phoneOrder, type HomeLayout } from '$lib/home/layout';
+	import { phoneOrder } from '$lib/home/layout';
 	import { MetroLiveStore } from '$lib/metro/store.svelte';
 	import { PlanStore } from '$lib/plan/store.svelte';
+	import { leaveGuard } from '$lib/settings/leave';
+	import { dialogs } from '$lib/stores/confirm.svelte';
+	import { toasts } from '$lib/stores/toasts.svelte';
 	import { media, WIDE } from '$lib/util/media.svelte';
 
 	const { id: account, api, live, engine, character } = current.get();
@@ -38,11 +44,38 @@
 	// Версия настроек из потока: сменилась — «Персонаж» перечитывает, кому дарятся 🍊.
 	let settingsVersion = $state<number | null>(null);
 
-	// Сетка из 12 колонок — только на широком экране; уже — одна колонка в порядке раскладки.
+	// Сетка из 12 колонок — только на широком экране; уже — одна колонка в порядке раскладки, и
+	// «Настроить» там нет.
 	const wide = media(WIDE);
-	let layout = $state.raw<HomeLayout>(DEFAULT_LAYOUT);
-	// Временный переключатель режима правки для проверки сетки в браузере (до кнопки «Настроить»).
-	const editing = $derived(page.url.searchParams.get('editgrid') === '1');
+	const layout = $derived(homeLayout.draft ?? homeLayout.layout);
+	const editing = $derived(wide.current && homeLayout.editing);
+
+	async function saveLayout(): Promise<boolean> {
+		const ok = await homeLayout.save();
+		if (!ok && homeLayout.error) toasts.show(`Раскладка не сохранена: ${errorText(homeLayout.error)}`, 'error');
+		return ok;
+	}
+
+	// Несохранённая раскладка: уход — «Сохранить» (с ошибкой — остаёмся), «Не сохранять» или
+	// «Остаться». Сессия закончилась — сохранить нельзя, переход на вход не держим.
+	beforeNavigate(
+		leaveGuard({
+			dirty: () => session.status === 'authenticated' && homeLayout.dirty,
+			confirm: async () => {
+				const choice = await dialogs.choose({
+					title: 'Сохранить раскладку главной?',
+					body: 'Блоки переставлены, но раскладка не сохранена.',
+					confirmText: 'Сохранить',
+					altText: 'Не сохранять',
+					cancelText: 'Остаться'
+				});
+				if (choice === 'confirm') return saveLayout();
+				if (choice === 'alt') homeLayout.cancel();
+				return choice === 'alt';
+			},
+			go: (url, unload) => (unload ? location.assign(url) : void goto(url))
+		})
+	);
 	const blocks: Record<BlockId, Snippet> = {
 		now: nowBlock,
 		next: nextBlock,
@@ -82,6 +115,8 @@
 			if (e.type === 'settings') settingsVersion = e.data.version;
 		});
 		return () => {
+			// Ушли с главной — режим правки закончен (несохранённое уже сохранено или отброшено).
+			homeLayout.cancel();
 			clearInterval(t);
 			off();
 			plan.stop();
@@ -94,6 +129,16 @@
 </script>
 
 {#snippet actions()}
+	{#if wide.current && !homeLayout.editing}
+		<button
+			type="button"
+			class="btn"
+			title="Переставить, скрыть и вернуть блоки главной"
+			onclick={() => homeLayout.begin()}
+		>
+			<LayoutDashboard class="size-4" aria-hidden="true" /> Настроить
+		</button>
+	{/if}
 	<HeaderControls {api} status={engine.status} onchange={() => void engine.load()} />
 {/snippet}
 
@@ -144,8 +189,17 @@
 	{#if character.error && !character.loaded}
 		<p class="card mb-3.5 text-sm text-bad-fg" role="alert">Состояние недоступно: движок не отвечает.</p>
 	{/if}
+	{#if editing}
+		<EditBar store={homeLayout} onsave={() => void saveLayout()} />
+	{/if}
 	{#if wide.current}
-		<HomeGrid {layout} {editing} {blocks} onchange={(l) => (layout = l)} />
+		<HomeGrid
+			{layout}
+			{editing}
+			{blocks}
+			onchange={(l) => homeLayout.update(l)}
+			onhide={(id) => homeLayout.hide(id)}
+		/>
 	{:else}
 		<div class="flex flex-col gap-3.5">
 			{#each phoneOrder(layout) as id (id)}

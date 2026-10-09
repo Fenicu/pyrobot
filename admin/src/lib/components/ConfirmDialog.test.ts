@@ -70,4 +70,33 @@ describe('окно подтверждения', () => {
 		await user.keyboard('{Enter}');
 		expect(await answer).toBe('проверка');
 	});
+
+	it('три варианта: подтвердить, третья кнопка, отмена', async () => {
+		const user = userEvent.setup();
+		render(ConfirmDialog);
+		const req = { title: 'Сохранить?', confirmText: 'Сохранить', altText: 'Не сохранять', cancelText: 'Остаться' };
+		for (const [button, expected] of [
+			['Сохранить', 'confirm'],
+			['Не сохранять', 'alt'],
+			['Остаться', null]
+		] as const) {
+			const answer = dialogs.choose(req);
+			const dialog = await screen.findByRole('dialog', { name: 'Сохранить?' });
+			expect(
+				[...dialog.querySelectorAll('button')].map((b) => b.textContent?.trim()).filter((t) => t !== '')
+			).toEqual(expect.arrayContaining(['Остаться', 'Не сохранять', 'Сохранить']));
+			await user.click(screen.getByRole('button', { name: button }));
+			expect(await answer).toBe(expected);
+			await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+		}
+	});
+
+	it('без третьей кнопки confirm и prompt — как раньше', async () => {
+		render(ConfirmDialog);
+		const answer = dialogs.confirm({ title: 'Выйти?' });
+		await screen.findByRole('dialog');
+		expect(screen.queryByRole('button', { name: 'Не сохранять' })).toBeNull();
+		dialogs.answer('');
+		expect(await answer).toBe(true);
+	});
 });

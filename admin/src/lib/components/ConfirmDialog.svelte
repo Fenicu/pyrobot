@@ -40,6 +40,9 @@
 			<button type="button" class="btn" onclick={() => dialogs.answer(null)}>
 				{req.cancelText ?? 'Отмена'}
 			</button>
+			{#if req.altText}
+				<button type="button" class="btn" onclick={() => dialogs.answerAlt()}>{req.altText}</button>
+			{/if}
 			<button
 				type="submit"
 				form="confirm-form"

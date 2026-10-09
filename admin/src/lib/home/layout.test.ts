@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCK_IDS } from './blocks';
-import { DEFAULT_LAYOUT, DEFAULT_SIZE, normalizeLayout, phoneOrder, type HomeLayout } from './layout';
+import {
+	DEFAULT_LAYOUT,
+	DEFAULT_SIZE,
+	firstFree,
+	normalizeLayout,
+	phoneOrder,
+	sameLayout,
+	type HomeLayout
+} from './layout';
 
 const clone = (l: HomeLayout): HomeLayout => JSON.parse(JSON.stringify(l));
 const item = (l: HomeLayout, id: string) => l.items.find((i) => i.id === id);
@@ -10,13 +18,13 @@ describe('раскладка главной по умолчанию', () => {
 		expect(DEFAULT_LAYOUT).toEqual({
 			version: 1,
 			items: [
-				{ id: 'now', x: 0, y: 0, w: 5, h: 7 },
-				{ id: 'next', x: 0, y: 7, w: 5, h: 8 },
-				{ id: 'character', x: 5, y: 0, w: 4, h: 7 },
-				{ id: 'gadgets', x: 5, y: 7, w: 4, h: 8 },
-				{ id: 'today', x: 9, y: 0, w: 3, h: 5 },
-				{ id: 'daily', x: 9, y: 5, w: 3, h: 6 },
-				{ id: 'artifact', x: 9, y: 11, w: 3, h: 3 }
+				{ id: 'now', x: 0, y: 0, w: 5, h: 6 },
+				{ id: 'next', x: 0, y: 6, w: 5, h: 12 },
+				{ id: 'character', x: 5, y: 0, w: 4, h: 10 },
+				{ id: 'gadgets', x: 5, y: 10, w: 4, h: 10 },
+				{ id: 'today', x: 9, y: 0, w: 3, h: 8 },
+				{ id: 'daily', x: 9, y: 8, w: 3, h: 7 },
+				{ id: 'artifact', x: 9, y: 15, w: 3, h: 5 }
 			],
 			hidden: []
 		});
@@ -60,7 +68,7 @@ describe('normalizeLayout', () => {
 		const l = clone(DEFAULT_LAYOUT);
 		const raw = { ...l, items: [...l.items, { id: 'now', x: 7, y: 30, w: 2, h: 2 }] };
 		const out = normalizeLayout(raw);
-		expect(out.items.filter((i) => i.id === 'now')).toEqual([{ id: 'now', x: 0, y: 0, w: 5, h: 7 }]);
+		expect(out.items.filter((i) => i.id === 'now')).toEqual([{ id: 'now', x: 0, y: 0, w: 5, h: 6 }]);
 		expect(out.items).toHaveLength(7);
 	});
 
@@ -101,7 +109,7 @@ describe('normalizeLayout', () => {
 	it('элемент с испорченной геометрией считается недостающим', () => {
 		const l = clone(DEFAULT_LAYOUT);
 		const raw = { ...l, items: l.items.map((i) => (i.id === 'daily' ? { id: 'daily', x: 'a', y: 1, w: 3 } : i)) };
-		expect(item(normalizeLayout(raw), 'daily')).toEqual({ id: 'daily', x: 0, y: 15, ...DEFAULT_SIZE.daily });
+		expect(item(normalizeLayout(raw), 'daily')).toEqual({ id: 'daily', x: 0, y: 20, ...DEFAULT_SIZE.daily });
 	});
 
 	it('скрытый блок не добавляется как недостающий; неизвестные и повторы в hidden отбрасываются', () => {
@@ -110,6 +118,14 @@ describe('normalizeLayout', () => {
 		const out = normalizeLayout({ ...l, hidden: ['artifact', 'weather', 'artifact', 7] });
 		expect(out.hidden).toEqual(['artifact']);
 		expect(item(out, 'artifact')).toBeUndefined();
+	});
+
+	it('id и среди блоков, и в скрытых — остаётся скрытым', () => {
+		const l = clone(DEFAULT_LAYOUT);
+		const out = normalizeLayout({ ...l, hidden: ['gadgets'] });
+		expect(out.hidden).toEqual(['gadgets']);
+		expect(item(out, 'gadgets')).toBeUndefined();
+		expect(out.items).toHaveLength(6);
 	});
 
 	it('hidden не массив — пустой', () => {
@@ -128,12 +144,51 @@ describe('normalizeLayout', () => {
 
 describe('phoneOrder', () => {
 	it('сверху вниз, в ряду — слева направо', () => {
-		expect(phoneOrder(DEFAULT_LAYOUT)).toEqual(['now', 'character', 'today', 'daily', 'next', 'gadgets', 'artifact']);
+		expect(phoneOrder(DEFAULT_LAYOUT)).toEqual(['now', 'character', 'today', 'next', 'daily', 'gadgets', 'artifact']);
 	});
 
 	it('скрытые исключены', () => {
 		const l = clone(DEFAULT_LAYOUT);
 		l.hidden = ['today', 'next'];
 		expect(phoneOrder(l)).toEqual(['now', 'character', 'daily', 'gadgets', 'artifact']);
+	});
+});
+
+describe('sameLayout', () => {
+	it('порядок блоков и скрытых не важен', () => {
+		const a = clone(DEFAULT_LAYOUT);
+		a.items = a.items.filter((i) => i.id !== 'artifact' && i.id !== 'today');
+		a.hidden = ['artifact', 'today'];
+		const b = clone(a);
+		b.items.reverse();
+		b.hidden.reverse();
+		expect(sameLayout(a, b)).toBe(true);
+	});
+
+	it('другая геометрия или другие скрытые — разные', () => {
+		const a = clone(DEFAULT_LAYOUT);
+		const moved = clone(a);
+		moved.items[2]!.h += 1;
+		expect(sameLayout(a, moved)).toBe(false);
+		const hidden = clone(a);
+		hidden.items = hidden.items.filter((i) => i.id !== 'artifact');
+		hidden.hidden = ['artifact'];
+		expect(sameLayout(a, hidden)).toBe(false);
+	});
+});
+
+describe('firstFree', () => {
+	it('первое свободное место построчно: сверху вниз, в ряду слева направо', () => {
+		const items = [
+			{ id: 'now', x: 0, y: 0, w: 5, h: 2 },
+			{ id: 'character', x: 8, y: 0, w: 4, h: 4 }
+		] as HomeLayout['items'];
+		expect(firstFree(items, 3, 2)).toEqual({ x: 5, y: 0 });
+		expect(firstFree(items, 4, 1)).toEqual({ x: 0, y: 2 });
+		expect(firstFree(items, 12, 1)).toEqual({ x: 0, y: 4 });
+	});
+
+	it('пустая сетка — левый верхний угол', () => {
+		expect(firstFree([], 3, 3)).toEqual({ x: 0, y: 0 });
 	});
 });

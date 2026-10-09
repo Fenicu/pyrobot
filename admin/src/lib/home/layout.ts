@@ -21,13 +21,13 @@ export const COLUMNS = 12;
 export const DEFAULT_LAYOUT: HomeLayout = {
 	version: 1,
 	items: [
-		{ id: 'now', x: 0, y: 0, w: 5, h: 7 },
-		{ id: 'next', x: 0, y: 7, w: 5, h: 8 },
-		{ id: 'character', x: 5, y: 0, w: 4, h: 7 },
-		{ id: 'gadgets', x: 5, y: 7, w: 4, h: 8 },
-		{ id: 'today', x: 9, y: 0, w: 3, h: 5 },
-		{ id: 'daily', x: 9, y: 5, w: 3, h: 6 },
-		{ id: 'artifact', x: 9, y: 11, w: 3, h: 3 }
+		{ id: 'now', x: 0, y: 0, w: 5, h: 6 },
+		{ id: 'next', x: 0, y: 6, w: 5, h: 12 },
+		{ id: 'character', x: 5, y: 0, w: 4, h: 10 },
+		{ id: 'gadgets', x: 5, y: 10, w: 4, h: 10 },
+		{ id: 'today', x: 9, y: 0, w: 3, h: 8 },
+		{ id: 'daily', x: 9, y: 8, w: 3, h: 7 },
+		{ id: 'artifact', x: 9, y: 15, w: 3, h: 5 }
 	],
 	hidden: []
 };
@@ -40,7 +40,7 @@ export const DEFAULT_SIZE = Object.fromEntries(DEFAULT_LAYOUT.items.map(({ id, w
 const isBlockId = (v: unknown): v is BlockId => typeof v === 'string' && (BLOCK_IDS as readonly string[]).includes(v);
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-const copy = (l: HomeLayout): HomeLayout => ({ version: 1, items: l.items.map((i) => ({ ...i })), hidden: [...l.hidden] });
+export const copyLayout = (l: HomeLayout): HomeLayout => ({ version: 1, items: l.items.map((i) => ({ ...i })), hidden: [...l.hidden] });
 
 function readItem(raw: unknown): LayoutItem | null {
 	if (typeof raw !== 'object' || raw === null) return null;
@@ -58,17 +58,17 @@ function readItem(raw: unknown): LayoutItem | null {
 
 /** Раскладка от сервера (или любой другой версии клиента) — к виду, который можно расставить. */
 export function normalizeLayout(raw: unknown): HomeLayout {
-	if (typeof raw !== 'object' || raw === null) return copy(DEFAULT_LAYOUT);
+	if (typeof raw !== 'object' || raw === null) return copyLayout(DEFAULT_LAYOUT);
 	const { version, items: rawItems, hidden: rawHidden } = raw as Record<string, unknown>;
-	if (version !== 1 || !Array.isArray(rawItems)) return copy(DEFAULT_LAYOUT);
+	if (version !== 1 || !Array.isArray(rawItems)) return copyLayout(DEFAULT_LAYOUT);
 
+	const hidden = [...new Set(Array.isArray(rawHidden) ? rawHidden.filter(isBlockId) : [])];
 	const items: LayoutItem[] = [];
 	for (const r of rawItems) {
 		const it = readItem(r);
-		if (it && !items.some((i) => i.id === it.id)) items.push(it);
+		if (it && !hidden.includes(it.id) && !items.some((i) => i.id === it.id)) items.push(it);
 	}
-	const hidden = [...new Set(Array.isArray(rawHidden) ? rawHidden.filter(isBlockId) : [])];
-	if (items.length === 0 && hidden.length === 0) return copy(DEFAULT_LAYOUT);
+	if (items.length === 0 && hidden.length === 0) return copyLayout(DEFAULT_LAYOUT);
 
 	let bottom = Math.max(0, ...items.map((i) => i.y + i.h));
 	for (const id of BLOCK_IDS) {
@@ -85,4 +85,26 @@ export function phoneOrder(l: HomeLayout): BlockId[] {
 		.filter((i) => !l.hidden.includes(i.id))
 		.sort((a, b) => a.y - b.y || a.x - b.x)
 		.map((i) => i.id);
+}
+
+const key = ({ id, x, y, w, h }: LayoutItem) => `${id}:${x},${y},${w},${h}`;
+
+/** Одна и та же раскладка: та же геометрия и те же скрытые, порядок в списках не важен. */
+export function sameLayout(a: HomeLayout, b: HomeLayout): boolean {
+	const set = (l: HomeLayout) => [...l.items.map(key), ...l.hidden.map((id) => `-${id}`)].sort().join('|');
+	return set(a) === set(b);
+}
+
+const overlaps = (a: Omit<LayoutItem, 'id'>, b: Omit<LayoutItem, 'id'>) =>
+	a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** Первое свободное место под блок w×h — построчно, как ищет его gridstack. */
+export function firstFree(items: LayoutItem[], w: number, h: number): { x: number; y: number } {
+	const width = clamp(w, 1, COLUMNS);
+	for (let i = 0; ; i++) {
+		const x = i % COLUMNS;
+		const y = Math.floor(i / COLUMNS);
+		if (x + width > COLUMNS) continue;
+		if (!items.some((it) => overlaps({ x, y, w: width, h }, it))) return { x, y };
+	}
 }

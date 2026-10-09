@@ -17,6 +17,7 @@ vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}), beforeNavigate:
 vi.mock('$lib/app.svelte', async () => {
 	const { AccountContext, CurrentAccount } = await import('$lib/account.svelte');
 	const { AccountsStore } = await import('$lib/stores/accounts.svelte');
+	const { HomeLayoutStore } = await import('$lib/home/store.svelte');
 	const { createApi } = await import('$lib/api/client');
 	const { json, mockFetch } = await import('$lib/test/fetch');
 	const { fixture } = await import('$lib/test/fixtures');
@@ -68,6 +69,8 @@ vi.mock('$lib/app.svelte', async () => {
 		accounts: new AccountsStore(api),
 		api,
 		current,
+		homeLayout: new HomeLayoutStore(api),
+		session: { status: 'authenticated' },
 		startAccount: (id: number) => current.start(id)
 	};
 });

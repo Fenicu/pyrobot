@@ -1,23 +1,34 @@
 <script lang="ts">
-	import { GridStack, type GridStackWidget } from 'gridstack';
+	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import GripHorizontal from '@lucide/svelte/icons/grip-horizontal';
+	import { GridStack, type GridItemHTMLElement, type GridStackWidget } from 'gridstack';
 	import 'gridstack/dist/gridstack.min.css';
-	import { onMount, type Snippet } from 'svelte';
-	import type { BlockId } from './blocks';
-	import { COLUMNS, type HomeLayout } from './layout';
+	import { onMount, untrack, type Snippet } from 'svelte';
+	import { BLOCK_IDS, BLOCK_TITLES, type BlockId } from './blocks';
+	import { COLUMNS, sameLayout, type HomeLayout } from './layout';
 
 	interface Props {
 		layout: HomeLayout;
 		editing: boolean;
 		/** Содержимое блоков: обёртки сетки объявлены здесь статически, блоки рисует страница. */
 		blocks: Record<BlockId, Snippet>;
+		/** Раскладка на экране разошлась с `layout`: перетаскивание или поправка сетки при расстановке. */
 		onchange?: (l: HomeLayout) => void;
+		onhide?: (id: BlockId) => void;
 	}
-	let { layout, editing, blocks, onchange }: Props = $props();
+	let { layout, editing, blocks, onchange, onhide }: Props = $props();
 
 	let root: HTMLDivElement;
 	let grid = $state.raw<GridStack | null>(null);
+	// Расстановка идёт сама: события сетки в это время — не действия пользователя.
+	let applying = false;
+	// Последняя расставленная раскладка: та же самая — повторно не расставляется (сетка могла
+	// её поправить, и страница уже знает итог).
+	let applied: HomeLayout | null = null;
 
-	// Геометрия видимых блоков — из сетки, без HTML; скрытые — как были.
+	const wrapper = (id: BlockId) => root.querySelector<GridItemHTMLElement>(`:scope > [data-block="${id}"]`);
+
+	// Геометрия видимых блоков — из сетки, без HTML; скрытые — те, кого в сетке нет.
 	function read(g: GridStack): HomeLayout {
 		const items = (g.save(false) as GridStackWidget[]).map((n) => ({
 			id: n.id as BlockId,
@@ -26,25 +37,54 @@
 			w: n.w ?? 1,
 			h: n.h ?? 1
 		}));
-		return { version: 1, items, hidden: [...layout.hidden] };
+		return { version: 1, items, hidden: BLOCK_IDS.filter((id) => !items.some((i) => i.id === id)) };
+	}
+
+	// Расставить раскладку заново: все блоки снимаются с сетки (узлы остаются) и ставятся сверху
+	// вниз — так переезды не толкают друг друга. Если сетка что-то поправила — сообщить странице.
+	function apply(g: GridStack, l: HomeLayout) {
+		if (l === applied) return;
+		applied = l;
+		if (sameLayout(read(g), l)) return;
+		applying = true;
+		try {
+			g.batchUpdate();
+			for (const el of g.getGridItems()) g.removeWidget(el, false, false);
+			const visible = l.items.filter((i) => !l.hidden.includes(i.id)).sort((a, b) => a.y - b.y || a.x - b.x);
+			for (const { id, x, y, w, h } of visible) {
+				const el = wrapper(id);
+				if (!el) continue;
+				el.classList.remove('hidden');
+				g.makeWidget(el, { id, x, y, w, h });
+			}
+			for (const id of l.hidden) wrapper(id)?.classList.add('hidden');
+			g.batchUpdate(false);
+		} finally {
+			applying = false;
+		}
+		const got = read(g);
+		if (!sameLayout(got, l)) onchange?.(got);
 	}
 
 	onMount(() => {
-		// Раскладка расставляется один раз при создании; без columnOpts gridstack сам число колонок не меняет.
+		// Без columnOpts gridstack сам число колонок не меняет.
 		const g = GridStack.init(
-			{ column: COLUMNS, cellHeight: 44, margin: 7, staticGrid: true, auto: false, handle: '.card-title' },
+			{
+				column: COLUMNS,
+				cellHeight: 44,
+				margin: 7,
+				staticGrid: true,
+				auto: false,
+				handle: '.block-grip',
+				resizable: { handles: 'se' }
+			},
 			root
 		);
 		if (!g) return;
-		const wrapper = (id: BlockId) => root.querySelector<HTMLElement>(`:scope > [data-block="${id}"]`);
-		g.batchUpdate();
-		for (const { id, x, y, w, h } of layout.items) {
-			const el = wrapper(id);
-			if (el && !layout.hidden.includes(id)) g.makeWidget(el, { id, x, y, w, h });
-		}
-		g.batchUpdate(false);
-		for (const id of layout.hidden) wrapper(id)?.classList.add('hidden');
-		g.on('change', () => onchange?.(read(g)));
+		apply(g, untrack(() => layout));
+		g.on('change', () => {
+			if (!applying) onchange?.(read(g));
+		});
 		grid = g;
 		return () => {
 			grid = null;
@@ -53,24 +93,50 @@
 	});
 
 	$effect(() => {
+		const g = grid;
+		const l = layout;
+		if (g) untrack(() => apply(g, l));
+	});
+
+	$effect(() => {
 		grid?.setStatic(!editing);
 	});
 </script>
 
+{#snippet tools(id: BlockId)}
+	{#if editing}
+		<!-- Полоса над строкой заголовка — ручка перетаскивания (блок тянется «за заголовок»). -->
+		<div class="block-grip" title="Перетащить">
+			<span class="block-tools">
+				<GripHorizontal class="size-4 text-fg-muted" aria-hidden="true" />
+				<button
+					type="button"
+					class="block-hide"
+					aria-label="Скрыть «{BLOCK_TITLES[id]}»"
+					title="Скрыть"
+					onclick={() => onhide?.(id)}
+				>
+					<EyeOff class="size-4" aria-hidden="true" />
+				</button>
+			</span>
+		</div>
+	{/if}
+{/snippet}
+
 <!-- Обёртки — прямые дети сетки без {#if}/{#each}: gridstack переставляет их узлы при перетаскивании. -->
 <div bind:this={root} class="home-grid grid-stack">
-	<div class="grid-stack-item" data-block="now"><div class="grid-stack-item-content">{@render blocks.now()}</div></div>
-	<div class="grid-stack-item" data-block="next"><div class="grid-stack-item-content">{@render blocks.next()}</div></div>
+	<div class="grid-stack-item" data-block="now"><div class="grid-stack-item-content">{@render blocks.now()}{@render tools('now')}</div></div>
+	<div class="grid-stack-item" data-block="next"><div class="grid-stack-item-content">{@render blocks.next()}{@render tools('next')}</div></div>
 	<div class="grid-stack-item" data-block="character">
-		<div class="grid-stack-item-content">{@render blocks.character()}</div>
+		<div class="grid-stack-item-content">{@render blocks.character()}{@render tools('character')}</div>
 	</div>
 	<div class="grid-stack-item" data-block="gadgets">
-		<div class="grid-stack-item-content">{@render blocks.gadgets()}</div>
+		<div class="grid-stack-item-content">{@render blocks.gadgets()}{@render tools('gadgets')}</div>
 	</div>
-	<div class="grid-stack-item" data-block="today"><div class="grid-stack-item-content">{@render blocks.today()}</div></div>
-	<div class="grid-stack-item" data-block="daily"><div class="grid-stack-item-content">{@render blocks.daily()}</div></div>
+	<div class="grid-stack-item" data-block="today"><div class="grid-stack-item-content">{@render blocks.today()}{@render tools('today')}</div></div>
+	<div class="grid-stack-item" data-block="daily"><div class="grid-stack-item-content">{@render blocks.daily()}{@render tools('daily')}</div></div>
 	<div class="grid-stack-item" data-block="artifact">
-		<div class="grid-stack-item-content">{@render blocks.artifact()}</div>
+		<div class="grid-stack-item-content">{@render blocks.artifact()}{@render tools('artifact')}</div>
 	</div>
 </div>
 
@@ -89,7 +155,38 @@
 		flex: 1 1 auto;
 		overflow: auto;
 	}
-	.home-grid:not(:global(.grid-stack-static)) :global(.card-title) {
+	.home-grid:not(:global(.grid-stack-static)) :global(.grid-stack-item-content > .card) {
+		border-style: dashed;
+		border-color: var(--color-accent);
+	}
+	.block-grip {
+		position: absolute;
+		inset: 0 0 auto 0;
+		display: flex;
+		height: 2.75rem;
+		align-items: center;
+		justify-content: flex-end;
+		padding: 0 0.5rem;
 		cursor: move;
+	}
+	.block-tools {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		border: 1px solid var(--color-line);
+		border-radius: 999px;
+		background: var(--color-surface-2);
+		padding: 0.125rem 0.25rem 0.125rem 0.5rem;
+	}
+	.block-hide {
+		display: inline-flex;
+		border-radius: 999px;
+		padding: 0.25rem;
+		color: var(--color-fg-muted);
+		cursor: pointer;
+	}
+	.block-hide:hover {
+		color: var(--color-fg);
+		background: var(--color-surface);
 	}
 </style>
