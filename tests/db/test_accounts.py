@@ -424,6 +424,19 @@ async def test_overview_busy_until_in_the_past_is_returned_as_is(
     assert only.busy == AccountBusy(activity="study", until=past)
 
 
+async def test_overview_busy_naive_until_is_taken_as_utc(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    acc = await repo.create(user_id, "Второй", capacity=20)
+    await _snapshot(
+        clean_db, acc.id, _state(busy={"activity": "study", "until": "2026-10-09T14:00:00"})
+    )
+    (only,) = await repo.overview(user_id)
+    assert only.busy is not None
+    assert only.busy.until == datetime(2026, 10, 9, 14, 0, tzinfo=UTC)
+    assert only.busy.until.utcoffset() is not None
+
+
 @pytest.mark.parametrize(
     "state",
     [

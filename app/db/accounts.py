@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
 from pydantic import ValidationError
@@ -247,16 +247,22 @@ def _last_alert() -> ScalarSelect[Any]:
 
 
 def _busy(raw: Any) -> AccountBusy | None:
-    """Занятость из снимка; не объект, `activity` не строка или `until` не дата — None."""
+    """Занятость из снимка; не объект, `activity` не строка или `until` не дата — None.
+
+    `until` без часового пояса считается UTC: наружу время уходит только со смещением.
+    """
     if not isinstance(raw, dict):
         return None
     activity, until = raw.get("activity"), raw.get("until")
     if not isinstance(activity, str) or not isinstance(until, str):
         return None
     try:
-        return AccountBusy(activity=activity, until=datetime.fromisoformat(until))
+        parsed = datetime.fromisoformat(until)
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return AccountBusy(activity=activity, until=parsed)
 
 
 def _alert(raw: Any) -> AccountAlert | None:
