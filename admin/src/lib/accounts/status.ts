@@ -58,3 +58,11 @@ export function accountActivity(a: AccountOut, now: Date, opts: { card?: boolean
 	}
 	return say('свободен');
 }
+
+/** Цвет подписи состояния по тону. */
+export const ACTIVITY_COLOR = { muted: 'text-fg-muted', warn: 'text-warn-fg', bad: 'text-bad-fg' } as const;
+
+/** Telegram не в сети у включённого аккаунта: у выключенного и удаляемого этой метки нет. */
+export function tgOffline(a: AccountOut): boolean {
+	return !a.tg.online && a.status !== 'disabled' && a.status !== 'deleting';
+}

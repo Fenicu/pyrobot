@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountOut } from '$lib/api/types';
-import { accountActivity, accountDotLabel, accountTone, needsAttention } from './status';
+import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, needsAttention, tgOffline } from './status';
 
 const NOW = new Date('2026-10-09T12:00:00Z');
 
@@ -175,5 +175,21 @@ describe('accountActivity', () => {
 			until: null,
 			tone: 'muted'
 		});
+	});
+});
+
+describe('tgOffline', () => {
+	it('метка только у включённого аккаунта без Telegram', () => {
+		const off = { online: false, user_id: 1 };
+		expect(tgOffline(acc({ tg: off }))).toBe(true);
+		expect(tgOffline(acc())).toBe(false);
+		expect(tgOffline(acc({ tg: off, status: 'disabled' }))).toBe(false);
+		expect(tgOffline(acc({ tg: off, status: 'deleting' }))).toBe(false);
+	});
+});
+
+describe('ACTIVITY_COLOR', () => {
+	it('покрывает все тоны подписи', () => {
+		expect(Object.keys(ACTIVITY_COLOR).sort()).toEqual(['bad', 'muted', 'warn']);
 	});
 });

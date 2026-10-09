@@ -4,7 +4,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Unplug from '@lucide/svelte/icons/unplug';
 	import { onMount } from 'svelte';
-	import { accountActivity, accountDotLabel, accountTone } from '$lib/accounts/status';
+	import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, tgOffline } from '$lib/accounts/status';
 	import type { Api } from '$lib/api/client';
 	import type { AccountOut } from '$lib/api/types';
 	import { switchHref } from '$lib/nav';
@@ -25,7 +25,6 @@
 	let { api, store, current, path }: Props = $props();
 
 	const COLLAPSED = 'pyrobot.accountsCollapsed';
-	const ACTIVITY_COLOR = { muted: 'text-fg-muted', warn: 'text-warn-fg', bad: 'text-bad-fg' } as const;
 
 	let collapsed = $state(readCollapsed());
 	let creating = $state(false);
@@ -56,10 +55,6 @@
 
 	function initial(a: AccountOut): string {
 		return a.name.replace(/\[[^\]]*\]/g, '').match(/[\p{L}\p{N}]/u)?.[0]?.toUpperCase() ?? '?';
-	}
-
-	function tgOffline(a: AccountOut): boolean {
-		return !a.tg.online && a.status !== 'disabled' && a.status !== 'deleting';
 	}
 </script>
 

@@ -8,7 +8,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Unplug from '@lucide/svelte/icons/unplug';
 	import { onMount } from 'svelte';
-	import { accountActivity, accountDotLabel, accountTone, type Activity } from '$lib/accounts/status';
+	import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, tgOffline, type Activity } from '$lib/accounts/status';
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { AccountOut } from '$lib/api/types';
@@ -32,7 +32,6 @@
 
 	// Опрос списка, пока какой-то аккаунт удаляется: чистка в фоне, исчезнуть он должен сразу после.
 	const DELETING_POLL_MS = 3000;
-	const ACTIVITY_COLOR = { muted: 'text-fg-muted', warn: 'text-warn-fg', bad: 'text-bad-fg' } as const;
 	const uid = $props.id();
 
 	let busy = $state(false);
@@ -72,10 +71,6 @@
 		}
 		const act = accountActivity(a, now, { card: true });
 		return a.status === 'error' && a.status_reason ? { ...act, text: reasonText(a.status_reason) } : act;
-	}
-
-	function tgOffline(a: AccountOut): boolean {
-		return !a.tg.online && a.status !== 'disabled' && a.status !== 'deleting';
 	}
 
 	function closeMenuOutside(e: MouseEvent) {
