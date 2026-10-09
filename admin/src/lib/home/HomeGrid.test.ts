@@ -4,7 +4,7 @@ import { createRawSnippet, flushSync } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BLOCK_IDS, BLOCK_TITLES, type BlockId } from './blocks';
 import HomeGrid from './HomeGrid.svelte';
-import { DEFAULT_LAYOUT, sameLayout, type HomeLayout } from './layout';
+import { DEFAULT_LAYOUT, MAX_BLOCK_H, MAX_ROWS, sameLayout, type HomeLayout } from './layout';
 
 const blocks = Object.fromEntries(
 	BLOCK_IDS.map((id) => [
@@ -55,6 +55,16 @@ describe('сетка главной', () => {
 		expect(hidden).toHaveClass('hidden');
 		expect((hidden as GridItemHTMLElement).gridstackNode).toBeUndefined();
 		expect((wrapper(container, 'now') as GridItemHTMLElement).gridstackNode?.id).toBe('now');
+	});
+
+	it('блоки не растягиваются выше предела сервера, сетка не уходит ниже его', () => {
+		const { container } = render(HomeGrid, { layout: clone(DEFAULT_LAYOUT), editing: true, blocks });
+		for (const id of BLOCK_IDS) {
+			expect((wrapper(container, id) as GridItemHTMLElement).gridstackNode?.maxH, id).toBe(50);
+		}
+		expect(MAX_BLOCK_H).toBe(50);
+		const root = container.querySelector('.grid-stack') as HTMLElement & { gridstack: { opts: { maxRow?: number } } };
+		expect(root.gridstack.opts.maxRow).toBe(MAX_ROWS);
 	});
 
 	it('просмотр — сетка статична, правка — нет', async () => {

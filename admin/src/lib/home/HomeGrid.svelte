@@ -5,7 +5,7 @@
 	import 'gridstack/dist/gridstack.min.css';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { BLOCK_IDS, BLOCK_TITLES, type BlockId } from './blocks';
-	import { COLUMNS, sameLayout, type HomeLayout } from './layout';
+	import { COLUMNS, MAX_BLOCK_H, MAX_ROWS, sameLayout, type HomeLayout } from './layout';
 
 	interface Props {
 		layout: HomeLayout;
@@ -56,7 +56,7 @@
 			const visible = l.items.filter((i) => !l.hidden.includes(i.id)).sort((a, b) => a.y - b.y || a.x - b.x);
 			for (const { id, x, y, w, h } of visible) {
 				const el = wrapper(id);
-				if (el) g.makeWidget(el, { id, x, y, w, h });
+				if (el) g.makeWidget(el, { id, x, y, w, h, maxH: MAX_BLOCK_H });
 			}
 			g.batchUpdate(false);
 		} finally {
@@ -71,6 +71,7 @@
 		const g = GridStack.init(
 			{
 				column: COLUMNS,
+				maxRow: MAX_ROWS,
 				cellHeight: 44,
 				margin: 7,
 				staticGrid: true,

@@ -17,6 +17,9 @@ export interface HomeLayout {
 }
 
 export const COLUMNS = 12;
+/** Пределы сервера: выше блок не растёт, ниже сетка не опускается. */
+export const MAX_BLOCK_H = 50;
+export const MAX_ROWS = 500;
 
 export const DEFAULT_LAYOUT: HomeLayout = {
 	version: 1,
