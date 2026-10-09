@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Выкатка на apps (запускает CI по ssh): pull → миграции → up → ожидание /readyz (процесс готов:
-# база отвечает, соединение блокировок хоста живо; вход аккаунтов в Telegram не проверяется).
+# Выкатка на apps (запускает CI по ssh): pull → дамп базы → миграции → up → ожидание /readyz
+# (процесс готов: база отвечает, соединение блокировок хоста живо; вход аккаунтов в Telegram
+# не проверяется).
 # Каталог сервиса — DEPLOY_DIR (по умолчанию ~/pyrobot), рядом compose.yml и .env.
 set -euo pipefail
 
@@ -8,6 +9,26 @@ cd "${DEPLOY_DIR:-$HOME/pyrobot}"
 chmod 600 .env
 
 docker compose pull pyrobot
+
+# Дамп перед миграцией: она может быть необратимой. Не получился — выкат отменяется, старый бот
+# работает дальше. Хранятся три последних pre-deploy-*.dump; pyrobot-*.dump старого сервиса не трогаем.
+running=$(docker compose ps --status running --services)
+if grep -qx postgres <<<"$running"; then
+    umask 077
+    mkdir -p backups
+    dump="backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).dump"
+    if ! docker compose exec -T postgres pg_dump -U pyrobot --format=custom pyrobot > "$dump.tmp"; then
+        rm -f "$dump.tmp"
+        echo "database dump failed, deploy aborted" >&2
+        exit 1
+    fi
+    mv "$dump.tmp" "$dump"
+    echo "database dump written: $dump"
+    ls -1 backups/pre-deploy-*.dump | head -n -3 | xargs -r rm -f --
+else
+    echo "postgres is not running yet, dump skipped"
+fi
+
 # Миграция до перезапуска: при ошибке старый бот продолжает работать на старой схеме.
 docker compose run --rm migrate
 docker compose up -d --remove-orphans
