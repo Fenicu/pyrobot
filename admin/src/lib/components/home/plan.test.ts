@@ -192,7 +192,7 @@ describe('«Сейчас» и «Дальше по времени» на фикс
 		// Раскладку решает CSS: на телефоне скрыто классом hidden, на ПК (md) видно.
 		expect(timers.slice(0, 5).every((t) => !t.classList.contains('hidden'))).toBe(true);
 		expect(timers.slice(5).every((t) => t.classList.contains('hidden') && t.classList.contains('md:grid'))).toBe(true);
-		// Без matchMedia (jsdom) — телефон: список причин свёрнут.
+		// Список причин свёрнут (ширина не важна).
 		const why = screen.getByRole('region', { name: 'Почему не другое' });
 		expect(why.closest('details')).not.toHaveAttribute('open');
 		const more = screen.getByRole('button', { name: 'Ещё' });
@@ -208,12 +208,12 @@ describe('«Сейчас» и «Дальше по времени» на фикс
 		expect(screen.getByRole('button', { name: 'Свернуть' })).toHaveAttribute('aria-expanded', 'true');
 	});
 
-	it('на ПК «Почему не другое» раскрыто', () => {
+	it('на ПК «Почему не другое» тоже свёрнуто', () => {
 		vi.stubGlobal('matchMedia', (query: string) => ({ media: query, matches: query === '(min-width: 768px)' }));
 		try {
 			card();
 			const why = screen.getByRole('region', { name: 'Почему не другое' });
-			expect(why.closest('details')).toHaveAttribute('open');
+			expect(why.closest('details')).not.toHaveAttribute('open');
 		} finally {
 			vi.unstubAllGlobals();
 		}

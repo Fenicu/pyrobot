@@ -6,7 +6,6 @@
 	import { basisText, explain, nowView } from '$lib/plan/now';
 	import { actDetail, candidateDetail, scenarioText, verdictText, verdictTone } from '$lib/plan/text';
 	import { fmtTime } from '$lib/util/format';
-	import { DESKTOP } from '$lib/util/media.svelte';
 	import Pill from '../Pill.svelte';
 	import Card from '../ui/Card.svelte';
 	import MetroLiveCard from './MetroLiveCard.svelte';
@@ -31,8 +30,8 @@
 	const uid = $props.id();
 	const readyId = `${uid}-ready`;
 
-	// «Почему не другое» на ПК раскрыто, на телефоне свёрнуто; дальше — как его оставил человек.
-	let whyOpen = $state(typeof matchMedia === 'function' && matchMedia(DESKTOP).matches);
+	// «Почему не другое» свёрнуто на любой ширине; дальше — как его оставил человек.
+	let whyOpen = $state(false);
 
 	// Срок, до которого спит цикл, наступает между тиками часов главной (раз в 30 с): «Сейчас»
 	// перерисовывается в сам срок, а план, пришедший уже после срока, сразу сверяется с настоящим
