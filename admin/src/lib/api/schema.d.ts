@@ -1487,6 +1487,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountAlertOut */
+        AccountAlertOut: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "error" | "warn";
+            /** Text */
+            text: string;
+        };
+        /** AccountBusyOut */
+        AccountBusyOut: {
+            /** Activity */
+            activity: string;
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+        };
         /** AccountCreateIn */
         AccountCreateIn: {
             /** Name */
@@ -1509,18 +1529,24 @@ export interface components {
         };
         /** AccountOut */
         AccountOut: {
+            alert: components["schemas"]["AccountAlertOut"] | null;
             /** Blocked */
             blocked: boolean;
             /** Blocked Reason */
             blocked_reason: string | null;
+            busy: components["schemas"]["AccountBusyOut"] | null;
             /** Company */
             company: string | null;
             /** Id */
             id: number;
+            /** In Metro */
+            in_metro: boolean;
             /** Killed */
             killed: boolean;
             /** Last Action At */
             last_action_at: string | null;
+            /** Level */
+            level: number | null;
             /**
              * Mode
              * @enum {string}

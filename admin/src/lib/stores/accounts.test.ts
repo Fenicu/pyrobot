@@ -18,7 +18,11 @@ const account = (id: number, name: string): AccountOut => ({
 	last_action_at: null,
 	unread: { warn: 0, error: 0 },
 	company: null,
-	team_tag: null
+	team_tag: null,
+	level: null,
+	busy: null,
+	in_metro: false,
+	alert: null
 });
 
 let visibility: DocumentVisibilityState = 'visible';

@@ -67,6 +67,16 @@ class UnreadOut(BaseModel):
     error: int
 
 
+class AccountBusyOut(BaseModel):
+    activity: str
+    until: IsoDatetime
+
+
+class AccountAlertOut(BaseModel):
+    level: Literal["error", "warn"]
+    text: str
+
+
 class AccountOut(BaseModel):
     id: int
     name: str
@@ -86,6 +96,14 @@ class AccountOut(BaseModel):
     # последнего снимка состояния; null — снимка нет или поле ещё не наблюдалось.
     company: str | None
     team_tag: str | None
+    # Уровень и занятость из последнего снимка; `until` отдаётся как есть, в том числе прошедший
+    # (свободен ли персонаж сейчас, решает клиент). null — снимка нет или поле не прочиталось.
+    level: int | None
+    busy: AccountBusyOut | None
+    # Идёт забег метро по последнему снимку.
+    in_metro: bool
+    # Самое важное непрочитанное уведомление: ошибка, а без ошибок — самое новое предупреждение.
+    alert: AccountAlertOut | None
 
 
 class AccountCreateIn(BaseModel):
@@ -144,6 +162,18 @@ def _out(c: Container, o: AccountOverview) -> AccountOut:
             "unread": UnreadOut(warn=o.unread_warn, error=o.unread_error),
             "company": o.company,
             "team_tag": o.team_tag,
+            "level": o.level,
+            "busy": (
+                AccountBusyOut(activity=o.busy.activity, until=o.busy.until)
+                if o.busy is not None
+                else None
+            ),
+            "in_metro": o.in_metro,
+            "alert": (
+                AccountAlertOut(level=o.alert.level, text=o.alert.text)
+                if o.alert is not None
+                else None
+            ),
         }
     )
 

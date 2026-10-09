@@ -1,6 +1,47 @@
 {
   "components": {
     "schemas": {
+      "AccountAlertOut": {
+        "properties": {
+          "level": {
+            "enum": [
+              "error",
+              "warn"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "text"
+        ],
+        "title": "AccountAlertOut",
+        "type": "object"
+      },
+      "AccountBusyOut": {
+        "properties": {
+          "activity": {
+            "title": "Activity",
+            "type": "string"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activity",
+          "until"
+        ],
+        "title": "AccountBusyOut",
+        "type": "object"
+      },
       "AccountCreateIn": {
         "properties": {
           "name": {
@@ -50,6 +91,16 @@
       },
       "AccountOut": {
         "properties": {
+          "alert": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountAlertOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "blocked": {
             "title": "Blocked",
             "type": "boolean"
@@ -64,6 +115,16 @@
               }
             ],
             "title": "Blocked Reason"
+          },
+          "busy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountBusyOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "company": {
             "anyOf": [
@@ -80,6 +141,10 @@
             "title": "Id",
             "type": "integer"
           },
+          "in_metro": {
+            "title": "In Metro",
+            "type": "boolean"
+          },
           "killed": {
             "title": "Killed",
             "type": "boolean"
@@ -95,6 +160,17 @@
               }
             ],
             "title": "Last Action At"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
           },
           "mode": {
             "enum": [
@@ -165,7 +241,11 @@
           "last_action_at",
           "unread",
           "company",
-          "team_tag"
+          "team_tag",
+          "level",
+          "busy",
+          "in_metro",
+          "alert"
         ],
         "title": "AccountOut",
         "type": "object"

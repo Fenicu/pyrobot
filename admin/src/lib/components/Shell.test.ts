@@ -28,7 +28,11 @@ const account = (id: number): AccountOut => ({
 	last_action_at: null,
 	unread: { warn: 0, error: 0 },
 	company: null,
-	team_tag: null
+	team_tag: null,
+	level: null,
+	busy: null,
+	in_metro: false,
+	alert: null
 });
 
 const children = createRawSnippet(() => ({ render: () => '<p>экран</p>' }));

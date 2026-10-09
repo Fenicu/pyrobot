@@ -29,6 +29,10 @@ const account = (id: number, name: string, over: Partial<AccountOut> = {}): Acco
 	unread: { warn: 0, error: 0 },
 	company: null,
 	team_tag: null,
+	level: null,
+	busy: null,
+	in_metro: false,
+	alert: null,
 	...over
 });
 

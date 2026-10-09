@@ -4250,7 +4250,12 @@ found`. Запрос идёт в контексте аккаунта (в стр�
   `name`, `status` (`enabled`, `disabled`, `error`, `deleting`), `status_reason`, `tg` (`user_id` —
   привязка, `online`), `mode`, `paused`, `killed`, `last_action_at`, `unread` (`warn`, `error`),
   `company` (код: `piper`, `hooli`, `stark`, `umbrl`, `wayne`, `bmesa`) и `team_tag` (например `SU`)
-  из последнего снимка состояния, `null` — снимка нет или поле ещё не наблюдалось;
+  из последнего снимка состояния, `null` — снимка нет или поле ещё не наблюдалось; оттуда же
+  `level` (`int | null`), `busy` (`{activity, until}` или `null`; прошедший `until` отдаётся как
+  есть, свободен ли персонаж, решает клиент) и `in_metro` (`bool`, идёт забег метро); `alert` -
+  самое важное непрочитанное уведомление `{level: "error" | "warn", text}` (ошибка, а без ошибок -
+  самое новое предупреждение) или `null`. Снимок другой версии схемы или нечитаемое поле дают
+  `null` (`in_metro` - `false`), а не ошибку;
 - `POST /api/v1/accounts {name}` (CSRF) — 201, аккаунт `enabled` с настройками по умолчанию
   (`dry_run`); 409 `name_taken` (имя уникально у учётки), 409 `capacity_reached` (включённых уже
   `PYROBOT_MAX_ENGINES`);

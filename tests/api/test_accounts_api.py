@@ -8,7 +8,13 @@ from app.db.accounts import AccountInfo
 from app.db.models import Account, ActionRow, NotificationRow, StateSnapshot
 from app.db.settings_store import direct_update
 from app.engine.settings import Settings, StaticSettings
-from app.engine.state.model import CharacterState, Obs, dump_state
+from app.engine.state.model import (
+    BusyState,
+    CharacterState,
+    MetroRunRef,
+    Obs,
+    dump_state,
+)
 from tests.api.conftest import A1, Api, make_user, run_engine
 from tests.engine.test_facade import build
 
@@ -83,6 +89,10 @@ def _listed(
     unread: dict[str, int] | None = None,
     company: str | None = None,
     team_tag: str | None = None,
+    level: int | None = None,
+    busy: dict[str, str] | None = None,
+    in_metro: bool = False,
+    alert: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     return {
         "id": account_id,
@@ -99,6 +109,10 @@ def _listed(
         "unread": unread or {"warn": 0, "error": 0},
         "company": company,
         "team_tag": team_tag,
+        "level": level,
+        "busy": busy,
+        "in_metro": in_metro,
+        "alert": alert,
     }
 
 
@@ -130,6 +144,7 @@ async def test_list_only_own_accounts_with_live_fields(api: Api) -> None:
             paused=True,
             last_action_at="2026-09-30T12:00:00+00:00",
             unread={"warn": 2, "error": 1},
+            alert={"level": "error", "text": "t"},
         ),
         _listed(second.id, "Второй", mode="live", killed=True),
     ]
@@ -150,6 +165,39 @@ async def test_list_has_company_and_team_tag_from_snapshot(api: Api) -> None:
     assert r.json() == [
         _listed(1, "Основной", company="umbrl", team_tag="SU"),
         _listed(second.id, "Второй", company="piper"),
+        _listed(third.id, "Третий"),
+    ]
+
+
+async def test_list_has_level_busy_metro_and_alert(api: Api) -> None:
+    second = await _second(api)
+    third = await _second(api, "Третий")
+    seen = datetime(2026, 10, 1, tzinfo=UTC)
+    until = datetime(2026, 10, 1, 20, 40, tzinfo=UTC)
+    studying = CharacterState(
+        level=Obs(value=54, at=seen),
+        busy=Obs(value=BusyState(activity="study", until=until), at=seen),
+    )
+    riding = CharacterState(
+        level=Obs(value=7, at=seen),
+        metro_message=Obs(value=MetroRunRef(message_id=5), at=seen),
+    )
+    async with api.db.sessions() as s, s.begin():
+        s.add(StateSnapshot(account_id=1, version=1, state=dump_state(studying)))
+        s.add(StateSnapshot(account_id=second.id, version=1, state=dump_state(riding)))
+    await _notify(api, 1, "warn")
+    await _notify(api, 1, "error")
+    r = await api.client.get(ACCOUNTS)
+    assert r.json() == [
+        _listed(
+            1,
+            "Основной",
+            level=54,
+            busy={"activity": "study", "until": until.isoformat()},
+            unread={"warn": 1, "error": 1},
+            alert={"level": "error", "text": "t"},
+        ),
+        _listed(second.id, "Второй", level=7, in_metro=True),
         _listed(third.id, "Третий"),
     ]
 

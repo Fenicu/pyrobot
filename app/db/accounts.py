@@ -3,7 +3,9 @@ from datetime import datetime
 from typing import Any, Literal, cast
 
 from pydantic import ValidationError
-from sqlalchemy import ScalarSelect, and_, case, delete, func, select, text, update
+from sqlalchemy import Integer, ScalarSelect, and_, case, delete, func, select, text, update
+from sqlalchemy import cast as sa_cast
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,10 +86,23 @@ class AccountInfo:
 
 
 @dataclass(frozen=True)
+class AccountBusy:
+    activity: str
+    until: datetime
+
+
+@dataclass(frozen=True)
+class AccountAlert:
+    level: Literal["error", "warn"]
+    text: str
+
+
+@dataclass(frozen=True)
 class AccountOverview:
     """Аккаунт в списке учётки: режим, пауза и kill из настроек в базе, последнее действие и
-    непрочитанные уведомления `warn` и `error`; компания и тег команды — из последнего снимка
-    состояния (None — снимка нет или поле не наблюдалось)."""
+    непрочитанные уведомления `warn` и `error` (`alert` — самое важное из них); компания, тег
+    команды, уровень, занятость и метро — из последнего снимка состояния (None — снимка нет или
+    поле не наблюдалось; `in_metro` без снимка — False)."""
 
     account: AccountInfo
     engine: EngineSection
@@ -96,6 +111,10 @@ class AccountOverview:
     unread_error: int
     company: str | None
     team_tag: str | None
+    level: int | None
+    busy: AccountBusy | None
+    in_metro: bool
+    alert: AccountAlert | None
 
 
 def _info(row: Account) -> AccountInfo:
@@ -175,6 +194,80 @@ def _seen_str(field: str) -> ColumnElement[str | None]:
     )
 
 
+def _seen_int(field: str) -> ColumnElement[int | None]:
+    """Число `state[field].value` снимка; NULL — другая версия схемы, поля нет или не число."""
+    version = StateSnapshot.state["schema_version"]
+    value = StateSnapshot.state[field]["value"]
+    return case(
+        (
+            and_(
+                func.jsonb_typeof(version) == "number",
+                version.astext == str(SCHEMA_VERSION),
+                func.jsonb_typeof(value) == "number",
+                value.astext.op("~")(r"^-?[0-9]{1,9}$"),
+            ),
+            sa_cast(value.astext, Integer),
+        ),
+        else_=None,
+    )
+
+
+def _seen_json(field: str) -> ColumnElement[Any]:
+    """Как есть `state[field].value` снимка; NULL — другая версия схемы или поля нет."""
+    version = StateSnapshot.state["schema_version"]
+    return case(
+        (
+            and_(
+                func.jsonb_typeof(version) == "number",
+                version.astext == str(SCHEMA_VERSION),
+            ),
+            StateSnapshot.state[field]["value"],
+        ),
+        else_=None,
+    )
+
+
+def _last_alert() -> ScalarSelect[Any]:
+    """Непрочитанная ошибка, а без ошибок — самое новое предупреждение: `{level, text}`."""
+    return (
+        select(
+            func.jsonb_build_object(
+                "level", NotificationRow.level, "text", NotificationRow.text, type_=JSONB
+            )
+        )
+        .where(
+            NotificationRow.account_id == Account.id,
+            NotificationRow.read.is_(False),
+            NotificationRow.level.in_(("error", "warn")),
+        )
+        .order_by((NotificationRow.level == "error").desc(), NotificationRow.id.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+
+def _busy(raw: Any) -> AccountBusy | None:
+    """Занятость из снимка; не объект, `activity` не строка или `until` не дата — None."""
+    if not isinstance(raw, dict):
+        return None
+    activity, until = raw.get("activity"), raw.get("until")
+    if not isinstance(activity, str) or not isinstance(until, str):
+        return None
+    try:
+        return AccountBusy(activity=activity, until=datetime.fromisoformat(until))
+    except ValueError:
+        return None
+
+
+def _alert(raw: Any) -> AccountAlert | None:
+    if not isinstance(raw, dict):
+        return None
+    level, text_ = raw.get("level"), raw.get("text")
+    if level not in ("error", "warn") or not isinstance(text_, str):
+        return None
+    return AccountAlert(level=level, text=text_)
+
+
 def _violated(exc: IntegrityError) -> str | None:
     """Имя нарушенного ограничения или индекса (у asyncpg — на исходном исключении)."""
     return getattr(exc.orig.__cause__, "constraint_name", None) if exc.orig else None
@@ -240,6 +333,10 @@ class AccountRepo:
                 _unread("error"),
                 _seen_str("company"),
                 _seen_str("team_tag"),
+                _seen_int("level"),
+                _seen_json("busy"),
+                _seen_json("metro_message"),
+                _last_alert(),
             )
             .outerjoin(SettingsRow, SettingsRow.account_id == Account.id)
             .outerjoin(StateSnapshot, StateSnapshot.account_id == Account.id)
@@ -257,8 +354,12 @@ class AccountRepo:
                 unread_error=int(error),
                 company=company,
                 team_tag=team_tag,
+                level=level,
+                busy=_busy(busy),
+                in_metro=metro is not None,
+                alert=_alert(alert),
             )
-            for row, data, last, warn, error, company, team_tag in rows
+            for row, data, last, warn, error, company, team_tag, level, busy, metro, alert in rows
         ]
 
     async def has_tg_session(self, account_id: int) -> bool:

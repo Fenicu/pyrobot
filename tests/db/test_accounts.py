@@ -5,6 +5,8 @@ import pytest
 from sqlalchemy import select
 
 from app.db.accounts import (
+    AccountAlert,
+    AccountBusy,
     AccountDeleting,
     AccountInfo,
     AccountRepo,
@@ -368,6 +370,127 @@ async def test_overview_foreign_snapshot_shapes_give_none(
     await _snapshot(clean_db, acc.id, state)
     (only,) = await repo.overview(user_id)
     assert (only.company, only.team_tag) == (None, None)
+
+
+def _until(hours: int = 2) -> str:
+    return datetime(2026, 10, 9, 12 + hours, 0, tzinfo=UTC).isoformat()
+
+
+def _obs(value: Any) -> dict[str, Any]:
+    return {"value": value, "at": datetime(2026, 10, 9, tzinfo=UTC).isoformat(), "src": "screen"}
+
+
+def _state(**fields: Any) -> dict[str, Any]:
+    return {"schema_version": SCHEMA_VERSION, **{k: _obs(v) for k, v in fields.items()}}
+
+
+async def test_overview_level_busy_and_metro_from_snapshot(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    free = await repo.create(user_id, "Свободный", capacity=20)
+    busy = await repo.create(user_id, "Занятый", capacity=20)
+    metro = await repo.create(user_id, "В метро", capacity=20)
+    await _snapshot(clean_db, free.id, _state(level=12, busy=None, metro_message=None))
+    await _snapshot(
+        clean_db,
+        busy.id,
+        _state(level=54, busy={"activity": "study", "until": _until()}, metro_message=None),
+    )
+    await _snapshot(
+        clean_db, metro.id, _state(level=7, metro_message={"message_id": 5, "battle_at": None})
+    )
+    by_id = {o.account.id: o for o in await repo.overview(user_id)}
+    assert (by_id[free.id].level, by_id[free.id].busy, by_id[free.id].in_metro) == (
+        12,
+        None,
+        False,
+    )
+    got = by_id[busy.id]
+    assert got.level == 54
+    assert got.busy == AccountBusy(activity="study", until=datetime.fromisoformat(_until()))
+    assert got.in_metro is False
+    assert (by_id[metro.id].level, by_id[metro.id].in_metro) == (7, True)
+
+
+async def test_overview_busy_until_in_the_past_is_returned_as_is(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    acc = await repo.create(user_id, "Второй", capacity=20)
+    past = datetime(2020, 1, 1, tzinfo=UTC)
+    await _snapshot(
+        clean_db, acc.id, _state(busy={"activity": "study", "until": past.isoformat()})
+    )
+    (only,) = await repo.overview(user_id)
+    assert only.busy == AccountBusy(activity="study", until=past)
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        None,
+        _state(level="54", busy="study"),
+        _state(level=5.5, busy=[], metro_message=None),
+        _state(level=10**12),
+        _state(busy={"activity": "study", "until": "не дата"}),
+        _state(busy={"activity": 5, "until": _until()}),
+        _state(busy={"until": _until()}),
+        _state(busy={"activity": "study"}),
+        _state(busy={"activity": "study", "until": 5}),
+        {"schema_version": SCHEMA_VERSION, "level": [], "busy": None, "metro_message": 5},
+        {
+            "level": {"value": 54},
+            "busy": {"value": {"activity": "a", "until": "2026-10-09T12:00:00+00:00"}},
+        },
+        {
+            **_state(
+                level=54,
+                busy={"activity": "a", "until": "2026-10-09T12:00:00+00:00"},
+                metro_message={"message_id": 1},
+            ),
+            "schema_version": SCHEMA_VERSION + 1,
+        },
+    ],
+)
+async def test_overview_unreadable_level_busy_metro_give_none(
+    repo: AccountRepo, clean_db: Database, user_id: int, state: dict[str, Any] | None
+) -> None:
+    acc = await repo.create(user_id, "Второй", capacity=20)
+    if state is not None:
+        await _snapshot(clean_db, acc.id, state)
+    (only,) = await repo.overview(user_id)
+    assert (only.level, only.busy, only.in_metro) == (None, None, False)
+
+
+async def _notify(
+    db: Database, account_id: int, level: str, text: str, *, read: bool = False
+) -> None:
+    async with db.sessions() as session, session.begin():
+        session.add(
+            NotificationRow(account_id=account_id, level=level, code="t", text=text, read=read)
+        )
+
+
+async def test_overview_alert_prefers_unread_error_then_newest_warn(
+    repo: AccountRepo, clean_db: Database, user_id: int
+) -> None:
+    mixed = await repo.create(user_id, "Смесь", capacity=20)
+    warns = await repo.create(user_id, "Предупреждения", capacity=20)
+    read = await repo.create(user_id, "Прочитанные", capacity=20)
+    empty = await repo.create(user_id, "Пустой", capacity=20)
+    await _notify(clean_db, mixed.id, "error", "старая ошибка")
+    await _notify(clean_db, mixed.id, "error", "ошибка")
+    await _notify(clean_db, mixed.id, "warn", "позже предупреждение")
+    await _notify(clean_db, mixed.id, "info", "инфо")
+    await _notify(clean_db, warns.id, "warn", "старое")
+    await _notify(clean_db, warns.id, "warn", "новое")
+    await _notify(clean_db, warns.id, "info", "инфо")
+    await _notify(clean_db, read.id, "error", "прочитано", read=True)
+    await _notify(clean_db, read.id, "warn", "прочитано", read=True)
+    by_id = {o.account.id: o for o in await repo.overview(user_id)}
+    assert by_id[mixed.id].alert == AccountAlert(level="error", text="ошибка")
+    assert by_id[warns.id].alert == AccountAlert(level="warn", text="новое")
+    assert by_id[read.id].alert is None
+    assert by_id[empty.id].alert is None
 
 
 async def test_block_disables_and_enable_is_refused(
