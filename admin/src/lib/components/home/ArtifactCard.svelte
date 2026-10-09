@@ -10,6 +10,7 @@
 	import Meter from '../Meter.svelte';
 	import Modal from '../Modal.svelte';
 	import Pill from '../Pill.svelte';
+	import Card from '../ui/Card.svelte';
 
 	interface Props {
 		api: AccountApi;
@@ -83,8 +84,7 @@
 	}
 </script>
 
-<section class="card" aria-labelledby="artifact-title">
-	<h2 id="artifact-title" class="card-title">Сбор артефакта</h2>
+<Card title="Сбор артефакта">
 	{#if failure}<p class="mb-2 text-sm text-bad-fg" role="alert">{failure}</p>{/if}
 	{#if !artifact || !run}
 		<p class="text-sm text-fg-muted">{error ? `Недоступно: ${errorText(error)}` : 'Загрузка…'}</p>
@@ -140,14 +140,14 @@
 		{#if startable.length > 0}
 			<div class="mt-2 flex flex-wrap gap-2">
 				{#each startable as key (key)}
-					<button type="button" class="btn" disabled={busy} onclick={() => open(key)}>{startLabel(key)}</button>
+					<button type="button" class="btn max-w-full py-1.5 text-left whitespace-normal" disabled={busy} onclick={() => open(key)}>{startLabel(key)}</button>
 				{/each}
 			</div>
 		{:else if !locked && !artifact.collecting}
 			<p class="text-xs text-fg-muted">Все пересобираемые артефакты — 100 уровня.</p>
 		{/if}
 	{/if}
-</section>
+</Card>
 
 {#if choosing && artifact}
 	{@const key = choosing}

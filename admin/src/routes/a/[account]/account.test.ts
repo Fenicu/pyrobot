@@ -1,9 +1,11 @@
-import { cleanup, render, screen } from '@testing-library/svelte';
+import { cleanup, render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
 import { accounts, current } from '$lib/app.svelte';
+import { BLOCK_IDS, BLOCK_TITLES } from '$lib/home/blocks';
 import { page } from '$lib/test/page.svelte';
+import HomeRoute from './home-route.test.svelte';
 import JournalRoute from './journal-route.test.svelte';
 
 const h = vi.hoisted(() => ({ calls: [] as string[], patches: [] as string[], down: false }));
@@ -133,5 +135,24 @@ describe('экраны аккаунта /a/[account]', () => {
 		await vi.waitFor(() => expect(screen.queryByText(/Движок не запущен/)).toBeNull());
 		expect(h.patches).toEqual(['/api/v1/accounts/1 {"enabled":true}']);
 		expect(h.calls.filter((u) => u === '/api/v1/accounts').length).toBe(lists + 1);
+	});
+
+	it('главная — семь блоков в порядке раскладки, без отдельного блока «Управление»', async () => {
+		await accounts.load();
+		page.params = { account: '1' };
+		render(HomeRoute);
+		const home = await screen.findByRole('heading', { name: 'acc1 · Главная' });
+		const main = home.closest('header')!.parentElement!;
+		const blocks = BLOCK_IDS.map((id) =>
+			within(main).getByRole('region', { name: (name) => name.startsWith(BLOCK_TITLES[id]) })
+		);
+		// Порядок в разметке — порядок одной колонки телефона.
+		for (let i = 1; i < blocks.length; i++) {
+			expect(blocks[i - 1]!.compareDocumentPosition(blocks[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		}
+		expect(screen.queryByRole('region', { name: 'Управление' })).toBeNull();
+		expect(screen.queryByRole('region', { name: /План бота|Метро — прохождение/ })).toBeNull();
+		// Пауза, режим и kill — в шапке страницы.
+		expect(await within(home.closest('header')!).findByRole('group', { name: 'Управление' })).toBeInTheDocument();
 	});
 });

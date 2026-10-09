@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { MetroLive } from '$lib/api/types';
-	import { endText, liveMap, lostAt, modeText, shown, STALE_AFTER_MS } from '$lib/metro/live';
+	import { endText, liveMap, lostAt, modeText, STALE_AFTER_MS } from '$lib/metro/live';
 	import { eventIcon, eventText, lootText, timeline } from '$lib/metro/model';
 	import { accountHref } from '$lib/nav';
 	import { fmtSpan, fmtTime } from '$lib/util/format';
@@ -32,7 +32,6 @@
 	});
 	const at = $derived(Math.max(now.getTime(), ticked));
 
-	const visible = $derived(shown(frame, receivedAt, at));
 	// Связь с идущим забегом потеряна: время и выброс по часам страницы уже не правда.
 	const lost = $derived.by(() => {
 		const since = frame && receivedAt !== null ? lostAt(frame, receivedAt) : null;
@@ -62,16 +61,14 @@
 	);
 </script>
 
-{#if frame && model && visible}
-	<section id="metro-live" class="card scroll-mt-4" aria-labelledby="metro-live-title">
-		<div class="mb-2 flex items-baseline justify-between gap-2">
-			<h2 id="metro-live-title" class="card-title mb-0">Метро — прохождение</h2>
-			{#if !frame.running}
-				<a class="text-xs text-accent hover:underline" href={accountHref(account, '/metro')}>повтор</a>
-			{/if}
-		</div>
+<!-- Ход забега внутри «Сейчас»: показывать ли его, решает карточка (`shown`). -->
+{#if frame && model}
+	<div class="@container" role="group" aria-label="Метро — прохождение">
 		{#if !frame.running}
-			<p class="font-semibold">{endText(frame)}</p>
+			<div class="flex items-baseline justify-between gap-2">
+				<p class="font-semibold">{endText(frame)}</p>
+				<a class="shrink-0 text-xs text-accent hover:underline" href={accountHref(account, '/metro')}>повтор</a>
+			</div>
 			{#if newRun}
 				<p class="text-xs text-fg-muted">Это итог прошлого забега: идёт вход в новый, карта появится с первым шагом.</p>
 			{:else if resuming}
@@ -82,7 +79,7 @@
 		{:else if lost && receivedAt !== null}
 			<p class="text-sm text-fg-muted" role="status">связь потеряна, данные на {fmtTime(new Date(receivedAt))}</p>
 		{/if}
-		<div class="mt-2 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)]">
+		<div class="mt-2 grid gap-3 @lg:grid-cols-[minmax(0,1fr)_minmax(0,15rem)]">
 			<div class="min-w-0">
 				<MetroMap {model} {step} label="Карта забега: шагов {frame.steps}, посещено клеток {model.visitedCount}" />
 			</div>
@@ -123,5 +120,5 @@
 				{/if}
 			</div>
 		</div>
-	</section>
+	</div>
 {/if}

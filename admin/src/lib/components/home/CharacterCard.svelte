@@ -6,6 +6,7 @@
 	import { busyText, COMPANY } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
 	import TangerinePartner from '../TangerinePartner.svelte';
+	import Card from '../ui/Card.svelte';
 	import Row from '../ui/Row.svelte';
 
 	interface Props {
@@ -54,8 +55,7 @@
 	);
 </script>
 
-<section class="card" aria-labelledby="character-title">
-	<h2 id="character-title" class="card-title">Персонаж{level !== null ? ` · ур. ${level}` : ''}</h2>
+<Card title="Персонаж{level !== null ? ` · ур. ${level}` : ''}">
 	{#if Object.keys(state).length === 0}
 		<p class="text-sm text-fg-muted">Снимка ещё нет: бот не видел ни одного экрана.</p>
 	{:else}
@@ -99,4 +99,4 @@
 			{/if}
 		</Row>
 	{/if}
-</section>
+</Card>

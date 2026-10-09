@@ -5,6 +5,7 @@
 	import { val } from '$lib/util/observed';
 	import Meter from '../Meter.svelte';
 	import Pill from '../Pill.svelte';
+	import Card from '../ui/Card.svelte';
 	import Row from '../ui/Row.svelte';
 
 	interface Props {
@@ -42,9 +43,7 @@
 	);
 </script>
 
-<section class="card" aria-labelledby="today-title">
-	<h2 id="today-title" class="card-title">Сегодня</h2>
-
+<Card title="Сегодня">
 	<Row label="Личное задание" stale={stale.includes('daily_personal')}>
 		{#if !personal || !isToday(personal.day)}
 			<span class="text-fg-faint">нет данных за сегодня</span>
@@ -138,4 +137,4 @@
 			{/if}
 		{/if}
 	</Row>
-</section>
+</Card>

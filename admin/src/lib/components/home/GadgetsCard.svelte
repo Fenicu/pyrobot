@@ -20,6 +20,7 @@
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { SKILL_MARK } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
+	import Card from '../ui/Card.svelte';
 	import UpgradeDialog from './UpgradeDialog.svelte';
 
 	interface Props {
@@ -99,8 +100,11 @@
 	}
 </script>
 
-<section class="card" aria-labelledby="gadgets-title">
-	<h2 id="gadgets-title" class="card-title">Гаджеты при тебе</h2>
+{#snippet bag()}
+	<span class="text-fg-muted">Рюкзак {out?.bag.used}/{out?.bag.cap}</span>
+{/snippet}
+
+<Card title="Гаджеты" action={out && out.bag.used !== null && out.bag.cap !== null ? bag : undefined}>
 	{#if failure}<p class="mb-2 text-sm text-bad-fg" role="alert">{failure}</p>{/if}
 	<div class="text-sm {isStale ? 'text-fg-faint' : ''}" title={isStale ? 'устарело' : undefined}>
 		{#if gadgets === null}
@@ -108,39 +112,33 @@
 		{:else if gadgets.items.length === 0}
 			<p class="text-fg-muted">ничего не надето</p>
 		{:else}
-			<ul class="space-y-0.5">
+			<ul class="grid grid-cols-2 gap-1.5">
 				{#each gadgets.items as g, i (i)}
 					{@const w = canUpgrade ? upgradable(g) : null}
-					<li class="flex flex-wrap items-center gap-x-2">
-						<span>
-							{g.slot} {g.name} {g.grade ?? ''}{g.level ?? ''}
-							{#if Object.keys(g.bonuses).length > 0 || g.mark}·{/if}
-							{bonuses(g.bonuses)}{#if g.mark}{` ${g.mark}`}{/if}
-						</span>
+					<li class="flex min-w-0 flex-col items-start rounded-ctl bg-surface-2 px-2.5 py-2 text-xs">
+						<b class="block font-medium">{g.slot} {g.name} {g.grade ?? ''}{g.level ?? ''}</b>
+						<span class="text-fg-muted">{bonuses(g.bonuses)}{#if g.mark}{` ${g.mark}`}{/if}</span>
 						{#if w}
 							<button
 								type="button"
-								class="btn px-2 py-0 text-xs"
+								class="btn mt-1.5 min-h-7 px-2 text-xs md:min-h-7 md:text-xs"
 								disabled={busy || active}
 								title={busyHint(w)}
 								aria-label={`Точить: ${g.slot} ${g.name}`}
-								onclick={() => (choosing = w)}>Точить</button
+								onclick={() => (choosing = w)}>Точить…</button
 							>
 						{/if}
 					</li>
 				{/each}
 			</ul>
 			{#if canUpgrade && active}
-				<p class="text-xs text-fg-muted">Другой гаджет — после конца или «Стоп» текущей заточки.</p>
+				<p class="mt-2 text-xs text-fg-muted">Другой гаджет — после конца или «Стоп» текущей заточки.</p>
 			{/if}
 			{#if gadgets.sets.length > 0}
-				<p class="mt-2 text-fg-muted">{gadgets.sets.join(' · ')}</p>
+				<p class="mt-2 text-xs text-fg-muted">{gadgets.sets.join(' · ')}</p>
 			{/if}
 		{/if}
 		{#if isStale}<span class="sr-only"> (устарело)</span>{/if}
-		{#if out && out.bag.used !== null && out.bag.cap !== null}
-			<p class="mt-1 text-fg-muted">Рюкзак: {out.bag.used}/{out.bag.cap}</p>
-		{/if}
 	</div>
 
 	{#if active && taskText}
@@ -178,7 +176,7 @@
 	{#if !out && error}
 		<p class="mt-2 text-xs text-fg-muted">Заточка и покупка недоступны: {errorText(error)}</p>
 	{/if}
-</section>
+</Card>
 
 {#if choosing && out}
 	<UpgradeDialog

@@ -315,13 +315,13 @@ describe('карточка гаджетов', () => {
 		}
 	});
 
-	it('строка на гаджет, сеты одной строкой', () => {
+	it('плитка на гаджет, сеты одной строкой', () => {
 		show({ ...prod.state, gadgets: gadgets() }, []);
-		const card = screen.getByRole('region', { name: 'Гаджеты при тебе' });
+		const card = screen.getByRole('region', { name: 'Гаджеты' });
 		const items = within(card).getAllByRole('listitem');
 		expect(items.map((li) => li.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-			'🕶 Хиджаб ⚫️26 · +85🎓 +55🐢 +30🔨 🧶',
-			'💻 MAC-адрес ноута 🔴18 · +31🎓 +31🐿'
+			'🕶 Хиджаб ⚫️26 +85🎓 +55🐢 +30🔨 🧶',
+			'💻 MAC-адрес ноута 🔴18 +31🎓 +31🐿'
 		]);
 		expect(card).toHaveTextContent('⚫️Сет VIP · 🔴Сет Хакер');
 		expect(card).not.toHaveTextContent('(устарело)');
@@ -347,34 +347,34 @@ describe('карточка гаджетов', () => {
 			}
 		];
 		show({ ...prod.state, gadgets: gadgets({ items, sets: [] }) }, []);
-		const card = screen.getByRole('region', { name: 'Гаджеты при тебе' });
+		const card = screen.getByRole('region', { name: 'Гаджеты' });
 		const rows = within(card).getAllByRole('listitem');
 		expect(rows.map((li) => li.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-			'👔 Жилетка LoRat · +63🐢 +23🎓',
-			'💍 Кольцо · +7luck'
+			'👔 Жилетка LoRat +63🐢 +23🎓',
+			'💍 Кольцо +7luck'
 		]);
 		expect(card).not.toHaveTextContent('null');
 	});
 
 	it('без сетов строки сетов нет', () => {
 		show({ ...prod.state, gadgets: gadgets({ sets: [] }) }, []);
-		expect(screen.getByRole('region', { name: 'Гаджеты при тебе' })).not.toHaveTextContent('Сет');
+		expect(screen.getByRole('region', { name: 'Гаджеты' })).not.toHaveTextContent('Сет');
 	});
 
 	it('пустой список — «ничего не надето»', () => {
 		show({ ...prod.state, gadgets: gadgets({ items: [], sets: [] }) }, []);
-		expect(screen.getByRole('region', { name: 'Гаджеты при тебе' })).toHaveTextContent('ничего не надето');
+		expect(screen.getByRole('region', { name: 'Гаджеты' })).toHaveTextContent('ничего не надето');
 		expect(screen.queryByRole('listitem')).toBeNull();
 	});
 
 	it('данных нет — «нет данных»', () => {
 		show({ ...prod.state, gadgets: null }, []);
-		expect(screen.getByRole('region', { name: 'Гаджеты при тебе' })).toHaveTextContent('нет данных');
+		expect(screen.getByRole('region', { name: 'Гаджеты' })).toHaveTextContent('нет данных');
 	});
 
 	it('устаревшее — с пометкой', () => {
 		show({ ...prod.state, gadgets: gadgets() }, ['gadgets']);
-		expect(screen.getByRole('region', { name: 'Гаджеты при тебе' })).toHaveTextContent('(устарело)');
+		expect(screen.getByRole('region', { name: 'Гаджеты' })).toHaveTextContent('(устарело)');
 	});
 });
 

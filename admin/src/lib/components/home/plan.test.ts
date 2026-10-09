@@ -4,42 +4,46 @@ import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Outlook, StateOut } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
-import PlanCard from './PlanCard.svelte';
+import NextCard from './NextCard.svelte';
+import NowCard from './NowCard.svelte';
 
 const plan = fixture<Outlook>('outlook');
 const prod = fixture<StateOut>('state');
 const NOW = new Date(plan.now);
 
 function card(p: Outlook = plan) {
-	render(PlanCard, { plan: p, error: null, state: prod.state, now: NOW });
-	return screen.getByRole('region', { name: 'План бота' });
+	render(NowCard, { plan: p, error: null, state: prod.state, now: NOW, account: 1 });
+	render(NextCard, { plan: p, error: null, now: NOW });
 }
 
-describe('«План бота» на фикстуре из бэкенд-теста', () => {
+describe('«Сейчас» и «Дальше по времени» на фикстуре из бэкенд-теста', () => {
 	// Настоящее время — момент плана: карточка сверяет срок сна цикла с настоящими часами.
 	beforeEach(() => vi.useFakeTimers({ now: NOW, toFake: ['Date'] }));
 	afterEach(() => vi.useRealTimers());
 
 	it('«Сейчас», «Почему не другое», «Готово сейчас», «Дальше по времени»', () => {
-		const block = card();
-		const now = within(block).getByRole('region', { name: 'Сейчас' });
+		card();
+		const now = screen.getByRole('region', { name: 'Сейчас' });
 		expect(now).toHaveTextContent('🤑 билеты лотереи (все — max)');
 		expect(now).toHaveTextContent('Занят: работа до 19:50');
 		expect(now).toHaveTextContent('Держит 🔥: 2 под метро (откроется в 20:21)');
 		expect(now).toHaveTextContent('сегодня ⛏ 3, ⚙️→🔩 2). Следующее дело — переработка.');
 
-		const why = within(block).getByRole('region', { name: 'Почему не другое' });
+		// «Почему не другое» и «Готово сейчас» — свёрнутым списком внутри «Сейчас».
+		const why = within(now).getByRole('region', { name: 'Почему не другое' });
+		expect(within(now).getByText('Почему не другое · 1', { selector: 'summary' })).toBeInTheDocument();
 		const rows = within(why).getAllByRole('listitem');
 		expect(rows.map((r) => r.dataset.verdict)).toEqual(['busy', 'chosen']);
 		expect(rows[0]).toHaveTextContent('🔨 прокачка навыков');
 		expect(rows[0]).toHaveTextContent('занят · до 19:50');
 		expect(rows[1]).toHaveTextContent('выбрано');
 
-		const ready = within(block).getByRole('region', { name: /Готово сейчас/ });
+		const ready = within(now).getByRole('region', { name: /Готово сейчас/ });
 		expect(ready).toHaveTextContent('на текущем снимке');
 		expect(ready).toHaveTextContent('🍊 мандарин');
 
-		const next = within(block).getByRole('region', { name: 'Дальше по времени' });
+		const next = screen.getByRole('region', { name: 'Дальше по времени' });
+		expect(now).not.toContainElement(next);
 		const timers = within(next).getAllByRole('listitem');
 		expect(timers).toHaveLength(11);
 		expect(timers[0]).toHaveTextContent('19:50');
@@ -86,7 +90,8 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		const now = screen.getByRole('region', { name: 'Сейчас' });
 		expect(now).toHaveTextContent('▶ Идёт сценарий: 🤑 билеты лотереи');
 		expect(now).not.toHaveTextContent('после него');
-		expect(within(now).getAllByText(/билеты лотереи/)).toHaveLength(1);
+		// Вне свёрнутого «Почему не другое» (там строка «выбрано»).
+		expect(within(now).getAllByText(/билеты лотереи/).filter((e) => !e.closest('details'))).toHaveLength(1);
 		expect([...now.querySelectorAll('p')].every((p) => p.textContent?.trim())).toBe(true);
 	});
 
@@ -155,7 +160,8 @@ describe('«План бота» на фикстуре из бэкенд-тест
 	it('занятость устарела, цикл спит: решение — на текущих данных, остальное — по последним', () => {
 		const stale = fixture<Outlook>('outlook_stale');
 		const label = 'по последним данным (профиль — 19:21)';
-		render(PlanCard, { plan: stale, error: null, state: prod.state, now: new Date(stale.now) });
+		render(NowCard, { plan: stale, error: null, state: prod.state, now: new Date(stale.now), account: 1 });
+		render(NextCard, { plan: stale, error: null, now: new Date(stale.now) });
 		const now = screen.getByRole('region', { name: 'Сейчас' });
 		expect(now).toHaveTextContent('⏳ ждёт: прочитать книгу — следующий шаг в 20:07');
 		expect(now).toHaveTextContent('Тогда: 🔄 обновить экран (профиль)');
@@ -179,39 +185,65 @@ describe('«План бота» на фикстуре из бэкенд-тест
 		expect(within(next).getAllByRole('listitem')[0]).toHaveTextContent('Прочитать книгу');
 	});
 
-	it('на телефоне — «Сейчас» и первые 5 событий, остальное под «Ещё»', async () => {
+	it('на телефоне — первые 5 событий, остальное под «Ещё»; «Почему не другое» свёрнуто', async () => {
 		const user = userEvent.setup();
 		card();
 		const timers = within(screen.getByRole('region', { name: 'Дальше по времени' })).getAllByRole('listitem');
 		// Раскладку решает CSS: на телефоне скрыто классом hidden, на ПК (md) видно.
 		expect(timers.slice(0, 5).every((t) => !t.classList.contains('hidden'))).toBe(true);
 		expect(timers.slice(5).every((t) => t.classList.contains('hidden') && t.classList.contains('md:grid'))).toBe(true);
+		// Без matchMedia (jsdom) — телефон: список причин свёрнут.
 		const why = screen.getByRole('region', { name: 'Почему не другое' });
-		expect(why).toHaveClass('hidden', 'md:block');
+		expect(why.closest('details')).not.toHaveAttribute('open');
 		const more = screen.getByRole('button', { name: 'Ещё' });
 		expect(more).toHaveAttribute('aria-expanded', 'false');
 		expect(more).toHaveClass('md:hidden');
-		// aria-controls — id панелей и списков, которые кнопка раскрывает (только те, что есть в DOM:
-		// на фикстуре нет таймеров «после пробуждения» — plan-later-list не участвует).
+		// aria-controls — id списков, которые кнопка раскрывает (только те, что есть в DOM:
+		// на фикстуре нет таймеров «после пробуждения»).
 		const controlled = more.getAttribute('aria-controls')!.split(' ');
-		expect(controlled).toEqual(['plan-why-panel', 'plan-ready-panel', 'plan-timers-list']);
-		for (const id of controlled) expect(document.getElementById(id), id).not.toBeNull();
+		expect(controlled).toHaveLength(1);
+		expect(document.getElementById(controlled[0]!)).toBe(timers[0]!.parentElement);
 		await user.click(more);
 		expect(timers.every((t) => !t.classList.contains('hidden'))).toBe(true);
-		expect(why).not.toHaveClass('hidden');
 		expect(screen.getByRole('button', { name: 'Свернуть' })).toHaveAttribute('aria-expanded', 'true');
 	});
 
+	it('на ПК «Почему не другое» раскрыто', () => {
+		vi.stubGlobal('matchMedia', (query: string) => ({ media: query, matches: query === '(min-width: 768px)' }));
+		try {
+			card();
+			const why = screen.getByRole('region', { name: 'Почему не другое' });
+			expect(why.closest('details')).toHaveAttribute('open');
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it('таймеров меньше шести — без «Ещё»', () => {
+		render(NextCard, { plan: { ...plan, wakeups: plan.wakeups.slice(0, 5) }, error: null, now: NOW });
+		expect(screen.queryByRole('button', { name: 'Ещё' })).toBeNull();
+	});
+
 	it('ошибка без плана и загрузка', () => {
-		render(PlanCard, { plan: null, error: { kind: 'engine_down', status: 503, code: 'planner not started' }, state: {}, now: NOW });
+		const error = { kind: 'engine_down', status: 503, code: 'planner not started' } as const;
+		render(NowCard, { plan: null, error, state: {}, now: NOW, account: 1 });
+		render(NextCard, { plan: null, error, now: NOW });
+		// Тревога — одна, в «Сейчас»; «Дальше по времени» — приглушённо.
 		expect(screen.getByRole('alert')).toHaveTextContent('План недоступен: Движок недоступен.');
+		expect(screen.getByRole('region', { name: 'Дальше по времени' })).toHaveTextContent('Таймеры недоступны');
+		cleanup();
+		render(NowCard, { plan: null, error: null, state: {}, now: NOW, account: 1 });
+		render(NextCard, { plan: null, error: null, now: NOW });
+		expect(screen.getByRole('region', { name: 'Сейчас' })).toHaveTextContent('Загрузка плана…');
+		expect(screen.getByRole('region', { name: 'Дальше по времени' })).toHaveTextContent('Загрузка плана…');
 	});
 
 	it('движок не запущен — не тревога, а приглушённое пояснение', () => {
 		const error = { kind: 'engine_down', status: 503, code: 'engine not running' } as const;
-		render(PlanCard, { plan: null, error, state: {}, now: NOW });
+		render(NowCard, { plan: null, error, state: {}, now: NOW, account: 1 });
+		render(NextCard, { plan: null, error, now: NOW });
 		expect(screen.queryByRole('alert')).toBeNull();
-		const note = screen.getByRole('status');
+		const note = within(screen.getByRole('region', { name: 'Сейчас' })).getByRole('status');
 		expect(note).toHaveTextContent('План недоступен: движок не запущен.');
 		expect(note).toHaveClass('text-fg-muted');
 	});

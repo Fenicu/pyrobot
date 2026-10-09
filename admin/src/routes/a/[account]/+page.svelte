@@ -7,13 +7,12 @@
 	import CharacterCard from '$lib/components/home/CharacterCard.svelte';
 	import GadgetsCard from '$lib/components/home/GadgetsCard.svelte';
 	import HeaderControls from '$lib/components/home/HeaderControls.svelte';
-	import MetroLiveCard from '$lib/components/home/MetroLiveCard.svelte';
-	import PlanCard from '$lib/components/home/PlanCard.svelte';
+	import NextCard from '$lib/components/home/NextCard.svelte';
+	import NowCard from '$lib/components/home/NowCard.svelte';
 	import TodayCard from '$lib/components/home/TodayCard.svelte';
 	import Page from '$lib/components/shell/Page.svelte';
 	import { DailyStore } from '$lib/daily/store.svelte';
 	import { GadgetsStore } from '$lib/gadgets/store.svelte';
-	import { shown } from '$lib/metro/live';
 	import { MetroLiveStore } from '$lib/metro/store.svelte';
 	import { PlanStore } from '$lib/plan/store.svelte';
 
@@ -27,11 +26,10 @@
 	const daily = new DailyStore(api, 8);
 	// «Сбор артефакта» — тоже только пока открыта главная.
 	const artifact = new ArtifactStore(api);
-	// «Гаджеты при тебе»: план покупки, задача заточки и её ход.
+	// «Гаджеты»: план покупки, задача заточки и её ход.
 	const gadgets = new GadgetsStore(api);
-	// «Метро — прохождение»: живой кадр забега, пока открыта главная.
+	// Живой кадр забега метро — в блоке «Сейчас», пока открыта главная.
 	const metro = new MetroLiveStore(api);
-	const metroShown = $derived(shown(metro.frame, metro.receivedAt, now.getTime()));
 	// Версия настроек из потока: сменилась — «Персонаж» перечитывает, кому дарятся 🍊.
 	let settingsVersion = $state<number | null>(null);
 
@@ -79,55 +77,46 @@
 	<HeaderControls {api} status={engine.status} onchange={() => void engine.load()} />
 {/snippet}
 
+<!-- Временная статичная сетка: блоки по раскладке по умолчанию; в разметке — порядок одной
+     колонки телефона. -->
 <Page title="Главная" {actions}>
-	<div class="space-y-3">
-		{#if character.error && !character.loaded}
-			<p class="card text-sm text-bad-fg" role="alert">Состояние недоступно: движок не отвечает.</p>
-		{/if}
-		<PlanCard
-			plan={plan.outlook}
-			error={plan.error}
-			state={character.state}
-			{now}
-			metroHref={metroShown ? '#metro-live' : null}
-		/>
-		<MetroLiveCard
-			frame={metro.frame}
-			receivedAt={metro.receivedAt}
-			{now}
-			{account}
-			metroRunning={plan.outlook?.loop.current === 'metro'}
-			metroRunId={metro.metroRunId}
-		/>
-		<div class="grid gap-3 md:grid-cols-2">
-			<div class="space-y-3">
-				<CharacterCard
-					state={character.state}
-					stale={character.stale}
-					{now}
-					days={daily.data?.days ?? []}
-					{api}
-					{settingsVersion}
-				/>
-				<GadgetsCard
-					{api}
-					state={character.state}
-					stale={character.stale}
-					gadgets={gadgets.data}
-					error={gadgets.error}
-					status={engine.status}
-					onchange={(out) => gadgets.set(out)}
-				/>
-			</div>
-			<TodayCard state={character.state} stale={character.stale} {now} />
+	{#if character.error && !character.loaded}
+		<p class="card mb-3.5 text-sm text-bad-fg" role="alert">Состояние недоступно: движок не отвечает.</p>
+	{/if}
+	<div class="grid items-start gap-3.5 md:grid-cols-2 xl:grid-cols-[5fr_4fr_3fr]">
+		<div class="flex min-w-0 flex-col gap-3.5">
+			<NowCard plan={plan.outlook} error={plan.error} state={character.state} {now} {account} {metro} />
+			<NextCard plan={plan.outlook} error={plan.error} {now} />
 		</div>
-		<ArtifactCard {api} artifact={artifact.data} error={artifact.error} {now} onchange={(out) => artifact.set(out)} />
-		<DailyCard
-			day={daily.data?.days[0] ?? null}
-			ledgerSince={daily.data?.ledger_since ?? null}
-			error={daily.error}
-			{now}
-			loadedAt={daily.loadedAt}
-		/>
+		<div class="flex min-w-0 flex-col gap-3.5">
+			<CharacterCard
+				state={character.state}
+				stale={character.stale}
+				{now}
+				days={daily.data?.days ?? []}
+				{api}
+				{settingsVersion}
+			/>
+			<GadgetsCard
+				{api}
+				state={character.state}
+				stale={character.stale}
+				gadgets={gadgets.data}
+				error={gadgets.error}
+				status={engine.status}
+				onchange={(out) => gadgets.set(out)}
+			/>
+		</div>
+		<div class="grid min-w-0 items-start gap-3.5 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1">
+			<TodayCard state={character.state} stale={character.stale} {now} />
+			<DailyCard
+				day={daily.data?.days[0] ?? null}
+				ledgerSince={daily.data?.ledger_since ?? null}
+				error={daily.error}
+				{now}
+				loadedAt={daily.loadedAt}
+			/>
+			<ArtifactCard {api} artifact={artifact.data} error={artifact.error} {now} onchange={(out) => artifact.set(out)} />
+		</div>
 	</div>
 </Page>

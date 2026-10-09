@@ -124,10 +124,10 @@ function card(
 	const onchange = vi.fn();
 	render(ConfirmDialog);
 	render(GadgetsCard, { api, state: snapshot(out?.worn ?? BASE.worn), stale: [], gadgets: out, error: null, status, onchange });
-	return { fetch, onchange, region: screen.getByRole('region', { name: 'Гаджеты при тебе' }) };
+	return { fetch, onchange, region: screen.getByRole('region', { name: 'Гаджеты' }) };
 }
 
-describe('карточка «Гаджеты при тебе»', () => {
+describe('карточка «Гаджеты»', () => {
 	beforeEach(() => dialogs.answer(null));
 
 	it('«Точить» скрыта без движка и в dry_run, неактивна при задаче на другом слоте', () => {
@@ -150,7 +150,7 @@ describe('карточка «Гаджеты при тебе»', () => {
 
 		const idle = card(BASE).region;
 		expect(within(idle).getByRole('button', { name: 'Точить: 🕶 Хиджаб' })).toBeEnabled();
-		expect(idle).toHaveTextContent('Рюкзак: 12/24');
+		expect(idle).toHaveTextContent('Рюкзак 12/24');
 		expect(idle).toHaveTextContent('⚫️Сет VIP');
 	});
 

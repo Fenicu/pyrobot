@@ -4,6 +4,7 @@
 	import { dayShort, staleNote } from '$lib/daily/text';
 	import { screenHref } from '$lib/nav';
 	import { fmtTime, mskDay } from '$lib/util/format';
+	import Card from '../ui/Card.svelte';
 	import DayBreakdown from './DayBreakdown.svelte';
 
 	interface Props {
@@ -29,13 +30,11 @@
 	);
 </script>
 
-<section class="card" aria-labelledby="daily-title">
-	<div class="mb-2 flex items-baseline justify-between gap-2">
-		<h2 id="daily-title" class="card-title mb-0">
-			Итоги дня · {short(today)}{current ? ` (до ${fmtTime(loadedAt ?? now)})` : ''}
-		</h2>
-		<a class="text-xs text-accent hover:underline" href={href('/daily')}>по дням →</a>
-	</div>
+{#snippet days()}
+	<a class="text-accent hover:underline" href={href('/daily')}>по дням →</a>
+{/snippet}
+
+<Card title="Итоги дня · {short(today)}{current ? ` (до ${fmtTime(loadedAt ?? now)})` : ''}" action={days}>
 	{#if current}
 		<div class={note ? 'opacity-60' : ''}>
 			<DayBreakdown
@@ -52,4 +51,4 @@
 	{:else}
 		<p class="text-sm text-fg-muted">Загрузка итогов…</p>
 	{/if}
-</section>
+</Card>

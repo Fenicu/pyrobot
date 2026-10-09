@@ -4,7 +4,7 @@ import type { MetroLive, Outlook, StateOut } from '$lib/api/types';
 import { fixture } from '$lib/test/fixtures';
 import { liveFrame } from '$lib/test/metro-live';
 import MetroLiveCard from './MetroLiveCard.svelte';
-import PlanCard from './PlanCard.svelte';
+import NowCard from './NowCard.svelte';
 
 const NOW = new Date('2026-10-07T18:10:00Z');
 const TITLE = 'Метро — прохождение';
@@ -21,16 +21,15 @@ function card(
 		metroRunning: over.metroRunning ?? false,
 		metroRunId: over.metroRunId ?? null
 	});
-	return screen.queryByRole('region', { name: TITLE });
+	return screen.queryByRole('group', { name: TITLE });
 }
 
-describe('«Метро — прохождение» на главной', () => {
+describe('«Метро — прохождение» внутри «Сейчас»', () => {
 	beforeEach(() => vi.useFakeTimers({ now: NOW, toFake: ['Date'] }));
 	afterEach(() => vi.useRealTimers());
 
 	it('идущий забег: карта, шаги, режим, полоски, найденное, события', () => {
 		const block = card(liveFrame())!;
-		expect(block).toHaveAttribute('id', 'metro-live');
 		const map = within(block).getByRole('img', { name: 'Карта забега: шагов 2, посещено клеток 3' });
 		expect(map.querySelector('[data-role="me"]')).not.toBeNull();
 		expect(block).toHaveTextContent('шаг 2 · клетка (1,1) · ~5.2 с/шаг');
@@ -108,15 +107,13 @@ describe('«Метро — прохождение» на главной', () => 
 		expect(block).toHaveTextContent('Последний забег');
 	});
 
-	it('кадры не приходят 5 минут — связь потеряна: без времени и выброса, через 30 минут карточки нет', () => {
+	it('кадры не приходят 5 минут — связь потеряна: без времени и выброса', () => {
 		const got = NOW.getTime() - 6 * 60_000;
 		const block = card(liveFrame(), { receivedAt: got })!;
 		expect(block).toHaveTextContent('связь потеряна, данные на 21:04');
 		expect(within(block).queryByRole('progressbar', { name: 'Время забега' })).toBeNull();
 		expect(block).not.toHaveTextContent('до выброса');
 		expect(block).not.toHaveTextContent('обновлено');
-		cleanup();
-		expect(card(liveFrame(), { receivedAt: NOW.getTime() - 36 * 60_000 })).toBeNull();
 	});
 
 	it('выброс прошёл больше 2 минут назад — связь потеряна, даже если кадр свежий', () => {
@@ -132,32 +129,66 @@ describe('«Метро — прохождение» на главной', () => 
 		expect(block).not.toHaveTextContent('—%');
 	});
 
-	it('без кадра и с итогом старше 30 минут — карточки нет', () => {
-		expect(card(null)).toBeNull();
-		// Забег с 17:00, конец — 17:10 по доле бюджета: час назад.
-		const old = liveFrame({ running: false, outcome: 'finished', mode: 'leave', started_at: '2026-10-07T17:00:00+00:00' });
-		expect(card(old)).toBeNull();
-	});
 });
 
-describe('«План бота»: идущее метро — ссылка на карточку', () => {
+describe('«Сейчас»: во время забега — карта и ход забега вместо плана', () => {
 	const plan = fixture<Outlook>('outlook');
 	const prod = fixture<StateOut>('state');
-	const metro: Outlook = { ...plan, loop: { ...plan.loop, current: 'metro', current_params: {} } };
+	const running: Outlook = { ...plan, loop: { ...plan.loop, current: 'metro', current_params: {} } };
 
-	beforeEach(() => vi.useFakeTimers({ now: new Date(plan.now), toFake: ['Date'] }));
+	function now(
+		frame: MetroLive | null,
+		over: { receivedAt?: number; plan?: Outlook | null; runId?: number | null } = {}
+	) {
+		render(NowCard, {
+			plan: over.plan === undefined ? running : over.plan,
+			error: null,
+			state: prod.state,
+			now: NOW,
+			account: 1,
+			metro: { frame, receivedAt: over.receivedAt ?? NOW.getTime(), metroRunId: over.runId ?? null }
+		});
+		return screen.getByRole('region', { name: 'Сейчас' });
+	}
+
+	beforeEach(() => vi.useFakeTimers({ now: NOW, toFake: ['Date'] }));
 	afterEach(() => vi.useRealTimers());
 
-	it('карточка метро показана — строка «Идёт сценарий» ведёт к ней', () => {
-		render(PlanCard, { plan: metro, error: null, state: prod.state, now: new Date(plan.now), metroHref: '#metro-live' });
-		const now = screen.getByRole('region', { name: 'Сейчас' });
-		expect(within(now).getByRole('link', { name: '▶ Идёт сценарий: 🚇 метро' })).toHaveAttribute('href', '#metro-live');
+	it('забег идёт — «Сейчас» с пометкой «🚇 забег»: карта, без текста плана и «Почему не другое»', () => {
+		const block = now(liveFrame());
+		expect(within(block).getByText('🚇 забег')).toHaveClass('pill');
+		const metro = within(block).getByRole('group', { name: TITLE });
+		expect(within(metro).getByRole('img', { name: /Карта забега/ })).toBeInTheDocument();
+		expect(block).not.toHaveTextContent('Идёт сценарий');
+		expect(block).not.toHaveTextContent('билеты лотереи');
+		expect(within(block).queryByRole('region', { name: 'Почему не другое' })).toBeNull();
 	});
 
-	it('карточки нет или идёт не метро — без ссылки', () => {
-		render(PlanCard, { plan: metro, error: null, state: prod.state, now: new Date(plan.now) });
-		const now = screen.getByRole('region', { name: 'Сейчас' });
-		expect(now).toHaveTextContent('▶ Идёт сценарий: 🚇 метро');
-		expect(within(now).queryByRole('link')).toBeNull();
+	it('план ещё грузится, а кадр забега есть — карта сразу', () => {
+		const block = now(liveFrame(), { plan: null });
+		expect(within(block).getByRole('group', { name: TITLE })).toBeInTheDocument();
+		expect(block).not.toHaveTextContent('Загрузка плана');
+	});
+
+	it('итог прошлого забега — по плану, что метро идёт, и новому запуску', () => {
+		const done = liveFrame({ running: false, outcome: 'finished', mode: 'leave' });
+		const block = now(done, { runId: 8 });
+		expect(block).toHaveTextContent('Забег завершён: вышел сам');
+		expect(block).toHaveTextContent('Это итог прошлого забега');
+		expect(within(block).getByRole('link', { name: 'повтор' })).toHaveAttribute('href', '/a/1/metro');
+	});
+
+	it('без кадра, связь потеряна больше 30 минут назад, итог старше 30 минут — обычный план', () => {
+		const plain = (frame: MetroLive | null, receivedAt?: number) => {
+			const block = now(frame, { plan, receivedAt });
+			expect(within(block).queryByRole('group', { name: TITLE })).toBeNull();
+			expect(block).not.toHaveTextContent('🚇 забег');
+			expect(block).toHaveTextContent('🤑 билеты лотереи (все — max)');
+			cleanup();
+		};
+		plain(null);
+		plain(liveFrame(), NOW.getTime() - 36 * 60_000);
+		// Забег с 17:00, конец — 17:10 по доле бюджета: час назад.
+		plain(liveFrame({ running: false, outcome: 'finished', mode: 'leave', started_at: '2026-10-07T17:00:00+00:00' }));
 	});
 });
