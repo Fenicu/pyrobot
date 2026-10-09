@@ -115,8 +115,9 @@ Userbot для автоматической игры в StartupWars (@StartupWar
 
 ## Установка
 
-Бот ставится на твой сервер в Docker: сам бот с админкой (один контейнер), Postgres и ежесуточные
-дампы базы. Шаги общие, различается только то, откуда берётся образ бота:
+Бот ставится на твой сервер в Docker: сам бот с админкой (один контейнер) и Postgres. Дампы базы
+сами не делаются — только выкатка автора снимает дамп перед обновлением; у себя снимай вручную
+(шаг 12). Шаги общие, различается только то, откуда берётся образ бота:
 
 - **А — готовый образ** из реестра автора `git.fenicu.com/fenicu/pyrobot` (публичный, без
   регистрации). Проще и быстрее. Только для серверов x86-64 (amd64).
@@ -264,7 +265,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Поднимутся `pyrobot` (бот и админка), `postgres` и `backup` (дампы базы); через полминуты у
+Поднимутся `pyrobot` (бот и админка) и `postgres`; через полминуты у
 `pyrobot` в колонке `STATUS` — `(healthy)`. Проверка на сервере:
 
 ```bash
@@ -449,7 +450,8 @@ Telegram уже привязан к другому аккаунту»). Так �
 
 ### 11. Обновление
 
-Перед обновлением сними свежий дамп базы (шаг 12) — на случай отката. Первое обновление с версии
+Перед обновлением сними свежий дамп базы (шаг 12) — на случай отката (выкатка автора из CI делает
+это сама). Первое обновление с версии
 с одним аккаунтом до версии с несколькими требует подготовки (ключ шифрования, обновление
 прокси) — «Переход с версии с одним аккаунтом» ниже. Обновление до версии с учётками и ролями
 (миграции 0014–0020) переносит сроки хранения и лимиты в настройки сервера и требует остановить бота
@@ -488,13 +490,20 @@ docker compose up -d
 
 ### 12. Бэкапы и данные
 
-**Дампы базы.** Сервис `backup` при запуске и дальше раз в сутки пишет дамп в
-`./backups/pyrobot-ГГГГ-ММ-ДД.dump` рядом с `compose.yml` (другой каталог — `PYROBOT_BACKUP_DIR`) и
-удаляет дампы старше 14 дней. Каталог и файлы принадлежат root (в дампах хэши паролей и сессии
-админки) — копируй их через `sudo` и храни копии и вне сервера. Свежий дамп прямо сейчас:
+**Дампы базы.** Постоянного сервиса с дампами нет: автор снимает дамп только при выкатке тега
+(`deploy/remote-deploy.sh`, перед миграцией) в `~/pyrobot/backups/pre-deploy-ГГГГММДДTЧЧММССZ.dump`
+(время UTC) и хранит три последних. Не получился дамп — выкатка отменяется, прежний бот работает
+дальше. Дампы старого сервиса `backups/pyrobot-ГГГГ-ММ-ДД.dump` остаются на диске, ничего их больше
+не удаляет — убери вручную, когда они не нужны. Каталог `backups` после старого сервиса мог остаться
+у root: перед первой выкаткой сделай `sudo chown -R "$USER": ~/pyrobot/backups`, иначе дамп не запишется
+и выкатка остановится. В дампах хэши паролей и сессии админки — файлы `0600`, копии храни вне сервера.
+
+У себя дамп снимается вручную, перед каждым обновлением и перед восстановлением (из каталога
+с `compose.yml`):
 
 ```bash
-docker compose exec backup sh -c 'umask 077; pg_dump --format=custom --file=/backups/pyrobot-manual.dump'
+mkdir -p backups
+(umask 077; docker compose exec -T postgres pg_dump -U pyrobot --format=custom pyrobot > backups/manual-$(date -u +%Y%m%dT%H%M%SZ).dump)
 ```
 
 Восстановление — в пустую базу, а не поверх текущей: `pg_restore --clean` удаляет только то, что
@@ -502,25 +511,21 @@ docker compose exec backup sh -c 'umask 077; pg_dump --format=custom --file=/bac
 миграции. Дамп — от той же или более старой версии бота, чем образ:
 
 ```bash
-# 1. Копия выбранного дампа под другим именем, дамп текущей базы на всякий случай, остановить бот и backup
-docker compose exec backup cp /backups/pyrobot-ГГГГ-ММ-ДД.dump /backups/restore.dump
-docker compose exec backup sh -c 'umask 077; pg_dump --format=custom --file=/backups/pyrobot-before-restore.dump'
-docker compose stop pyrobot backup
+# 1. Дамп текущей базы на всякий случай, остановить бот
+(umask 077; docker compose exec -T postgres pg_dump -U pyrobot --format=custom pyrobot > backups/before-restore.dump)
+docker compose stop pyrobot
 # 2. Пересоздать пустую базу
 docker compose exec postgres dropdb -U pyrobot --force pyrobot
 docker compose exec postgres createdb -U pyrobot pyrobot
-# 3. Восстановить из копии: первая же ошибка отменяет всё, база остаётся пустой
-docker compose run --rm backup 'pg_restore --exit-on-error --single-transaction --dbname pyrobot /backups/restore.dump'
+# 3. Восстановить из выбранного дампа: первая же ошибка отменяет всё, база остаётся пустой
+docker compose exec -T postgres pg_restore --exit-on-error --single-transaction -U pyrobot -d pyrobot < backups/pre-deploy-ГГГГММДДTЧЧММССZ.dump
 # 4. Довести схему до версии образа и запустить
 docker compose run --rm migrate
 docker compose up -d
 ```
 
-Копия нужна потому, что `backup` сразу после запуска (шаг 4) пишет дамп дня под именем
-`pyrobot-ГГГГ-ММ-ДД.dump` — сегодняшний исходный дамп он заменил бы восстановленной базой.
-`restore.dump` сам не удаляется (чистка трогает только `pyrobot-*.dump` старше 14 дней) — убери его,
-когда он больше не нужен. Ошибка на шаге 3 — база пустая, бот не запущен: проверь копию и повтори
-шаг 3 или верни базу из `pyrobot-before-restore.dump` теми же шагами 2–4.
+Ошибка на шаге 3 — база пустая, бот не запущен: проверь дамп и повтори шаг 3 или верни базу из
+`before-restore.dump` теми же шагами 2–4.
 
 **Сессии Telegram** — в базе, в таблице `tg_sessions`, зашифрованные ключом `PYROBOT_SECRET_KEY`
 (AES-256-GCM; зашифровано то, чем бот входит в аккаунт, — ключ авторизации). Это вход в твои
@@ -531,7 +536,7 @@ docker compose up -d
 дамп вместе с ключом — заверши сессию «pyrobot» в Telegram (Настройки → Устройства). Потерялась
 сессия — не страшно, войди заново (шаг 9).
 
-**Где что лежит:** база (в ней и сессии Telegram) — том `pyrobot_pgdata`, дампы — `./backups`,
+**Где что лежит:** база (в ней и сессии Telegram) — том `pyrobot_pgdata`, дампы — `./backups` (рядом с `compose.yml`),
 настройки установки и ключ шифрования — `.env`, настройки бота — в базе. Том `pyrobot_pyrobot-data`
 (приставка — имя проекта, `COMPOSE_PROJECT_NAME`, смонтирован в `/data`) в новой версии почти пуст:
 в нём только файл `pyrobot.session.migrated` — след переноса сессии прежней установки (см. «Переход
@@ -5367,17 +5372,14 @@ docker build --build-arg APT_PROXY=http://10.10.40.23:3142 \
 утечке OOM убивает бота, а не соседей по серверу, и `restart` поднимает его заново); `migrate` — тот же образ, профиль `migrate`, `alembic upgrade head`, запускается только
 явно (`docker compose run --rm migrate`);
 `postgres` — `postgres:17`, том `pgdata`, healthcheck `pg_isready`, память урезана под небольшую
-базу: `shared_buffers=64MB`, `max_connections=30` (бот — до 8 соединений при пуле 4 + 4, `backup` и
-`migrate` — по одному), `work_mem=4MB`, `maintenance_work_mem=32MB`; смена этих флагов в
-`compose.yml` пересоздаёт контейнер `postgres` при `docker compose up -d`; `backup` — `pg_dump
---format=custom` при старте и дальше раз в сутки в
-`${PYROBOT_BACKUP_DIR:-./backups}/pyrobot-<дата>.dump`, файлы старше 14 дней удаляются. Дампы
-пишутся с `umask 077` — `0600`, владелец root контейнера `backup` (в дампе хэши паролей и
-CSRF-токены сессий админки); читать и восстанавливать — из этого же контейнера, у него есть том и
-параметры подключения: восстановление — только в пустую базу (`dropdb`/`createdb` в `postgres` при
-остановленных `pyrobot` и `backup`), `docker compose run --rm backup 'pg_restore --exit-on-error
---single-transaction --dbname pyrobot /backups/restore.dump'` из копии дампа (`backup` при старте
-перезаписал бы сегодняшний `pyrobot-<дата>.dump`), затем `migrate` — порядок в «Установке», шаг 12:
+базу: `shared_buffers=64MB`, `max_connections=30` (бот — до 8 соединений при пуле 4 + 4, `migrate` и
+дамп выкатки — по одному), `work_mem=4MB`, `maintenance_work_mem=32MB`; смена этих флагов в
+`compose.yml` пересоздаёт контейнер `postgres` при `docker compose up -d`. Сервиса с дампами нет:
+дамп пишет выкатка автора (`deploy/remote-deploy.sh`) через `docker compose exec -T postgres pg_dump
+--format=custom` в `backups/pre-deploy-<UTC-время>.dump` с `umask 077` (`0600`; в дампе хэши паролей
+и CSRF-токены сессий админки), три последних; восстановление — только в пустую базу (`dropdb`/`createdb`
+в `postgres` при остановленном `pyrobot`), `docker compose exec -T postgres pg_restore --exit-on-error
+--single-transaction -U pyrobot -d pyrobot < дамп`, затем `migrate` — порядок в «Установке», шаг 12:
 `--clean` поверх базы после новых миграций оставлял их таблицы.
 `PYROBOT_DATABASE_URL` собирается в compose из `POSTGRES_PASSWORD` (пароль — без символов,
 требующих URL-экранирования, например hex), остальное — из `.env`.
@@ -5409,7 +5411,9 @@ verdaccio хоумлаба — `npm_config_registry`,
 другого вида — ошибка; версия админки — build-arg `PYROBOT_VERSION`, тег без «v»), локальных образов на
 раннере не остаётся. `deploy` выкатывает его на apps:
 пишет `.env` из секретов, копирует по ssh `compose.yml` и `deploy/remote-deploy.sh` в `~/pyrobot` и
-запускает скрипт — `docker compose pull pyrobot` → `docker compose run --rm migrate` (ошибка
+запускает скрипт — `docker compose pull pyrobot` → дамп базы в `~/pyrobot/backups/pre-deploy-<время>.dump`
+(если `postgres` уже запущен; три последних, ошибка дампа останавливает выкат) →
+`docker compose run --rm migrate` (ошибка
 миграции останавливает выкат, старый бот работает дальше) → `docker compose up -d --remove-orphans`
 → ожидание `/readyz` до 5 минут (`python -m app.healthcheck /readyz` внутри контейнера), не дождался
 — вывод `docker compose ps` и хвоста логов, job красный. Выкаты не идут параллельно

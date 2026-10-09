@@ -44,10 +44,9 @@ def test_bot_memory_is_limited(tmp_path: Path) -> None:
     assert int(bot["mem_limit"]) == 1024**3
 
 
-def test_backups_readable_only_by_owner(tmp_path: Path) -> None:
-    script = "\n".join(_config(tmp_path)["services"]["backup"]["command"])
-    assert "umask 077" in script
-    assert script.index("umask 077") < script.index("pg_dump")
+def test_no_backup_service(tmp_path: Path) -> None:
+    # Дампы пишет выкатка (deploy/remote-deploy.sh), отдельного контейнера с дампами нет.
+    assert set(_config(tmp_path)["services"]) == {"pyrobot", "migrate", "postgres"}
 
 
 def _ports(bot: dict[str, Any]) -> list[tuple[str, str, int]]:

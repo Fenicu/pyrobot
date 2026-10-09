@@ -1,4 +1,4 @@
-# pyrobot: бот с админкой, одноразовые миграции, Postgres и ежесуточный дамп. Настройки — в .env
+# pyrobot: бот с админкой, одноразовые миграции и Postgres. Настройки — в .env
 # рядом (шаблон — .env.example), установка по шагам — README «Установка».
 name: pyrobot
 
@@ -46,7 +46,7 @@ services:
   postgres:
     image: postgres:17
     restart: unless-stopped
-    # Память — под небольшую базу; соединений у бота до 8 (пул 4 + 4), у бэкапа и миграций по одному.
+    # Память — под небольшую базу; соединений у бота до 8 (пул 4 + 4), у миграций и дампа выкатки по одному.
     command:
       - postgres
       - -c
@@ -68,36 +68,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-
-  # Дамп при старте и дальше раз в сутки, хранятся последние 14 (custom-формат, pg_restore).
-  # Файлы — только для владельца (root контейнера): в дампе хэши паролей и сессии админки.
-  backup:
-    image: postgres:17
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PGHOST: postgres
-      PGUSER: pyrobot
-      PGDATABASE: pyrobot
-      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-    volumes:
-      - ${PYROBOT_BACKUP_DIR:-./backups}:/backups
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        umask 077
-        while true; do
-          file="/backups/pyrobot-$$(date +%F).dump"
-          if pg_dump --format=custom --file="$$file.tmp"; then
-            mv "$$file.tmp" "$$file" && echo "backup written: $$file"
-          else
-            rm -f "$$file.tmp"; echo "backup failed" >&2
-          fi
-          find /backups -name 'pyrobot-*.dump' -mtime +13 -delete
-          sleep 86400
-        done
 
 volumes:
   pyrobot-data: {}
