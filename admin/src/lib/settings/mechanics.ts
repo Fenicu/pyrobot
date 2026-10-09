@@ -1,4 +1,4 @@
-import { settingLabel } from './labels';
+import { settingHelp, settingLabel } from './labels';
 import { editable, leaves, pathKey, type Field, type Section } from './schema';
 
 /** Механика в настройках: включатель `features.<x>` в заголовке и её параметры (листья схемы). */
@@ -69,7 +69,13 @@ export const GROUPS: SettingsGroup[] = [
 				feature: 'features.fastfood',
 				paths: ['food.order', 'food.banana_reserve']
 			},
-			{ id: 'smoothie', title: 'Смузи', icon: '🍹', feature: 'features.smoothie', paths: [] },
+			{
+				id: 'smoothie',
+				title: 'Смузи',
+				icon: '🍹',
+				feature: 'features.smoothie',
+				paths: ['chats.smoothie_channel_id']
+			},
 			{
 				id: 'sleep',
 				title: 'Сон',
@@ -91,7 +97,13 @@ export const GROUPS: SettingsGroup[] = [
 				paths: ['battle.target', 'battle.overrides']
 			},
 			{ id: 'factory', title: 'Фабрика', icon: '🏭', feature: 'features.factory', paths: [] },
-			{ id: 'bulls', title: 'Биржевики', icon: '🐂', feature: 'features.bulls', paths: [] },
+			{
+				id: 'bulls',
+				title: 'Биржевики',
+				icon: '🐂',
+				feature: 'features.bulls',
+				paths: ['chats.bulls_invite_chat_id']
+			},
 			{
 				id: 'gorbushka',
 				title: 'Горбушка',
@@ -122,6 +134,13 @@ export const GROUPS: SettingsGroup[] = [
 					'lottery.keep.raw',
 					'lottery.keep.details'
 				]
+			},
+			{
+				id: 'robbery_defense',
+				title: 'Защита от ограбления',
+				icon: '🥷',
+				feature: 'features.robbery_defense',
+				paths: []
 			}
 		]
 	},
@@ -219,13 +238,10 @@ export const GROUPS: SettingsGroup[] = [
 				id: 'chats',
 				title: 'Чаты',
 				icon: '💬',
-				// Каналы смузи и биржевиков — здесь, со всеми id чатов: их задают один раз при настройке аккаунта.
 				paths: [
 					'chats.game_chat_id',
 					'chats.swinfo_chat_id',
 					'chats.swinfo_user_id',
-					'chats.smoothie_channel_id',
-					'chats.bulls_invite_chat_id',
 					'chats.team_chat_id'
 				]
 			}
@@ -235,13 +251,6 @@ export const GROUPS: SettingsGroup[] = [
 		id: 'misc',
 		title: 'Прочее',
 		cards: [
-			{
-				id: 'robbery_defense',
-				title: 'Защита от ограбления',
-				icon: '🥷',
-				feature: 'features.robbery_defense',
-				paths: []
-			},
 			{ id: 'pet_feast', title: 'Пир пета', icon: '🐾', feature: 'features.pet_feast', paths: [] },
 			{ id: 'paid_info', title: 'Платная информация', icon: 'ℹ️', feature: 'features.paid_info', paths: [] },
 			{ id: 'seasonal', title: 'Сезонные ивенты', icon: '🎄', feature: 'features.seasonal', paths: [] },
@@ -320,4 +329,29 @@ export function changeLabel(
 	if (!hit) return { section: fallbackSection, label: fallbackLabel };
 	if (hit.card.feature === path) return { section: hit.card.title, label: 'Включено' };
 	return { section: hit.card.title, label: settingLabel(path, fallbackLabel) };
+}
+
+const OTHER_ABOUT =
+	'Настройки, которых эта версия админки ещё не знает (сервер новее): видны и меняются как есть, подписи — из схемы.';
+
+/** Описание карточки: справка флага; без флага — справка секции первого поля. */
+export function cardAbout(card: MechanicCard): string | undefined {
+	if (card.id === OTHER_CARD_ID) return OTHER_ABOUT;
+	if (card.feature) return settingHelp(card.feature);
+	const first = card.paths[0];
+	return first === undefined ? undefined : settingHelp(first.split('.')[0]!);
+}
+
+/** Первое предложение текста — до точки вне скобок, за которой идёт следующее предложение. */
+export function firstSentence(text: string): string {
+	let depth = 0;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i]!;
+		if (ch === '(') depth++;
+		else if (ch === ')') depth = Math.max(0, depth - 1);
+		else if (depth === 0 && '.!?…'.includes(ch) && /^\s+[«("]?[A-ZА-ЯЁ0-9]/u.test(text.slice(i + 1))) {
+			return text.slice(0, i + 1);
+		}
+	}
+	return text;
 }

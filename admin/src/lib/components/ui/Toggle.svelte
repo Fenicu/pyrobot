@@ -3,9 +3,10 @@
 		checked: boolean;
 		label: string;
 		disabled?: boolean;
+		describedby?: string;
 		onchange: (v: boolean) => void;
 	}
-	let { checked, label, disabled = false, onchange }: Props = $props();
+	let { checked, label, disabled = false, describedby, onchange }: Props = $props();
 </script>
 
 <button
@@ -13,6 +14,7 @@
 	role="switch"
 	aria-checked={checked}
 	aria-label={label}
+	aria-describedby={describedby}
 	title={label}
 	{disabled}
 	onclick={() => onchange(!checked)}

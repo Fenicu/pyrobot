@@ -33,25 +33,143 @@ async function view(
 	return { fetch, editor };
 }
 
+const groups = () => screen.getByRole('navigation', { name: 'Группы настроек' });
+const openGroup = (user: ReturnType<typeof userEvent.setup>, name: string) =>
+	user.click(within(groups()).getByRole('button', { name }));
+const card = (name: string, scope: HTMLElement = document.body) => within(scope).getByRole('region', { name });
+
+/** Схема сервера новее клиента: флаг `features.new_flag`, которого нет в таблице механик. */
+function newerServer(): SettingsOut {
+	const schema = structuredClone(schemaJson) as unknown as {
+		$defs: Record<string, { properties: Record<string, unknown> }>;
+	};
+	schema.$defs.FeaturesSection!.properties.new_flag = { type: 'boolean', title: 'New Flag', default: false };
+	const withFlag = (v: Record<string, unknown>, on: boolean) => ({
+		...v,
+		features: { ...(v.features as object), new_flag: on }
+	});
+	return {
+		...settings,
+		schema: schema as unknown as SettingsOut['schema'],
+		values: withFlag(settings.values, true),
+		defaults: withFlag(settings.defaults as Record<string, unknown>, false)
+	};
+}
+
 describe('Настройки', () => {
-	it('раздел «Сбор артефакта» — списки дел; запись сбора (только чтение) в меню не попадает', async () => {
+	it('группы механик по порядку, «Функций» нет; «Дополнительно» отделено, в нём пути для разработчика', async () => {
+		await view(undefined, () => ({ ...settings, schema: schemaJson }));
+		const items = within(groups())
+			.getAllByRole('button')
+			.map((b) => b.textContent?.replace(/\s+/g, ' ').trim());
+		expect(items).toEqual([
+			'Дела и прокачка 4',
+			'Еда и сон 3',
+			'Битва и деньги 7',
+			'Метро и поездки 2',
+			'Подарки и предметы 4',
+			'Задания дня 2',
+			'Мандарины и чаты 2',
+			'Прочее 5',
+			'Дополнительно 1'
+		]);
+		expect(screen.queryByRole('region', { name: 'Функции' })).toBeNull();
+		expect(groups()).not.toHaveTextContent('Функции');
+		// Первая группа открыта сразу.
+		expect(screen.getByRole('region', { name: 'Дела и прокачка' })).toBeInTheDocument();
+		const devPaths = within(groups()).getByRole('checkbox', { name: 'пути настроек (для разработчика)' });
+		const advanced = within(groups()).getByRole('button', { name: 'Дополнительно' });
+		expect(advanced.compareDocumentPosition(devPaths) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	it('карточка механики: включатель в заголовке и её параметры', async () => {
+		const user = userEvent.setup();
+		await view();
+		await openGroup(user, 'Метро и поездки');
+		const metro = card('Метро');
+		expect(within(metro).getByRole('switch', { name: 'Метро' })).toHaveAttribute('aria-checked', 'true');
+		const paths = [...metro.querySelectorAll('[data-path]')].map((e) => e.getAttribute('data-path'));
+		expect(paths).toContain('metro.chest_min_packs');
+		expect(paths).toContain('metro.buffs');
+		expect(paths.every((p) => p?.startsWith('metro.') || p === 'strategy.reserve_ahead_min.metro')).toBe(true);
+		expect(metro).not.toHaveTextContent('умолч.:');
+	});
+
+	it('включатель в заголовке: точка у группы и строка «Метро · Включено» в панели', async () => {
+		const user = userEvent.setup();
+		const { fetch } = await view();
+		await openGroup(user, 'Метро и поездки');
+		const group = within(groups()).getByRole('button', { name: 'Метро и поездки' });
+		expect(group).not.toHaveTextContent('•');
+		await user.click(within(card('Метро')).getByRole('switch', { name: 'Метро' }));
+		expect(group).toHaveTextContent('•');
+		expect(within(groups()).getByRole('button', { name: 'Еда и сон' })).not.toHaveTextContent('•');
+		const bar = screen.getByRole('region', { name: 'Несохранённые изменения' });
+		expect(bar).toHaveTextContent('1 изменение · версия 13');
+		const diff = within(bar).getByRole('list', { name: 'Что поменяется' });
+		expect(within(diff).getAllByRole('listitem').map((li) => li.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+			'Метро · Включено: вкл → выкл'
+		]);
+		await user.click(within(bar).getByRole('button', { name: 'Сохранить' }));
+		await vi.waitFor(() => expect(fetch.calls.some((c) => c.method === 'PATCH')).toBe(true));
+		expect(JSON.parse(fetch.calls.find((c) => c.method === 'PATCH')!.body)).toEqual({
+			version: 13,
+			changes: { features: { metro: false } },
+			confirm_live: false
+		});
+		await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Несохранённые изменения' })).toBeNull());
+	});
+
+	it('поле не по умолчанию: синяя точка и «сбросить к умолчанию (X)» — возвращает умолчание', async () => {
+		const user = userEvent.setup();
+		const { editor } = await view();
+		const deeds = card('Дела');
+		expect(deeds).toHaveTextContent('1 не по умолчанию');
+		const row = deeds.querySelector('[data-path="strategy.deeds"]') as HTMLElement;
+		expect(within(row).getByTitle('Отличается от умолчания')).toBeInTheDocument();
+		const focus = deeds.querySelector('[data-path="strategy.focus"]') as HTMLElement;
+		expect(within(focus).queryByTitle('Отличается от умолчания')).toBeNull();
+		expect(within(focus).queryByRole('button', { name: /сбросить к умолчанию/ })).toBeNull();
+		await user.click(within(row).getByRole('button', { name: 'сбросить к умолчанию (harvest, job, learn, dconv, walk)' }));
+		expect(editor.value(['strategy', 'deeds'])).toEqual(['harvest', 'job', 'learn', 'dconv', 'walk']);
+		expect(within(row).queryByTitle('Отличается от умолчания')).toBeNull();
+		expect(within(row).queryByRole('button', { name: /сбросить к умолчанию/ })).toBeNull();
+		expect(deeds).not.toHaveTextContent('не по умолчанию');
+		expect(screen.getByRole('region', { name: 'Несохранённые изменения' })).toHaveTextContent(
+			'Дела · Разрешённые дела: harvest, job, learn, dconv, walk, confa → harvest, job, learn, dconv, walk'
+		);
+	});
+
+	it('описание механики — первое предложение, «Подробнее» раскрывает полную справку', async () => {
+		const user = userEvent.setup();
+		await view();
+		await openGroup(user, 'Метро и поездки');
+		const metro = card('Метро');
+		expect(metro).toHaveTextContent('Забеги в метро (вход — 2🔥) после кулдауна');
+		expect(metro).not.toHaveTextContent('Включённое метро держит 2🔥');
+		const more = within(metro).getByRole('button', { name: 'Подробнее' });
+		expect(more).toHaveAttribute('aria-expanded', 'false');
+		await user.click(more);
+		expect(more).toHaveAttribute('aria-expanded', 'true');
+		expect(metro).toHaveTextContent('Включённое метро держит 2🔥');
+	});
+
+	it('раздел «Сбор артефакта» — списки дел; запись сбора (только чтение) не показывается', async () => {
 		const user = userEvent.setup();
 		const values = {
 			...settings.values,
 			artifacts: { book_low: ['walk', 'job'], book_high: ['learn'], fax: ['job'], light: ['walk'], lottery_on_start: true }
 		};
 		await view(undefined, () => ({ ...settings, schema: schemaJson, values }));
-		const nav = screen.getByRole('navigation', { name: 'Секции настроек' });
-		expect(nav).toHaveTextContent('Сбор артефакта');
-		expect(nav).not.toHaveTextContent('Текущий сбор артефакта');
-		await user.click(screen.getByRole('button', { name: 'Сбор артефакта' }));
-		const section = screen.getByRole('region', { name: 'Сбор артефакта' });
-		expect(within(section).getByRole('group', { name: '📕 Букварь до 17 ур.' })).toHaveTextContent('walk');
-		expect(within(section).getByRole('switch', { name: 'Лотерея при запуске' })).toBeChecked();
+		await openGroup(user, 'Подарки и предметы');
+		expect(document.body).not.toHaveTextContent('Текущий сбор артефакта');
+		const artifacts = card('Сбор артефакта');
+		expect(within(artifacts).queryByRole('switch', { name: 'Сбор артефакта' })).toBeNull();
+		expect(within(artifacts).getByRole('group', { name: '📕 Букварь до 17 ур.' })).toHaveTextContent('walk');
+		expect(within(artifacts).getByRole('switch', { name: 'Лотерея при запуске' })).toBeChecked();
 	});
 
-
-	it('раздел «Поездки» — виды транспорта по-русски, порядок кнопками, секция после «Гаджетов»', async () => {
+	it('карточка «Поездки» — виды транспорта по-русски, порядок кнопками', async () => {
 		const user = userEvent.setup();
 		const values = {
 			...settings.values,
@@ -59,13 +177,8 @@ describe('Настройки', () => {
 			trips: { vehicles: ['car', 'bike'] }
 		};
 		const { editor } = await view(undefined, () => ({ ...settings, schema: schemaJson, values }));
-		const nav = screen.getByRole('navigation', { name: 'Секции настроек' });
-		const items = [...nav.querySelectorAll('li')].map((li) => li.textContent?.trim());
-		expect(items.indexOf('Гаджеты')).toBe(items.indexOf('Сбор артефакта') + 1);
-		expect(items.indexOf('Поездки')).toBe(items.indexOf('Гаджеты') + 1);
-		await user.click(screen.getByRole('button', { name: 'Поездки' }));
-		const section = screen.getByRole('region', { name: 'Поездки' });
-		const list = within(section).getByRole('group', { name: 'Виды транспорта' });
+		await openGroup(user, 'Метро и поездки');
+		const list = within(card('Поездки')).getByRole('group', { name: 'Виды транспорта' });
 		expect(list).toHaveTextContent('🚕 автомобиль');
 		expect(list).toHaveTextContent('🚲 велосипед');
 		expect(list).not.toHaveTextContent('car');
@@ -74,33 +187,53 @@ describe('Настройки', () => {
 		expect(within(list).getByRole('option', { name: '🛷 санки' })).toBeInTheDocument();
 	});
 
-
-	it('разделы: сначала часто нужные, технические — в «Дополнительно» в конце', async () => {
-		await view();
-		expect(screen.getByRole('region', { name: 'Функции' })).toBeInTheDocument();
-		const nav = screen.getByRole('navigation', { name: 'Секции настроек' });
-		const items = [...nav.querySelectorAll('li')].map((li) => li.textContent?.trim());
-		expect(items.slice(0, 4)).toEqual(['Функции', 'Стратегия и дела', 'Задания дня', 'Сон']);
-		expect(items.slice(-2)).toEqual(['Дополнительно', 'Движок']);
-	});
-
-	it('секция: поля по типам, kill и пауза — только на главной, отличие от умолчания', async () => {
+	it('каналы смузи и биржевиков — в карточках своих механик', async () => {
 		const user = userEvent.setup();
 		await view();
-		await user.click(screen.getByRole('button', { name: 'Движок' }));
-		const engine = screen.getByRole('region', { name: 'Движок' });
+		await openGroup(user, 'Еда и сон');
+		expect(card('Смузи').querySelector('[data-path="chats.smoothie_channel_id"]')).not.toBeNull();
+		await openGroup(user, 'Битва и деньги');
+		expect(card('Биржевики').querySelector('[data-path="chats.bulls_invite_chat_id"]')).not.toBeNull();
+		expect(within(card('Защита от ограбления')).getByRole('switch', { name: 'Защита от ограбления' })).toBeInTheDocument();
+	});
+
+	it('«Движок»: поля по типам, kill и пауза — только на главной', async () => {
+		const user = userEvent.setup();
+		await view();
+		await openGroup(user, 'Дополнительно');
+		const engine = card('Движок');
 		expect(within(engine).getByRole('combobox', { name: 'Режим' })).toHaveValue('live');
 		for (const path of ['engine.killed', 'engine.kill_reason', 'engine.paused']) {
 			expect(engine.querySelector(`[data-path="${path}"]`)).toBeNull();
 		}
 		expect(engine).not.toHaveTextContent('только чтение');
+		expect(engine).toHaveTextContent('Режим и темп шлюза');
+		await user.click(within(engine).getByRole('button', { name: 'Подробнее' }));
 		expect(engine).toHaveTextContent('Пауза и kill — кнопками на главной');
 		expect(within(engine).getAllByRole('switch').length).toBe(2);
-		await user.click(screen.getByRole('button', { name: 'Стратегия и дела' }));
-		const strategy = screen.getByRole('region', { name: 'Стратегия и дела' });
-		const deeds = strategy.querySelector('[data-path="strategy.deeds"]')!;
-		expect(deeds).toHaveTextContent('не по умолч.');
-		expect(within(strategy).getByRole('group', { name: 'Основные дела' })).toHaveTextContent('harvest');
+		await openGroup(user, 'Дела и прокачка');
+		expect(within(card('Дела')).getByRole('group', { name: 'Основные дела' })).toHaveTextContent('harvest');
+	});
+
+	it('поле, которого нет в таблице (сервер новее), — в «Прочих настройках», меняется', async () => {
+		const user = userEvent.setup();
+		const { editor } = await view(undefined, newerServer);
+		await openGroup(user, 'Дополнительно');
+		const other = card('Прочие настройки');
+		const flag = within(other).getByRole('switch', { name: 'New Flag' });
+		expect(flag).toBeChecked();
+		expect(within(groups()).getByRole('button', { name: 'Дополнительно' })).toHaveTextContent('Дополнительно 2');
+		await user.click(flag);
+		expect(editor.value(['features', 'new_flag'])).toBe(false);
+		expect(within(groups()).getByRole('button', { name: 'Дополнительно' })).toHaveTextContent('•');
+		expect(screen.getByRole('region', { name: 'Несохранённые изменения' })).toHaveTextContent('Функции · New Flag: вкл → выкл');
+	});
+
+	it('без неизвестных полей «Прочих настроек» нет', async () => {
+		const user = userEvent.setup();
+		await view(undefined, () => ({ ...settings, schema: schemaJson }));
+		await openGroup(user, 'Дополнительно');
+		expect(screen.queryByRole('region', { name: 'Прочие настройки' })).toBeNull();
 	});
 
 	it('пути настроек — только по переключателю, выбор запоминается', async () => {
@@ -108,8 +241,8 @@ describe('Настройки', () => {
 		localStorage.removeItem('pyrobot.settings.paths');
 		settingPaths.set(false);
 		await view();
-		await user.click(screen.getByRole('button', { name: 'Сон' }));
-		const row = screen.getByRole('region', { name: 'Сон' }).querySelector('[data-path="sleep.duration_h"]')!;
+		await openGroup(user, 'Еда и сон');
+		const row = card('Сон').querySelector('[data-path="sleep.duration_h"]')!;
 		expect(row).toHaveTextContent('Длительность сна, ч');
 		expect(row).not.toHaveTextContent('sleep.duration_h');
 		await user.click(screen.getByRole('checkbox', { name: 'пути настроек (для разработчика)' }));
@@ -118,74 +251,54 @@ describe('Настройки', () => {
 		settingPaths.set(false);
 	});
 
-	it('правка → панель «N изменений · версия V» → сохранение', async () => {
-		const user = userEvent.setup();
-		const { fetch } = await view();
-		await user.click(screen.getByRole('button', { name: 'Функции' }));
-		await user.click(screen.getByRole('switch', { name: 'Казино' }));
-		const bar = screen.getByRole('region', { name: 'Несохранённые изменения' });
-		expect(bar).toHaveTextContent('1 изменение · версия 13');
-		// До сохранения видно, что поменяется: раздел, название, было → станет.
-		const diff = within(bar).getByRole('list', { name: 'Что поменяется' });
-		expect(within(diff).getAllByRole('listitem').map((li) => li.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-			'Функции · Казино: выкл → вкл'
-		]);
-		expect(screen.getByText('изменено')).toBeInTheDocument();
-		await user.click(within(bar).getByRole('button', { name: 'Сохранить' }));
-		await vi.waitFor(() => expect(fetch.calls.some((c) => c.method === 'PATCH')).toBe(true));
-		expect(JSON.parse(fetch.calls.find((c) => c.method === 'PATCH')!.body)).toEqual({
-			version: 13,
-			changes: { features: { casino: true } },
-			confirm_live: false
-		});
-		await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Несохранённые изменения' })).toBeNull());
-	});
-
-	it('настройка, которую бот не читает, — приглушена с пометкой, но меняется', async () => {
+	it('механика, которую бот не читает, — приглушена с пометкой, но включается', async () => {
 		const user = userEvent.setup();
 		await view(undefined, () => ({ ...settings, schema: schemaJson }));
-		await user.click(screen.getByRole('button', { name: 'Функции' }));
-		const row = document.querySelector('[data-path="features.casino"]') as HTMLElement;
-		// Приглушена подпись, а не вся строка: прозрачность съела бы контраст пути и фокуса в светлой теме.
-		expect(row.className).not.toMatch(/opacity/);
-		expect(row.querySelector('label')).toHaveClass('text-fg-muted');
-		const note = within(row).getByText('не используется ботом');
+		await openGroup(user, 'Прочее');
+		const casino = card('Казино');
+		const title = within(casino).getByRole('heading', { name: 'Казино' });
+		expect(title).toHaveClass('text-fg-muted');
+		const note = within(casino).getByText('не используется ботом');
 		expect(note).toHaveClass('text-fg-muted');
-		const toggle = within(row).getByRole('switch', { name: 'Казино' });
+		const toggle = within(casino).getByRole('switch', { name: 'Казино' });
 		expect(toggle.getAttribute('aria-describedby')!.split(' ')).toContain(note.id);
 		await user.click(toggle);
 		expect(screen.getByRole('region', { name: 'Несохранённые изменения' })).toHaveTextContent('1 изменение');
-		const used = document.querySelector('[data-path="features.lottery"]') as HTMLElement;
-		expect(used.querySelector('label')).not.toHaveClass('text-fg-muted');
+		const used = card('Пир пета');
+		expect(within(used).getByRole('heading', { name: 'Пир пета' })).not.toHaveClass('text-fg-muted');
 		expect(used).not.toHaveTextContent('не используется ботом');
 	});
 
-	it('описание под полем, секции — своё; ⓘ раскрывает описание на телефоне', async () => {
+	it('подсказка поля — первое предложение, ⓘ раскрывает полное описание', async () => {
 		const user = userEvent.setup();
 		await view();
-		await user.click(screen.getByRole('button', { name: 'Движок' }));
-		const engine = screen.getByRole('region', { name: 'Движок' });
-		expect(engine).toHaveTextContent('Режим и темп шлюза');
-		const row = engine.querySelector('[data-path="engine.min_request_interval_s"]')!;
-		const help = within(row as HTMLElement).getByText(/Минимальный интервал между любыми двумя отправками/);
-		// На ПК описание видно всегда (md:block), на телефоне скрыто до нажатия ⓘ.
-		expect(help).toHaveClass('hidden', 'md:block');
-		const info = within(row as HTMLElement).getByRole('button', { name: 'Описание: Пауза между запросами, с' });
+		await openGroup(user, 'Дополнительно');
+		const row = card('Движок').querySelector('[data-path="engine.min_request_interval_s"]') as HTMLElement;
+		const help = within(row).getByText(/Минимальный интервал между любыми двумя отправками/);
+		expect(help).not.toHaveClass('hidden');
+		expect(help).not.toHaveTextContent('Применяется сразу');
+		const info = within(row).getByRole('button', { name: 'Описание: Пауза между запросами, с' });
 		expect(info).toHaveAttribute('aria-expanded', 'false');
 		expect(info).toHaveAttribute('aria-controls', help.id);
-		expect(info).toHaveClass('md:hidden');
-		// На ПК (описание всегда видно) поле связано с ним через aria-describedby; у поля с границей
-		// сервера — и с ней (под полем «не меньше 1.6»).
-		const field = within(row as HTMLElement).getByRole('spinbutton', { name: 'Пауза между запросами, с' });
+		// Поле связано с подсказкой и с границей сервера (под полем «не меньше 1.6»).
+		const field = within(row).getByRole('spinbutton', { name: 'Пауза между запросами, с' });
 		expect(field.getAttribute('aria-describedby')!.split(' ')).toContain(help.id);
-		expect(row as HTMLElement).toHaveTextContent('не меньше 1.6');
+		expect(row).toHaveTextContent('не меньше 1.6');
 		expect(field.getAttribute('aria-describedby')!.split(' ')).toContain('set-engine-min_request_interval_s-bound');
 		info.focus();
 		await user.keyboard('{Enter}');
 		expect(info).toHaveAttribute('aria-expanded', 'true');
-		expect(help).not.toHaveClass('hidden');
+		expect(help).toHaveTextContent('Применяется сразу');
 		await user.click(info);
-		expect(help).toHaveClass('hidden');
+		expect(help).not.toHaveTextContent('Применяется сразу');
+
+		// Длинное первое предложение под подписью не показывается — только по ⓘ (полностью).
+		await openGroup(user, 'Дела и прокачка');
+		const weight = card('Дела').querySelector('[data-path="strategy.weight_xp"]') as HTMLElement;
+		const long = within(weight).getByText(/^Оценка дела = /);
+		expect(long).toHaveClass('hidden');
+		await user.click(within(weight).getByRole('button', { name: 'Описание: Вес опыта' }));
+		expect(long).not.toHaveClass('hidden');
 	});
 
 	it('поле-теги и поле-словарь связаны с описанием через aria-describedby', async () => {
@@ -217,6 +330,32 @@ describe('Настройки', () => {
 			'aria-describedby',
 			overridesHelp.id
 		);
+	});
+
+	it('поиск: результаты — карточками механик («аптеч» → поле сундука в «Метро»)', async () => {
+		const user = userEvent.setup();
+		await view();
+		await user.type(screen.getByRole('searchbox', { name: 'Поиск настройки' }), 'аптеч');
+		const found = screen.getByRole('region', { name: 'Найденные настройки' });
+		const metro = card('Метро', found);
+		expect(metro.querySelector('[data-path="metro.chest_min_packs"]')).not.toBeNull();
+		// Только совпавшие поля: у «Бафов на входе» в подписи и описании аптечек нет.
+		expect(metro.querySelector('[data-path="metro.min_budget_min"]')).toBeNull();
+		expect(within(metro).getByRole('switch', { name: 'Метро' })).toBeInTheDocument();
+		// Группа не выбрана, пока идёт поиск.
+		expect(within(groups()).queryByRole('button', { current: true })).toBeNull();
+	});
+
+	it('поиск по флагу механики находит карточку и без полей', async () => {
+		const user = userEvent.setup();
+		await view();
+		await user.type(screen.getByRole('searchbox', { name: 'Поиск настройки' }), 'ограблен');
+		const found = screen.getByRole('region', { name: 'Найденные настройки' });
+		const robbery = card('Защита от ограбления', found);
+		expect(within(robbery).getByRole('switch', { name: 'Защита от ограбления' })).toBeInTheDocument();
+		expect(robbery.querySelector('[data-path]')).toBeNull();
+		// Поля «Движка» нашлись по описанию («при ограблении») — карточкой «Движок» со своими полями.
+		expect(within(found).getAllByRole('region').map((r) => r.dataset.card)).toEqual(['robbery_defense', 'engine']);
 	});
 
 	it('поиск находит настройку по описанию', async () => {
@@ -267,10 +406,28 @@ describe('Настройки', () => {
 		expect(editor.value(['strategy', 'focus'])).toEqual(['dconv']);
 	});
 
-	it('история: список версий и полный diff по клику', async () => {
+	it('выбор группы сбрасывает поиск', async () => {
 		const user = userEvent.setup();
 		await view();
-		const list = await screen.findByRole('list', { name: 'Версии настроек' });
+		const search = screen.getByRole('searchbox', { name: 'Поиск настройки' });
+		await user.type(search, 'аптеч');
+		await openGroup(user, 'Еда и сон');
+		expect(search).toHaveValue('');
+		expect(screen.getByRole('region', { name: 'Еда и сон' })).toBeInTheDocument();
+		expect(within(groups()).getByRole('button', { name: 'Еда и сон' })).toHaveAttribute('aria-current', 'true');
+	});
+
+	async function openHistory(user: ReturnType<typeof userEvent.setup>) {
+		expect(screen.queryByRole('list', { name: 'Версии настроек' })).toBeNull();
+		await user.click(screen.getByRole('button', { name: 'История' }));
+		const drawer = screen.getByRole('dialog', { name: 'История' });
+		return { drawer, list: await within(drawer).findByRole('list', { name: 'Версии настроек' }) };
+	}
+
+	it('история — в выезжающей панели по кнопке в шапке: список версий и полный diff по клику', async () => {
+		const user = userEvent.setup();
+		await view();
+		const { drawer, list } = await openHistory(user);
 		const v8 = await within(list).findByRole('button', { name: /v8 / });
 		expect(v8).toHaveTextContent(
 			'Функции · Ежедневные задания → вкл; Стратегия и дела · Разрешённые дела → harvest, job, learn, dconv, walk, confa'
@@ -279,17 +436,19 @@ describe('Настройки', () => {
 		expect(v8).toHaveAttribute('aria-expanded', 'true');
 		expect(within(list).getByLabelText('Изменения версии 8')).toHaveTextContent('Функции · Ежедневные задания выкл → вкл');
 		expect(within(list).getByLabelText('Изменения версии 8')).not.toHaveTextContent('features.daily_tasks');
+		await user.click(within(drawer).getByRole('button', { name: 'Закрыть' }));
+		expect(screen.queryByRole('dialog', { name: 'История' })).toBeNull();
 	});
 
 	it('история: «вернуть» кладёт прежнее значение в черновик, сохранение — как обычно', async () => {
 		const user = userEvent.setup();
 		const { editor } = await view();
-		const list = await screen.findByRole('list', { name: 'Версии настроек' });
+		const { list } = await openHistory(user);
 		await user.click(await within(list).findByRole('button', { name: /v13 / }));
 		await user.click(within(list).getByRole('button', { name: 'Вернуть «Функции · Лотерея»: выкл' }));
 		expect(editor.value(['features', 'lottery'])).toBe(false);
 		const bar = screen.getByRole('region', { name: 'Несохранённые изменения' });
-		expect(bar).toHaveTextContent('Функции · Лотерея: вкл → выкл');
+		expect(bar).toHaveTextContent('Лотерея · Включено: вкл → выкл');
 		// Значение уже в черновике — второй раз вернуть нечего.
 		expect(within(list).queryByRole('button', { name: /Вернуть «Функции · Лотерея»/ })).toBeNull();
 		// Паузу меняют кнопки на главной — вернуть её из истории нельзя.
@@ -298,10 +457,14 @@ describe('Настройки', () => {
 		expect(within(within(list).getByLabelText('Изменения версии 12')).queryByRole('button')).toBeNull();
 	});
 
-	it('чужая версия из SSE перечитывает и историю', async () => {
+	it('чужая версия из SSE перечитывает и открытую историю', async () => {
+		const user = userEvent.setup();
 		let version = 13;
 		const { fetch, editor } = await view(undefined, () => ({ ...settings, version }));
 		const history = () => fetch.calls.filter((c) => c.url.startsWith('/api/v1/accounts/1/settings/history')).length;
+		// Закрытая панель историю не грузит.
+		expect(history()).toBe(0);
+		await openHistory(user);
 		await vi.waitFor(() => expect(history()).toBe(1));
 		version = 14;
 		editor.onEvent({ type: 'settings', id: 'e:1', data: { version: 14, mode: 'live', paused: false, killed: false } });
@@ -318,8 +481,8 @@ describe('Настройки', () => {
 				422
 			)
 		);
-		await user.click(screen.getByRole('button', { name: 'Движок' }));
-		const engine = screen.getByRole('region', { name: 'Движок' });
+		await openGroup(user, 'Дополнительно');
+		const engine = card('Движок');
 		expect(engine.querySelector('#set-engine-min_request_interval_s-bound')).toHaveTextContent('не меньше 1.6');
 		expect(engine.querySelector('#set-engine-action_ttl_s-bound')).toHaveTextContent('не больше 600');
 		// У поля без границы сервера подсказки нет.
@@ -348,7 +511,7 @@ describe('Настройки', () => {
 		await view(() =>
 			json({ detail: [{ loc: ['body', 'changes', 'features'], msg: 'Value error, bad combo', type: 'value_error' }] }, 422)
 		);
-		await user.click(screen.getByRole('button', { name: 'Функции' }));
+		await openGroup(user, 'Прочее');
 		await user.click(screen.getByRole('switch', { name: 'Казино' }));
 		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
 		await vi.waitFor(() => expect(toasts.items.map((t) => t.text)).toEqual(['features: Value error, bad combo']));
@@ -367,7 +530,7 @@ describe('Перезапуск аккаунта после сохранения'
 			post,
 			running
 		);
-		await user.click(screen.getByRole('button', { name: 'Функции' }));
+		await openGroup(user, 'Прочее');
 		await user.click(screen.getByRole('switch', { name: 'Казино' }));
 		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
 		const banner = await screen.findByRole('status');
@@ -392,7 +555,7 @@ describe('Перезапуск аккаунта после сохранения'
 	it('без restart_required плашки нет', async () => {
 		const user = userEvent.setup();
 		await view();
-		await user.click(screen.getByRole('button', { name: 'Функции' }));
+		await openGroup(user, 'Прочее');
 		await user.click(screen.getByRole('switch', { name: 'Казино' }));
 		await user.click(screen.getByRole('button', { name: 'Сохранить' }));
 		await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Несохранённые изменения' })).toBeNull());

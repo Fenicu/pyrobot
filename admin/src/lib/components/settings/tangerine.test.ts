@@ -248,7 +248,7 @@ describe('«Обмен мандаринами» в настройках', () => 
 		values: { ...settings.values, chats: { ...(settings.values.chats as object), tangerine_reply_to: 11 } }
 	};
 
-	it('в «Чатах» после «Сообщения для /gt»; после пары поле показывает новое значение', async () => {
+	it('в карточке «Мандарин» после «Сообщения для /gt»; после пары поле показывает новое значение', async () => {
 		let current = settings;
 		const fetch = mockFetch((c) => {
 			if (c.url.startsWith('/api/v1/accounts/1/settings/history')) return json(fixture('settings_history'));
@@ -271,8 +271,11 @@ describe('«Обмен мандаринами» в настройках', () => 
 		render(ConfirmDialog);
 		render(SettingsView, { api, editor, accountId: 1, accounts: ACCOUNTS });
 		expect(screen.queryByRole('region', { name: 'Обмен мандаринами' })).toBeNull();
-		await user.click(screen.getByRole('button', { name: 'Чаты' }));
-		const section = screen.getByRole('region', { name: 'Чаты' });
+		await user.click(
+			within(screen.getByRole('navigation', { name: 'Группы настроек' })).getByRole('button', { name: 'Мандарины и чаты' })
+		);
+		const section = screen.getByRole('region', { name: 'Мандарин' });
+		expect(within(screen.getByRole('region', { name: 'Чаты' })).queryByRole('region', { name: 'Обмен мандаринами' })).toBeNull();
 		const exchange = within(section).getByRole('region', { name: 'Обмен мандаринами' });
 		const field = within(section).getByRole('spinbutton', { name: 'Сообщение для /gt' });
 		expect(field.compareDocumentPosition(exchange) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

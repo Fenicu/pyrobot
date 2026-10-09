@@ -68,8 +68,8 @@
 	}
 </script>
 
-<section aria-labelledby="history-title">
-	<h2 id="history-title" class="card-title">История</h2>
+<!-- Заголовок «История» — у панели (`HistoryDrawer`). -->
+<div>
 	{#if error}<p class="ext-text text-sm text-bad-fg">{error}</p>{/if}
 	<ul class="space-y-0.5" aria-label="Версии настроек">
 		{#each items as v (v.version)}
@@ -114,4 +114,4 @@
 	{#if next !== null}
 		<button type="button" class="btn mt-2 w-full" onclick={() => void load(next)}>Ещё</button>
 	{/if}
-</section>
+</div>

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { boundsText, type SettingsEditor } from '$lib/settings/editor.svelte';
 	import { settingHelp, settingLabel, valueLabels } from '$lib/settings/labels';
+	import { firstSentence } from '$lib/settings/mechanics';
 	import { settingPaths } from '$lib/settings/paths.svelte';
-	import { pathKey, type Field } from '$lib/settings/schema';
+	import { pathKey, type Field, type FieldKind } from '$lib/settings/schema';
 	import { fmtValue } from '$lib/settings/value';
-	import Pill from '../Pill.svelte';
 	import Self from './SettingField.svelte';
 	import Widget from './Widget.svelte';
 
@@ -16,10 +16,13 @@
 	const key = $derived(pathKey(field.path));
 	const label = $derived(settingLabel(key, field.title));
 	const help = $derived(settingHelp(key) ?? field.description);
+	// Под подписью — первое предложение описания, если оно короткое; ⓘ раскрывает описание целиком.
+	const SHORT_HINT = 120;
+	const hint = $derived.by(() => {
+		const first = help ? firstSentence(help) : undefined;
+		return first !== undefined && first.length <= SHORT_HINT ? first : undefined;
+	});
 	const id = $derived(`set-${key.replaceAll('.', '-')}`);
-	// На ПК описание видно всегда (`md:block`) и связано с полем через aria-describedby; на
-	// телефоне, пока свёрнуто (`hidden`), ссылка на скрытый элемент AT не читает. Пометка «не
-	// используется ботом» видна всегда. Граница сервера видна и там, и там.
 	const bound = $derived(editor.bound(field.path));
 	const boundHint = $derived(bound === null ? null : boundsText(bound));
 	const describedby = $derived(
@@ -31,12 +34,20 @@
 			.filter(Boolean)
 			.join(' ') || undefined
 	);
-	// На телефоне описание раскрывается кнопкой ⓘ, на ПК видно всегда.
 	let open = $state(false);
 	const value = $derived(editor.value(field.path));
 	const changed = $derived(editor.isChanged(field.path));
-	const notDefault = $derived(!editor.isDefault(field.path));
+	const fallback = $derived(editor.defaultValue(field.path));
+	// Нет умолчания (сервер его не прислал) — нечего и сбрасывать.
+	const notDefault = $derived(fallback !== undefined && !editor.isDefault(field.path));
 	const error = $derived(editor.fieldErrors[key]);
+	// Списки и словари — под подписью всегда; составные поля — под подписью на телефоне; остальные — справа.
+	const WIDE = ['enum_tags', 'string_tags', 'map', 'json', 'group'];
+	const NARROW = ['boolean', 'number', 'enum', 'const'];
+	const wide = (k: FieldKind): boolean => WIDE.includes(k.kind) || (k.kind === 'nullable' && wide(k.inner));
+	const span = $derived(
+		wide(field.type) ? 'col-span-2' : NARROW.includes(field.type.kind) ? '' : 'max-sm:col-span-2'
+	);
 </script>
 
 {#if field.type.kind === 'group'}
@@ -51,59 +62,65 @@
 		{/each}
 	</fieldset>
 {:else}
-	<div
-		class="grid gap-1 border-b border-line-soft py-2 md:grid-cols-[16rem_minmax(0,1fr)_9rem] md:items-center md:gap-3"
-		data-path={key}
-	>
-		<div class="flex items-start gap-1">
-			<div class="min-w-0 flex-1">
-				<label for={id} class="block text-sm {field.unused ? 'text-fg-muted' : ''}">
+	<div class="group/field relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-line-soft py-2" data-path={key}>
+		<div class="min-w-0 {span}">
+			<div class="flex items-start gap-1">
+				<label for={id} class="min-w-0 text-sm {field.unused ? 'text-fg-muted' : ''}">
 					{label}
 					{#if settingPaths.show}<span class="block font-mono text-[11px] text-fg-faint">{key}</span>{/if}
 				</label>
-				{#if field.unused}<p id="{id}-unused" class="text-xs text-fg-muted">не используется ботом</p>{/if}
+				{#if help && help !== hint}
+					<button
+						type="button"
+						class="-my-0.5 rounded-full px-1 text-xs leading-none text-fg-faint hover:bg-surface-2 hover:text-fg"
+						aria-expanded={open}
+						aria-controls="{id}-help"
+						aria-label="Описание: {label}"
+						onclick={() => (open = !open)}>ⓘ</button
+					>
+				{/if}
 			</div>
+			{#if field.unused}<p id="{id}-unused" class="text-xs text-fg-muted">не используется ботом</p>{/if}
 			{#if help}
-				<button
-					type="button"
-					class="-my-1 rounded-full px-2 py-1 text-base leading-none text-fg-muted hover:bg-surface-2 md:hidden"
-					aria-expanded={open}
-					aria-controls="{id}-help"
-					aria-label="Описание: {label}"
-					onclick={() => (open = !open)}>ⓘ</button
-				>
+				<!-- Свёрнутое длинное описание скрыто, но целиком: на него ссылается aria-describedby. -->
+				<p id="{id}-help" class="ext-text text-[11px] leading-snug text-fg-muted {open || hint ? '' : 'hidden'}">
+					{open || !hint ? help : hint}
+				</p>
 			{/if}
 		</div>
-		<div class="min-w-0 rounded-md {changed ? 'ring-1 ring-accent ring-offset-2 ring-offset-surface' : ''}">
-			{#if field.readOnly}
-				<span class="ext-text text-sm" {id} aria-describedby={describedby}>{fmtValue(value)}</span>
-				<span class="ml-2 text-xs whitespace-nowrap text-fg-faint">только чтение</span>
-			{:else}
-				<Widget
-					kind={field.type}
-					{value}
-					{id}
-					{label}
-					labels={valueLabels(key)}
-					{describedby}
-					fallback={editor.defaultValue(field.path)}
-					invalid={!!error}
-					onchange={(next) => editor.set(field.path, next)}
-				/>
+		<div class="flex min-w-0 items-center gap-1.5 {span} {wide(field.type) ? '' : 'sm:justify-end'}">
+			{#if notDefault}
+				<span class="size-1.5 shrink-0 rounded-full bg-accent" title="Отличается от умолчания"></span>
 			{/if}
-			{#if boundHint}<p id="{id}-bound" class="mt-1 text-xs text-fg-faint">{boundHint}</p>{/if}
-			{#if error}<p class="ext-text mt-1 text-xs text-bad-fg" role="alert">{error}</p>{/if}
+			<div class="min-w-0 rounded-md {changed ? 'ring-1 ring-accent ring-offset-2 ring-offset-surface' : ''} {wide(field.type) ? 'flex-1' : ''}">
+				{#if field.readOnly}
+					<span class="ext-text text-sm" {id} aria-describedby={describedby}>{fmtValue(value)}</span>
+					<span class="ml-2 text-xs whitespace-nowrap text-fg-faint">только чтение</span>
+				{:else}
+					<Widget
+						kind={field.type}
+						{value}
+						{id}
+						{label}
+						labels={valueLabels(key)}
+						{describedby}
+						{fallback}
+						invalid={!!error}
+						onchange={(next) => editor.set(field.path, next)}
+					/>
+				{/if}
+			</div>
 		</div>
-		<div class="flex flex-wrap items-center gap-1 text-xs text-fg-faint">
-			{#if changed}
-				<Pill tone="dec">изменено</Pill>
-			{:else if notDefault}
-				<span title="Значение отличается от умолчания" class="text-accent">● не по умолч.</span>
-			{/if}
-			<span class="ext-text">умолч.: {fmtValue(editor.defaultValue(field.path))}</span>
-		</div>
-		{#if help}
-			<p id="{id}-help" class="text-xs text-fg-muted md:col-span-3 md:block {open ? '' : 'hidden'}">{help}</p>
+		{#if boundHint}<p id="{id}-bound" class="col-span-2 text-right text-[11px] text-fg-faint">{boundHint}</p>{/if}
+		{#if error}<p class="ext-text col-span-2 text-xs text-bad-fg" role="alert">{error}</p>{/if}
+		{#if notDefault && !field.readOnly}
+			<!-- На телефоне — строкой под полем; на ПК — плашкой под точкой по наведению или фокусу в строке
+			     (место под неё не резервируется). -->
+			<button
+				type="button"
+				class="ext-text col-span-2 justify-self-start text-left text-[11px] text-accent hover:underline md:invisible md:absolute md:top-full md:right-0 md:z-10 md:max-w-80 md:-translate-y-2 md:rounded-md md:border md:border-line md:bg-surface-2 md:px-2 md:py-0.5 md:shadow-lg md:group-focus-within/field:visible md:group-hover/field:visible"
+				onclick={() => editor.resetToDefault(field.path)}>сбросить к умолчанию ({fmtValue(fallback)})</button
+			>
 		{/if}
 	</div>
 {/if}

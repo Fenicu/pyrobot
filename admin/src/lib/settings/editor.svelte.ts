@@ -149,6 +149,12 @@ export class SettingsEditor {
 		}
 	}
 
+	/** Значение по умолчанию — в черновик (копией); умолчания нет — ничего. */
+	resetToDefault(path: Path): void {
+		const fallback = this.defaultValue(path);
+		if (fallback !== undefined) this.set(path, clone(fallback));
+	}
+
 	discard(): void {
 		if (this.server) this.draft = clone(this.server.values);
 		this.fieldErrors = {};

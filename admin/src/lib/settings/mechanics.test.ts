@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import schemaJson from './settings.schema.json';
-import { GROUPS, OTHER_CARD_ID, cardOf, changeLabel, placeFields } from './mechanics';
+import { GROUPS, OTHER_CARD_ID, cardAbout, cardOf, changeLabel, firstSentence, placeFields } from './mechanics';
 import { editable, leaves, pathKey, sectionsOf, type Field, type JsonSchema, type Section } from './schema';
 
 const sections = sectionsOf(schemaJson as JsonSchema);
@@ -89,6 +89,15 @@ describe('механики настроек', () => {
 		expect(placed.get('metro')!.map((f) => pathKey(f.path))).not.toContain('metro.new_knob');
 	});
 
+	it('новый флаг features.* (сервер новее) — обычное поле в «Прочих настройках»', () => {
+		const extra = sections.map((s) =>
+			s.name === 'features' ? { ...s, fields: [...s.fields, leaf('features.new_flag')] } : s
+		);
+		const placed = placeFields(extra);
+		expect(placed.get(OTHER_CARD_ID)!.map((f) => pathKey(f.path))).toEqual(['features.new_flag']);
+		expect(cardOf('features.new_flag')).toBeNull();
+	});
+
 	it('cardOf: поле и включатель — в своей карточке, неизвестный путь — null', () => {
 		const hit = cardOf('metro.buffs');
 		expect(hit?.card.title).toBe('Метро');
@@ -98,6 +107,11 @@ describe('механики настроек', () => {
 		expect(cardOf('strategy.reserve_ahead_min.gorbushka')?.card.id).toBe('gorbushka');
 		expect(cardOf('chats.tangerine_reply_to')?.card.id).toBe('tangerine');
 		expect(cardOf('chats.team_chat_id')?.card.id).toBe('chats');
+		// Каналы смузи и биржевиков — в карточках своих механик, флаг защиты от ограбления — в «Битве и деньгах».
+		expect(cardOf('chats.smoothie_channel_id')?.card.id).toBe('smoothie');
+		expect(cardOf('chats.bulls_invite_chat_id')?.card.id).toBe('bulls');
+		expect(cardOf('features.robbery_defense')?.group.title).toBe('Битва и деньги');
+		expect(cardOf('features.tangerine_gifts')?.group.title).toBe('Подарки и предметы');
 		expect(cardOf('engine.mode')?.group.advanced).toBe(true);
 		expect(cardOf('metro.gone')).toBeNull();
 	});
@@ -109,5 +123,24 @@ describe('механики настроек', () => {
 		});
 		expect(changeLabel('features.metro', 'Функции', 'Метро')).toEqual({ section: 'Метро', label: 'Включено' });
 		expect(changeLabel('metro.new_knob', 'Метро', 'New Knob')).toEqual({ section: 'Метро', label: 'New Knob' });
+	});
+
+	it('описание карточки: справка флага, без флага — справка секции, у «Прочих» — своё', () => {
+		const card = (id: string) => cards.find((c) => c.id === id)!;
+		expect(cardAbout(card('metro'))).toMatch(/^Забеги в метро/);
+		expect(cardAbout(card('engine'))).toMatch(/^Режим и темп шлюза/);
+		expect(cardAbout(card('chats'))).toMatch(/^Чаты и каналы/);
+		expect(cardAbout(card(OTHER_CARD_ID))).toMatch(/эта версия админки/);
+	});
+
+	it('firstSentence: до первой точки перед новым предложением', () => {
+		expect(firstSentence('Раз. Два.')).toBe('Раз.');
+		expect(firstSentence('Ночью (22:00–08:00 МСК) жать. Встретив — драться.')).toBe('Ночью (22:00–08:00 МСК) жать.');
+		expect(firstSentence('Одно предложение')).toBe('Одно предложение');
+		expect(firstSentence('Сумма 1.5 мин. Дальше.')).toBe('Сумма 1.5 мин.');
+		// Точка в скобках — не конец предложения.
+		expect(firstSentence('Очки навыков (см. «Практика». Теория) делить. Дальше.')).toBe(
+			'Очки навыков (см. «Практика». Теория) делить.'
+		);
 	});
 });

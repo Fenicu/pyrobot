@@ -47,6 +47,3 @@ export const SECTION_ORDER = [
 	'chats',
 	'engine'
 ];
-
-/** «Дополнительно»: темп шлюза — ставят один раз. */
-export const ADVANCED_SECTIONS = ['engine'];

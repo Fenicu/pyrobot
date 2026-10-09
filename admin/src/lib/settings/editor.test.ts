@@ -99,6 +99,26 @@ describe('редактор настроек', () => {
 		expect([bad.e.fieldErrors, bad.e.formErrors]).toEqual([{}, []]);
 	});
 
+	it('сброс к умолчанию: черновик получает копию умолчания, поле снова «по умолчанию»', async () => {
+		const values = { ...settings.values, strategy: { ...(settings.values.strategy as object), deeds: ['job'] } };
+		const fetch = mockFetch(() => json({ ...settings, values }));
+		const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
+		const e = new SettingsEditor(api);
+		await e.load();
+		const path = ['strategy', 'deeds'];
+		expect(e.isDefault(path)).toBe(false);
+		e.resetToDefault(path);
+		expect(e.isDefault(path)).toBe(true);
+		expect(e.value(path)).toEqual(e.defaultValue(path));
+		expect(e.changes.map((p) => p.join('.'))).toEqual(['strategy.deeds']);
+		// Копия, а не ссылка: правка черновика не меняет умолчание.
+		(e.value(path) as string[]).push('confa');
+		expect(e.defaultValue(path)).not.toContain('confa');
+		// Умолчания нет (поле новее сервера) — сбрасывать не к чему.
+		e.resetToDefault(['strategy', 'gone']);
+		expect(e.value(['strategy', 'gone'])).toBeUndefined();
+	});
+
 	it('чужая версия из SSE: без правок — перечитать, с правками — предупредить', async () => {
 		const { e, fetch } = await editor(ok);
 		e.onEvent({ type: 'settings', id: 'e:1', data: { version: 14, mode: 'live', paused: true, killed: false } });

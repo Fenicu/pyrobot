@@ -3,7 +3,6 @@
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { accounts, current, session } from '$lib/app.svelte';
 	import SettingsView from '$lib/components/settings/SettingsView.svelte';
-	import Page from '$lib/components/shell/Page.svelte';
 	import { SettingsEditor } from '$lib/settings/editor.svelte';
 	import { leaveGuard } from '$lib/settings/leave';
 	import { dialogs } from '$lib/stores/confirm.svelte';
@@ -34,6 +33,4 @@
 	);
 </script>
 
-<Page title="Настройки">
-	<SettingsView {api} {editor} running={engine.status?.running !== false} accountId={id} accounts={accounts.list} />
-</Page>
+<SettingsView {api} {editor} running={engine.status?.running !== false} accountId={id} accounts={accounts.list} />
