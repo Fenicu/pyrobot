@@ -79,31 +79,7 @@ describe('меню оболочки и список аккаунтов', () => {
 	});
 });
 
-describe('точка связи', () => {
-	// Открытый аккаунт: поток событий без движка закрыт (503) и ждёт повтора.
-	const opened = (running: boolean) => ({
-		id: 1,
-		live: { status: 'offline', retryIn: 4000 },
-		unread: { count: 0 },
-		engine: { status: { running } }
-	});
-
-	it('движок не запущен — приглушённое «движок не запущен» вместо «нет связи»', () => {
-		accounts.list = [account(1)];
-		current.ctx = opened(false) as unknown as typeof current.ctx;
-		open('/a/1', { account: '1' });
-		const dot = screen.getByTitle('движок не запущен');
-		expect(dot.querySelector('[aria-hidden]')).toHaveClass('bg-zinc-500');
-		expect(screen.queryByTitle(/нет связи/)).toBeNull();
-	});
-
-	it('движок запущен, поток оборван — «нет связи» с повтором', () => {
-		accounts.list = [account(1)];
-		current.ctx = opened(true) as unknown as typeof current.ctx;
-		open('/a/1', { account: '1' });
-		expect(screen.getByTitle('нет связи · повтор через 4 с')).toBeInTheDocument();
-	});
-});
+// Точка связи — в шапке страницы (shell/shell.test.ts).
 
 describe('версия и «Что нового»', () => {
 	it('номер версии в меню ведёт на историю изменений', () => {

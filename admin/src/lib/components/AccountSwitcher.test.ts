@@ -1,5 +1,4 @@
 import { cleanup, render, screen, within } from '@testing-library/svelte';
-import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { AccountOut } from '$lib/api/types';
 import AccountSwitcher from './AccountSwitcher.svelte';
@@ -33,16 +32,9 @@ const accounts = [
 ];
 
 describe('переключатель аккаунтов', () => {
-	it('на ПК: имя, статус и счётчик открытого; список ведёт в тот же раздел другого аккаунта', async () => {
-		const user = userEvent.setup();
+	it('список «Ещё»: имя, статус и счётчик; ведёт в тот же раздел другого аккаунта', () => {
 		// Счётчик открытого аккаунта — из его потока, у остальных — из списка.
-		render(AccountSwitcher, { variant: 'side', accounts, current: 1, alerts: 4, path: '/a/1/journal' });
-		const toggle = screen.getByRole('button', { expanded: false });
-		expect(toggle).toHaveTextContent('main');
-		expect(toggle).toHaveTextContent('(в сети)');
-		expect(within(toggle).getByLabelText('непрочитанных предупреждений и ошибок: 4')).toBeInTheDocument();
-
-		await user.click(toggle);
+		render(AccountSwitcher, { variant: 'list', accounts, current: 1, alerts: 4, path: '/a/1/journal' });
 		const list = screen.getByRole('list', { name: 'Аккаунты' });
 		const links = within(list).getAllByRole('link');
 		expect(links.map((a) => [a.textContent?.replace(/\s+/g, ' ').trim(), a.getAttribute('href')])).toEqual([
@@ -54,17 +46,13 @@ describe('переключатель аккаунтов', () => {
 		expect(links[0]).toHaveAttribute('aria-current', 'true');
 	});
 
-	it('имя — титул как в игре: значок компании и [TAG]; сырое имя не меняется', async () => {
-		const user = userEvent.setup();
+	it('имя — титул как в игре: значок компании и [TAG]; сырое имя не меняется', () => {
 		const titled = [
 			account(1, 'Fenicu', { company: 'bmesa', team_tag: 'SU' }),
 			account(2, 'twink', { company: 'wayne' }),
 			account(3, 'old')
 		];
-		render(AccountSwitcher, { variant: 'side', accounts: titled, current: 1, path: '/a/1' });
-		const toggle = screen.getByRole('button', { expanded: false });
-		expect(toggle).toHaveTextContent('☣️[SU] Fenicu');
-		await user.click(toggle);
+		render(AccountSwitcher, { variant: 'list', accounts: titled, current: 1, path: '/a/1' });
 		const links = within(screen.getByRole('list', { name: 'Аккаунты' })).getAllByRole('link');
 		expect(links.map((a) => a.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
 			'☣️[SU] Fenicu (в сети)',

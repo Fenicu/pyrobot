@@ -78,55 +78,52 @@
 	}
 </script>
 
-<section class="card" aria-labelledby="controls-title">
-	<h2 id="controls-title" class="card-title">Управление</h2>
-	{#if !status}
-		<p class="text-sm text-fg-muted">Статус движка ещё не получен.</p>
-	{:else}
-		<div class="flex flex-wrap gap-2">
-			<button
-				type="button"
-				class="btn"
-				title={status.paused
+<!-- Режим без движка пишется прямо в настройки, пауза и kill — только через движок. -->
+{#if status}
+	{@const stopped = 'Пауза и kill — у запущенного движка'}
+	<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Управление">
+		<button
+			type="button"
+			class="btn"
+			title={!status.running
+				? stopped
+				: status.paused
 					? 'Снять паузу: бот снова сам принимает решения'
 					: 'Бот перестаёт решать сам; «Проснуться» при ограблении и ручные команды по умолчанию проходят'}
-				disabled={busy || !status.running}
-				onclick={togglePause}
-			>
-				{#if status.paused}
-					<Play class="size-4" aria-hidden="true" /> Продолжить
-				{:else}
-					<Pause class="size-4" aria-hidden="true" /> Пауза
-				{/if}
-			</button>
-			<button
-				type="button"
-				class="btn {status.killed ? '' : 'btn-danger'}"
-				title={status.killed
+			disabled={busy || !status.running}
+			onclick={togglePause}
+		>
+			{#if status.paused}
+				<Play class="size-4" aria-hidden="true" /> Продолжить
+			{:else}
+				<Pause class="size-4" aria-hidden="true" /> Пауза
+			{/if}
+		</button>
+		<button
+			type="button"
+			class="btn"
+			title={status.mode === 'live'
+				? 'Бот решает, но действия, кроме навигации, в игру не отправляет — только пишет в журнал'
+				: 'Бот начнёт реально отправлять действия в игру'}
+			disabled={busy}
+			onclick={toggleMode}
+		>
+			<Power class="size-4" aria-hidden="true" />
+			{status.mode === 'live' ? 'В dry_run' : 'Включить live'}
+		</button>
+		<button
+			type="button"
+			class="btn {status.killed ? '' : 'btn-danger'}"
+			title={!status.running
+				? stopped
+				: status.killed
 					? 'Снять аварийный стоп: отправки в игру снова разрешены'
 					: 'Аварийный стоп: в игру не уходит ничего, даже ручные команды и «Проснуться»'}
-				disabled={busy || !status.running}
-				onclick={toggleKill}
-			>
-				<OctagonX class="size-4" aria-hidden="true" />
-				{status.killed ? 'Снять kill' : 'Kill'}
-			</button>
-			<button
-				type="button"
-				class="btn"
-				title={status.mode === 'live'
-					? 'Бот решает, но действия, кроме навигации, в игру не отправляет — только пишет в журнал'
-					: 'Бот начнёт реально отправлять действия в игру'}
-				disabled={busy}
-				onclick={toggleMode}
-			>
-				<Power class="size-4" aria-hidden="true" />
-				{status.mode === 'live' ? 'В dry_run' : 'Включить live'}
-			</button>
-		</div>
-		{#if !status.running}
-			<!-- Режим без движка пишется прямо в настройки, пауза и kill — только через движок. -->
-			<p class="mt-2 text-xs text-fg-muted">Пауза и kill — у запущенного движка.</p>
-		{/if}
-	{/if}
-</section>
+			disabled={busy || !status.running}
+			onclick={toggleKill}
+		>
+			<OctagonX class="size-4" aria-hidden="true" />
+			{status.killed ? 'Снять kill' : 'Kill'}
+		</button>
+	</div>
+{/if}

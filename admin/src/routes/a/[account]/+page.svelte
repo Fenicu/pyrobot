@@ -5,12 +5,13 @@
 	import DailyCard from '$lib/components/daily/DailyCard.svelte';
 	import ArtifactCard from '$lib/components/home/ArtifactCard.svelte';
 	import CharacterCard from '$lib/components/home/CharacterCard.svelte';
-	import ControlsCard from '$lib/components/home/ControlsCard.svelte';
 	import GadgetsCard from '$lib/components/home/GadgetsCard.svelte';
+	import HeaderControls from '$lib/components/home/HeaderControls.svelte';
 	import MetroLiveCard from '$lib/components/home/MetroLiveCard.svelte';
 	import PlanCard from '$lib/components/home/PlanCard.svelte';
 	import StatusHeader from '$lib/components/home/StatusHeader.svelte';
 	import TodayCard from '$lib/components/home/TodayCard.svelte';
+	import Page from '$lib/components/shell/Page.svelte';
 	import { DailyStore } from '$lib/daily/store.svelte';
 	import { GadgetsStore } from '$lib/gadgets/store.svelte';
 	import { shown } from '$lib/metro/live';
@@ -75,65 +76,63 @@
 	});
 </script>
 
-<svelte:head><title>Главная · pyrobot</title></svelte:head>
+{#snippet status()}
+	<StatusHeader status={engine.status} error={engine.error} state={character.state} {now} />
+{/snippet}
 
-<h1 class="sr-only">Главная</h1>
-<div class="mx-auto max-w-5xl space-y-3">
-	<StatusHeader
-		status={engine.status}
-		error={engine.error}
-		live={live.status}
-		retryIn={live.retryIn}
-		state={character.state}
-		{now}
-	/>
-	{#if character.error && !character.loaded}
-		<p class="card text-sm text-bad-fg" role="alert">Состояние недоступно: движок не отвечает.</p>
-	{/if}
-	<PlanCard
-		plan={plan.outlook}
-		error={plan.error}
-		state={character.state}
-		{now}
-		metroHref={metroShown ? '#metro-live' : null}
-	/>
-	<MetroLiveCard
-		frame={metro.frame}
-		receivedAt={metro.receivedAt}
-		{now}
-		{account}
-		metroRunning={plan.outlook?.loop.current === 'metro'}
-		metroRunId={metro.metroRunId}
-	/>
-	<div class="grid gap-3 md:grid-cols-2">
-		<div class="space-y-3">
-			<CharacterCard
-				state={character.state}
-				stale={character.stale}
-				{now}
-				days={daily.data?.days ?? []}
-				{api}
-				{settingsVersion}
-			/>
-			<GadgetsCard
-				{api}
-				state={character.state}
-				stale={character.stale}
-				gadgets={gadgets.data}
-				error={gadgets.error}
-				status={engine.status}
-				onchange={(out) => gadgets.set(out)}
-			/>
+{#snippet actions()}
+	<HeaderControls {api} status={engine.status} onchange={() => void engine.load()} />
+{/snippet}
+
+<Page title="Главная" {status} {actions}>
+	<div class="space-y-3">
+		{#if character.error && !character.loaded}
+			<p class="card text-sm text-bad-fg" role="alert">Состояние недоступно: движок не отвечает.</p>
+		{/if}
+		<PlanCard
+			plan={plan.outlook}
+			error={plan.error}
+			state={character.state}
+			{now}
+			metroHref={metroShown ? '#metro-live' : null}
+		/>
+		<MetroLiveCard
+			frame={metro.frame}
+			receivedAt={metro.receivedAt}
+			{now}
+			{account}
+			metroRunning={plan.outlook?.loop.current === 'metro'}
+			metroRunId={metro.metroRunId}
+		/>
+		<div class="grid gap-3 md:grid-cols-2">
+			<div class="space-y-3">
+				<CharacterCard
+					state={character.state}
+					stale={character.stale}
+					{now}
+					days={daily.data?.days ?? []}
+					{api}
+					{settingsVersion}
+				/>
+				<GadgetsCard
+					{api}
+					state={character.state}
+					stale={character.stale}
+					gadgets={gadgets.data}
+					error={gadgets.error}
+					status={engine.status}
+					onchange={(out) => gadgets.set(out)}
+				/>
+			</div>
+			<TodayCard state={character.state} stale={character.stale} {now} />
 		</div>
-		<TodayCard state={character.state} stale={character.stale} {now} />
+		<ArtifactCard {api} artifact={artifact.data} error={artifact.error} {now} onchange={(out) => artifact.set(out)} />
+		<DailyCard
+			day={daily.data?.days[0] ?? null}
+			ledgerSince={daily.data?.ledger_since ?? null}
+			error={daily.error}
+			{now}
+			loadedAt={daily.loadedAt}
+		/>
 	</div>
-	<ArtifactCard {api} artifact={artifact.data} error={artifact.error} {now} onchange={(out) => artifact.set(out)} />
-	<DailyCard
-		day={daily.data?.days[0] ?? null}
-		ledgerSince={daily.data?.ledger_since ?? null}
-		error={daily.error}
-		{now}
-		loadedAt={daily.loadedAt}
-	/>
-	<ControlsCard {api} status={engine.status} onchange={() => void engine.load()} />
-</div>
+</Page>

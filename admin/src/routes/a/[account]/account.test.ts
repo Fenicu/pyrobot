@@ -98,7 +98,7 @@ describe('экраны аккаунта /a/[account]', () => {
 		expect(current.ctx?.id).toBe(2);
 		expect(first?.live.status).toBe('idle');
 		expect(localStorage.getItem('pyrobot.account')).toBe('2');
-		expect(screen.getByRole('heading', { name: 'Журнал' })).toBeInTheDocument();
+		expect(screen.getByRole('heading', { name: 'acc2 · Журнал' })).toBeInTheDocument();
 		expect(goto).not.toHaveBeenCalled();
 	});
 
@@ -110,19 +110,20 @@ describe('экраны аккаунта /a/[account]', () => {
 			await vi.waitFor(() => expect(goto).toHaveBeenCalledWith('/accounts', { replaceState: true }));
 			expect(current.ctx).toBeNull();
 			expect(journal(9)).toBe(0);
-			expect(screen.queryByRole('heading', { name: 'Журнал' })).toBeNull();
+			expect(screen.queryByRole('heading', { name: /Журнал/ })).toBeNull();
 			unmount();
 			vi.mocked(goto).mockClear();
 		}
 	});
 
-	it('аккаунт без движка: плашка над экраном, включение перечитывает статус и список', async () => {
+	it('аккаунт без движка: плашка под шапкой, включение перечитывает статус и список', async () => {
 		h.down = true;
 		await accounts.load();
 		page.params = { account: '1' };
 		render(JournalRoute);
-		expect(await screen.findByText('Движок не запущен: аккаунт выключен')).toBeInTheDocument();
-		expect(screen.getByRole('heading', { name: 'Журнал' })).toBeInTheDocument();
+		const banner = await screen.findByText('Движок не запущен: аккаунт выключен');
+		const heading = screen.getByRole('heading', { name: 'acc1 · Журнал' });
+		expect(heading.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
 		const lists = h.calls.filter((u) => u === '/api/v1/accounts').length;
 		await userEvent.setup().click(screen.getByRole('button', { name: 'Включить' }));

@@ -13,15 +13,14 @@
 		alerts?: number | null;
 		/** Путь экрана: другой аккаунт открывается на том же разделе. */
 		path: string;
-		/** side — вверху бокового меню ПК; bar — плашка вверху экрана телефона; list — список в «Ещё». */
-		variant: 'side' | 'bar' | 'list';
+		/** bar — плашка вверху экрана телефона; list — список в «Ещё». */
+		variant: 'bar' | 'list';
 		/** Плашка: открыть «Ещё» со списком аккаунтов. */
 		onopen?: () => void;
 		/** Выбран аккаунт (закрыть «Ещё»). */
 		onpick?: () => void;
 	}
 	let { accounts, current, alerts = null, path, variant, onopen, onpick }: Props = $props();
-	let open = $state(false);
 
 	const active = $derived(accounts?.find((a) => a.id === current) ?? null);
 
@@ -42,10 +41,6 @@
 		}
 	}
 
-	function pick() {
-		open = false;
-		onpick?.();
-	}
 </script>
 
 {#snippet summary(a: AccountOut)}
@@ -69,7 +64,7 @@
 			<li>
 				<a
 					href={switchHref(path, a.id)}
-					onclick={pick}
+					onclick={onpick}
 					class="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-surface-2 {a.id === current
 						? 'bg-accent-soft font-medium text-fg'
 						: 'text-fg-muted'}"
@@ -80,27 +75,14 @@
 			</li>
 		{/each}
 		<li>
-			<a href="/accounts" onclick={pick} class="block rounded-md px-3 py-2 text-sm text-accent hover:bg-surface-2"
+			<a href="/accounts" onclick={onpick} class="block rounded-md px-3 py-2 text-sm text-accent hover:bg-surface-2"
 				>Все аккаунты</a
 			>
 		</li>
 	</ul>
 {/snippet}
 
-{#if variant === 'side'}
-	<div class="px-2 pb-2">
-		<button
-			type="button"
-			class="flex w-full items-center gap-2 rounded-md border border-line-soft px-3 py-2 text-sm hover:bg-surface-2"
-			aria-expanded={open}
-			onclick={() => (open = !open)}
-		>
-			{#if active}{@render summary(active)}{:else}<span class="flex-1 text-left text-fg-muted">Аккаунт</span>{/if}
-			<ChevronsUpDown class="size-4 shrink-0 text-fg-muted" aria-hidden="true" />
-		</button>
-		{#if open}<div class="mt-1">{@render items()}</div>{/if}
-	</div>
-{:else if variant === 'bar'}
+{#if variant === 'bar'}
 	{#if active}
 		<button
 			type="button"

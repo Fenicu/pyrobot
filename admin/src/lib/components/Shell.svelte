@@ -4,7 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import { accounts, current, session } from '$lib/app.svelte';
+	import { accounts, api, current, session } from '$lib/app.svelte';
 	import { signOutWithRetry } from '$lib/logout';
 	import { isActive, lastAccount, mainNav, moreNav, parseAccount, pickAccount, type NavItem } from '$lib/nav';
 	import { dialogs } from '$lib/stores/confirm.svelte';
@@ -13,6 +13,8 @@
 	import WhatsNewDialog from './changes/WhatsNewDialog.svelte';
 	import ConnectionDot from './ConnectionDot.svelte';
 	import Modal from './Modal.svelte';
+	import AccountsColumn from './shell/AccountsColumn.svelte';
+	import Rail from './shell/Rail.svelte';
 	import ThemeSwitch from './ThemeSwitch.svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -76,41 +78,22 @@
 {/snippet}
 
 <div class="min-h-dvh md:flex">
-	<aside
-		class="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r border-line bg-surface md:flex"
-		aria-label="Меню"
-	>
-		<div class="flex items-center justify-between px-4 py-3">
-			<span class="text-base font-semibold">pyrobot</span>
-			<ConnectionDot status={opened?.live.status ?? 'idle'} retryIn={opened?.live.retryIn ?? 0} {stopped} compact />
-		</div>
-		<AccountSwitcher variant="side" accounts={accounts.list} current={account} alerts={opened?.unread.count} {path} />
-		<nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2" aria-label="Разделы">
-			{#each main as item (item.href)}{@render link(item)}{/each}
-			{#if main.length > 0}<div class="my-2 border-t border-line-soft"></div>{/if}
-			{#each more as item (item.href)}{@render link(item)}{/each}
-		</nav>
-		<div class="space-y-2 border-t border-line-soft px-3 py-3">
-			<ThemeSwitch />
-			<div class="flex items-center justify-between text-xs text-fg-muted">
-				<span>{session.login}</span>
-				<button type="button" class="btn btn-ghost min-h-8 px-2" onclick={logout}>
-					<LogOut class="size-4" aria-hidden="true" /> Выйти
-				</button>
-			</div>
-			{@render version()}
-		</div>
-	</aside>
+	<div class="hidden md:contents">
+		<Rail {account} role={session.role} {path} {unread} login={session.login} onlogout={logout} />
+		<AccountsColumn {api} store={accounts} current={account} {path} />
+	</div>
 
-	<main class="min-w-0 flex-1 px-3 pt-3 pb-[calc(6rem_+_env(safe-area-inset-bottom))] md:px-6 md:pt-5 md:pb-8">
-		<AccountSwitcher
-			variant="bar"
-			accounts={accounts.list}
-			current={account}
-			alerts={opened?.unread.count}
-			{path}
-			onopen={() => (moreOpen = true)}
-		/>
+	<main class="min-w-0 flex-1 pb-[calc(6rem_+_env(safe-area-inset-bottom))] md:pb-0">
+		<div class="px-3.5 pt-3 md:hidden">
+			<AccountSwitcher
+				variant="bar"
+				accounts={accounts.list}
+				current={account}
+				alerts={opened?.unread.count}
+				{path}
+				onopen={() => (moreOpen = true)}
+			/>
+		</div>
 		{@render children()}
 	</main>
 

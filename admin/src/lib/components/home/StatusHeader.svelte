@@ -2,22 +2,18 @@
 	import type { ApiError } from '$lib/api/errors';
 	import type { EngineStatus, PublicState } from '$lib/api/types';
 	import { artifactIcon } from '$lib/artifact/text';
-	import type { LiveStatus } from '$lib/live/connection.svelte';
 	import { fmtMoment, fmtRelative } from '$lib/util/format';
 	import { busyText, tgStateLabel } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
-	import ConnectionDot from '../ConnectionDot.svelte';
 	import Pill from '../Pill.svelte';
 
 	interface Props {
 		status: EngineStatus | null;
 		error: ApiError | null;
-		live: LiveStatus;
-		retryIn?: number;
 		state: PublicState;
 		now: Date;
 	}
-	let { status, error, live, retryIn = 0, state, now }: Props = $props();
+	let { status, error, state, now }: Props = $props();
 	const busy = $derived(val(state, 'busy'));
 	const collect = $derived(val(state, 'artifact_collect'));
 	const levels = $derived(val(state, 'artifacts'));
@@ -66,5 +62,4 @@
 	{#if busy}
 		<Pill title={fmtRelative(busy.until, now)}>{busyText(busy, now)}</Pill>
 	{/if}
-	<span class="ml-auto"><ConnectionDot status={live} {retryIn} stopped={status?.running === false} /></span>
 </section>

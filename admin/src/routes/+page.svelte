@@ -12,4 +12,6 @@
 
 <svelte:head><title>pyrobot</title></svelte:head>
 
-<AccountsPending error={accounts.list === null ? accounts.error : null} onretry={() => void accounts.load()} />
+<div class="p-3.5">
+	<AccountsPending error={accounts.list === null ? accounts.error : null} onretry={() => void accounts.load()} />
+</div>

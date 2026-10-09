@@ -3,7 +3,6 @@
 	import Power from '@lucide/svelte/icons/power';
 	import PowerOff from '@lucide/svelte/icons/power-off';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { goto } from '$app/navigation';
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { AccountOut } from '$lib/api/types';
@@ -14,6 +13,7 @@
 	import { fmtMoment } from '$lib/util/format';
 	import { accountTitle } from '$lib/util/game';
 	import AccountsPending from '../AccountsPending.svelte';
+	import CreateAccountForm from './CreateAccountForm.svelte';
 	import Modal from '../Modal.svelte';
 	import Pill from '../Pill.svelte';
 
@@ -33,8 +33,6 @@
 	const DELETING_POLL_MS = 3000;
 
 	let busy = $state(false);
-	let name = $state('');
-	let createError = $state('');
 	let listError = $state('');
 	let renaming = $state<AccountOut | null>(null);
 	let newName = $state('');
@@ -65,20 +63,6 @@
 		} finally {
 			busy = false;
 		}
-	}
-
-	async function create(e: SubmitEvent) {
-		e.preventDefault();
-		createError = '';
-		const created = await run(
-			() => call(api.POST('/api/v1/accounts', { body: { name: name.trim() } })),
-			(text) => (createError = text)
-		);
-		if (created === null) return;
-		name = '';
-		// Макет аккаунта открывает только аккаунт из списка: сначала список, потом переход.
-		await store.load();
-		await goto(accountHref(created.id, '/telegram'));
 	}
 
 	async function setEnabled(a: AccountOut, enabled: boolean) {
@@ -155,16 +139,7 @@
 {#snippet label(text: string)}<span class="text-xs text-fg-muted md:hidden">{text}</span>{/snippet}
 
 <div class="max-w-6xl space-y-3">
-	<form class="card space-y-2" onsubmit={create}>
-		<div class="flex flex-col gap-2 sm:flex-row sm:items-end">
-			<label class="block flex-1 space-y-1">
-				<span class="label">Имя нового аккаунта</span>
-				<input class="input" bind:value={name} maxlength={64} autocomplete="off" required />
-			</label>
-			<button type="submit" class="btn btn-primary" disabled={busy || !name.trim()}>Создать</button>
-		</div>
-		{#if createError}<p class="ext-text text-sm text-warn-fg" role="alert">{createError}</p>{/if}
-	</form>
+	<div class="card"><CreateAccountForm {api} {store} /></div>
 
 	{#if listError}<p class="ext-text card text-sm text-warn-fg" role="alert">{listError}</p>{/if}
 

@@ -203,7 +203,7 @@ describe('шапка', () => {
 			artifacts: { value: { light: 37 }, at, src: 'screen' as const },
 			artifact_collect: { value: { artifact: 'light', ends_at: '2026-10-11T09:00:00Z' }, at, src: 'screen' as const }
 		};
-		render(StatusHeader, { status, error: null, live: 'open', state, now: NOW });
+		render(StatusHeader, { status, error: null, state, now: NOW });
 		expect(screen.getByRole('region', { name: 'Статус' })).toHaveTextContent('🔦 37/100');
 	});
 });

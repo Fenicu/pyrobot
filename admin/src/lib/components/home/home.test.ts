@@ -8,7 +8,7 @@ import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
 import ConfirmDialog from '../ConfirmDialog.svelte';
 import CharacterCard from './CharacterCard.svelte';
-import ControlsCard from './ControlsCard.svelte';
+import HeaderControls from './HeaderControls.svelte';
 import GadgetsCard from './GadgetsCard.svelte';
 import StatusHeader from './StatusHeader.svelte';
 import TodayCard from './TodayCard.svelte';
@@ -130,12 +130,12 @@ describe('Главная на снимке с прода', () => {
 		render(CharacterCard, { state: prod.state, stale: prod.stale, now: later });
 		const card = screen.getByRole('region', { name: 'Персонаж · ур. 71' });
 		expect(within(card).getByText('Занятость').parentElement).toHaveTextContent('сон в отеле до 05:05 · уже свободен');
-		render(StatusHeader, { status, error: null, live: 'open', state: prod.state, now: later });
+		render(StatusHeader, { status, error: null, state: prod.state, now: later });
 		expect(screen.getByRole('region', { name: 'Статус' })).toHaveTextContent('сон в отеле до 05:05 · уже свободен');
 	});
 
 	it('идущее дело — без «уже свободен»', () => {
-		render(StatusHeader, { status, error: null, live: 'open', state: prod.state, now: NOW });
+		render(StatusHeader, { status, error: null, state: prod.state, now: NOW });
 		const header = screen.getByRole('region', { name: 'Статус' });
 		expect(header).toHaveTextContent('сон в отеле до 28.09 05:05');
 		expect(header).not.toHaveTextContent('уже свободен');
@@ -147,17 +147,16 @@ describe('Главная на снимке с прода', () => {
 	});
 
 	it('шапка-статус: движок без аренды аккаунта', () => {
-		render(StatusHeader, { status: { ...status, lease_ok: false }, error: null, live: 'open', state: prod.state, now: NOW });
+		render(StatusHeader, { status: { ...status, lease_ok: false }, error: null, state: prod.state, now: NOW });
 		expect(screen.getByRole('region', { name: 'Статус' })).toHaveTextContent('нет аренды аккаунта');
 	});
 
 	it('шапка-статус', () => {
-		render(StatusHeader, { status, error: null, live: 'open', state: prod.state, now: NOW });
+		render(StatusHeader, { status, error: null, state: prod.state, now: NOW });
 		const header = screen.getByRole('region', { name: 'Статус' });
 		expect(header).toHaveTextContent('LIVE');
 		expect(header).toHaveTextContent('TG: online');
 		expect(header).toHaveTextContent('след. решение 28.09 05:05');
-		expect(header).toHaveTextContent('связь есть');
 		expect(header).not.toHaveTextContent('нет аренды аккаунта');
 	});
 
@@ -173,7 +172,7 @@ describe('Главная на снимке с прода', () => {
 			workers_ok: false,
 			lease_ok: false
 		};
-		render(StatusHeader, { status: down, error: null, live: 'offline', retryIn: 4000, state: prod.state, now: NOW });
+		render(StatusHeader, { status: down, error: null, state: prod.state, now: NOW });
 		const header = screen.getByRole('region', { name: 'Статус' });
 		expect(header).toHaveTextContent('LIVE');
 		expect(within(header).getByText('движок не запущен', { selector: '.pill' })).toHaveClass('pill-muted');
@@ -185,7 +184,7 @@ describe('Главная на снимке с прода', () => {
 
 	it('шапка: статус Telegram тем же текстом, что на экране Telegram', () => {
 		const tg = { ...status.tg, state: 'unauthorized' as const };
-		render(StatusHeader, { status: { ...status, tg }, error: null, live: 'open', state: prod.state, now: NOW });
+		render(StatusHeader, { status: { ...status, tg }, error: null, state: prod.state, now: NOW });
 		expect(screen.getByRole('region', { name: 'Статус' })).toHaveTextContent('TG: не выполнен вход');
 	});
 });
@@ -199,7 +198,7 @@ function controls(mode: 'live' | 'dry_run', running = true) {
 	});
 	const api = createAccountApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
 	render(ConfirmDialog);
-	render(ControlsCard, { api, status: { ...status, mode, running }, onchange: () => {} });
+	render(HeaderControls, { api, status: { ...status, mode, running }, onchange: () => {} });
 	return fetch;
 }
 
@@ -417,7 +416,8 @@ describe('управление', () => {
 		const fetch = controls('live', false);
 		expect(screen.getByRole('button', { name: 'Пауза' })).toBeDisabled();
 		expect(screen.getByRole('button', { name: 'Kill' })).toBeDisabled();
-		expect(screen.getByRole('region', { name: 'Управление' })).toHaveTextContent('Пауза и kill — у запущенного движка');
+		expect(screen.getByRole('button', { name: 'Пауза' })).toHaveAttribute('title', 'Пауза и kill — у запущенного движка');
+		expect(screen.getByRole('button', { name: 'Kill' })).toHaveAttribute('title', 'Пауза и kill — у запущенного движка');
 		await user.click(screen.getByRole('button', { name: 'В dry_run' }));
 		await vi_wait(() => fetch.calls.some((c) => c.method === 'PATCH'));
 	});

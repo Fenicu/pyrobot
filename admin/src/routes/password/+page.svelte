@@ -5,6 +5,7 @@
 	import { api as defaultApi, session as defaultSession } from '$lib/app.svelte';
 	import PasswordForm from '$lib/components/PasswordForm.svelte';
 	import RecoveryCodes from '$lib/components/auth/RecoveryCodes.svelte';
+	import Page from '$lib/components/shell/Page.svelte';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import type { Session } from '$lib/stores/session.svelte';
 
@@ -43,48 +44,47 @@
 	}
 </script>
 
-<svelte:head><title>Пароль и коды · pyrobot</title></svelte:head>
+<Page title="Пароль и коды">
+	<PasswordForm {api} ondone={done} />
 
-<h1 class="mb-3 text-lg font-semibold">Пароль и коды</h1>
-<PasswordForm {api} ondone={done} />
+	<section class="mt-6 card max-w-sm space-y-3">
+		<h2 class="text-base font-semibold">Коды восстановления</h2>
+		<p class="text-xs text-fg-muted">
+			При перевыпуске прежние коды больше не действуют.
+		</p>
 
-<section class="mt-6 card max-w-sm space-y-3">
-	<h2 class="text-base font-semibold">Коды восстановления</h2>
-	<p class="text-xs text-fg-muted">
-		При перевыпуске прежние коды больше не действуют.
-	</p>
-
-	{#if codes.length > 0}
-		<RecoveryCodes {codes} />
-		<button
-			type="button"
-			class="btn btn-ghost text-xs"
-			onclick={() => {
-				codes = [];
-				confirmPassword = '';
-			}}
-		>
-			Перевыпустить ещё раз
-		</button>
-	{:else}
-		<form class="space-y-3" onsubmit={submitReissue}>
-			<label class="block space-y-1">
-				<span class="label">Пароль для подтверждения</span>
-				<input
-					class="input"
-					type="password"
-					bind:value={confirmPassword}
-					autocomplete="current-password"
-					required
-					maxlength="1024"
-				/>
-			</label>
-			{#if reissueError}
-				<p class="ext-text text-sm text-bad-fg" role="alert">{reissueError}</p>
-			{/if}
-			<button type="submit" class="btn" disabled={reissueBusy || !confirmPassword}>
-				{reissueBusy ? 'Запрос…' : 'Получить новые коды'}
+		{#if codes.length > 0}
+			<RecoveryCodes {codes} />
+			<button
+				type="button"
+				class="btn btn-ghost text-xs"
+				onclick={() => {
+					codes = [];
+					confirmPassword = '';
+				}}
+			>
+				Перевыпустить ещё раз
 			</button>
-		</form>
-	{/if}
-</section>
+		{:else}
+			<form class="space-y-3" onsubmit={submitReissue}>
+				<label class="block space-y-1">
+					<span class="label">Пароль для подтверждения</span>
+					<input
+						class="input"
+						type="password"
+						bind:value={confirmPassword}
+						autocomplete="current-password"
+						required
+						maxlength="1024"
+					/>
+				</label>
+				{#if reissueError}
+					<p class="ext-text text-sm text-bad-fg" role="alert">{reissueError}</p>
+				{/if}
+				<button type="submit" class="btn" disabled={reissueBusy || !confirmPassword}>
+					{reissueBusy ? 'Запрос…' : 'Получить новые коды'}
+				</button>
+			</form>
+		{/if}
+	</section>
+</Page>
