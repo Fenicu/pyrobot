@@ -93,20 +93,39 @@ describe('колонка аккаунтов', () => {
 	it('две строки: имя целиком, ниже уровень и занятость; title содержит всё', () => {
 		accounts.list = [
 			account(1, { name: '☣️ [SU] Fenicu', level: 71 }),
-			account(2, { name: '☣️ [LA] Iko', level: 54, busy: { activity: 'learn', until: FAR } })
+			account(2, {
+				name: '☣️ [LA] Iko',
+				level: 54,
+				busy: { activity: 'learn', until: FAR },
+				tg: { user_id: 2, online: false }
+			}),
+			account(3, { name: '☣️ [SU] Khalida', status: 'deleting' })
 		];
 		open('/a/1', { account: '1' });
 		const links = within(column()).getAllByRole('link', { name: /Fenicu|Iko/ });
 
+		// Имя и занятость лежат в разных строках: строка имени занятость не содержит.
 		const title = within(links[0]!).getByText(/\[SU\] Fenicu$/);
 		const line = within(links[0]!).getByText('71 · свободен');
-		expect(title).not.toBe(line);
-		expect(title.parentElement).not.toBe(line);
+		const titleRow = title.parentElement!;
+		expect(links[0]).toContainElement(titleRow);
+		expect(links[0]).toContainElement(line);
+		expect(titleRow).not.toContainElement(line);
+		expect(line).not.toContainElement(title);
 		expect(links[0]!.getAttribute('title')).toMatch(/\[SU\] Fenicu · 71 · свободен$/);
 
 		const busy = within(links[1]!).getByText(/^54 · учёба до \d{2}\.\d{2} \d{2}:\d{2}$/);
-		expect(within(links[1]!).getByText(/\[LA\] Iko$/)).not.toBe(busy);
+		const busyTitleRow = within(links[1]!).getByText(/\[LA\] Iko$/).parentElement!;
+		expect(busyTitleRow).not.toContainElement(busy);
 		expect(links[1]!.getAttribute('title')).toMatch(/\[LA\] Iko · 54 · учёба до /);
+		// Значок «Telegram не в сети» остался в строке имени.
+		expect(busyTitleRow).toContainElement(within(links[1]!).getByTitle('Telegram не в сети'));
+		expect(within(links[0]!).queryByTitle('Telegram не в сети')).toBeNull();
+
+		const deleting = within(column()).getAllByRole('listitem')[2]!;
+		expect(within(deleting).queryByRole('link')).toBeNull();
+		const full = deleting.querySelector('[title*="Khalida"]');
+		expect(full?.getAttribute('title')).toMatch(/\[SU\] Khalida · .*удаляется/);
 	});
 
 	it('открытый аккаунт выделен; другой открывается на том же разделе', () => {
