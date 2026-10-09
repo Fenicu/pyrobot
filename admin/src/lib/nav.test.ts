@@ -10,6 +10,9 @@ import {
 	mainNav,
 	moreNav,
 	parseAccount,
+	phoneMenu,
+	phoneTabs,
+	railNav,
 	rememberAccount,
 	safeNext,
 	switchHref
@@ -150,5 +153,76 @@ describe('экраны аккаунта', () => {
 		vi.restoreAllMocks();
 		localStorage.setItem('pyrobot.account', 'мусор');
 		expect(lastAccount()).toBeNull();
+	});
+});
+
+describe('наборы разделов', () => {
+	const hrefs = (items: { href: string }[]) => items.map((i) => i.href);
+
+	it('полоса ПК: разделы аккаунта и общие', () => {
+		const owner = railNav(3, 'owner');
+		expect(hrefs(owner.account)).toEqual([
+			'/a/3',
+			'/a/3/journal',
+			'/a/3/control',
+			'/a/3/metro',
+			'/a/3/daily',
+			'/a/3/metrics',
+			'/a/3/settings',
+			'/a/3/notifications',
+			'/a/3/telegram'
+		]);
+		expect(owner.account.map((i) => i.label)).toEqual([
+			'Главная',
+			'Журнал',
+			'Управление',
+			'Метро',
+			'Итоги',
+			'Метрики',
+			'Настройки',
+			'Уведомления',
+			'Telegram'
+		]);
+		expect(owner.account.find((i) => i.href === '/a/3/notifications')?.badge).toBe('unread');
+		expect(hrefs(owner.common)).toEqual(['/admin', '/password']);
+		expect(hrefs(railNav(3, 'user').common)).toEqual(['/password']);
+		expect(hrefs(railNav(3).common)).toEqual(['/password']);
+	});
+
+	it('полоса без аккаунта: только общие', () => {
+		expect(railNav(null, 'owner').account).toEqual([]);
+		expect(hrefs(railNav(null, 'owner').common)).toEqual(['/admin', '/password']);
+		expect(hrefs(railNav(null, 'user').common)).toEqual(['/password']);
+	});
+
+	it('меню телефона: то, чего нет во вкладках', () => {
+		const menu = phoneMenu(3, 'owner');
+		expect(hrefs(menu.account)).toEqual([
+			'/a/3/metro',
+			'/a/3/daily',
+			'/a/3/metrics',
+			'/a/3/settings',
+			'/a/3/notifications',
+			'/a/3/telegram'
+		]);
+		expect(menu.account.find((i) => i.href === '/a/3/notifications')?.badge).toBe('unread');
+		expect(hrefs(menu.common)).toEqual(['/admin', '/password']);
+		expect(hrefs(phoneMenu(3, 'user').common)).toEqual(['/password']);
+		expect(phoneMenu(null, 'owner').account).toEqual([]);
+		expect(hrefs(phoneMenu(null, 'user').common)).toEqual(['/password']);
+	});
+
+	it('вкладки телефона: Аккаунты, аккаунт, Журнал, Управление', () => {
+		const tabs = phoneTabs(3, 'Тест');
+		expect(hrefs(tabs)).toEqual(['/accounts', '/a/3', '/a/3/journal', '/a/3/control']);
+		expect(tabs.map((i) => i.label)).toEqual(['Аккаунты', 'Тест', 'Журнал', 'Управление']);
+		expect(hrefs(phoneTabs(null, null))).toEqual(['/accounts']);
+		expect(phoneTabs(3, null)[1]?.label).toBe('Главная');
+	});
+
+	it('isActive: вкладка аккаунта активна только на его главной', () => {
+		const home = phoneTabs(3, 'Тест')[1]!;
+		expect(isActive('/a/3', home.href)).toBe(true);
+		expect(isActive('/a/3/journal', home.href)).toBe(false);
 	});
 });

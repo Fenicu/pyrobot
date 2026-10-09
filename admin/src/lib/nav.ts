@@ -57,6 +57,63 @@ export function moreNav(id: number | null, role?: 'owner' | 'user' | null): NavI
 	];
 }
 
+type NavSpec = [path: string, label: string, icon: NavItem['icon'], badge?: NavItem['badge']];
+
+const accountItems = (id: number, specs: NavSpec[]): NavItem[] =>
+	specs.map(([path, label, icon, badge]) => ({ href: accountHref(id, path), label, icon, ...(badge && { badge }) }));
+
+function commonItems(role?: 'owner' | 'user' | null): NavItem[] {
+	const server: NavItem[] = role === 'owner' ? [{ href: '/admin', label: 'Сервер', icon: ShieldCheck }] : [];
+	return [...server, { href: '/password', label: 'Пароль и коды', icon: KeyRound }];
+}
+
+/** Левая полоса ПК: разделы аккаунта (если он есть) и общие. */
+export function railNav(id: number | null, role?: 'owner' | 'user' | null): { account: NavItem[]; common: NavItem[] } {
+	const account =
+		id === null
+			? []
+			: accountItems(id, [
+					['', 'Главная', House],
+					['/journal', 'Журнал', ScrollText],
+					['/control', 'Управление', Gamepad2],
+					['/metro', 'Метро', TrainFront],
+					['/daily', 'Итоги', CalendarDays],
+					['/metrics', 'Метрики', ChartLine],
+					['/settings', 'Настройки', Settings],
+					['/notifications', 'Уведомления', Bell, 'unread'],
+					['/telegram', 'Telegram', Send]
+				]);
+	return { account, common: commonItems(role) };
+}
+
+/** Нижние вкладки телефона; «Меню» — кнопка рядом, не пункт. */
+export function phoneTabs(id: number | null, name: string | null): NavItem[] {
+	const accounts: NavItem = { href: '/accounts', label: 'Аккаунты', icon: Users };
+	if (id === null) return [accounts];
+	return [
+		accounts,
+		{ href: accountHref(id, ''), label: name ?? 'Главная', icon: House },
+		{ href: accountHref(id, '/journal'), label: 'Журнал', icon: ScrollText },
+		{ href: accountHref(id, '/control'), label: 'Управление', short: 'Управл.', icon: Gamepad2 }
+	];
+}
+
+/** Меню телефона: то, чего нет во вкладках. */
+export function phoneMenu(id: number | null, role?: 'owner' | 'user' | null): { account: NavItem[]; common: NavItem[] } {
+	const account =
+		id === null
+			? []
+			: accountItems(id, [
+					['/metro', 'Метро', TrainFront],
+					['/daily', 'Итоги', CalendarDays],
+					['/metrics', 'Метрики', ChartLine],
+					['/settings', 'Настройки', Settings],
+					['/notifications', 'Уведомления', Bell, 'unread'],
+					['/telegram', 'Telegram', Send]
+				]);
+	return { account, common: commonItems(role) };
+}
+
 const ACCOUNT_ROOT = /^\/a\/\d+$/;
 const IN_ACCOUNT = /^\/a\/\d+(\/.*)?$/;
 
