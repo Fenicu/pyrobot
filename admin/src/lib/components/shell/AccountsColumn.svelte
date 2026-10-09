@@ -4,10 +4,18 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Unplug from '@lucide/svelte/icons/unplug';
 	import { onMount } from 'svelte';
-	import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, tgOffline } from '$lib/accounts/status';
+	import {
+		ACTIVITY_COLOR,
+		accountActivity,
+		accountDotLabel,
+		accountTone,
+		tgOffline,
+		type Activity
+	} from '$lib/accounts/status';
 	import type { Api } from '$lib/api/client';
 	import type { AccountOut } from '$lib/api/types';
 	import { switchHref } from '$lib/nav';
+	import { fmtMoment } from '$lib/util/format';
 	import { accountTitle } from '$lib/util/game';
 	import CreateAccountForm from '../accounts/CreateAccountForm.svelte';
 	import Modal from '../Modal.svelte';
@@ -53,6 +61,11 @@
 		}
 	}
 
+	function activityLine(a: AccountOut, act: Activity): string {
+		const text = a.level != null ? `${a.level} · ${act.text}` : act.text;
+		return act.until ? `${text} до ${fmtMoment(act.until, now)}` : text;
+	}
+
 	function initial(a: AccountOut): string {
 		return a.name.replace(/\[[^\]]*\]/g, '').match(/[\p{L}\p{N}]/u)?.[0]?.toUpperCase() ?? '?';
 	}
@@ -61,18 +74,21 @@
 {#snippet row(a: AccountOut)}
 	{@const tone = accountTone(a)}
 	{@const activity = accountActivity(a, now)}
-	<StatusDot {tone} label={accountDotLabel(a)} />
 	{#if collapsed}
+		<StatusDot {tone} label={accountDotLabel(a)} />
 		<span class="text-xs font-semibold" aria-hidden="true">{initial(a)}</span>
 	{:else}
-		<span class="min-w-0 flex-1 truncate font-medium">{accountTitle(a)}</span>
-		{#if tgOffline(a)}
-			<span class="shrink-0 text-warn-fg" title="Telegram не в сети">
-				<Unplug class="size-3" aria-hidden="true" /><span class="sr-only">Telegram не в сети</span>
-			</span>
-		{/if}
-		<small class="max-w-[45%] shrink-0 truncate text-[10px] {ACTIVITY_COLOR[activity.tone]}">
-			{a.level != null ? `${a.level} · ${activity.text}` : activity.text}
+		<span class="flex items-center gap-[7px]">
+			<StatusDot {tone} label={accountDotLabel(a)} />
+			<span class="min-w-0 flex-1 truncate font-medium">{accountTitle(a)}</span>
+			{#if tgOffline(a)}
+				<span class="shrink-0 text-warn-fg" title="Telegram не в сети">
+					<Unplug class="size-3" aria-hidden="true" /><span class="sr-only">Telegram не в сети</span>
+				</span>
+			{/if}
+		</span>
+		<small class="mt-0.5 block truncate pl-[14px] text-[11px] leading-tight {ACTIVITY_COLOR[activity.tone]}">
+			{activityLine(a, activity)}
 		</small>
 	{/if}
 {/snippet}
@@ -80,10 +96,10 @@
 <aside
 	class="sticky top-0 flex h-dvh shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-line bg-surface py-2.5 {collapsed
 		? 'w-11 items-center px-1'
-		: 'w-[190px] px-2'}"
+		: 'w-[200px] px-1.5'}"
 	aria-label="Аккаунты"
 >
-	<div class="mb-1 flex items-center gap-1 {collapsed ? 'flex-col' : 'px-2'}">
+	<div class="mb-1 flex items-center gap-1 {collapsed ? 'flex-col' : 'px-1.5'}">
 		{#if !collapsed}
 			<h2 class="flex-1 text-[11px] font-semibold tracking-[0.07em] text-fg-muted uppercase">Аккаунты</h2>
 			<button
@@ -114,17 +130,18 @@
 	<ul class="flex flex-col gap-0.5 {collapsed ? 'items-center' : ''}" aria-label="Список аккаунтов">
 		{#each store.list ?? [] as a (a.id)}
 			{@const active = a.id === current}
-			{@const cls = `flex items-center rounded-[8px] text-[13px] ${collapsed ? 'size-9 justify-center gap-1' : 'gap-[7px] px-2 py-1.5'}`}
+			{@const cls = `rounded-[8px] text-[13px] ${collapsed ? 'flex size-9 items-center justify-center gap-1' : 'block px-1.5 py-1.5'}`}
+			{@const full = `${accountTitle(a)} · ${activityLine(a, accountActivity(a, now))}`}
 			<li>
 				{#if a.status === 'deleting'}
-					<div class="{cls} text-fg-faint" title={accountTitle(a)}>{@render row(a)}</div>
+					<div class="{cls} text-fg-faint" title={full}>{@render row(a)}</div>
 				{:else}
 					<a
 						href={switchHref(path, a.id)}
 						class="{cls} {active ? 'bg-surface-2 text-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg'}"
 						aria-current={active ? 'true' : undefined}
 						aria-label={collapsed ? accountTitle(a) : undefined}
-						title={collapsed ? `${accountTitle(a)} · ${accountActivity(a, now).text}` : undefined}
+						title={full}
 					>
 						{@render row(a)}
 					</a>
@@ -133,7 +150,7 @@
 		{/each}
 	</ul>
 	{#if !collapsed}
-		<a href="/accounts" class="mt-1 px-2 text-xs text-accent hover:underline">управление</a>
+		<a href="/accounts" class="mt-1 px-1.5 text-xs text-accent hover:underline">управление</a>
 	{/if}
 </aside>
 

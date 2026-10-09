@@ -90,6 +90,25 @@ describe('колонка аккаунтов', () => {
 		expect(rows[3]).toHaveTextContent('выключен');
 	});
 
+	it('две строки: имя целиком, ниже уровень и занятость; title содержит всё', () => {
+		accounts.list = [
+			account(1, { name: '☣️ [SU] Fenicu', level: 71 }),
+			account(2, { name: '☣️ [LA] Iko', level: 54, busy: { activity: 'learn', until: FAR } })
+		];
+		open('/a/1', { account: '1' });
+		const links = within(column()).getAllByRole('link', { name: /Fenicu|Iko/ });
+
+		const title = within(links[0]!).getByText(/\[SU\] Fenicu$/);
+		const line = within(links[0]!).getByText('71 · свободен');
+		expect(title).not.toBe(line);
+		expect(title.parentElement).not.toBe(line);
+		expect(links[0]!.getAttribute('title')).toMatch(/\[SU\] Fenicu · 71 · свободен$/);
+
+		const busy = within(links[1]!).getByText(/^54 · учёба до \d{2}\.\d{2} \d{2}:\d{2}$/);
+		expect(within(links[1]!).getByText(/\[LA\] Iko$/)).not.toBe(busy);
+		expect(links[1]!.getAttribute('title')).toMatch(/\[LA\] Iko · 54 · учёба до /);
+	});
+
 	it('открытый аккаунт выделен; другой открывается на том же разделе', () => {
 		accounts.list = [account(1), account(2)];
 		open('/a/1/journal', { account: '1' });
