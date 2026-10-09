@@ -19,12 +19,15 @@
 	const ctx = $derived(current.ctx !== null && current.ctx.id === id ? current.ctx : null);
 
 	setScreenAccount(() => id);
-	// Шапка страницы: имя аккаунта, связь его потока; плашки — под шапкой.
+	// Шапка страницы: имя аккаунта, статус движка и связь его потока; плашки — под шапкой.
 	setAccountFrame(() => {
 		if (ctx === null) return null;
 		const acc = accounts.list?.find((a) => a.id === ctx.id);
 		return {
 			title: acc ? accountTitle(acc) : `#${ctx.id}`,
+			engine: ctx.engine.status,
+			engineError: ctx.engine.error,
+			state: ctx.character.state,
 			live: ctx.live.status,
 			retryIn: ctx.live.retryIn,
 			stopped: ctx.engine.status?.running === false,

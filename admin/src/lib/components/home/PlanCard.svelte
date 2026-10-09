@@ -113,7 +113,7 @@
 			<p class="text-sm text-fg-muted" role="status">Загрузка плана…</p>
 		{/if}
 	{:else if view}
-		<div class="grid gap-4 md:grid-cols-2">
+		<div class="grid gap-4 lg:grid-cols-2">
 			<div class="min-w-0 space-y-4">
 				<section aria-labelledby="plan-now">
 					<h3 id="plan-now" class="mb-1 text-xs font-semibold tracking-wide text-fg-muted uppercase">Сейчас</h3>

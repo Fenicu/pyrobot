@@ -123,6 +123,9 @@ describe('экраны аккаунта /a/[account]', () => {
 		render(JournalRoute);
 		const banner = await screen.findByText('Движок не запущен: аккаунт выключен');
 		const heading = screen.getByRole('heading', { name: 'acc1 · Журнал' });
+		// Статус движка — в шапке любого раздела, не только главной.
+		expect(heading.closest('header')).toContainElement(screen.getByRole('region', { name: 'Статус' }));
+		expect(screen.getByRole('region', { name: 'Статус' })).toHaveTextContent('движок не запущен');
 		expect(heading.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
 		const lists = h.calls.filter((u) => u === '/api/v1/accounts').length;

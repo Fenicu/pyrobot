@@ -9,7 +9,6 @@
 	import HeaderControls from '$lib/components/home/HeaderControls.svelte';
 	import MetroLiveCard from '$lib/components/home/MetroLiveCard.svelte';
 	import PlanCard from '$lib/components/home/PlanCard.svelte';
-	import StatusHeader from '$lib/components/home/StatusHeader.svelte';
 	import TodayCard from '$lib/components/home/TodayCard.svelte';
 	import Page from '$lib/components/shell/Page.svelte';
 	import { DailyStore } from '$lib/daily/store.svelte';
@@ -76,15 +75,11 @@
 	});
 </script>
 
-{#snippet status()}
-	<StatusHeader status={engine.status} error={engine.error} state={character.state} {now} />
-{/snippet}
-
 {#snippet actions()}
 	<HeaderControls {api} status={engine.status} onchange={() => void engine.load()} />
 {/snippet}
 
-<Page title="Главная" {status} {actions}>
+<Page title="Главная" {actions}>
 	<div class="space-y-3">
 		{#if character.error && !character.loaded}
 			<p class="card text-sm text-bad-fg" role="alert">Состояние недоступно: движок не отвечает.</p>

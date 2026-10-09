@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { createRawSnippet } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { accounts, current, session } from '$lib/app.svelte';
-import type { AccountOut } from '$lib/api/types';
+import type { AccountOut, EngineStatus } from '$lib/api/types';
 import { dialogs } from '$lib/stores/confirm.svelte';
 import { theme } from '$lib/stores/theme.svelte';
+import { fixture } from '$lib/test/fixtures';
 import { page } from '$lib/test/page.svelte';
 import Shell from '../Shell.svelte';
 import { accountFrameContext, type AccountFrame } from './frame';
@@ -218,6 +219,9 @@ describe('шапка страницы', () => {
 	const banners = createRawSnippet(() => ({ render: () => '<p>плашка</p>' }));
 	const frame = (over: Partial<AccountFrame> = {}): AccountFrame => ({
 		title: '☣️[LA] Iko',
+		engine: null,
+		engineError: null,
+		state: {},
 		live: 'open',
 		retryIn: 0,
 		stopped: false,
@@ -241,6 +245,21 @@ describe('шапка страницы', () => {
 		const text = screen.getByText('тело');
 		expect(h1.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(banner.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	it('любой раздел аккаунта — тот же статус движка, что на главной: LIVE, Telegram, след. решение', () => {
+		const engine = fixture<EngineStatus>('engine_status');
+		render(Page, { props: { title: 'Журнал', children: body }, context: accountFrameContext(frame({ engine })) });
+		const status = screen.getByRole('region', { name: 'Статус' });
+		expect(status.closest('header')).not.toBeNull();
+		expect(status).toHaveTextContent('LIVE');
+		expect(status).toHaveTextContent('TG: online');
+		expect(status).toHaveTextContent('след. решение');
+	});
+
+	it('общая страница — без статуса движка', () => {
+		render(Page, { title: 'Сервер', children: body });
+		expect(screen.queryByRole('region', { name: 'Статус' })).toBeNull();
 	});
 
 	it('движок не запущен — приглушённое «движок не запущен» вместо «нет связи»', () => {

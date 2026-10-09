@@ -1,9 +1,15 @@
 import { getContext, setContext, type Snippet } from 'svelte';
+import type { ApiError } from '$lib/api/errors';
+import type { EngineStatus, PublicState } from '$lib/api/types';
 import type { LiveStatus } from '$lib/live/connection.svelte';
 
-/** Экран аккаунта для шапки страницы: имя аккаунта, связь потока и плашки под шапкой. */
+/** Экран аккаунта для шапки страницы: имя аккаунта, статус движка, связь потока и плашки под
+ * шапкой. */
 export interface AccountFrame {
 	title: string;
+	engine: EngineStatus | null;
+	engineError: ApiError | null;
+	state: PublicState;
 	live: LiveStatus;
 	retryIn: number;
 	/** Движок не запущен: поток не открыть — это не обрыв связи. */

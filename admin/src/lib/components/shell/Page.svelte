@@ -1,6 +1,7 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import ConnectionDot from '../ConnectionDot.svelte';
+	import StatusHeader from '../home/StatusHeader.svelte';
 	import PageHeader from '../ui/PageHeader.svelte';
 	import { accountFrame } from './frame';
 
@@ -14,11 +15,19 @@
 	let { title, status, actions, children }: Props = $props();
 	const frame = accountFrame();
 	const f = $derived(frame());
+	// «след. решение через …» и «уже свободен» — по часам страницы, раз в 30 с.
+	let now = $state(new Date());
+
+	onMount(() => {
+		const t = setInterval(() => (now = new Date()), 30_000);
+		return () => clearInterval(t);
+	});
 </script>
 
 <svelte:head><title>{title} · pyrobot</title></svelte:head>
 
 {#snippet statusRow()}
+	{#if f}<StatusHeader status={f.engine} error={f.engineError} state={f.state} {now} />{/if}
 	{@render status?.()}
 	{#if f}<ConnectionDot status={f.live} retryIn={f.retryIn} stopped={f.stopped} compact />{/if}
 {/snippet}
