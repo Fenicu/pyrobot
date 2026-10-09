@@ -5366,7 +5366,10 @@ docker build --build-arg APT_PROXY=http://10.10.40.23:3142 \
 `restart: unless-stopped`, ротация логов 5×10 МБ, лимит памяти `mem_limit: 1g` (предохранитель: при
 утечке OOM убивает бота, а не соседей по серверу, и `restart` поднимает его заново); `migrate` — тот же образ, профиль `migrate`, `alembic upgrade head`, запускается только
 явно (`docker compose run --rm migrate`);
-`postgres` — `postgres:17`, том `pgdata`, healthcheck `pg_isready`; `backup` — `pg_dump
+`postgres` — `postgres:17`, том `pgdata`, healthcheck `pg_isready`, память урезана под небольшую
+базу: `shared_buffers=64MB`, `max_connections=30` (бот — до 8 соединений при пуле 4 + 4, `backup` и
+`migrate` — по одному), `work_mem=4MB`, `maintenance_work_mem=32MB`; смена этих флагов в
+`compose.yml` пересоздаёт контейнер `postgres` при `docker compose up -d`; `backup` — `pg_dump
 --format=custom` при старте и дальше раз в сутки в
 `${PYROBOT_BACKUP_DIR:-./backups}/pyrobot-<дата>.dump`, файлы старше 14 дней удаляются. Дампы
 пишутся с `umask 077` — `0600`, владелец root контейнера `backup` (в дампе хэши паролей и

@@ -98,3 +98,15 @@ def test_author_deploy_keeps_apps_address(tmp_path: Path) -> None:
     assert bot["environment"]["PYROBOT_FORWARDED_ALLOW_IPS"] == "10.10.40.3"
     # Ключ шифрования доходит до контейнера бота из секрета выкатки.
     assert bot["environment"]["PYROBOT_SECRET_KEY"] == SECRET_KEY
+
+
+def test_postgres_memory_flags(tmp_path: Path) -> None:
+    command = _config(tmp_path)["services"]["postgres"]["command"]
+    flags = dict(f.split("=", 1) for f in command[2::2])
+    assert command[0] == "postgres" and set(command[1::2]) == {"-c"}
+    assert flags == {
+        "shared_buffers": "64MB",
+        "max_connections": "30",
+        "work_mem": "4MB",
+        "maintenance_work_mem": "32MB",
+    }

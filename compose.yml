@@ -46,6 +46,17 @@ services:
   postgres:
     image: postgres:17
     restart: unless-stopped
+    # Память — под небольшую базу; соединений у бота до 8 (пул 4 + 4), у бэкапа и миграций по одному.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=30
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
     environment:
       POSTGRES_USER: pyrobot
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
