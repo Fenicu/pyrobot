@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from app.db.notifications import ServerNotifier
     from app.db.recovery import RecoveryCodes, RecoveryRequests
     from app.db.server_settings import ServerSettingsRepo
+    from app.db.ui_prefs import UiPrefsRepo
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class Container:
     audit: AuditLog | None = None
     server_notifier: ServerNotifier | None = None
     admin_reads: AdminReads = field(default=None)  # type: ignore[assignment]
+    ui_prefs: UiPrefsRepo = field(default=None)  # type: ignore[assignment]
     confirm: ConfirmTokens = field(default_factory=ConfirmTokens)
     sse_slots: SseSlots = field(default_factory=SseSlots)
     # Сколько запрос ручной команды ждёт итога шлюза, прежде чем ответить 202 pending.
@@ -73,6 +75,10 @@ class Container:
             from app.db.admin_reads import AdminReads
 
             self.admin_reads = AdminReads(self.db)
+        if self.ui_prefs is None:
+            from app.db.ui_prefs import UiPrefsRepo
+
+            self.ui_prefs = UiPrefsRepo(self.db)
 
     def spawn(self, coro: Coroutine[Any, Any, Any]) -> None:
         async def _runner() -> None:

@@ -1429,6 +1429,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/ui/home-layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Home Layout */
+        get: operations["get_home_layout_api_v1_me_ui_home_layout_get"];
+        /** Put Home Layout */
+        put: operations["put_home_layout_api_v1_me_ui_home_layout_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scenarios": {
         parameters: {
             query?: never;
@@ -2478,6 +2496,29 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * HomeLayout
+         * @description Раскладка главной админки: видимые блоки и скрытые id. Неизвестные id принимаются:
+         *     их отсеивает клиент.
+         */
+        HomeLayout: {
+            /** Hidden */
+            hidden: string[];
+            /** Items */
+            items: components["schemas"]["LayoutItem"][];
+            /**
+             * Version
+             * @constant
+             */
+            version: 1;
+        };
+        /**
+         * HomeLayoutOut
+         * @description `layout` - `null`, пока пользователь ничего не сохранял.
+         */
+        HomeLayoutOut: {
+            layout: components["schemas"]["HomeLayout"] | null;
+        };
+        /**
          * HostStatusOut
          * @description Здоровье процесса и хоста движков — отдельно от статусов аккаунтов.
          */
@@ -2548,6 +2589,22 @@ export interface components {
             count: number;
             /** Kind */
             kind: string;
+        };
+        /**
+         * LayoutItem
+         * @description Блок главной: положение и размер в клетках сетки.
+         */
+        LayoutItem: {
+            /** H */
+            h: number;
+            /** Id */
+            id: string;
+            /** W */
+            w: number;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
         };
         /** LevelOut */
         LevelOut: {
@@ -9891,6 +9948,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_home_layout_api_v1_me_ui_home_layout_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeLayoutOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    put_home_layout_api_v1_me_ui_home_layout_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HomeLayout"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

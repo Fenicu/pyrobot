@@ -2990,6 +2990,61 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HomeLayout": {
+        "additionalProperties": false,
+        "description": "Раскладка главной админки: видимые блоки и скрытые id. Неизвестные id принимаются:\nих отсеивает клиент.",
+        "properties": {
+          "hidden": {
+            "items": {
+              "pattern": "^[a-z_]{1,32}$",
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Hidden",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutItem"
+            },
+            "maxItems": 50,
+            "title": "Items",
+            "type": "array"
+          },
+          "version": {
+            "const": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "items",
+          "hidden"
+        ],
+        "title": "HomeLayout",
+        "type": "object"
+      },
+      "HomeLayoutOut": {
+        "description": "`layout` - `null`, пока пользователь ничего не сохранял.",
+        "properties": {
+          "layout": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HomeLayout"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "layout"
+        ],
+        "title": "HomeLayoutOut",
+        "type": "object"
+      },
       "HostStatusOut": {
         "description": "Здоровье процесса и хоста движков — отдельно от статусов аккаунтов.",
         "properties": {
@@ -3192,6 +3247,50 @@
           "amounts"
         ],
         "title": "KindOut",
+        "type": "object"
+      },
+      "LayoutItem": {
+        "additionalProperties": false,
+        "description": "Блок главной: положение и размер в клетках сетки.",
+        "properties": {
+          "h": {
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "H",
+            "type": "integer"
+          },
+          "id": {
+            "pattern": "^[a-z_]{1,32}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "w": {
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "W",
+            "type": "integer"
+          },
+          "x": {
+            "maximum": 11.0,
+            "minimum": 0.0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "maximum": 500.0,
+            "minimum": 0.0,
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "title": "LayoutItem",
         "type": "object"
       },
       "LevelOut": {
@@ -16577,6 +16676,107 @@
         "summary": "Accept Invite",
         "tags": [
           "invites"
+        ]
+      }
+    },
+    "/api/v1/me/ui/home-layout": {
+      "get": {
+        "operationId": "get_home_layout_api_v1_me_ui_home_layout_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeLayoutOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          }
+        },
+        "summary": "Get Home Layout",
+        "tags": [
+          "ui"
+        ]
+      },
+      "put": {
+        "operationId": "put_home_layout_api_v1_me_ui_home_layout_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HomeLayout"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Home Layout",
+        "tags": [
+          "ui"
         ]
       }
     },

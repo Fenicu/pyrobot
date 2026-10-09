@@ -58,6 +58,7 @@ async def test_upgrade_and_downgrade() -> None:
         "invites",
         "recovery_codes",
         "recovery_requests",
+        "user_ui_prefs",
     } <= await _tables()
     await asyncio.to_thread(command.downgrade, _cfg(), "base")
     assert await _tables() <= {"alembic_version"}
@@ -107,6 +108,25 @@ async def test_0020_tg_app_columns() -> None:
         "ORDER BY column_name"
     )
     assert rows == [("tg_api_hash", "bytea"), ("tg_api_id", "integer")]
+
+
+async def test_0021_user_ui_prefs() -> None:
+    await asyncio.to_thread(command.upgrade, _cfg(), "0020")
+    assert "user_ui_prefs" not in await _tables()
+    await asyncio.to_thread(command.upgrade, _cfg(), "0021")
+    rows = await _exec(
+        "SELECT column_name, data_type FROM information_schema.columns "
+        "WHERE table_name = 'user_ui_prefs' ORDER BY column_name"
+    )
+    assert rows == [
+        ("data", "jsonb"),
+        ("key", "character varying"),
+        ("updated_at", "timestamp with time zone"),
+        ("user_id", "integer"),
+    ]
+    await asyncio.to_thread(command.downgrade, _cfg(), "0020")
+    assert "user_ui_prefs" not in await _tables()
+    await asyncio.to_thread(command.upgrade, _cfg(), "head")
 
 
 def _at(minute: int) -> datetime:

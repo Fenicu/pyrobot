@@ -23,6 +23,7 @@ from app.api.routes_reference import router as reference_router
 from app.api.routes_settings import router as settings_router
 from app.api.routes_state import router as state_router
 from app.api.routes_tangerine import router as tangerine_router
+from app.api.routes_ui import router as ui_router
 from app.db.base import Database
 from app.engine.fence import LeaseLost
 from app.engine.settings import ChatIsSelf, SettingsOutOfBounds
@@ -71,6 +72,7 @@ def create_api(container: Container) -> FastAPI:
     app.add_exception_handler(ChatIsSelf, _chat_is_self)
     app.add_exception_handler(SettingsOutOfBounds, _out_of_bounds)
     app.include_router(auth_router)
+    app.include_router(ui_router)
     app.include_router(invites_router)
     app.include_router(admin_router)
     app.include_router(accounts_router)
