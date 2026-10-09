@@ -1,12 +1,4 @@
-/** Состояние аккаунта и причины, по которым его движок не запущен, — для человека. */
-export type AccountStatus = 'enabled' | 'disabled' | 'error' | 'deleting';
-
-export const STATUS_LABEL: Record<AccountStatus, string> = {
-	enabled: 'включён',
-	disabled: 'выключен',
-	error: 'ошибка',
-	deleting: 'удаляется'
-};
+// Причины, по которым движок аккаунта не запущен, — для человека.
 
 // Причина host_reason: хост не смог захватить аккаунт.
 const REASONS: Record<string, string> = {

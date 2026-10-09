@@ -28,7 +28,7 @@ interface Blocker {
 }
 
 /** Строка «Сейчас» про идущий сценарий. */
-export function runningText(scenario: string): string {
+function runningText(scenario: string): string {
 	return `▶ Идёт сценарий: ${scenarioText(scenario)}`;
 }
 
