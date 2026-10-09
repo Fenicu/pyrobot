@@ -173,7 +173,7 @@ describe('карточка «Сбор артефакта»', () => {
 		await user.click(within(dialog).getByRole('button', { name: 'Запустить' }));
 		const region = screen.getByRole('region', { name: 'Сбор артефакта' });
 		expect(await within(region).findByRole('alert')).toHaveTextContent(
-			'Дела выключены в «Функциях» — сбор не потратит 🔥. Включите дела и запустите снова'
+			'Дела выключены: включатель на карточке «Дела» в настройках. Включите их и запустите снова'
 		);
 	});
 });
