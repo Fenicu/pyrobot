@@ -9,7 +9,7 @@
 	import { fmtMoment } from '$lib/util/format';
 	import { pretty } from '$lib/util/text';
 	import Pill from '../Pill.svelte';
-	import KV from './KV.svelte';
+	import Row from '../ui/Row.svelte';
 	import RunSteps from './RunSteps.svelte';
 
 	interface Candidate {
@@ -60,10 +60,10 @@
 {:else}
 	<h3 class="mb-1 font-semibold">Решение #{decision.id} · {fmtMoment(decision.at, now, true)}</h3>
 	<dl>
-		<KV label="Вид"><Pill tone="dec">{decision.kind === 'act' ? 'действие' : 'ожидание'}</Pill></KV>
-		{#if decision.scenario}<KV label="Сценарий">{decision.scenario}</KV>{/if}
-		<KV label="Причина"><span class="ext-text">{decision.reason}</span></KV>
-		{#if decision.until}<KV label="До">{fmtMoment(decision.until, now)}</KV>{/if}
+		<Row dl label="Вид"><Pill tone="dec">{decision.kind === 'act' ? 'действие' : 'ожидание'}</Pill></Row>
+		{#if decision.scenario}<Row dl label="Сценарий">{decision.scenario}</Row>{/if}
+		<Row dl label="Причина"><span class="ext-text">{decision.reason}</span></Row>
+		{#if decision.until}<Row dl label="До">{fmtMoment(decision.until, now)}</Row>{/if}
 	</dl>
 	{#if Object.keys(decision.params).length > 0}
 		<h4 class="mt-3 mb-1 text-xs text-fg-muted uppercase">Параметры</h4>

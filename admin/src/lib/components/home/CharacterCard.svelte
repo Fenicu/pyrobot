@@ -6,7 +6,7 @@
 	import { busyText, COMPANY } from '$lib/util/game';
 	import { val } from '$lib/util/observed';
 	import TangerinePartner from '../TangerinePartner.svelte';
-	import Row from './Row.svelte';
+	import Row from '../ui/Row.svelte';
 
 	interface Props {
 		state: PublicState;

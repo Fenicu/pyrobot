@@ -4,29 +4,33 @@
 
 /* Цвета — переменные темы: тёмная по умолчанию, светлая — класс .light на <html>. */
 :root {
-	--bg: #121214;
-	--surface: #1b1b1f;
-	--surface-2: #232329;
-	--line: #34343c;
-	--line-soft: #2a2a30;
-	--fg: #e6e6ea;
-	--fg-muted: #a0a0aa;
-	--fg-faint: #74747e;
-	--accent: #4f8cff;
+	--bg: #111317;
+	--surface: #181b21;
+	--surface-2: #20242c;
+	--line: #272c35;
+	--line-soft: #1f232a;
+	--fg: #e8eaef;
+	--fg-muted: #8a92a3;
+	--fg-faint: #6b7280;
+	--accent: #5b8cff;
 	--accent-fg: #ffffff;
-	--accent-soft: #22304d;
-	--ok-bg: #1f5f3a;
-	--ok-fg: #bff5d0;
-	--warn-bg: #6b5310;
-	--warn-fg: #ffe9a8;
-	--bad-bg: #6b1f1f;
-	--bad-fg: #ffc9c9;
-	--muted-bg: #33333a;
-	--muted-fg: #cfcfd6;
-	--dec-bg: #243b6b;
-	--dec-fg: #cfe0ff;
-	--msg-bg: #3a2a55;
-	--msg-fg: #e3d4ff;
+	--accent-soft: #1d2b4d;
+	--ok: #3cc47c;
+	--warn: #e5a83b;
+	--bad: #ec5b52;
+	--off: #555b66;
+	--ok-bg: #173d2a;
+	--ok-fg: #4fd18b;
+	--warn-bg: #3d3115;
+	--warn-fg: #f0b952;
+	--bad-bg: #3d1f1f;
+	--bad-fg: #f47c74;
+	--muted-bg: #262a33;
+	--muted-fg: #a4abba;
+	--dec-bg: #1d2b4d;
+	--dec-fg: #9db8ff;
+	--msg-bg: #2e2546;
+	--msg-fg: #c9b6ff;
 	--map-rock: #0b0b0e;
 	--map-tunnel: #292d38;
 	--map-walked: #34466e;
@@ -38,30 +42,39 @@
 	--bg: #f4f5f7;
 	--surface: #ffffff;
 	--surface-2: #eef0f3;
-	--line: #d5d8de;
-	--line-soft: #e5e7eb;
+	--line: #d9dce2;
+	--line-soft: #e8eaee;
 	--fg: #17181c;
-	--fg-muted: #555a66;
-	--fg-faint: #80848f;
-	--accent: #2f6fe4;
-	--accent-soft: #dbe6fb;
-	--ok-bg: #d3f2de;
-	--ok-fg: #185c34;
-	--warn-bg: #fbecc0;
-	--warn-fg: #6a4d00;
-	--bad-bg: #fad4d4;
-	--bad-fg: #7c1d1d;
-	--muted-bg: #e6e7ea;
-	--muted-fg: #3b3e46;
-	--dec-bg: #dce7fb;
-	--dec-fg: #1d3b73;
-	--msg-bg: #ebe0fa;
+	--fg-muted: #5b6170;
+	--fg-faint: #80868f;
+	--accent: #3b6fe0;
+	--accent-soft: #dfe8fb;
+	--ok: #23a35f;
+	--warn: #c98a16;
+	--bad: #d9443b;
+	--off: #a0a5b0;
+	--ok-bg: #dcf3e5;
+	--ok-fg: #17663b;
+	--warn-bg: #faedcf;
+	--warn-fg: #7a5200;
+	--bad-bg: #fbe0de;
+	--bad-fg: #a12a22;
+	--muted-bg: #e6e8ec;
+	--muted-fg: #4b5060;
+	--dec-bg: #dfe8fb;
+	--dec-fg: #23479a;
+	--msg-bg: #ece3fa;
 	--msg-fg: #4a2a78;
 	--map-rock: #d4d8e0;
 	--map-tunnel: #f4f5f8;
 	--map-walked: #bccff5;
 	--map-halo: rgb(255 255 255 / 0.9);
 	color-scheme: light;
+}
+
+@theme {
+	--radius-card: 12px;
+	--radius-ctl: 8px;
 }
 
 @theme inline {
@@ -76,6 +89,10 @@
 	--color-accent: var(--accent);
 	--color-accent-fg: var(--accent-fg);
 	--color-accent-soft: var(--accent-soft);
+	--color-ok: var(--ok);
+	--color-warn: var(--warn);
+	--color-bad: var(--bad);
+	--color-off: var(--off);
 	--color-ok-bg: var(--ok-bg);
 	--color-ok-fg: var(--ok-fg);
 	--color-warn-bg: var(--warn-bg);
@@ -113,28 +130,28 @@ body {
 
 @layer components {
 	.card {
-		@apply rounded-lg border border-line bg-surface p-3;
+		@apply rounded-card border border-line bg-surface p-3.5;
 	}
 	.card-title {
-		@apply mb-2 text-xs font-semibold tracking-wide text-fg-muted uppercase;
+		@apply mb-2 text-[11px] font-semibold tracking-[0.07em] text-fg-muted uppercase;
 	}
 	.btn {
-		@apply inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-line bg-surface-2 px-3 text-sm font-medium text-fg transition-colors hover:border-fg-faint disabled:cursor-not-allowed disabled:opacity-50;
+		@apply inline-flex min-h-9 items-center justify-center gap-1.5 rounded-ctl border border-line bg-surface-2 px-3 text-sm font-medium whitespace-nowrap text-fg transition-colors hover:border-fg-faint disabled:cursor-not-allowed disabled:opacity-50 md:min-h-8 md:text-[13px];
 	}
 	.btn-primary {
-		@apply border-accent bg-accent text-accent-fg hover:brightness-110;
+		@apply border-accent bg-accent text-accent-fg hover:border-accent hover:brightness-110;
 	}
 	.btn-danger {
-		@apply border-bad-bg bg-bad-bg text-bad-fg hover:brightness-110;
+		@apply border-bad/40 bg-transparent text-bad-fg hover:border-bad/70 hover:bg-bad-bg;
 	}
 	.btn-ghost {
 		@apply border-transparent bg-transparent hover:bg-surface-2;
 	}
 	.input {
-		@apply min-h-9 w-full rounded-md border border-line bg-bg px-2.5 text-sm text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none;
+		@apply min-h-9 w-full rounded-ctl border border-line bg-bg px-2.5 text-sm text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none md:min-h-8 md:text-[13px];
 	}
 	.pill {
-		@apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+		@apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap;
 	}
 	.pill-ok {
 		@apply bg-ok-bg text-ok-fg;

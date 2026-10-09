@@ -5,7 +5,7 @@
 	import { val } from '$lib/util/observed';
 	import Meter from '../Meter.svelte';
 	import Pill from '../Pill.svelte';
-	import Row from './Row.svelte';
+	import Row from '../ui/Row.svelte';
 
 	interface Props {
 		state: PublicState;

@@ -11,7 +11,7 @@
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
 	import { pretty } from '$lib/util/text';
-	import KV from './KV.svelte';
+	import Row from '../ui/Row.svelte';
 
 	interface Props {
 		api: AccountApi;
@@ -67,10 +67,10 @@
 	Сообщение #{item.id} · {fmtMoment(item.at, now, true)}
 </h3>
 <dl class="mb-2">
-	<KV label="Сообщение">{item.msg_id} · правка {item.revision}{item.kind === 'edit' ? ' (edit)' : ''}</KV>
-	<KV label="Чат"><span class="font-mono text-xs">{item.chat_id}</span></KV>
-	{#if item.outgoing}<KV label="Направление">отправлено ботом</KV>{/if}
-	{#if item.recovered}<KV label="Догон">восстановлено после простоя</KV>{/if}
+	<Row dl label="Сообщение">{item.msg_id} · правка {item.revision}{item.kind === 'edit' ? ' (edit)' : ''}</Row>
+	<Row dl label="Чат"><span class="font-mono text-xs">{item.chat_id}</span></Row>
+	{#if item.outgoing}<Row dl label="Направление">отправлено ботом</Row>{/if}
+	{#if item.recovered}<Row dl label="Догон">восстановлено после простоя</Row>{/if}
 </dl>
 <div class="ext-text rounded-md border border-line-soft bg-bg p-2 text-sm">{item.text ?? '(без текста)'}</div>
 

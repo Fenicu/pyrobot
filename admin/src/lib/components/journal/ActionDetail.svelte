@@ -8,7 +8,7 @@
 	import { fmtMoment } from '$lib/util/format';
 	import { ACTION_STATUS, actionCommand, SOURCE, statusTone } from '$lib/util/game';
 	import Pill from '../Pill.svelte';
-	import KV from './KV.svelte';
+	import Row from '../ui/Row.svelte';
 	import RunSteps from './RunSteps.svelte';
 
 	interface Props {
@@ -58,23 +58,23 @@
 {:else}
 	<h3 class="mb-1 font-semibold">Действие #{action.id} · {fmtMoment(action.created_at, now, true)}</h3>
 	<dl>
-		<KV label="Статус">
+		<Row dl label="Статус">
 			<Pill tone={statusTone(action.status)}>{ACTION_STATUS[action.status] ?? action.status}</Pill>
-		</KV>
-		{#if action.reason}<KV label="Причина"><span class="ext-text">{action.reason}</span></KV>{/if}
-		<KV label="Команда"><span class="ext-text font-mono text-xs">{command}</span></KV>
-		<KV label="Вид">{action.kind} · {action.command_class}</KV>
+		</Row>
+		{#if action.reason}<Row dl label="Причина"><span class="ext-text">{action.reason}</span></Row>{/if}
+		<Row dl label="Команда"><span class="ext-text font-mono text-xs">{command}</span></Row>
+		<Row dl label="Вид">{action.kind} · {action.command_class}</Row>
 		{#if action.kind === 'forward'}
-			<KV label="Куда"><span class="ext-text">{chatTitle ? `«${chatTitle}»` : 'название не известно'} · {action.chat_id}</span></KV>
+			<Row dl label="Куда"><span class="ext-text">{chatTitle ? `«${chatTitle}»` : 'название не известно'} · {action.chat_id}</span></Row>
 		{/if}
-		<KV label="Источник">{SOURCE[action.source] ?? action.source}</KV>
-		{#if action.idempotency_key}<KV label="Ключ"><span class="font-mono text-xs break-all">{action.idempotency_key}</span></KV>{/if}
-		<KV label="Попытки">{action.attempts}</KV>
-		{#if action.answer}<KV label="Ответ"><span class="ext-text">{action.answer}</span></KV>{/if}
-		{#if action.match_detail}<KV label="Совпадение"><span class="ext-text">{action.match_detail}</span></KV>{/if}
-		{#if action.sent_at}<KV label="Отправлено">{fmtMoment(action.sent_at, now, true)}</KV>{/if}
-		{#if action.finished_at}<KV label="Завершено">{fmtMoment(action.finished_at, now, true)}</KV>{/if}
-		{#if action.reconciled_at}<KV label="Сверено">{fmtMoment(action.reconciled_at, now, true)}</KV>{/if}
+		<Row dl label="Источник">{SOURCE[action.source] ?? action.source}</Row>
+		{#if action.idempotency_key}<Row dl label="Ключ"><span class="font-mono text-xs break-all">{action.idempotency_key}</span></Row>{/if}
+		<Row dl label="Попытки">{action.attempts}</Row>
+		{#if action.answer}<Row dl label="Ответ"><span class="ext-text">{action.answer}</span></Row>{/if}
+		{#if action.match_detail}<Row dl label="Совпадение"><span class="ext-text">{action.match_detail}</span></Row>{/if}
+		{#if action.sent_at}<Row dl label="Отправлено">{fmtMoment(action.sent_at, now, true)}</Row>{/if}
+		{#if action.finished_at}<Row dl label="Завершено">{fmtMoment(action.finished_at, now, true)}</Row>{/if}
+		{#if action.reconciled_at}<Row dl label="Сверено">{fmtMoment(action.reconciled_at, now, true)}</Row>{/if}
 	</dl>
 	{#if action.scenario_run_id}
 		<h4 class="mt-3 mb-1 text-xs text-fg-muted uppercase">Запуск</h4>
