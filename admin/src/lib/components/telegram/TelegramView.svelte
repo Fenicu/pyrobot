@@ -378,9 +378,7 @@
 				{#if message}<p class="ext-text mt-2 text-sm text-warn-fg" role="alert">{message}</p>{/if}
 			</section>
 
-			{#if phase === 'online'}
-				<!-- Выход из Telegram — в шапке страницы. -->
-			{:else if waiting && attempt === null}
+			{#if waiting && attempt === null}
 				<section class="card space-y-2 text-sm">
 					<p>Вход уже начат в другой вкладке или сессии. Можно начать заново здесь или отменить его.</p>
 					<form class="flex gap-2" onsubmit={start}>
@@ -505,7 +503,7 @@
 						{@render cancelButton()}
 					</div>
 				</form>
-			{:else if status && phase !== 'overload' && phase !== 'stopped'}
+			{:else if status && phase !== 'online' && phase !== 'overload' && phase !== 'stopped'}
 				<form class="card space-y-2" onsubmit={start}>
 					<label class="block space-y-1">
 						<span class="label">Телефон аккаунта</span>

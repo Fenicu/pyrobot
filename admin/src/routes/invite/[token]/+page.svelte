@@ -158,10 +158,11 @@
 		</form>
 	{:else if status === 'codes'}
 		<div class="card w-full max-w-md space-y-4 p-6">
-			<AuthHeader
-				title="Коды восстановления"
-				subtitle="Сохраните эти одноразовые коды. Они понадобятся для входа, если вы забудете пароль. Коды показываются один раз."
-			/>
+			<AuthHeader title="Коды восстановления" />
+			<p class="text-sm text-fg-muted">
+				Сохраните эти одноразовые коды. Они понадобятся для входа, если вы забудете пароль. Коды показываются
+				один раз.
+			</p>
 			<RecoveryCodes {codes} />
 			<label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
 				<input type="checkbox" bind:checked={saved} />

@@ -56,6 +56,8 @@ describe('Вход в Telegram', () => {
 		// Пользователь входа и привязка аккаунта.
 		expect(await screen.findAllByText('267519921')).toHaveLength(2);
 		expect(screen.getByRole('button', { name: 'Выйти из Telegram' })).toBeInTheDocument();
+		// Вошедшему форма входа не нужна.
+		expect(screen.queryByLabelText('Телефон аккаунта')).not.toBeInTheDocument();
 	});
 
 	it('выход из Telegram — в шапке страницы, статус и своё приложение — карточками рядом', async () => {

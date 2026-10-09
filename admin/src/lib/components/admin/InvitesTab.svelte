@@ -198,11 +198,11 @@
 			<div
 				role="table"
 				aria-label="Приглашения"
-				class="space-y-2 md:space-y-0 md:overflow-hidden md:rounded-lg md:border md:border-line md:bg-surface"
+				class="space-y-2 xl:space-y-0 xl:overflow-hidden xl:rounded-lg xl:border xl:border-line xl:bg-surface"
 			>
 				<div
 					role="row"
-					class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.5fr)_6rem]"
+					class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase xl:grid xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.5fr)_6rem]"
 				>
 					<span role="columnheader">Создано</span>
 					<span role="columnheader">Истекает</span>
@@ -215,20 +215,20 @@
 				{#each store.invites as inv (inv.id)}
 					<div
 						role="row"
-						class="card grid gap-2 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.5fr)_6rem] md:items-center md:gap-3 md:rounded-none md:border-0 md:border-b md:border-line-soft md:last:border-b-0"
+						class="card grid gap-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.5fr)_6rem] xl:items-center xl:gap-3 xl:rounded-none xl:border-0 xl:border-b xl:border-line-soft xl:last:border-b-0"
 					>
 						<div role="cell" class="text-xs text-fg-muted">
-							<span class="md:hidden">Создано: </span>
+							<span class="xl:hidden">Создано: </span>
 							{fmtMoment(inv.created_at)}
 						</div>
 
 						<div role="cell" class="text-xs text-fg-muted">
-							<span class="md:hidden">Истекает: </span>
+							<span class="xl:hidden">Истекает: </span>
 							{fmtMoment(inv.expires_at)}
 						</div>
 
 						<div role="cell" class="text-sm">
-							<span class="text-xs text-fg-muted md:hidden">Лимит: </span>
+							<span class="text-xs text-fg-muted xl:hidden">Лимит: </span>
 							{inv.max_accounts}
 						</div>
 
@@ -241,11 +241,11 @@
 						</div>
 
 						<div role="cell" class="min-w-0 text-sm">
-							<span class="text-xs text-fg-muted md:hidden">Пометка: </span>
+							<span class="text-xs text-fg-muted xl:hidden">Пометка: </span>
 							<span>{inv.note ?? '—'}</span>
 						</div>
 
-						<div role="cell" class="flex items-center md:justify-end">
+						<div role="cell" class="flex items-center xl:justify-end">
 							<button
 								type="button"
 								class="btn btn-ghost px-2 py-1 text-xs text-bad-fg"
@@ -254,7 +254,7 @@
 								disabled={actionBusy}
 							>
 								<Trash2 class="size-3.5" aria-hidden="true" />
-								<span class="md:sr-only">Отозвать</span>
+								<span class="xl:sr-only">Отозвать</span>
 							</button>
 						</div>
 					</div>

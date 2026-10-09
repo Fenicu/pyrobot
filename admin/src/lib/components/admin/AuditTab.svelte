@@ -34,11 +34,11 @@
 		<div
 			role="table"
 			aria-label="Журнал действий"
-			class="space-y-2 md:space-y-0 md:overflow-hidden md:rounded-lg md:border md:border-line md:bg-surface"
+			class="space-y-2 xl:space-y-0 xl:overflow-hidden xl:rounded-lg xl:border xl:border-line xl:bg-surface"
 		>
 			<div
 				role="row"
-				class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,2fr)]"
+				class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,2fr)]"
 			>
 				<span role="columnheader">Время</span>
 				<span role="columnheader">Кто</span>
@@ -50,30 +50,30 @@
 			{#each store.audit as item (item.id)}
 				<div
 					role="row"
-					class="card grid gap-1.5 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,2fr)] md:items-center md:gap-3 md:rounded-none md:border-0 md:border-b md:border-line-soft md:last:border-b-0"
+					class="card grid gap-1.5 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,2fr)] xl:items-center xl:gap-3 xl:rounded-none xl:border-0 xl:border-b xl:border-line-soft xl:last:border-b-0"
 				>
 					<div role="cell" class="text-xs text-fg-muted">
-						<span class="md:hidden">Время: </span>
+						<span class="xl:hidden">Время: </span>
 						{fmtMoment(item.at)}
 					</div>
 
-					<div role="cell" class="font-mono text-xs font-medium">
-						<span class="text-fg-muted md:hidden">Кто: </span>
+					<div role="cell" class="min-w-0 font-mono text-xs font-medium [overflow-wrap:anywhere]">
+						<span class="text-fg-muted xl:hidden">Кто: </span>
 						{item.actor_login}
 					</div>
 
 					<div role="cell" class="min-w-0 font-mono text-xs text-accent [overflow-wrap:anywhere]">
-						<span class="text-fg-muted md:hidden">Действие: </span>
+						<span class="text-fg-muted xl:hidden">Действие: </span>
 						{item.action}
 					</div>
 
 					<div role="cell" class="text-xs text-fg-muted">
-						<span class="md:hidden">Цель: </span>
+						<span class="xl:hidden">Цель: </span>
 						{item.target_type ?? '—'}{item.target_id !== null ? ` #${item.target_id}` : ''}
 					</div>
 
 					<div role="cell" class="min-w-0 font-mono text-[11px] text-fg-faint truncate" title={formatDetails(item.details)}>
-						<span class="text-fg-muted md:hidden">Детали: </span>
+						<span class="text-fg-muted xl:hidden">Детали: </span>
 						{formatDetails(item.details)}
 					</div>
 				</div>

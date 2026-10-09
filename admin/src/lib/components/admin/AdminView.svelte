@@ -1,11 +1,11 @@
 <script lang="ts">
 	import Bell from '@lucide/svelte/icons/bell';
+	import Bot from '@lucide/svelte/icons/bot';
 	import History from '@lucide/svelte/icons/history';
 	import Mail from '@lucide/svelte/icons/mail';
 	import Server from '@lucide/svelte/icons/server';
 	import ShieldAlert from '@lucide/svelte/icons/shield-alert';
 	import Users from '@lucide/svelte/icons/users';
-	import UsersRound from '@lucide/svelte/icons/users-round';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import type { AdminStore } from '$lib/admin/store.svelte';
@@ -54,7 +54,7 @@
 
 	const tabs: { id: AdminTab; label: string; icon: typeof Users }[] = [
 		{ id: 'users', label: 'Пользователи', icon: Users },
-		{ id: 'accounts', label: 'Аккаунты', icon: UsersRound },
+		{ id: 'accounts', label: 'Аккаунты', icon: Bot },
 		{ id: 'invites', label: 'Приглашения', icon: Mail },
 		{ id: 'server', label: 'Сервер', icon: Server },
 		{ id: 'audit', label: 'Журнал действий', icon: History },
