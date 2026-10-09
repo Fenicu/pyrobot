@@ -14,11 +14,16 @@ interface LeaveDeps {
 
 /** Обработчик `beforeNavigate` страницы с черновиком. Закрытие вкладки и перезагрузка (`leave`) —
  * отмена, и SvelteKit показывает окно браузера `beforeunload`; другой переход — своё окно
- * подтверждения и тот же переход после «да». */
+ * подтверждения и тот же переход после «да». Разрешение — только на этот повторный переход:
+ * страница может пережить его (тот же адрес), и следующий уход снова спрашивает. */
 export function leaveGuard({ dirty, confirm, go }: LeaveDeps): (nav: LeaveNavigation) => void {
 	let allowed = false;
 	return (nav) => {
-		if (allowed || !dirty()) return;
+		if (allowed) {
+			allowed = false;
+			return;
+		}
+		if (!dirty()) return;
 		nav.cancel();
 		const to = nav.to;
 		if (nav.type === 'leave' || to === null) return;

@@ -56,4 +56,22 @@ describe('уход с несохранёнными настройками', () =
 		expect(again.cancel).toHaveBeenCalledTimes(1);
 		expect(confirm).toHaveBeenCalledTimes(2);
 	});
+
+	it('разрешение одноразовое: после повторённого перехода новый уход с правками снова спрашивает', async () => {
+		const confirm = vi.fn(async () => true);
+		const go = vi.fn();
+		const guard = leaveGuard({ dirty: () => true, confirm, go });
+		guard(nav('link', '/a/1').n);
+		await flush();
+		expect(go).toHaveBeenCalledTimes(1);
+		// Тот же адрес: страница не пересоздаётся, обработчик живёт дальше.
+		const repeated = nav('goto', '/a/1');
+		guard(repeated.n);
+		expect(repeated.cancel).not.toHaveBeenCalled();
+		const next = nav('link', '/a/1/journal');
+		guard(next.n);
+		expect(next.cancel).toHaveBeenCalledTimes(1);
+		expect(confirm).toHaveBeenCalledTimes(2);
+	});
 });
+

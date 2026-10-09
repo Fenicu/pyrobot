@@ -45,6 +45,9 @@
 	function apply(g: GridStack, l: HomeLayout) {
 		if (l === applied) return;
 		applied = l;
+		// Класс скрытого — всегда по раскладке: сетка без блоков читается как «все скрыты» и
+		// расстановку пропустит, а обёртки вне сетки иначе видны.
+		for (const id of BLOCK_IDS) wrapper(id)?.classList.toggle('hidden', l.hidden.includes(id));
 		if (sameLayout(read(g), l)) return;
 		applying = true;
 		try {
@@ -53,11 +56,8 @@
 			const visible = l.items.filter((i) => !l.hidden.includes(i.id)).sort((a, b) => a.y - b.y || a.x - b.x);
 			for (const { id, x, y, w, h } of visible) {
 				const el = wrapper(id);
-				if (!el) continue;
-				el.classList.remove('hidden');
-				g.makeWidget(el, { id, x, y, w, h });
+				if (el) g.makeWidget(el, { id, x, y, w, h });
 			}
-			for (const id of l.hidden) wrapper(id)?.classList.add('hidden');
 			g.batchUpdate(false);
 		} finally {
 			applying = false;

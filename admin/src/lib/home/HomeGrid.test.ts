@@ -133,4 +133,16 @@ describe('сетка главной', () => {
 		flushSync();
 		expect(screen.queryByRole('button', { name: /^Скрыть/ })).toBeNull();
 	});
+
+	it('все блоки скрыты: на свежей сетке ни одна обёртка не видна', () => {
+		const layout: HomeLayout = { version: 1, items: [], hidden: [...BLOCK_IDS] };
+		const onchange = vi.fn();
+		const { container } = render(HomeGrid, { layout, editing: false, blocks, onchange });
+		for (const id of BLOCK_IDS) {
+			expect(wrapper(container, id)).toHaveClass('hidden');
+			expect((wrapper(container, id) as GridItemHTMLElement).gridstackNode).toBeUndefined();
+		}
+		expect(onchange).not.toHaveBeenCalled();
+	});
 });
+

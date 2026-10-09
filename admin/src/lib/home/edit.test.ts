@@ -269,4 +269,24 @@ describe('главная: уход с несохранённой расклад�
 		expect(homeLayout.editing).toBe(true);
 		expect(homeLayout.dirty).toBe(true);
 	});
+
+	it('после «Не сохранять» и перехода на тот же адрес следующий уход с правками снова спрашивает', async () => {
+		const user = await dirtyEditing();
+		h.guards[0]!(nav('/a/1').n);
+		await user.click(await screen.findByRole('button', { name: 'Не сохранять' }));
+		await vi.waitFor(() => expect(goto).toHaveBeenCalledTimes(1));
+		// goto на тот же адрес — страница остаётся, её обработчик видит этот переход.
+		const same = nav('/a/1');
+		h.guards[0]!(same.n);
+		expect(same.cancel).not.toHaveBeenCalled();
+
+		await user.click(screen.getByRole('button', { name: 'Настроить' }));
+		await user.click(screen.getByRole('button', { name: 'Скрыть «Гаджеты»' }));
+		const next = nav('/a/1/journal');
+		h.guards[0]!(next.n);
+		expect(next.cancel).toHaveBeenCalledTimes(1);
+		expect(await screen.findByRole('dialog')).toBeInTheDocument();
+		expect(homeLayout.dirty).toBe(true);
+	});
 });
+
