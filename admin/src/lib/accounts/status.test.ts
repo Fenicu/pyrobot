@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountOut } from '$lib/api/types';
-import { accountActivity, accountTone, needsAttention } from './status';
+import { accountActivity, accountDotLabel, accountTone, needsAttention } from './status';
 
 const NOW = new Date('2026-10-09T12:00:00Z');
 
@@ -47,6 +47,15 @@ describe('accountTone', () => {
 	];
 	it.each(cases)('%s → %s', (_name, patch, tone) => {
 		expect(accountTone(acc(patch))).toBe(tone);
+	});
+});
+
+describe('accountDotLabel', () => {
+	it('удаляемый — «удаляется», остальные — по тону', () => {
+		expect(accountDotLabel(acc({ status: 'deleting' }))).toBe('удаляется');
+		expect(accountDotLabel(acc({ status: 'disabled' }))).toBe('выключен');
+		expect(accountDotLabel(acc({ blocked: true }))).toBe('ошибка');
+		expect(accountDotLabel(acc())).toBe('работает');
 	});
 });
 

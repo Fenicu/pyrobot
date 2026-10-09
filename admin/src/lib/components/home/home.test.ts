@@ -158,6 +158,8 @@ describe('Главная на снимке с прода', () => {
 		expect(header).toHaveTextContent('TG: online');
 		expect(header).toHaveTextContent('след. решение 28.09 05:05');
 		expect(header).not.toHaveTextContent('нет аренды аккаунта');
+		// На телефоне режим уже в верхней полосе — в шапке страницы он только с md.
+		expect(within(header).getByText('LIVE').parentElement).toHaveClass('hidden', 'md:contents');
 	});
 
 	it('шапка: движок не запущен — одна приглушённая метка вместо ложных тревог', () => {

@@ -4,7 +4,7 @@ import { activityLabel } from '$lib/util/game';
 export type Tone = 'ok' | 'warn' | 'bad' | 'off';
 
 /** Подпись точки статуса для чтеца и подсказки. */
-export const TONE_LABEL: Record<Tone, string> = {
+const TONE_LABEL: Record<Tone, string> = {
 	ok: 'работает',
 	warn: 'требует внимания',
 	bad: 'ошибка',
@@ -17,6 +17,11 @@ export function accountTone(a: AccountOut): Tone {
 	if (a.status === 'error' || a.blocked || a.killed || a.unread.error > 0) return 'bad';
 	if (a.paused || a.unread.warn > 0 || !a.tg.online) return 'warn';
 	return 'ok';
+}
+
+/** Подпись точки конкретного аккаунта: удаляемый — не «выключен». */
+export function accountDotLabel(a: AccountOut): string {
+	return a.status === 'deleting' ? 'удаляется' : TONE_LABEL[accountTone(a)];
 }
 
 export function needsAttention(a: AccountOut): boolean {

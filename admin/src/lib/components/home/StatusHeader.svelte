@@ -21,11 +21,14 @@
 
 <section class="flex flex-wrap items-center gap-1.5" aria-label="Статус">
 	{#if status}
-		{#if status.mode === 'live'}
-			<Pill tone="ok">LIVE</Pill>
-		{:else}
-			<Pill tone="warn" title="Команды, кроме навигации, не уходят в игру">DRY RUN</Pill>
-		{/if}
+		<!-- На телефоне режим показывает верхняя полоса каркаса. -->
+		<span class="hidden md:contents">
+			{#if status.mode === 'live'}
+				<Pill tone="ok">LIVE</Pill>
+			{:else}
+				<Pill tone="warn" title="Команды, кроме навигации, не уходят в игру">DRY RUN</Pill>
+			{/if}
+		</span>
 		{#if status.paused}<Pill tone="warn">пауза</Pill>{/if}
 		{#if status.killed}
 			<Pill tone="bad"><span class="ext-text">kill{status.kill_reason ? `: ${status.kill_reason}` : ''}</span></Pill>

@@ -141,6 +141,7 @@ describe('экран аккаунтов', () => {
 		await setup(LIST);
 		const old = within(card('old'));
 		expect(old.getByText('удаляется')).toBeInTheDocument();
+		expect(old.getByRole('img')).toHaveAccessibleName('удаляется');
 		expect(old.queryByRole('button')).toBeNull();
 		expect(old.queryByRole('link')).toBeNull();
 		// У остальных — ссылка и меню действий.

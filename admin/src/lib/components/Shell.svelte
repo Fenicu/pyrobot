@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { onMount, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { TONE_LABEL, accountTone, needsAttention } from '$lib/accounts/status';
+	import { accountDotLabel, accountTone, needsAttention } from '$lib/accounts/status';
 	import { accounts, api, current, session } from '$lib/app.svelte';
 	import { signOutWithRetry } from '$lib/logout';
 	import { accountHref, isActive, lastAccount, parseAccount, phoneMenu, pickAccount } from '$lib/nav';
@@ -69,7 +69,7 @@
 	>
 		{#if onAccountScreen && acc}
 			{@const tone = accountTone(acc)}
-			<StatusDot {tone} label={TONE_LABEL[tone]} />
+			<StatusDot {tone} label={accountDotLabel(acc)} />
 			<span class="min-w-0 flex-1 truncate text-[15px] font-semibold"
 				>{accountTitle(acc)}{#if sectionTitle}{' '}<span class="font-normal text-fg-muted">· {sectionTitle}</span
 					>{/if}</span

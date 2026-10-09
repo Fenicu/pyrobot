@@ -4,7 +4,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Unplug from '@lucide/svelte/icons/unplug';
 	import { onMount } from 'svelte';
-	import { TONE_LABEL, accountActivity, accountTone } from '$lib/accounts/status';
+	import { accountActivity, accountDotLabel, accountTone } from '$lib/accounts/status';
 	import type { Api } from '$lib/api/client';
 	import type { AccountOut } from '$lib/api/types';
 	import { switchHref } from '$lib/nav';
@@ -66,7 +66,7 @@
 {#snippet row(a: AccountOut)}
 	{@const tone = accountTone(a)}
 	{@const activity = accountActivity(a, now)}
-	<StatusDot {tone} label={TONE_LABEL[tone]} />
+	<StatusDot {tone} label={accountDotLabel(a)} />
 	{#if collapsed}
 		<span class="text-xs font-semibold" aria-hidden="true">{initial(a)}</span>
 	{:else}

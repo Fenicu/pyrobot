@@ -8,7 +8,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Unplug from '@lucide/svelte/icons/unplug';
 	import { onMount } from 'svelte';
-	import { TONE_LABEL, accountActivity, accountTone, type Activity } from '$lib/accounts/status';
+	import { accountActivity, accountDotLabel, accountTone, type Activity } from '$lib/accounts/status';
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { AccountOut } from '$lib/api/types';
@@ -177,7 +177,7 @@
 {#snippet summary(a: AccountOut, act: Activity)}
 	{@const tone = accountTone(a)}
 	<div class="flex items-center gap-2">
-		<StatusDot {tone} label={TONE_LABEL[tone]} />
+		<StatusDot {tone} label={accountDotLabel(a)} />
 		<span id="{uid}-name-{a.id}" class="ext-text min-w-0 truncate font-medium">{accountTitle(a)}</span>
 		{#if tgOffline(a)}
 			<span class="shrink-0 text-warn-fg" title="Telegram не в сети">
