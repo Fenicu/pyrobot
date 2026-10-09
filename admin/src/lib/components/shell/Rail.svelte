@@ -50,7 +50,7 @@
 	{#each nav.account as item (item.href)}{@render link(item)}{/each}
 	<span class="flex-1"></span>
 	{#each nav.common as item (item.href)}{@render link(item)}{/each}
-	<ThemeSwitch compact />
+	<ThemeSwitch variant="icon" />
 	<button
 		type="button"
 		class="{ICON} text-fg-muted hover:bg-surface-2 hover:text-fg"

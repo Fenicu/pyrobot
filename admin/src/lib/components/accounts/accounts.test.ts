@@ -7,6 +7,7 @@ import type { AccountOut, EngineStatus } from '$lib/api/types';
 import { AccountsStore } from '$lib/stores/accounts.svelte';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
+import { fmtTime } from '$lib/util/format';
 import EngineDownBanner from '../EngineDownBanner.svelte';
 import AccountsView from './AccountsView.svelte';
 
@@ -70,8 +71,25 @@ async function setup(list: AccountOut[], handler: (c: Call) => Response | undefi
 	return { fetch, store, state, user: userEvent.setup() };
 }
 
-const row = (name: string) => screen.getAllByRole('row').find((r) => within(r).queryByText(name, { exact: true }))!;
+const card = (name: string) =>
+	screen.getAllByRole('listitem').find((r) => within(r).queryByText(name, { exact: true }))!;
 const names = (c: Call[]) => c.map((x) => `${x.method} ${x.url}`);
+
+/** Действие из меню «⋯» карточки. */
+async function act(user: ReturnType<typeof userEvent.setup>, name: string, action: string) {
+	await user.click(within(card(name)).getByRole('button', { name: 'Действия' }));
+	await user.click(within(card(name)).getByRole('button', { name: action }));
+}
+
+async function openMenu(user: ReturnType<typeof userEvent.setup>, name: string) {
+	await user.click(within(card(name)).getByRole('button', { name: 'Действия' }));
+	return within(card(name));
+}
+
+async function startCreate(user: ReturnType<typeof userEvent.setup>) {
+	await user.click(screen.getByRole('button', { name: 'Добавить' }));
+	return within(screen.getByRole('dialog', { name: 'Новый аккаунт' }));
+}
 
 afterEach(() => {
 	cleanup();
@@ -80,59 +98,88 @@ afterEach(() => {
 });
 
 describe('экран аккаунтов', () => {
-	it('список показывает поля аккаунта', async () => {
-		await setup(LIST);
-		const main = within(row('main'));
+	it('карточки: точка, титул, уровень, до скольки и чем занят; ведут на главную аккаунта', async () => {
+		const until = new Date(Date.now() + 3_600_000).toISOString();
+		await setup([
+			account(1, 'main', { level: 54, busy: { activity: 'learn', until } }),
+			account(2, 'twink', { status: 'disabled' }),
+			account(3, 'alt', { tg: { user_id: 103, online: false } })
+		]);
+		expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Аккаунты');
+		const main = within(card('main'));
 		expect(main.getByRole('link', { name: 'main' })).toHaveAttribute('href', '/a/1');
-		expect(main.getByText('267519921')).toBeInTheDocument();
-		expect(main.getByText('в сети')).toBeInTheDocument();
-		expect(main.getByText('включён')).toBeInTheDocument();
-		expect(main.getByText('LIVE')).toBeInTheDocument();
-		// Последнее действие — по Москве.
-		expect(main.getByText(/22:05/)).toBeInTheDocument();
-		expect(main.getByLabelText('предупреждений: 2')).toBeInTheDocument();
-		expect(main.getByLabelText('ошибок: 1')).toBeInTheDocument();
+		expect(main.getByRole('link', { name: 'main' })).toHaveAccessibleDescription('учёба');
+		expect(main.getByRole('img')).toHaveAccessibleName('работает');
+		expect(main.getByText('ур. 54')).toBeInTheDocument();
+		expect(main.getByText(fmtTime(until))).toBeInTheDocument();
 
-		const twink = within(row('twink'));
-		expect(twink.getByText('выключен')).toBeInTheDocument();
-		expect(twink.getByText('DRY RUN')).toBeInTheDocument();
-		expect(twink.getByText('пауза')).toBeInTheDocument();
-		expect(twink.getByText('kill')).toBeInTheDocument();
-		expect(twink.getByText('не подключён')).toBeInTheDocument();
-		expect(twink.getByRole('button', { name: 'Включить' })).toBeInTheDocument();
+		const twink = within(card('twink'));
+		expect(twink.getByRole('img')).toHaveAccessibleName('выключен');
+		expect(twink.getByText('выключен', { selector: 'p' })).toBeInTheDocument();
+		expect(twink.queryByText(/^ур\./)).toBeNull();
+		expect(within(card('alt')).getByTitle('Telegram не в сети')).toBeInTheDocument();
+	});
 
-		const broken = within(row('broken'));
-		expect(broken.getByText('ошибка')).toBeInTheDocument();
-		expect(broken.getByText(/движок несколько раз упал подряд: ValueError/)).toBeInTheDocument();
-		expect(broken.getByText('не в сети')).toBeInTheDocument();
-		expect(broken.getByRole('button', { name: 'Включить' })).toBeInTheDocument();
+	it('проблема — текст предупреждения или причины и красная рамка', async () => {
+		await setup([
+			account(1, 'main', { unread: { warn: 2, error: 1 }, alert: { level: 'error', text: 'Не хватает денег' } }),
+			account(2, 'warned', { alert: { level: 'warn', text: 'Мало сил' } }),
+			account(3, 'broken', { status: 'error', status_reason: 'crash_loop:ValueError' }),
+			account(4, 'calm')
+		]);
+		expect(within(card('main')).getByText('Не хватает денег')).toHaveClass('text-bad-fg');
+		expect(within(card('main')).getByRole('img')).toHaveAccessibleName('ошибка');
+		expect(card('main').firstElementChild).toHaveClass('border-bad/60');
+		expect(within(card('warned')).getByText('Мало сил')).toHaveClass('text-warn-fg');
+		expect(card('warned').firstElementChild).not.toHaveClass('border-bad/60');
+		expect(within(card('broken')).getByText('движок несколько раз упал подряд: ValueError')).toBeInTheDocument();
+		expect(card('broken').firstElementChild).toHaveClass('border-bad/60');
+		expect(card('calm').firstElementChild).not.toHaveClass('border-bad/60');
+	});
 
-		// Удаляемый: без действий и без ссылки на аккаунт.
-		const old = within(row('old'));
+	it('удаляемый аккаунт — без ссылки и без действий', async () => {
+		await setup(LIST);
+		const old = within(card('old'));
 		expect(old.getByText('удаляется')).toBeInTheDocument();
 		expect(old.queryByRole('button')).toBeNull();
 		expect(old.queryByRole('link')).toBeNull();
+		// У остальных — ссылка и меню действий.
+		expect(within(card('broken')).getByRole('link', { name: 'broken' })).toHaveAttribute('href', '/a/3');
+		expect(within(card('broken')).getByRole('button', { name: 'Действия' })).toBeInTheDocument();
+	});
+
+	it('меню «⋯»: включение по статусу, переименование, удаление, вход в Telegram', async () => {
+		const { user } = await setup(LIST);
+		let menu = await openMenu(user, 'main');
+		expect(within(card('main')).getByRole('button', { name: 'Действия' })).toHaveAttribute('aria-expanded', 'true');
+		expect(menu.getByRole('button', { name: 'Выключить' })).toBeInTheDocument();
+		expect(menu.queryByRole('button', { name: 'Включить' })).toBeNull();
+		expect(menu.getByRole('button', { name: 'Переименовать' })).toBeInTheDocument();
+		expect(menu.getByRole('button', { name: 'Удалить' })).toBeInTheDocument();
+		expect(menu.getByRole('link', { name: 'Вход в Telegram' })).toHaveAttribute('href', '/a/1/telegram');
+
+		// Одно меню за раз; Esc закрывает.
+		menu = await openMenu(user, 'twink');
+		expect(within(card('main')).queryByRole('button', { name: 'Выключить' })).toBeNull();
+		expect(menu.getByRole('button', { name: 'Включить' })).toBeInTheDocument();
+		await user.keyboard('{Escape}');
+		expect(within(card('twink')).queryByRole('button', { name: 'Включить' })).toBeNull();
+
+		menu = await openMenu(user, 'broken');
+		expect(menu.getByRole('button', { name: 'Включить' })).toBeInTheDocument();
+		// Щелчок мимо меню закрывает его.
+		await user.click(screen.getByRole('heading', { level: 1 }));
+		expect(within(card('broken')).queryByRole('button', { name: 'Включить' })).toBeNull();
 	});
 
 	it('имя в списке — титул с компанией и командой; поля ввода и подтверждения работают с сырым именем', async () => {
 		const { user } = await setup([account(1, 'Fenicu', { company: 'bmesa', team_tag: 'SU' })]);
 		expect(screen.getByRole('link', { name: '☣️[SU] Fenicu' })).toHaveAttribute('href', '/a/1');
-		await user.click(screen.getByRole('button', { name: 'Переименовать' }));
+		await act(user, '☣️[SU] Fenicu', 'Переименовать');
 		expect(screen.getByLabelText('Новое имя')).toHaveValue('Fenicu');
 		await user.click(screen.getByRole('button', { name: 'Отмена' }));
-		await user.click(screen.getByRole('button', { name: 'Удалить' }));
+		await act(user, '☣️[SU] Fenicu', 'Удалить');
 		expect(screen.getByLabelText('Имя аккаунта для подтверждения')).toHaveAttribute('placeholder', 'Fenicu');
-	});
-
-	it('колонки таблицы одни для заголовка и всех строк; у колонки кнопок — заголовок для чтеца', async () => {
-		await setup(LIST);
-		const actions = screen.getByRole('columnheader', { name: 'Действия' });
-		expect(actions).toHaveClass('sr-only');
-		expect(screen.getAllByRole('columnheader')).toHaveLength(7);
-		// Последняя дорожка — фиксированной ширины: у строки «удаляется» кнопок нет, а колонки не сдвигаются.
-		const grids = screen.getAllByRole('row').map((r) => /md:grid-cols-\[[^\s]+\]/.exec(r.className)?.[0]);
-		expect(new Set(grids).size).toBe(1);
-		expect(grids[0]).toMatch(/_\d+(\.\d+)?rem\]$/);
 	});
 
 	it('удаляемый аккаунт перечитывается, пока чистка не закончится', async () => {
@@ -151,18 +198,26 @@ describe('экран аккаунтов', () => {
 		expect(loads()).toBe(3);
 	});
 
+	it('пустой список — подсказка и «Добавить»', async () => {
+		await setup([]);
+		expect(screen.getByText('Аккаунтов нет — создайте первый.')).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Добавить' })).toBeInTheDocument();
+	});
+
 	it('создание ведёт на экран Telegram нового аккаунта', async () => {
 		const { fetch, state, user } = await setup([account(1, 'main')], (c) => {
 			if (c.method !== 'POST') return undefined;
 			state.list = [...state.list, account(5, 'newbie', { tg: { user_id: null, online: false } })];
 			return json(state.list[1], 201);
 		});
-		await user.type(screen.getByLabelText('Имя нового аккаунта'), '  newbie ');
-		await user.click(screen.getByRole('button', { name: 'Создать' }));
+		const dialog = await startCreate(user);
+		await user.type(dialog.getByLabelText('Имя нового аккаунта'), '  newbie ');
+		await user.click(dialog.getByRole('button', { name: 'Создать' }));
 		await waitFor(() => expect(goto).toHaveBeenCalledWith('/a/5/telegram'));
 		expect(JSON.parse(fetch.calls.find((c) => c.method === 'POST')!.body)).toEqual({ name: 'newbie' });
 		// Список перечитан до перехода: макет аккаунта открывает только аккаунт из списка.
 		expect(names(fetch.calls)).toEqual(['GET /api/v1/accounts', 'POST /api/v1/accounts', 'GET /api/v1/accounts']);
+		expect(screen.queryByRole('dialog')).toBeNull();
 	});
 
 	it('capacity_reached и name_taken — текст у формы, перехода нет', async () => {
@@ -170,16 +225,17 @@ describe('экран аккаунтов', () => {
 		const { user } = await setup([account(1, 'main')], (c) =>
 			c.method === 'POST' ? json({ detail }, 409) : undefined
 		);
-		await user.type(screen.getByLabelText('Имя нового аккаунта'), 'newbie');
-		await user.click(screen.getByRole('button', { name: 'Создать' }));
-		expect(await screen.findByRole('alert')).toHaveTextContent('Достигнут предел включённых аккаунтов');
+		const dialog = await startCreate(user);
+		await user.type(dialog.getByLabelText('Имя нового аккаунта'), 'newbie');
+		await user.click(dialog.getByRole('button', { name: 'Создать' }));
+		expect(await dialog.findByRole('alert')).toHaveTextContent('Достигнут предел включённых аккаунтов');
 
 		detail = 'name_taken';
-		await user.click(screen.getByRole('button', { name: 'Создать' }));
-		await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Аккаунт с таким именем уже есть'));
+		await user.click(dialog.getByRole('button', { name: 'Создать' }));
+		await waitFor(() => expect(dialog.getByRole('alert')).toHaveTextContent('Аккаунт с таким именем уже есть'));
 		expect(goto).not.toHaveBeenCalled();
 		// Имя осталось в поле: исправить и повторить.
-		expect(screen.getByLabelText('Имя нового аккаунта')).toHaveValue('newbie');
+		expect(dialog.getByLabelText('Имя нового аккаунта')).toHaveValue('newbie');
 	});
 
 	it('limit_reached и server_full — текст у формы', async () => {
@@ -187,16 +243,17 @@ describe('экран аккаунтов', () => {
 		const { user } = await setup([account(1, 'main')], (c) =>
 			c.method === 'POST' ? json({ detail }, 409) : undefined
 		);
-		await user.type(screen.getByLabelText('Имя нового аккаунта'), 'newbie');
-		await user.click(screen.getByRole('button', { name: 'Создать' }));
-		expect(await screen.findByRole('alert')).toHaveTextContent('Достигнут лимит аккаунтов');
+		const dialog = await startCreate(user);
+		await user.type(dialog.getByLabelText('Имя нового аккаунта'), 'newbie');
+		await user.click(dialog.getByRole('button', { name: 'Создать' }));
+		expect(await dialog.findByRole('alert')).toHaveTextContent('Достигнут лимит аккаунтов');
 
 		detail = 'server_full';
-		await user.click(screen.getByRole('button', { name: 'Создать' }));
-		await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('На сервере нет свободных мест для аккаунтов'));
+		await user.click(dialog.getByRole('button', { name: 'Создать' }));
+		await waitFor(() => expect(dialog.getByRole('alert')).toHaveTextContent('На сервере нет свободных мест для аккаунтов'));
 		expect(goto).not.toHaveBeenCalled();
 		// Имя осталось в поле: исправить и повторить.
-		expect(screen.getByLabelText('Имя нового аккаунта')).toHaveValue('newbie');
+		expect(dialog.getByLabelText('Имя нового аккаунта')).toHaveValue('newbie');
 	});
 
 	it('заблокированный аккаунт: причина и нет кнопки «Включить»', async () => {
@@ -209,15 +266,16 @@ describe('экран аккаунтов', () => {
 		});
 		// Разблокированный: статус выключен, причина блокировки устарела.
 		const freed = account(6, 'freed', { status: 'disabled', status_reason: 'blocked_by_owner' });
-		await setup([account(1, 'main'), blocked, freed]);
-		const spam = within(row('spam'));
-		expect(spam.getByText('Заблокирован владельцем сервера: Спам')).toBeInTheDocument();
+		const { user } = await setup([account(1, 'main'), blocked, freed]);
+		expect(within(card('spam')).getByText('Заблокирован владельцем сервера: Спам')).toBeInTheDocument();
+		expect(card('spam').firstElementChild).toHaveClass('border-bad/60');
+		const spam = await openMenu(user, 'spam');
 		expect(spam.queryByRole('button', { name: 'Включить' })).toBeNull();
 		// Остальные действия остаются: разблокирует только владелец сервера.
 		expect(spam.getByRole('button', { name: 'Переименовать' })).toBeInTheDocument();
 		expect(spam.getByRole('button', { name: 'Удалить' })).toBeInTheDocument();
 
-		const free = within(row('freed'));
+		const free = await openMenu(user, 'freed');
 		expect(free.getByRole('button', { name: 'Включить' })).toBeInTheDocument();
 		expect(free.queryByText(/Заблокирован/)).toBeNull();
 		expect(free.queryByText('blocked_by_owner')).toBeNull();
@@ -231,7 +289,7 @@ describe('экран аккаунтов', () => {
 			state.list = [state.list[0]!, account(2, 'alt')];
 			return json(state.list[1]);
 		});
-		await user.click(within(row('twink')).getByRole('button', { name: 'Переименовать' }));
+		await act(user, 'twink', 'Переименовать');
 		const dialog = screen.getByRole('dialog');
 		const input = within(dialog).getByLabelText('Новое имя');
 		expect(input).toHaveValue('twink');
@@ -258,10 +316,10 @@ describe('экран аккаунтов', () => {
 			if (c.method !== 'PATCH') return undefined;
 			return full ? json({ detail: 'capacity_reached' }, 409) : json(account(1, 'main'));
 		});
-		await user.click(within(row('main')).getByRole('button', { name: 'Выключить' }));
+		await act(user, 'main', 'Выключить');
 		await waitFor(() => expect(fetch.calls.filter((c) => c.method === 'PATCH')).toHaveLength(1));
 		full = true;
-		await user.click(within(row('twink')).getByRole('button', { name: 'Включить' }));
+		await act(user, 'twink', 'Включить');
 		expect(await screen.findByRole('alert')).toHaveTextContent('Достигнут предел включённых аккаунтов');
 		expect(fetch.calls.filter((c) => c.method === 'PATCH').map((c) => [c.url, JSON.parse(c.body)])).toEqual([
 			['/api/v1/accounts/1', { enabled: false }],
@@ -275,7 +333,7 @@ describe('экран аккаунтов', () => {
 			state.list = [state.list[0]!, account(2, 'twink', { status: 'deleting' })];
 			return new Response(null, { status: 202 });
 		});
-		await user.click(within(row('twink')).getByRole('button', { name: 'Удалить' }));
+		await act(user, 'twink', 'Удалить');
 		const dialog = screen.getByRole('dialog');
 		// Текст окна — обычный абзац (перенос строк шаблона не рисуется), как есть — только имя.
 		const name = within(dialog).getByText('twink', { selector: '.ext-text' });
@@ -299,7 +357,7 @@ describe('экран аккаунтов', () => {
 		expect(del.url).toBe('/api/v1/accounts/2');
 		expect(JSON.parse(del.body)).toEqual({ confirm_name: 'twink' });
 		// Список перечитан: до конца чистки аккаунт виден как «удаляется».
-		expect(await within(row('twink')).findByText('удаляется')).toBeInTheDocument();
+		expect(await within(card('twink')).findByText('удаляется')).toBeInTheDocument();
 	});
 });
 

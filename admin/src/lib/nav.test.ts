@@ -7,8 +7,6 @@ import {
 	lastAccount,
 	legacyHref,
 	loginHref,
-	mainNav,
-	moreNav,
 	parseAccount,
 	phoneMenu,
 	phoneTabs,
@@ -68,16 +66,18 @@ describe('возврат после входа', () => {
 		expect(isPublic('/invite/')).toBe(false);
 		expect(isPublic('/recover/step')).toBe(false);
 
-		const item = moreNav(null).find((i) => i.href === '/password');
+		const item = railNav(null).common.find((i) => i.href === '/password');
 		expect(item?.label).toBe('Пароль и коды');
 	});
 
 	it('пункт «Сервер» только у владельца', () => {
-		expect(moreNav(null, 'owner').find((i) => i.href === '/admin')?.label).toBe('Сервер');
-		expect(moreNav(1, 'owner').find((i) => i.href === '/admin')?.label).toBe('Сервер');
-		expect(moreNav(null, 'user').find((i) => i.href === '/admin')).toBeUndefined();
-		expect(moreNav(1, 'user').find((i) => i.href === '/admin')).toBeUndefined();
-		expect(moreNav(null).find((i) => i.href === '/admin')).toBeUndefined();
+		for (const nav of [railNav, phoneMenu]) {
+			expect(nav(null, 'owner').common.find((i) => i.href === '/admin')?.label).toBe('Сервер');
+			expect(nav(1, 'owner').common.find((i) => i.href === '/admin')?.label).toBe('Сервер');
+			expect(nav(null, 'user').common.find((i) => i.href === '/admin')).toBeUndefined();
+			expect(nav(1, 'user').common.find((i) => i.href === '/admin')).toBeUndefined();
+			expect(nav(null).common.find((i) => i.href === '/admin')).toBeUndefined();
+		}
 		expect(loginHref(url('/admin'))).toBe('/login');
 	});
 });
@@ -86,18 +86,6 @@ describe('экраны аккаунта', () => {
 	it('accountHref и isActive с префиксом', () => {
 		expect(accountHref(3, '')).toBe('/a/3');
 		expect(accountHref(3, '/journal')).toBe('/a/3/journal');
-		expect(mainNav(3).map((i) => i.href)).toEqual(['/a/3', '/a/3/journal', '/a/3/control', '/a/3/metro']);
-		expect(moreNav(3).map((i) => i.href)).toEqual([
-			'/a/3/daily',
-			'/a/3/metrics',
-			'/a/3/settings',
-			'/a/3/notifications',
-			'/a/3/telegram',
-			'/accounts',
-			'/password'
-		]);
-		// Без аккаунта — только общие пункты.
-		expect(moreNav(null).map((i) => i.href)).toEqual(['/accounts', '/password']);
 
 		// Главная аккаунта — только сама, разделы — со вложенными путями.
 		expect(isActive('/a/3', '/a/3')).toBe(true);

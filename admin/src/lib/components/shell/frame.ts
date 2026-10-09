@@ -33,3 +33,15 @@ export function accountFrame(): () => AccountFrame | null {
 export function accountFrameContext(frame: AccountFrame): Map<symbol, () => AccountFrame | null> {
 	return new Map([[ACCOUNT_FRAME, () => frame]]);
 }
+
+const PAGE_TITLE = Symbol('page-title');
+
+/** Оболочка: раздел открытой страницы — для верхней полосы телефона. */
+export function setPageTitleSink(publish: (title: string) => void): void {
+	setContext(PAGE_TITLE, publish);
+}
+
+/** Вне оболочки — заглушка (вызывать при создании компонента). */
+export function pageTitleSink(): (title: string) => void {
+	return getContext<((title: string) => void) | undefined>(PAGE_TITLE) ?? (() => {});
+}

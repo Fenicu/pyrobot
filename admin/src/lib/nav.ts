@@ -26,37 +26,6 @@ export function accountHref(id: number, path: string): string {
 	return `/a/${id}${path}`;
 }
 
-/** Нижняя панель телефона и верх меню ПК: разделы аккаунта `id`. */
-export function mainNav(id: number): NavItem[] {
-	return [
-		{ href: accountHref(id, ''), label: 'Главная', icon: House },
-		{ href: accountHref(id, '/journal'), label: 'Журнал', icon: ScrollText },
-		{ href: accountHref(id, '/control'), label: 'Управление', short: 'Управл.', icon: Gamepad2 },
-		{ href: accountHref(id, '/metro'), label: 'Метро', icon: TrainFront }
-	];
-}
-
-/** «Ещё» на телефоне, продолжение меню на ПК: разделы аккаунта (если он есть) и общие. */
-export function moreNav(id: number | null, role?: 'owner' | 'user' | null): NavItem[] {
-	const account: NavItem[] =
-		id === null
-			? []
-			: [
-					{ href: accountHref(id, '/daily'), label: 'Итоги', icon: CalendarDays },
-					{ href: accountHref(id, '/metrics'), label: 'Метрики', icon: ChartLine },
-					{ href: accountHref(id, '/settings'), label: 'Настройки', icon: Settings },
-					{ href: accountHref(id, '/notifications'), label: 'Уведомления', icon: Bell, badge: 'unread' },
-					{ href: accountHref(id, '/telegram'), label: 'Telegram', icon: Send }
-				];
-	const admin: NavItem[] = role === 'owner' ? [{ href: '/admin', label: 'Сервер', icon: ShieldCheck }] : [];
-	return [
-		...account,
-		{ href: '/accounts', label: 'Аккаунты', icon: Users },
-		{ href: '/password', label: 'Пароль и коды', icon: KeyRound },
-		...admin
-	];
-}
-
 type NavSpec = [path: string, label: string, icon: NavItem['icon'], badge?: NavItem['badge']];
 
 const accountItems = (id: number, specs: NavSpec[]): NavItem[] =>

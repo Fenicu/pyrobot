@@ -4,7 +4,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import Unplug from '@lucide/svelte/icons/unplug';
 	import { onMount } from 'svelte';
-	import { accountActivity, accountTone, type Tone } from '$lib/accounts/status';
+	import { TONE_LABEL, accountActivity, accountTone } from '$lib/accounts/status';
 	import type { Api } from '$lib/api/client';
 	import type { AccountOut } from '$lib/api/types';
 	import { switchHref } from '$lib/nav';
@@ -25,12 +25,6 @@
 	let { api, store, current, path }: Props = $props();
 
 	const COLLAPSED = 'pyrobot.accountsCollapsed';
-	const TONE_LABEL: Record<Tone, string> = {
-		ok: 'работает',
-		warn: 'требует внимания',
-		bad: 'ошибка',
-		off: 'выключен'
-	};
 	const ACTIVITY_COLOR = { muted: 'text-fg-muted', warn: 'text-warn-fg', bad: 'text-bad-fg' } as const;
 
 	let collapsed = $state(readCollapsed());

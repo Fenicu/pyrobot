@@ -3,6 +3,14 @@ import { activityLabel } from '$lib/util/game';
 
 export type Tone = 'ok' | 'warn' | 'bad' | 'off';
 
+/** Подпись точки статуса для чтеца и подсказки. */
+export const TONE_LABEL: Record<Tone, string> = {
+	ok: 'работает',
+	warn: 'требует внимания',
+	bad: 'ошибка',
+	off: 'выключен'
+};
+
 /** Тон точки статуса: первое подходящее правило. */
 export function accountTone(a: AccountOut): Tone {
 	if (a.status === 'disabled' || a.status === 'deleting') return 'off';

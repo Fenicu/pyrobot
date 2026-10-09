@@ -3,7 +3,7 @@
 	import ConnectionDot from '../ConnectionDot.svelte';
 	import StatusHeader from '../home/StatusHeader.svelte';
 	import PageHeader from '../ui/PageHeader.svelte';
-	import { accountFrame } from './frame';
+	import { accountFrame, pageTitleSink } from './frame';
 
 	interface Props {
 		/** Раздел: на экранах аккаунта — после имени аккаунта. */
@@ -15,8 +15,11 @@
 	let { title, status, actions, children }: Props = $props();
 	const frame = accountFrame();
 	const f = $derived(frame());
+	const publishTitle = pageTitleSink();
 	// «след. решение через …» и «уже свободен» — по часам страницы, раз в 30 с.
 	let now = $state(new Date());
+
+	$effect(() => publishTitle(title));
 
 	onMount(() => {
 		const t = setInterval(() => (now = new Date()), 30_000);
