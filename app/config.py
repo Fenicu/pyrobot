@@ -32,8 +32,8 @@ class AppConfig(DbConfig):
     log_level: str = "INFO"
     planner: bool = True
     # Пул соединений базы на процесс; ёмкость хоста движков и пауза между стартами движков.
-    db_pool_size: int = 10
-    db_max_overflow: int = 20
+    db_pool_size: int = 4
+    db_max_overflow: int = 4
     max_engines: int = 20
     engine_start_gap_s: float = 3.0
     # Собранная админка (SvelteKit, `admin/build`): её отдаёт то же приложение; каталога нет —
