@@ -351,6 +351,16 @@ describe('Настройки', () => {
 		expect(card('Метро', found).parentElement).toHaveClass('columns-[30rem]', '*:break-inside-avoid');
 	});
 
+	it('id чата — числом пошире (w-40), чтобы -100… помещалось целиком', async () => {
+		const user = userEvent.setup();
+		await view();
+		await openGroup(user, 'Мандарины и чаты');
+		const row = card('Чаты').querySelector('[data-path="chats.game_chat_id"]') as HTMLElement;
+		const input = within(row).getByRole('spinbutton');
+		expect(input).toHaveClass('w-40');
+		expect(input).not.toHaveClass('w-28');
+	});
+
 	it('поиск: результаты — карточками механик («аптеч» → поле сундука в «Метро»)', async () => {
 		const user = userEvent.setup();
 		await view();

@@ -48,7 +48,8 @@
 	const span = $derived(
 		wide(field.type) ? 'col-span-2' : NARROW.includes(field.type.kind) ? '' : 'max-sm:col-span-2'
 	);
-	// В широкой карточке (одна колонка) подпись не шире 24rem: значение остаётся рядом с ней, а не у края.
+	// Карточка шире 36rem (@xl; одна колонка или две на широком экране): подпись не шире 24rem, значение — сразу
+	// за ней, а не у края. От 24rem и gap-x-3 зависят плашка сброса (left-[24.75rem]) и точка (@xl:-ml-3).
 	const capped = $derived(wide(field.type) ? '' : '@xl:grid-cols-[minmax(0,24rem)_auto] @xl:justify-start');
 </script>
 
