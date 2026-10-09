@@ -103,6 +103,7 @@ describe('Настройки', () => {
 		expect(group).not.toHaveTextContent('•');
 		await user.click(within(card('Метро')).getByRole('switch', { name: 'Метро' }));
 		expect(group).toHaveTextContent('•');
+		expect(group).toHaveAccessibleName('Метро и поездки, есть несохранённые правки');
 		expect(within(groups()).getByRole('button', { name: 'Еда и сон' })).not.toHaveTextContent('•');
 		const bar = screen.getByRole('region', { name: 'Несохранённые изменения' });
 		expect(bar).toHaveTextContent('1 изменение · версия 13');
@@ -225,7 +226,9 @@ describe('Настройки', () => {
 		expect(within(groups()).getByRole('button', { name: 'Дополнительно' })).toHaveTextContent('Дополнительно 2');
 		await user.click(flag);
 		expect(editor.value(['features', 'new_flag'])).toBe(false);
-		expect(within(groups()).getByRole('button', { name: 'Дополнительно' })).toHaveTextContent('•');
+		expect(
+			within(groups()).getByRole('button', { name: 'Дополнительно, есть несохранённые правки' })
+		).toHaveTextContent('•');
 		expect(screen.getByRole('region', { name: 'Несохранённые изменения' })).toHaveTextContent('Функции · New Flag: вкл → выкл');
 	});
 
@@ -430,11 +433,11 @@ describe('Настройки', () => {
 		const { drawer, list } = await openHistory(user);
 		const v8 = await within(list).findByRole('button', { name: /v8 / });
 		expect(v8).toHaveTextContent(
-			'Функции · Ежедневные задания → вкл; Стратегия и дела · Разрешённые дела → harvest, job, learn, dconv, walk, confa'
+			'Ежедневные задания · Включено → вкл; Дела · Разрешённые дела → harvest, job, learn, dconv, walk, confa'
 		);
 		await user.click(v8);
 		expect(v8).toHaveAttribute('aria-expanded', 'true');
-		expect(within(list).getByLabelText('Изменения версии 8')).toHaveTextContent('Функции · Ежедневные задания выкл → вкл');
+		expect(within(list).getByLabelText('Изменения версии 8')).toHaveTextContent('Ежедневные задания · Включено выкл → вкл');
 		expect(within(list).getByLabelText('Изменения версии 8')).not.toHaveTextContent('features.daily_tasks');
 		await user.click(within(drawer).getByRole('button', { name: 'Закрыть' }));
 		expect(screen.queryByRole('dialog', { name: 'История' })).toBeNull();
@@ -445,12 +448,12 @@ describe('Настройки', () => {
 		const { editor } = await view();
 		const { list } = await openHistory(user);
 		await user.click(await within(list).findByRole('button', { name: /v13 / }));
-		await user.click(within(list).getByRole('button', { name: 'Вернуть «Функции · Лотерея»: выкл' }));
+		await user.click(within(list).getByRole('button', { name: 'Вернуть «Лотерея · Включено»: выкл' }));
 		expect(editor.value(['features', 'lottery'])).toBe(false);
 		const bar = screen.getByRole('region', { name: 'Несохранённые изменения' });
 		expect(bar).toHaveTextContent('Лотерея · Включено: вкл → выкл');
 		// Значение уже в черновике — второй раз вернуть нечего.
-		expect(within(list).queryByRole('button', { name: /Вернуть «Функции · Лотерея»/ })).toBeNull();
+		expect(within(list).queryByRole('button', { name: /Вернуть «Лотерея · Включено»/ })).toBeNull();
 		// Паузу меняют кнопки на главной — вернуть её из истории нельзя.
 		await user.click(within(list).getByRole('button', { name: /v12 / }));
 		expect(within(list).getByLabelText('Изменения версии 12')).toHaveTextContent('Движок · Пауза планировщика вкл → выкл');

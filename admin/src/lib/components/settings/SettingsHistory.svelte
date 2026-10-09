@@ -4,6 +4,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import type { SettingsVersion } from '$lib/api/types';
 	import type { SettingsEditor } from '$lib/settings/editor.svelte';
+	import { changeLabel } from '$lib/settings/mechanics';
 	import { settingNames } from '$lib/settings/names';
 	import { settingPaths } from '$lib/settings/paths.svelte';
 	import { same } from '$lib/settings/schema';
@@ -21,9 +22,11 @@
 	}
 	let { api, editor, refresh = 0, now: fixedNow }: Props = $props();
 	const nameOf = $derived(settingNames(editor.sections));
+	// Подписи — как в панели «Сохранить»: механика · поле.
 	const named = (path: string) => {
 		const n = nameOf(path);
-		return n.section ? `${n.section} · ${n.label}` : n.label;
+		const { section, label } = changeLabel(path, n.section, n.label);
+		return section ? `${section} · ${label}` : label;
 	};
 	// Вернуть можно поле формы (не «только чтение»), если в черновике сейчас другое значение.
 	const revertable = (path: string, before: unknown) => {

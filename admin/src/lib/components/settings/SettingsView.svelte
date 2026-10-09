@@ -214,7 +214,9 @@
 									query = '';
 								}}
 							>
-								<span class="flex-1">{g.title}{#if dirtyGroups.has(g.id)}<span class="text-accent" title="Есть несохранённые правки" aria-hidden="true"> •</span>{/if}</span>
+								<span class="flex-1">{g.title}{#if dirtyGroups.has(g.id)}<span class="text-accent" title="Есть несохранённые правки" aria-hidden="true"> •</span
+									><span class="sr-only">, есть несохранённые правки</span>{/if}</span
+								>
 								<small class="text-[11px] text-fg-faint tabular-nums" aria-hidden="true">{g.cards.length}</small>
 							</button>
 						</li>
