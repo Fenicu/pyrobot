@@ -156,3 +156,51 @@ describe('карта метро', () => {
 		expect(screen.getByRole('img', { name: /Карта забега #1/ })).toBeInTheDocument();
 	});
 });
+
+describe('Метро: общая шапка и сетка', () => {
+	it('карта и итог забега — рядом, список забегов — под ними; карточки не вложены', async () => {
+		const fetch = mockFetch((c) =>
+			c.url.startsWith('/api/v1/accounts/1/metro/runs?') ? json(fixture('metro_runs')) : json(run)
+		);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
+		render(MetroView, { api, now: NOW });
+		expect(screen.getByRole('heading', { level: 1, name: 'Метро' })).toBeInTheDocument();
+		const map = await screen.findByRole('img', { name: /Карта забега #1/ });
+		const runRegion = screen.getByRole('region', { name: 'Забег #1' });
+		const result = within(runRegion).getByRole('region', { name: 'Итог' });
+		const mapCard = map.closest('.card')!;
+		expect(mapCard.parentElement).toBe(result.parentElement);
+		expect(result.parentElement).toHaveClass('lg:grid-cols-[minmax(0,1fr)_20rem]');
+		for (const card of [mapCard, result]) expect(card.parentElement!.closest('.card')).toBeNull();
+		const list = screen.getByRole('region', { name: 'Забеги' });
+		expect(runRegion.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(list.parentElement!.closest('.card')).toBeNull();
+	});
+});
+
+describe('Метро: выбор забега из списка под ним', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it('забег ушёл за верх экрана — выбранный показывается с начала', async () => {
+		const base = fixture<{ items: MetroRunSummary[] }>('metro_runs').items[0]!;
+		const fetch = mockFetch((c) =>
+			c.url.startsWith('/api/v1/accounts/1/metro/runs?') ? json({ items: [{ ...base, id: 2 }, base], next_before: null }) : json(run)
+		);
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
+		const scrolled: Element[] = [];
+		Element.prototype.scrollIntoView = function (this: Element, arg?: boolean | ScrollIntoViewOptions) {
+			expect(arg).toEqual({ block: 'start' });
+			scrolled.push(this);
+		};
+		render(MetroView, { api, now: NOW });
+		const list = await screen.findByRole('list', { name: 'Забеги метро' });
+		const buttons = await within(list).findAllByRole('button');
+		await fireEvent.click(buttons[1]!);
+		expect(scrolled).toHaveLength(0);
+		vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ top: -400 } as DOMRect);
+		await fireEvent.click(buttons[0]!);
+		expect(scrolled).toHaveLength(1);
+		expect(scrolled[0]).toContainElement(await screen.findByRole('region', { name: /Забег #/ }));
+		delete (Element.prototype as Partial<Element>).scrollIntoView;
+	});
+});

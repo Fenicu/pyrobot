@@ -9,8 +9,9 @@
 	import { keyOf, type JournalFeed } from '$lib/stores/journal.svelte';
 	import { clock } from '$lib/util/clock.svelte';
 	import { mskDay } from '$lib/util/format';
-	import { DESKTOP, media } from '$lib/util/media.svelte';
+	import { media, WIDE } from '$lib/util/media.svelte';
 	import Modal from '../Modal.svelte';
+	import Page from '../shell/Page.svelte';
 	import FeedFilters from './FeedFilters.svelte';
 	import FeedRow from './FeedRow.svelte';
 	import JournalDetail from './JournalDetail.svelte';
@@ -28,7 +29,8 @@
 	const now = $derived(fixedNow ?? clock.now);
 	let selected = $state<JournalItem | null>(null);
 	let sentinel = $state<HTMLElement>();
-	const desktop = media(DESKTOP);
+	// Панель разбора — рядом с лентой, где строкам запусков ещё хватает ширины; уже — шторкой.
+	const wide = media(WIDE);
 
 	// Выбранная строка следит за обновлениями ленты (статус действия из SSE).
 	const current = $derived(
@@ -64,80 +66,90 @@
 	}
 </script>
 
-<div class="space-y-3">
-	<FeedFilters
-		filter={feed.filter}
-		live={feed.live}
-		onchange={(next) => feed.setFilter(next)}
-		onlive={(on) => {
-			feed.live = on;
-			if (on && feed.missed > 0) void feed.reload();
-		}}
-	/>
-	{#if !feed.live && feed.missed > 0}
-		<button type="button" class="btn w-full" onclick={() => void feed.reload()}>
-			Новых записей: {feed.missed} — показать
-		</button>
-	{/if}
-	{#if feed.error}
-		<p class="card ext-text text-sm text-bad-fg" role="alert">{errorText(feed.error)}</p>
-	{/if}
+{#snippet actions()}
+	<button
+		type="button"
+		class="chip"
+		aria-pressed={feed.live}
+		title="Новые записи сверху, по мере прихода"
+		onclick={() => {
+			feed.live = !feed.live;
+			if (feed.live && feed.missed > 0) void feed.reload();
+		}}>⏵ live</button
+	>
+{/snippet}
 
-	<div class="md:grid md:grid-cols-[minmax(0,1fr)_24rem] md:gap-4">
-		<section class="card p-0" aria-label="Лента">
-			{#if feed.items.length === 0 && !feed.loading}
-				<p class="p-3 text-sm text-fg-muted">Записей нет.</p>
-			{/if}
-			<ul>
-				{#each rows as row, i (row.key)}
-					{#if days[i]}
-						<li class="border-b border-line-soft bg-surface-2 px-2 py-1 text-xs font-semibold text-fg-muted">
-							<h3>{dayLabel(days[i]!, mskDay(now))}</h3>
-						</li>
-					{/if}
-					{#if row.kind === 'run'}
-						<RunRow
-							group={row}
-							{now}
-							expanded={open.includes(row.key)}
-							selected={selectedKey}
-							ontoggle={() => toggle(row.key)}
-							onselect={(i) => (selected = i)}
-						/>
-					{:else}
-						<FeedRow
-							item={row.item}
-							{now}
-							selected={selectedKey === row.key}
-							onselect={(i) => (selected = i)}
-						/>
-					{/if}
-				{/each}
-			</ul>
-			<div bind:this={sentinel} class="p-2 text-center">
-				{#if feed.loading}
-					<span class="text-sm text-fg-muted" role="status">Загрузка…</span>
-				{:else if !feed.done}
-					<button type="button" class="btn" onclick={() => void feed.more()}>Показать ещё</button>
-				{:else if feed.items.length > 0}
-					<span class="text-xs text-fg-faint">Это всё.</span>
-				{/if}
-			</div>
-		</section>
-
-		{#if desktop.current}
-			<aside class="card sticky top-4 max-h-[calc(100dvh-2rem)] self-start overflow-y-auto" aria-label="Разбор">
-				{#if current}
-					<JournalDetail {api} item={current} {subscribe} {confirmer} onstale={() => void feed.reload()} />
-				{:else}
-					<p class="text-sm text-fg-muted">Выберите запись — здесь будет разбор.</p>
-				{/if}
-			</aside>
+<Page title="Журнал" {actions}>
+	<div class="space-y-[14px]">
+		<FeedFilters filter={feed.filter} onchange={(next) => feed.setFilter(next)} />
+		{#if !feed.live && feed.missed > 0}
+			<button type="button" class="btn w-full" onclick={() => void feed.reload()}>
+				Новых записей: {feed.missed} — показать
+			</button>
 		{/if}
-	</div>
-</div>
+		{#if feed.error}
+			<p class="card ext-text text-sm text-bad-fg" role="alert">{errorText(feed.error)}</p>
+		{/if}
 
-{#if !desktop.current && current}
+		<div class="xl:flex xl:items-start xl:gap-[14px]">
+			<section class="card min-w-0 overflow-hidden p-0 xl:flex-1" aria-label="Лента">
+				{#if feed.items.length === 0 && !feed.loading}
+					<p class="p-3 text-sm text-fg-muted">Записей нет.</p>
+				{/if}
+				<ul>
+					{#each rows as row, i (row.key)}
+						{#if days[i]}
+							<li class="border-b border-line-soft bg-surface-2 px-2 py-1 text-xs font-semibold text-fg-muted">
+								<h3>{dayLabel(days[i]!, mskDay(now))}</h3>
+							</li>
+						{/if}
+						{#if row.kind === 'run'}
+							<RunRow
+								group={row}
+								{now}
+								expanded={open.includes(row.key)}
+								selected={selectedKey}
+								ontoggle={() => toggle(row.key)}
+								onselect={(i) => (selected = i)}
+							/>
+						{:else}
+							<FeedRow
+								item={row.item}
+								{now}
+								selected={selectedKey === row.key}
+								onselect={(i) => (selected = i)}
+							/>
+						{/if}
+					{/each}
+				</ul>
+				<div bind:this={sentinel} class="p-2 text-center">
+					{#if feed.loading}
+						<span class="text-sm text-fg-muted" role="status">Загрузка…</span>
+					{:else if !feed.done}
+						<button type="button" class="btn" onclick={() => void feed.more()}>Показать ещё</button>
+					{:else if feed.items.length > 0}
+						<span class="text-xs text-fg-faint">Это всё.</span>
+					{/if}
+				</div>
+			</section>
+
+			{#if wide.current}
+				<aside
+					class="card sticky top-3.5 max-h-[calc(100dvh-1.75rem)] w-[420px] shrink-0 overflow-y-auto"
+					aria-label="Разбор"
+				>
+					{#if current}
+						<JournalDetail {api} item={current} {subscribe} {confirmer} onstale={() => void feed.reload()} />
+					{:else}
+						<p class="text-sm text-fg-muted">Выберите запись — здесь будет разбор.</p>
+					{/if}
+				</aside>
+			{/if}
+		</div>
+	</div>
+</Page>
+
+{#if !wide.current && current}
 	<Modal title={title(current)} variant="sheet" onclose={() => (selected = null)}>
 		<JournalDetail {api} item={current} {subscribe} {confirmer} onstale={() => void feed.reload()} />
 	</Modal>

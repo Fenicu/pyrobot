@@ -414,3 +414,50 @@ describe('Пересылка в журнале', () => {
 		expect(actionCommand('send', {})).toBe('—');
 	});
 });
+
+describe('Журнал: общая шапка и сетка', () => {
+	afterEach(() => vi.unstubAllGlobals());
+	const screenWidth = (px: number) =>
+		vi.stubGlobal('matchMedia', (query: string) => ({
+			media: query,
+			matches: Number(/min-width: (\d+)px/.exec(query)?.[1] ?? Infinity) <= px,
+			addEventListener() {},
+			removeEventListener() {}
+		}));
+
+	it('заголовок раздела, «live» — в шапке, фильтры — строкой под ней', async () => {
+		const user = userEvent.setup();
+		const { feed } = await view();
+		const header = screen.getByRole('heading', { level: 1, name: 'Журнал' }).closest('header')!;
+		const live = within(header).getByRole('button', { name: '⏵ live' });
+		expect(live).toHaveAttribute('aria-pressed', 'true');
+		const filters = screen.getByRole('group', { name: 'Фильтры журнала' });
+		expect(header).not.toContainElement(filters);
+		expect(within(filters).queryByRole('button', { name: '⏵ live' })).toBeNull();
+		await user.click(live);
+		expect(feed.live).toBe(false);
+		expect(live).toHaveAttribute('aria-pressed', 'false');
+	});
+
+	it('широкий экран (≥ xl): разбор — панель справа от ленты, не шторка', async () => {
+		screenWidth(1280);
+		const user = userEvent.setup();
+		await view();
+		const panel = screen.getByRole('complementary', { name: 'Разбор' });
+		const list = screen.getByRole('region', { name: 'Лента' });
+		expect(panel.parentElement).toBe(list.parentElement);
+		expect(panel).toHaveTextContent('Выберите запись');
+		await user.click(screen.getAllByRole('button', { name: /ожидание → busy/ })[0]!);
+		expect(await within(panel).findByText(/Решение #344/)).toBeInTheDocument();
+		expect(screen.queryByRole('dialog')).toBeNull();
+	});
+
+	it('уже xl (ноутбук 1024, планшет): разбор — шторкой, без пустой панели', async () => {
+		screenWidth(1024);
+		const user = userEvent.setup();
+		await view();
+		expect(screen.queryByRole('complementary', { name: 'Разбор' })).toBeNull();
+		await user.click(screen.getAllByRole('button', { name: /ожидание → busy/ })[0]!);
+		expect(await screen.findByRole('dialog', { name: 'Решение' })).toBeInTheDocument();
+	});
+});

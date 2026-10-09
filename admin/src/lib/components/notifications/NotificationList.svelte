@@ -17,16 +17,24 @@
 		/** Прочитано на сервере — перечитать счётчик в меню. */
 		onread?: () => void;
 		now?: Date;
+		/** Непрочитанных на сервере и идёт ли отметка — для кнопки «Прочитать всё» в шапке страницы. */
+		unread?: number;
+		busy?: boolean;
 	}
-	let { api, subscribe, onread, now: fixedNow }: Props = $props();
+	let {
+		api,
+		subscribe,
+		onread,
+		now: fixedNow,
+		unread = $bindable(0),
+		busy = $bindable(false)
+	}: Props = $props();
 	const now = $derived(fixedNow ?? clock.now);
 	let items = $state<NotificationOut[]>([]);
-	let unread = $state(0);
 	let next = $state<number | null>(null);
 	let onlyUnread = $state(false);
 	let level = $state<Level | ''>('');
 	let error = $state('');
-	let busy = $state(false);
 
 	async function load(before: number | null) {
 		try {
@@ -69,7 +77,8 @@
 		});
 	});
 
-	async function readAll() {
+	/** Отметить прочитанным всё до последнего показанного. */
+	export async function readAll() {
 		const top = Math.max(0, ...items.map((i) => i.id));
 		if (top === 0) return;
 		busy = true;
@@ -88,37 +97,34 @@
 	const tone = (l: string) => (l === 'error' ? 'bad' : l === 'warn' ? 'warn' : 'muted');
 </script>
 
-<div class="space-y-3">
-	<div class="flex flex-wrap items-center gap-1.5">
-		<button type="button" class="chip" aria-pressed={onlyUnread} onclick={() => (onlyUnread = !onlyUnread)}
-			>непрочитанные ({unread})</button
-		>
-		<label class="chip gap-1 pr-1">
-			<span>уровень</span>
-			<select class="bg-transparent text-xs text-fg focus:outline-none" bind:value={level}>
-				<option value="">все</option>
-				<option value="info">info</option>
-				<option value="warn">warn</option>
-				<option value="error">error</option>
-			</select>
-		</label>
-		<button type="button" class="btn ml-auto" disabled={busy || unread === 0} onclick={readAll}>Прочитать всё</button>
-	</div>
-	{#if error}<p class="card ext-text text-sm text-bad-fg" role="alert">{error}</p>{/if}
-	<ul class="card divide-y divide-line-soft p-0" aria-label="Уведомления">
-		{#each items as n (n.id)}
-			<li class="flex flex-wrap items-baseline gap-2 px-3 py-2 text-sm {n.read ? 'text-fg-muted' : ''}">
-				{#if !n.read}<span class="size-2 self-center rounded-full bg-accent" aria-label="не прочитано"></span>{/if}
-				<Pill tone={tone(n.level)}>{n.level}</Pill>
-				<span class="font-mono text-xs">{n.code}</span>
-				<span class="ext-text min-w-0 flex-1 basis-60">{n.text}</span>
-				<time class="text-xs text-fg-faint" datetime={n.created_at}>{fmtMoment(n.created_at, now)}</time>
-			</li>
-		{:else}
-			<li class="px-3 py-2 text-sm text-fg-muted">Уведомлений нет.</li>
-		{/each}
-	</ul>
-	{#if next !== null}
-		<button type="button" class="btn w-full" onclick={() => void load(next)}>Ещё</button>
-	{/if}
+<div class="flex flex-wrap items-center gap-1.5">
+	<button type="button" class="chip" aria-pressed={onlyUnread} onclick={() => (onlyUnread = !onlyUnread)}
+		>непрочитанные ({unread})</button
+	>
+	<label class="chip gap-1 pr-1">
+		<span>уровень</span>
+		<select class="bg-transparent text-xs text-fg focus:outline-none" bind:value={level}>
+			<option value="">все</option>
+			<option value="info">info</option>
+			<option value="warn">warn</option>
+			<option value="error">error</option>
+		</select>
+	</label>
 </div>
+{#if error}<p class="ext-text mt-2 text-sm text-bad-fg" role="alert">{error}</p>{/if}
+<ul class="-mx-3.5 mt-3 divide-y divide-line-soft border-t border-line-soft" aria-label="Уведомления">
+	{#each items as n (n.id)}
+		<li class="flex flex-wrap items-baseline gap-2 px-3.5 py-2 text-sm {n.read ? 'text-fg-muted' : ''}">
+			{#if !n.read}<span class="size-2 self-center rounded-full bg-accent" aria-label="не прочитано"></span>{/if}
+			<Pill tone={tone(n.level)}>{n.level}</Pill>
+			<span class="font-mono text-xs">{n.code}</span>
+			<span class="ext-text min-w-0 flex-1 basis-60">{n.text}</span>
+			<time class="text-xs text-fg-faint" datetime={n.created_at}>{fmtMoment(n.created_at, now)}</time>
+		</li>
+	{:else}
+		<li class="px-3.5 py-2 text-sm text-fg-muted">Уведомлений нет.</li>
+	{/each}
+</ul>
+{#if next !== null}
+	<button type="button" class="btn mt-2 w-full" onclick={() => void load(next)}>Ещё</button>
+{/if}

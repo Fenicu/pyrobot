@@ -146,3 +146,16 @@ describe('Метрики: «сегодня» по общему тикеру', ()
 		expect(fetch.calls[1]?.url).toContain('to=2026-09-27T15%3A00%3A00.000Z');
 	});
 });
+
+describe('Метрики: общая шапка и сетка', () => {
+	it('заголовок раздела; графики — по два в ряд с xl, уже — по одному', async () => {
+		const fetch = mockFetch(() => json(fixture('metrics_today')));
+		const api = createAccountApi({ csrf: () => null, refreshCsrf: async () => null, unauthorized: () => {} }, 1, fetch);
+		render(MetricsView, { api, now: new Date('2026-09-27T20:27:51Z') });
+		expect(screen.getByRole('heading', { level: 1, name: 'Метрики' })).toBeInTheDocument();
+		const chart = await screen.findByRole('img', { name: /💵 деньги/ });
+		const grid = chart.closest('.card')!.parentElement!;
+		expect(grid).toHaveClass('grid', 'xl:grid-cols-2');
+		expect(grid).not.toHaveClass('lg:grid-cols-2');
+	});
+});

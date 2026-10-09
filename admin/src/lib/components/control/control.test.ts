@@ -135,3 +135,22 @@ describe('Управление', () => {
 		expect(await within(list).findByText('done · fell_asleep')).toBeInTheDocument();
 	});
 });
+
+describe('Управление: общая шапка и сетка', () => {
+	it('каталог и форма запуска — рядом, ручная команда и запуски — на всю ширину под ними', async () => {
+		const user = userEvent.setup();
+		setup();
+		expect(screen.getByRole('heading', { level: 1, name: 'Управление' })).toBeInTheDocument();
+		const catalog = screen.getByRole('region', { name: 'Сценарии' });
+		const pair = catalog.parentElement!;
+		expect(pair).toHaveClass('lg:grid-cols-[20rem_minmax(0,1fr)]');
+		expect(pair).toContainElement(screen.getByText(/Выберите сценарий в каталоге/));
+		await user.click(await screen.findByRole('button', { name: /^sleep/ }));
+		expect(pair).toContainElement(screen.getByRole('region', { name: 'sleep' }));
+		for (const name of ['Ручная команда в игру', 'Последние ручные запуски']) {
+			const card = screen.getByRole('region', { name });
+			expect(pair).not.toContainElement(card);
+			expect(card.parentElement).toBe(pair.parentElement);
+		}
+	});
+});

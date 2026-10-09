@@ -5,7 +5,7 @@ import { createAccountApi } from '$lib/api/account';
 import type { LiveEvent } from '$lib/live/sse';
 import { json, mockFetch } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
-import NotificationList from './NotificationList.svelte';
+import NotificationsView from './NotificationsView.svelte';
 import UnrecognizedList from './UnrecognizedList.svelte';
 
 const NOW = new Date('2026-09-27T20:00:00Z');
@@ -16,11 +16,13 @@ describe('Уведомления', () => {
 	it('список с прода, «Прочитать всё» до последнего id, живое сверху', async () => {
 		const user = userEvent.setup();
 		const fetch = mockFetch((c) =>
-			c.method === 'POST' ? json({ read: 9 }) : json(fixture('notifications'))
+			c.method === 'POST'
+				? json({ read: 9 })
+				: json(fixture(c.url.includes('/unrecognized') ? 'unrecognized' : 'notifications'))
 		);
 		const onread = vi.fn();
 		const listeners: ((e: LiveEvent) => void)[] = [];
-		render(NotificationList, {
+		render(NotificationsView, {
 			api: apiWith(fetch),
 			onread,
 			now: NOW,
@@ -30,9 +32,12 @@ describe('Уведомления', () => {
 		expect(await within(list).findByText('mode dry_run -> live by admin')).toBeInTheDocument();
 		expect(within(list).getAllByRole('listitem')).toHaveLength(9);
 		expect(screen.getByRole('button', { name: 'непрочитанные (9)' })).toBeInTheDocument();
-		await user.click(screen.getByRole('button', { name: 'Прочитать всё' }));
+		const header = screen.getByRole('heading', { level: 1, name: 'Уведомления' }).closest('header')!;
+		await user.click(within(header).getByRole('button', { name: 'Прочитать всё' }));
 		await vi.waitFor(() => expect(onread).toHaveBeenCalled());
-		expect(JSON.parse(fetch.calls.find((c) => c.method === 'POST')!.body)).toEqual({ up_to_id: 9 });
+		const post = fetch.calls.find((c) => c.method === 'POST')!;
+		expect(post.url).toBe('/api/v1/accounts/1/notifications/read');
+		expect(JSON.parse(post.body)).toEqual({ up_to_id: 9 });
 		// Список перечитан после отметки — дальше живое.
 		await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Прочитать всё' })).toBeEnabled());
 		listeners.forEach((fn) =>
@@ -42,6 +47,25 @@ describe('Уведомления', () => {
 		const first = within(list).getAllByRole('listitem')[0]!;
 		expect(first).toHaveTextContent('<b>revoked</b>');
 		expect(first.querySelector('b')).toBeNull();
+	});
+});
+
+describe('Уведомления: общая шапка и сетка', () => {
+	it('уведомления и нераспознанное — две карточки на одной странице, без вкладок', async () => {
+		const fetch = mockFetch((c) => json(fixture(c.url.includes('/unrecognized') ? 'unrecognized' : 'notifications')));
+		render(NotificationsView, { api: apiWith(fetch), now: NOW });
+		expect(screen.queryByRole('tablist')).toBeNull();
+		const notes = screen.getByRole('region', { name: 'Уведомления' });
+		const unknown = screen.getByRole('region', { name: 'Нераспознанное' });
+		expect(within(notes).getByRole('list', { name: 'Уведомления' })).toBeInTheDocument();
+		expect(await within(unknown).findByRole('button', { name: 'Покупка билетов за 📚' })).toBeInTheDocument();
+		expect(notes.compareDocumentPosition(unknown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(within(unknown).getByRole('button', { name: /Отметить разобранными/ })).toBeInTheDocument();
+		const header = screen.getByRole('heading', { level: 1, name: 'Уведомления' }).closest('header')!;
+		expect(header).not.toContainElement(notes);
+		// Непрочитанных нет, пока список не загружен — кнопка недоступна; после загрузки — доступна.
+		const readAll = within(header).getByRole('button', { name: 'Прочитать всё' });
+		await vi.waitFor(() => expect(readAll).toBeEnabled());
 	});
 });
 

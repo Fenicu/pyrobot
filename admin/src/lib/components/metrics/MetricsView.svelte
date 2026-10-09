@@ -5,6 +5,7 @@
 	import { loadMetrics, METRICS, stepSeries, type MetricsData, type Window } from '$lib/metrics/series';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtNum, mskDay, mskDayStart } from '$lib/util/format';
+	import Page from '../shell/Page.svelte';
 	import Chart from './Chart.svelte';
 
 	type Period = 'today' | '7d' | '30d' | 'custom';
@@ -95,49 +96,51 @@
 	}
 </script>
 
-<div class="space-y-3">
-	<div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Период">
-		{#each PERIODS as p (p.value)}
-			<button type="button" class="chip" aria-pressed={period === p.value} onclick={() => (period = p.value)}
-				>{p.label}</button
-			>
-		{/each}
-		{#if period === 'custom'}
-			<label class="chip gap-1 pr-1"
-				>с <input type="date" class="bg-transparent text-xs focus:outline-none" bind:value={from} /></label
-			>
-			<label class="chip gap-1 pr-1"
-				>по <input type="date" class="bg-transparent text-xs focus:outline-none" bind:value={to} /></label
-			>
-		{/if}
-	</div>
-	<div class="flex flex-wrap gap-1.5" role="group" aria-label="Поля">
-		{#each METRICS as m (m.key)}
-			<button type="button" class="chip" aria-pressed={fields.includes(m.key)} onclick={() => toggle(m.key)}
-				>{m.label}</button
-			>
-		{/each}
-	</div>
-	{#if error}<p class="card ext-text text-sm text-bad-fg" role="alert">{error}</p>{/if}
-	{#if loading}
-		<p class="text-sm text-fg-muted" role="status">
-			Загрузка…{#if progress}{` страниц: ${progress.pages}, точек: ${fmtNum(progress.points)}`}{/if}
-		</p>
-	{/if}
-	{#if data && win}
-		{#if marks.length}<p class="text-xs text-fg-muted">Метки на графиках: {legend(marks)}</p>{/if}
-		<div class="grid gap-3 lg:grid-cols-2">
-			{#each METRICS.filter((m) => fields.includes(m.key)) as m (m.key)}
-				<div class="card">
-					<Chart
-						label="{m.label} · {latest(m.key)}"
-						name={m.label}
-						data={stepSeries(data, m.key, win)}
-						range={[win.from.getTime() / 1000, win.to.getTime() / 1000]}
-						markers={marks}
-					/>
-				</div>
+<Page title="Метрики">
+	<div class="space-y-[14px]">
+		<div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Период">
+			{#each PERIODS as p (p.value)}
+				<button type="button" class="chip" aria-pressed={period === p.value} onclick={() => (period = p.value)}
+					>{p.label}</button
+				>
+			{/each}
+			{#if period === 'custom'}
+				<label class="chip gap-1 pr-1"
+					>с <input type="date" class="bg-transparent text-xs focus:outline-none" bind:value={from} /></label
+				>
+				<label class="chip gap-1 pr-1"
+					>по <input type="date" class="bg-transparent text-xs focus:outline-none" bind:value={to} /></label
+				>
+			{/if}
+		</div>
+		<div class="flex flex-wrap gap-1.5" role="group" aria-label="Поля">
+			{#each METRICS as m (m.key)}
+				<button type="button" class="chip" aria-pressed={fields.includes(m.key)} onclick={() => toggle(m.key)}
+					>{m.label}</button
+				>
 			{/each}
 		</div>
-	{/if}
-</div>
+		{#if error}<p class="card ext-text text-sm text-bad-fg" role="alert">{error}</p>{/if}
+		{#if loading}
+			<p class="text-sm text-fg-muted" role="status">
+				Загрузка…{#if progress}{` страниц: ${progress.pages}, точек: ${fmtNum(progress.points)}`}{/if}
+			</p>
+		{/if}
+		{#if data && win}
+			{#if marks.length}<p class="text-xs text-fg-muted">Метки на графиках: {legend(marks)}</p>{/if}
+			<div class="grid gap-[14px] xl:grid-cols-2">
+				{#each METRICS.filter((m) => fields.includes(m.key)) as m (m.key)}
+					<div class="card min-w-0">
+						<Chart
+							label="{m.label} · {latest(m.key)}"
+							name={m.label}
+							data={stepSeries(data, m.key, win)}
+							range={[win.from.getTime() / 1000, win.to.getTime() / 1000]}
+							markers={marks}
+						/>
+					</div>
+				{/each}
+			</div>
+		{/if}
+	</div>
+</Page>

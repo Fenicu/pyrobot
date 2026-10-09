@@ -4,11 +4,9 @@
 
 	interface Props {
 		filter: FeedFilter;
-		live: boolean;
 		onchange: (next: Partial<FeedFilter>) => void;
-		onlive: (on: boolean) => void;
 	}
-	let { filter, live, onchange, onlive }: Props = $props();
+	let { filter, onchange }: Props = $props();
 
 	const TYPES: { value: FeedType | null; label: string }[] = [
 		{ value: null, label: 'все' },
@@ -79,11 +77,4 @@
 			onchange={(e) => onchange({ until: e.currentTarget.value || null })}
 		/>
 	</label>
-	<button
-		type="button"
-		class="chip"
-		aria-pressed={live}
-		title="Новые записи сверху, по мере прихода"
-		onclick={() => onlive(!live)}>⏵ live</button
-	>
 </div>

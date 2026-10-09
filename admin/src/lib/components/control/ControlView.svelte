@@ -6,6 +6,7 @@
 	import type { ScenarioInfo } from '$lib/api/types';
 	import type { Confirmer } from '$lib/commands';
 	import type { LiveEvent } from '$lib/live/sse';
+	import Page from '../shell/Page.svelte';
 	import ManualCommand from './ManualCommand.svelte';
 	import RecentRuns from './RecentRuns.svelte';
 	import ScenarioCatalog from './ScenarioCatalog.svelte';
@@ -40,18 +41,20 @@
 	});
 </script>
 
-{#if error}<p class="card ext-text mb-3 text-sm text-bad-fg" role="alert">{error}</p>{/if}
-<div class="grid gap-3 md:grid-cols-[18rem_minmax(0,1fr)]">
-	<ScenarioCatalog {scenarios} {selected} onselect={pick} />
-	<div class="space-y-3">
-		{#if scenario}
-			{#key scenario.name}
-				<ScenarioRunner {api} {scenario} onqueued={() => (refresh += 1)} />
-			{/key}
-		{:else}
-			<p class="card text-sm text-fg-muted">Выберите сценарий в каталоге — здесь будет форма запуска.</p>
-		{/if}
+<Page title="Управление">
+	<div class="space-y-[14px]">
+		{#if error}<p class="card ext-text text-sm text-bad-fg" role="alert">{error}</p>{/if}
+		<div class="grid items-start gap-[14px] lg:grid-cols-[20rem_minmax(0,1fr)]">
+			<ScenarioCatalog {scenarios} {selected} onselect={pick} />
+			{#if scenario}
+				{#key scenario.name}
+					<ScenarioRunner {api} {scenario} onqueued={() => (refresh += 1)} />
+				{/key}
+			{:else}
+				<p class="card text-sm text-fg-muted">Выберите сценарий в каталоге — здесь будет форма запуска.</p>
+			{/if}
+		</div>
 		<ManualCommand {api} {confirmer} />
 		<RecentRuns {api} {subscribe} {refresh} {now} />
 	</div>
-</div>
+</Page>

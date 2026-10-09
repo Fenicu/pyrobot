@@ -203,3 +203,15 @@ describe('страница «Итоги»', () => {
 		expect(screen.getByRole('alert')).toHaveTextContent('Итоги недоступны');
 	});
 });
+
+describe('страница «Итоги»: общая шапка и сетка', () => {
+	it('заголовок раздела и пояснение; таблица — с lg, карточки дней ниже — сеткой', () => {
+		render(DailyView, { data: daily, error: null, now: NOW });
+		expect(screen.getByRole('heading', { level: 1, name: 'Итоги' })).toBeInTheDocument();
+		expect(screen.getByText(/Изменение за день — чистая разница/)).toBeInTheDocument();
+		const table = screen.getByRole('table', { name: 'Итоги по дням' });
+		expect(table.closest('.card')).toHaveClass('hidden', 'lg:block');
+		const list = screen.getByRole('list', { name: 'Дни' });
+		expect(list).toHaveClass('grid', 'grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))]', 'lg:hidden');
+	});
+});

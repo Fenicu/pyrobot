@@ -72,57 +72,55 @@
 	const allSelected = $derived(pending.length > 0 && pending.every((i) => selected.has(i.id)));
 </script>
 
-<div class="space-y-3">
-	<div class="flex flex-wrap items-center gap-1.5">
-		{#each [['false', 'неразобранные'], ['true', 'разобранные'], ['all', 'все']] as [value, label] (value)}
-			<button type="button" class="chip" aria-pressed={acked === value} onclick={() => (acked = value as Acked)}>{label}</button>
-		{/each}
-		<label class="ml-auto inline-flex items-center gap-1 text-xs text-fg-muted">
-			<input
-				type="checkbox"
-				checked={allSelected}
-				disabled={pending.length === 0}
-				onchange={(e) => (selected = e.currentTarget.checked ? new Set(pending.map((i) => i.id)) : new Set())}
-			/>
-			выбрать все
-		</label>
-		<button type="button" class="btn" disabled={busy || selected.size === 0} onclick={ack}>
-			Отметить разобранными ({selected.size})
-		</button>
-	</div>
-	{#if error}<p class="card ext-text text-sm text-bad-fg" role="alert">{error}</p>{/if}
-	<ul class="card divide-y divide-line-soft p-0" aria-label="Нераспознанные сообщения">
-		{#each items as u (u.id)}
-			<li class="px-3 py-2 text-sm">
-				<div class="flex items-baseline gap-2">
-					{#if !u.acked}
-						<input
-							type="checkbox"
-							checked={selected.has(u.id)}
-							aria-label="Выбрать #{u.id}"
-							onchange={() => toggle(u.id)}
-						/>
-					{/if}
-					<button
-						type="button"
-						class="min-w-0 flex-1 truncate text-left"
-						aria-expanded={open === u.id}
-						onclick={() => (open = open === u.id ? null : u.id)}
-					>
-						<span class="ext-text {u.acked ? 'text-fg-muted' : ''}">{u.first_line}</span>
-					</button>
-					<time class="shrink-0 text-xs text-fg-faint" datetime={u.created_at}>{fmtMoment(u.created_at, now)}</time>
-				</div>
-				{#if open === u.id}
-					<div class="ext-text mt-2 rounded-md border border-line-soft bg-bg p-2 text-sm">{u.text ?? '(текста нет)'}</div>
-					<p class="mt-1 font-mono text-xs text-fg-faint">сообщение {u.msg_id} · запись журнала {u.message_id}</p>
-				{/if}
-			</li>
-		{:else}
-			<li class="px-3 py-2 text-sm text-fg-muted">Нераспознанных сообщений нет.</li>
-		{/each}
-	</ul>
-	{#if next !== null}
-		<button type="button" class="btn w-full" onclick={() => void load(next)}>Ещё</button>
-	{/if}
+<div class="flex flex-wrap items-center gap-1.5">
+	{#each [['false', 'неразобранные'], ['true', 'разобранные'], ['all', 'все']] as [value, label] (value)}
+		<button type="button" class="chip" aria-pressed={acked === value} onclick={() => (acked = value as Acked)}>{label}</button>
+	{/each}
+	<label class="ml-auto inline-flex items-center gap-1 text-xs text-fg-muted">
+		<input
+			type="checkbox"
+			checked={allSelected}
+			disabled={pending.length === 0}
+			onchange={(e) => (selected = e.currentTarget.checked ? new Set(pending.map((i) => i.id)) : new Set())}
+		/>
+		выбрать все
+	</label>
+	<button type="button" class="btn" disabled={busy || selected.size === 0} onclick={ack}>
+		Отметить разобранными ({selected.size})
+	</button>
 </div>
+{#if error}<p class="ext-text mt-2 text-sm text-bad-fg" role="alert">{error}</p>{/if}
+<ul class="-mx-3.5 mt-3 divide-y divide-line-soft border-t border-line-soft" aria-label="Нераспознанные сообщения">
+	{#each items as u (u.id)}
+		<li class="px-3.5 py-2 text-sm">
+			<div class="flex items-baseline gap-2">
+				{#if !u.acked}
+					<input
+						type="checkbox"
+						checked={selected.has(u.id)}
+						aria-label="Выбрать #{u.id}"
+						onchange={() => toggle(u.id)}
+					/>
+				{/if}
+				<button
+					type="button"
+					class="min-w-0 flex-1 truncate text-left"
+					aria-expanded={open === u.id}
+					onclick={() => (open = open === u.id ? null : u.id)}
+				>
+					<span class="ext-text {u.acked ? 'text-fg-muted' : ''}">{u.first_line}</span>
+				</button>
+				<time class="shrink-0 text-xs text-fg-faint" datetime={u.created_at}>{fmtMoment(u.created_at, now)}</time>
+			</div>
+			{#if open === u.id}
+				<div class="ext-text mt-2 rounded-md border border-line-soft bg-bg p-2 text-sm">{u.text ?? '(текста нет)'}</div>
+				<p class="mt-1 font-mono text-xs text-fg-faint">сообщение {u.msg_id} · запись журнала {u.message_id}</p>
+			{/if}
+		</li>
+	{:else}
+		<li class="px-3.5 py-2 text-sm text-fg-muted">Нераспознанных сообщений нет.</li>
+	{/each}
+</ul>
+{#if next !== null}
+	<button type="button" class="btn mt-2 w-full" onclick={() => void load(next)}>Ещё</button>
+{/if}

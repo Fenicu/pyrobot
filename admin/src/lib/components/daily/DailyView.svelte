@@ -15,6 +15,7 @@
 		weekdayShort
 	} from '$lib/daily/text';
 	import { fmtNum, fmtTime, mskDay } from '$lib/util/format';
+	import Page from '../shell/Page.svelte';
 	import DayBreakdown from './DayBreakdown.svelte';
 
 	interface Props {
@@ -60,125 +61,137 @@
 	}
 </script>
 
-{#if !data}
-	{#if error}
-		<p class="card text-sm text-bad-fg" role="alert">Итоги недоступны: {errorText(error)}.</p>
-	{:else}
-		<p class="card text-sm text-fg-muted">Загрузка итогов…</p>
-	{/if}
-{:else}
-	{#if stale}<p class="mb-2 text-xs {error ? 'text-bad-fg' : 'text-fg-muted'}" role="status">{stale}</p>{/if}
+<Page title="Итоги">
+	<div class="space-y-[14px]">
+		<p class="text-sm text-fg-muted">
+			Изменение за день — чистая разница по наблюдаемому балансу за сутки МСК (траты вычтены, пассивный
+			доход стартапа учтён). Разовое и потери — объясняющие события из журнала прихода: их суммы уже в
+			изменении. Среднее — по полным дням с данными за последние 7 дней. Клик по дню — его разбор.
+		</p>
+		{#if !data}
+			{#if error}
+				<p class="card text-sm text-bad-fg" role="alert">Итоги недоступны: {errorText(error)}.</p>
+			{:else}
+				<p class="card text-sm text-fg-muted">Загрузка итогов…</p>
+			{/if}
+		{:else}
+			{#if stale}<p class="text-xs {error ? 'text-bad-fg' : 'text-fg-muted'}" role="status">{stale}</p>{/if}
 
-	<!-- ПК: таблица за 30 дней -->
-	<div class="card hidden overflow-x-auto md:block {stale ? 'opacity-60' : ''}">
-		<table class="w-full border-collapse text-sm tabular-nums" aria-label="Итоги по дням">
-			<thead>
-				<tr class="text-fg-muted">
-					<th class="px-2 py-1.5 text-left font-medium">День</th>
-					{#each BALANCE as b (b.key)}
-						<th class="px-2 py-1.5 text-right align-bottom font-medium">
-							<span aria-hidden="true">{b.icon}</span>
-							<span class="block text-[11px] leading-tight font-normal text-fg-faint">{b.title}</span>
-						</th>
-					{/each}
-					<th class="px-2 py-1.5 text-right font-medium">Предметы</th>
-					<th class="px-2 py-1.5 text-right font-medium">Разовое</th>
-					<th class="px-2 py-1.5 text-right font-medium">Потери</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr class="border-t border-line-soft text-fg-muted italic">
-					<td class="px-2 py-1.5">среднее за 7 дней</td>
-					{#each BALANCE as b (b.key)}
-						<td class="px-2 py-1.5 text-right">{avg.balance[b.key] === null ? '—' : signed(avg.balance[b.key]!)}</td>
-					{/each}
-					<td class="px-2 py-1.5 text-right">{fmtNum(avg.items)}</td>
-					<td class="px-2 py-1.5 text-right">{fmtNum(avg.income)}</td>
-					<td class="px-2 py-1.5 text-right">{avg.losses === null ? '—' : `$${fmtNum(avg.losses)}`}</td>
-				</tr>
+			<!-- Широкий экран: таблица за 30 дней -->
+			<div class="card hidden overflow-x-auto lg:block {stale ? 'opacity-60' : ''}">
+				<table class="w-full border-collapse text-sm tabular-nums" aria-label="Итоги по дням">
+					<thead>
+						<tr class="text-fg-muted">
+							<th class="px-2 py-1.5 text-left font-medium">День</th>
+							{#each BALANCE as b (b.key)}
+								<th class="px-2 py-1.5 text-right align-bottom font-medium">
+									<span aria-hidden="true">{b.icon}</span>
+									<span class="block text-[11px] leading-tight font-normal text-fg-faint">{b.title}</span>
+								</th>
+							{/each}
+							<th class="px-2 py-1.5 text-right font-medium">Предметы</th>
+							<th class="px-2 py-1.5 text-right font-medium">Разовое</th>
+							<th class="px-2 py-1.5 text-right font-medium">Потери</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr class="border-t border-line-soft text-fg-muted italic">
+							<td class="px-2 py-1.5">среднее за 7 дней</td>
+							{#each BALANCE as b (b.key)}
+								<td class="px-2 py-1.5 text-right">{avg.balance[b.key] === null ? '—' : signed(avg.balance[b.key]!)}</td>
+							{/each}
+							<td class="px-2 py-1.5 text-right">{fmtNum(avg.items)}</td>
+							<td class="px-2 py-1.5 text-right">{fmtNum(avg.income)}</td>
+							<td class="px-2 py-1.5 text-right">{avg.losses === null ? '—' : `$${fmtNum(avg.losses)}`}</td>
+						</tr>
+						{#each shown as d (d.day)}
+							{@const open = selected === d.day}
+							{@const lost = lossesMoney(d)}
+							<tr class="border-t border-line-soft {open ? 'bg-accent-soft' : ''}">
+								<td class="px-1 py-0.5">
+									<button
+										type="button"
+										class="w-full rounded px-1 py-1 text-left hover:bg-surface-2"
+										aria-expanded={open}
+										onclick={() => toggle(d.day)}
+									>
+										{dayLabel(d.day, today)}
+										{#if note(d)}<span class="text-fg-faint">({note(d)})</span>{/if}
+									</button>
+								</td>
+								{#each BALANCE as b (b.key)}
+									{@const delta = d.balance[b.key]?.delta ?? null}
+									<td class="px-2 py-1.5 text-right {tone(delta)}" title={delta === null ? 'нет данных' : undefined}>
+										{delta === null ? '—' : signed(delta)}
+									</td>
+								{/each}
+								{#if beforeLedger(d)}
+									{#each [0, 1, 2] as i (i)}<td class="px-2 py-1.5 text-right text-fg-faint" title={sinceTitle}>—</td>{/each}
+								{:else}
+									<td class="px-2 py-1.5 text-right">{fmtNum(itemsCount(d))}</td>
+									<td class="px-2 py-1.5 text-right">{fmtNum(incomeCount(d))}</td>
+									<td class="px-2 py-1.5 text-right {lost ? 'text-bad-fg' : 'text-fg-faint'}">{lost ? `$${fmtNum(lost)}` : '—'}</td>
+								{/if}
+							</tr>
+							{#if open}
+								<tr class="bg-accent-soft/40">
+									<td colspan={BALANCE.length + 4} class="px-3 pt-1 pb-3">
+										<section aria-label="Разбор дня {short(d.day)}">
+											<DayBreakdown day={d} beforeLedger={beforeLedger(d)} ledgerSince={since ? short(since) : null} />
+										</section>
+									</td>
+								</tr>
+							{/if}
+						{/each}
+						{#if hidden.length}
+							<tr class="border-t border-line-soft text-fg-faint">
+								<td colspan={BALANCE.length + 4} class="px-2 py-1.5">{hiddenRange}</td>
+							</tr>
+						{/if}
+					</tbody>
+				</table>
+				{#if since}<p class="mt-2 text-xs text-fg-faint">Разовое, предметы и потери — из журнала прихода с {short(since)}.</p>{/if}
+			</div>
+
+			<!-- Уже: карточки дней сеткой -->
+			<p class="text-xs text-fg-faint lg:hidden">
+				{BALANCE.map((b) => `${b.icon} ${b.title}`).join(' · ')}
+			</p>
+			<ul
+				class="grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] items-start gap-[14px] lg:hidden {stale ? 'opacity-60' : ''}"
+				aria-label="Дни"
+			>
 				{#each shown as d (d.day)}
 					{@const open = selected === d.day}
-					{@const lost = lossesMoney(d)}
-					<tr class="border-t border-line-soft {open ? 'bg-accent-soft' : ''}">
-						<td class="px-1 py-0.5">
-							<button
-								type="button"
-								class="w-full rounded px-1 py-1 text-left hover:bg-surface-2"
-								aria-expanded={open}
-								onclick={() => toggle(d.day)}
-							>
-								{dayLabel(d.day, today)}
-								{#if note(d)}<span class="text-fg-faint">({note(d)})</span>{/if}
-							</button>
-						</td>
-						{#each BALANCE as b (b.key)}
-							{@const delta = d.balance[b.key]?.delta ?? null}
-							<td class="px-2 py-1.5 text-right {tone(delta)}" title={delta === null ? 'нет данных' : undefined}>
-								{delta === null ? '—' : signed(delta)}
-							</td>
-						{/each}
-						{#if beforeLedger(d)}
-							{#each [0, 1, 2] as i (i)}<td class="px-2 py-1.5 text-right text-fg-faint" title={sinceTitle}>—</td>{/each}
-						{:else}
-							<td class="px-2 py-1.5 text-right">{fmtNum(itemsCount(d))}</td>
-							<td class="px-2 py-1.5 text-right">{fmtNum(incomeCount(d))}</td>
-							<td class="px-2 py-1.5 text-right {lost ? 'text-bad-fg' : 'text-fg-faint'}">{lost ? `$${fmtNum(lost)}` : '—'}</td>
+					<li class="card p-2.5">
+						<button type="button" class="w-full text-left" aria-expanded={open} onclick={() => toggle(d.day)}>
+							<span class="mb-1 flex justify-between text-sm">
+								<b>{d.day === today ? dayLabel(d.day, today) : short(d.day)}</b>
+								<span class="text-fg-faint">{d.day === today ? note(d) : `${weekdayShort(d.day)}${note(d) ? ` · ${note(d)}` : ''}`}</span>
+							</span>
+							<span class="flex flex-wrap gap-x-3 gap-y-0.5 text-[13px]">
+								{#each BALANCE as b (b.key)}
+									{@const delta = d.balance[b.key]?.delta ?? null}
+									<span title={b.title}><span aria-hidden="true">{b.icon}</span><span class="sr-only">{b.title}</span> <b class={tone(delta)}>{delta === null ? '—' : signed(delta)}</b></span>
+								{/each}
+							</span>
+							<span class="mt-0.5 block text-xs text-fg-faint">
+								{#if beforeLedger(d)}
+									разовое — нет данных{since ? ` до ${short(since)}` : ''}
+								{:else}
+									разовое: {incomeCount(d)} · потери: {lossesMoney(d) ? `$${fmtNum(lossesMoney(d))}` : '—'}
+								{/if}
+							</span>
+						</button>
+						{#if open}
+							<section class="mt-2 border-t border-line-soft pt-2" aria-label="Разбор дня {short(d.day)}">
+								<DayBreakdown day={d} beforeLedger={beforeLedger(d)} ledgerSince={since ? short(since) : null} />
+							</section>
 						{/if}
-					</tr>
-					{#if open}
-						<tr class="bg-accent-soft/40">
-							<td colspan={BALANCE.length + 4} class="px-3 pt-1 pb-3">
-								<section aria-label="Разбор дня {short(d.day)}">
-									<DayBreakdown day={d} beforeLedger={beforeLedger(d)} ledgerSince={since ? short(since) : null} />
-								</section>
-							</td>
-						</tr>
-					{/if}
+					</li>
 				{/each}
-				{#if hidden.length}
-					<tr class="border-t border-line-soft text-fg-faint">
-						<td colspan={BALANCE.length + 4} class="px-2 py-1.5">{hiddenRange}</td>
-					</tr>
-				{/if}
-			</tbody>
-		</table>
-		{#if since}<p class="mt-2 text-xs text-fg-faint">Разовое, предметы и потери — из журнала прихода с {short(since)}.</p>{/if}
+				{#if hidden.length}<li class="card p-2.5 text-sm text-fg-faint">{hiddenRange}</li>{/if}
+			</ul>
+		{/if}
 	</div>
-
-	<!-- Телефон: карточки дней -->
-	<p class="mb-2 text-xs text-fg-faint md:hidden">
-		{BALANCE.map((b) => `${b.icon} ${b.title}`).join(' · ')}
-	</p>
-	<ul class="space-y-2 md:hidden {stale ? 'opacity-60' : ''}" aria-label="Дни">
-		{#each shown as d (d.day)}
-			{@const open = selected === d.day}
-			<li class="card p-2.5">
-				<button type="button" class="w-full text-left" aria-expanded={open} onclick={() => toggle(d.day)}>
-					<span class="mb-1 flex justify-between text-sm">
-						<b>{d.day === today ? dayLabel(d.day, today) : short(d.day)}</b>
-						<span class="text-fg-faint">{d.day === today ? note(d) : `${weekdayShort(d.day)}${note(d) ? ` · ${note(d)}` : ''}`}</span>
-					</span>
-					<span class="flex flex-wrap gap-x-3 gap-y-0.5 text-[13px]">
-						{#each BALANCE as b (b.key)}
-							{@const delta = d.balance[b.key]?.delta ?? null}
-							<span title={b.title}><span aria-hidden="true">{b.icon}</span><span class="sr-only">{b.title}</span> <b class={tone(delta)}>{delta === null ? '—' : signed(delta)}</b></span>
-						{/each}
-					</span>
-					<span class="mt-0.5 block text-xs text-fg-faint">
-						{#if beforeLedger(d)}
-							разовое — нет данных{since ? ` до ${short(since)}` : ''}
-						{:else}
-							разовое: {incomeCount(d)} · потери: {lossesMoney(d) ? `$${fmtNum(lossesMoney(d))}` : '—'}
-						{/if}
-					</span>
-				</button>
-				{#if open}
-					<section class="mt-2 border-t border-line-soft pt-2" aria-label="Разбор дня {short(d.day)}">
-						<DayBreakdown day={d} beforeLedger={beforeLedger(d)} ledgerSince={since ? short(since) : null} />
-					</section>
-				{/if}
-			</li>
-		{/each}
-		{#if hidden.length}<li class="card p-2.5 text-sm text-fg-faint">{hiddenRange}</li>{/if}
-	</ul>
-{/if}
+</Page>

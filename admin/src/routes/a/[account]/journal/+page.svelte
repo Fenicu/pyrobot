@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { current } from '$lib/app.svelte';
 	import JournalView from '$lib/components/journal/JournalView.svelte';
-	import Page from '$lib/components/shell/Page.svelte';
 	import { JournalFeed } from '$lib/stores/journal.svelte';
 
 	const { api, live } = current.get();
@@ -15,6 +14,4 @@
 	});
 </script>
 
-<Page title="Журнал">
-	<JournalView {api} {feed} {subscribe} />
-</Page>
+<JournalView {api} {feed} {subscribe} />
