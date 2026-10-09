@@ -52,8 +52,10 @@ COPY --from=build /app/.venv /app/.venv
 COPY alembic.ini ./
 COPY app ./app
 COPY --from=admin /src/admin/build ./admin
+# MALLOC_ARENA_MAX: меньше арен glibc при потоках — меньше фрагментации и RSS.
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
+    MALLOC_ARENA_MAX=2 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYROBOT_DATA_DIR=/data \
     PYROBOT_HTTP_PORT=8080 \

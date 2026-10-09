@@ -5329,7 +5329,9 @@ build-arg `PYPI_INDEX` (по умолчанию PyPI): `uv sync --frozen` ска
 `PYROBOT_VERSION` (по умолчанию `0.0.0-dev`, см. «Версия и история изменений»), TS-типы API —
 закоммиченный `schema.d.ts` (`openapi.json`
 в контекст сборки не входит); рантайм — `python:3.13-slim-trixie` без uv, компилятора и node:
-venv, `app/`, `alembic.ini` и статика админки в `/app/admin` (`PYROBOT_ADMIN_DIR=/app/admin`). Процесс работает от непривилегированного
+venv, `app/`, `alembic.ini` и статика админки в `/app/admin` (`PYROBOT_ADMIN_DIR=/app/admin`);
+`MALLOC_ARENA_MAX=2` — glibc держит не больше двух арен памяти вместо арены на поток (меньше
+фрагментации и RSS при потоках). Процесс работает от непривилегированного
 пользователя `pyrobot` (uid/gid 10001); том `/data` (`PYROBOT_DATA_DIR`) принадлежит ему же — в новой
 версии сессии Telegram лежат в базе, а в томе остаётся только файл сессии прежней установки, из
 которого её переносят в базу (`pyrobot.session`, затем `pyrobot.session.migrated`). `HEALTHCHECK` — `python -m app.healthcheck /healthz` (`app/healthcheck.py`,
