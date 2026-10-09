@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/svelte';
+import { cleanup, render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
@@ -235,6 +235,18 @@ describe('аутентификация и восстановление', () => {
 
 		expect(await screen.findByText('new-code-1')).toBeInTheDocument();
 		expect(screen.getByText('new-code-2')).toBeInTheDocument();
+	});
+
+	it('пароль и коды — две карточки с заголовками в общей сетке', () => {
+		const api = createApi({ csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} }, mockFetch(() => json({}, 404)));
+		render(PasswordPage, { api });
+
+		expect(screen.getByRole('heading', { level: 1, name: 'Пароль и коды' })).toBeInTheDocument();
+		const password = screen.getByRole('form', { name: 'Пароль' });
+		const codes = screen.getByRole('region', { name: 'Коды восстановления' });
+		expect(password.parentElement).toBe(codes.parentElement);
+		expect(within(password).getByLabelText('Текущий пароль')).toBeInTheDocument();
+		expect(within(codes).getByRole('button', { name: 'Получить новые коды' })).toBeInTheDocument();
 	});
 
 	it('приглашение: невалидный логин — кнопка заблокирована, ноль POST, русская подсказка', async () => {

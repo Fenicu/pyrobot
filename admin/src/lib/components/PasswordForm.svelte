@@ -8,6 +8,7 @@
 		ondone: () => void;
 	}
 	let { api, ondone }: Props = $props();
+	const titleId = $props.id();
 	let current = $state('');
 	let next = $state('');
 	let repeat = $state('');
@@ -39,7 +40,8 @@
 	}
 </script>
 
-<form class="card max-w-sm space-y-3" onsubmit={submit}>
+<form class="card space-y-3" onsubmit={submit} aria-labelledby={titleId}>
+	<h2 id={titleId} class="card-title mb-0">Пароль</h2>
 	<label class="block space-y-1">
 		<span class="label">Текущий пароль</span>
 		<input class="input" type="password" autocomplete="current-password" bind:value={current} required maxlength="1024" />

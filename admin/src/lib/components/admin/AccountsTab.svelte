@@ -110,7 +110,7 @@
 	}
 </script>
 
-<div class="space-y-3">
+<div class="space-y-[14px]">
 	{#if store.accountsError}
 		<p class="card text-sm text-bad-fg" role="alert">{store.accountsError}</p>
 	{/if}
@@ -123,11 +123,11 @@
 		<div
 			role="table"
 			aria-label="Аккаунты сервера"
-			class="space-y-2 md:space-y-0 md:overflow-hidden md:rounded-lg md:border md:border-line md:bg-surface"
+			class="space-y-2 xl:space-y-0 xl:overflow-hidden xl:rounded-lg xl:border xl:border-line xl:bg-surface"
 		>
 			<div
 				role="row"
-				class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_9rem]"
+				class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_9rem]"
 			>
 				<span role="columnheader">Владелец</span>
 				<span role="columnheader">Аккаунт</span>
@@ -143,15 +143,15 @@
 				<div
 					role="row"
 					data-testid="account-row-{a.id}"
-					class="card grid gap-2 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_9rem] lg:items-center lg:gap-3 lg:rounded-none lg:border-0 lg:border-b lg:border-line-soft lg:last:border-b-0"
+					class="card grid gap-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1.4fr)_minmax(0,0.9fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_9rem] xl:items-center xl:gap-3 xl:rounded-none xl:border-0 xl:border-b xl:border-line-soft xl:last:border-b-0"
 				>
 					<div role="cell" class="min-w-0">
-						<span class="text-xs text-fg-muted lg:hidden">Владелец: </span>
+						<span class="text-xs text-fg-muted xl:hidden">Владелец: </span>
 						<span class="font-mono text-sm font-medium">{a.owner_login ?? '—'}</span>
 					</div>
 
 					<div role="cell" class="min-w-0 font-medium">
-						<span class="text-xs text-fg-muted lg:hidden">Аккаунт: </span>
+						<span class="text-xs text-fg-muted xl:hidden">Аккаунт: </span>
 						<span>{a.name}</span>
 					</div>
 
@@ -197,21 +197,21 @@
 					</div>
 
 					<div role="cell" class="text-sm">
-						<span class="text-xs text-fg-muted lg:hidden">Рестарты: </span>
+						<span class="text-xs text-fg-muted xl:hidden">Рестарты: </span>
 						<span>{a.restarts_24h}</span>
 					</div>
 
 					<div role="cell" class="text-xs text-fg-muted">
-						<span class="lg:hidden">Нагрузка: </span>
+						<span class="xl:hidden">Нагрузка: </span>
 						<span>сообщ: {a.messages_1h}, действ: {a.actions_1h}</span>
 					</div>
 
 					<div role="cell" class="min-w-0 text-[11px] text-fg-faint" title={formatRows(a.rows)}>
-						<span class="text-xs text-fg-muted lg:hidden">БД: </span>
+						<span class="text-xs text-fg-muted xl:hidden">БД: </span>
 						<span class="truncate block">{formatRows(a.rows)}</span>
 					</div>
 
-					<div role="cell" class="flex flex-wrap items-center gap-1.5 lg:justify-end">
+					<div role="cell" class="flex flex-wrap items-center gap-1.5 xl:justify-end">
 						{#if a.status !== 'deleting'}
 							{#if a.blocked}
 								<button
@@ -222,7 +222,7 @@
 									disabled={actionBusy}
 								>
 									<CheckCircle2 class="size-3.5" aria-hidden="true" />
-									<span class="lg:sr-only">Разблокировать</span>
+									<span class="xl:sr-only">Разблокировать</span>
 								</button>
 							{:else}
 								<button
@@ -233,7 +233,7 @@
 									disabled={actionBusy}
 								>
 									<Ban class="size-3.5" aria-hidden="true" />
-									<span class="lg:sr-only">Заблокировать</span>
+									<span class="xl:sr-only">Заблокировать</span>
 								</button>
 							{/if}
 
@@ -245,7 +245,7 @@
 								disabled={actionBusy || !a.running}
 							>
 								<RotateCw class="size-3.5" aria-hidden="true" />
-								<span class="lg:sr-only">Перезапустить</span>
+								<span class="xl:sr-only">Перезапустить</span>
 							</button>
 
 							<button
@@ -256,7 +256,7 @@
 								disabled={actionBusy}
 							>
 								<Trash2 class="size-3.5" aria-hidden="true" />
-								<span class="lg:sr-only">Удалить</span>
+								<span class="xl:sr-only">Удалить</span>
 							</button>
 						{/if}
 					</div>

@@ -5,6 +5,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import { acceptInvite, peekInvite } from '$lib/api/public';
 	import { session as defaultSession, startApp as defaultStartApp, stopApp as defaultStopApp } from '$lib/app.svelte';
+	import AuthHeader from '$lib/components/auth/AuthHeader.svelte';
 	import RecoveryCodes from '$lib/components/auth/RecoveryCodes.svelte';
 	import type { Session } from '$lib/stores/session.svelte';
 
@@ -99,17 +100,14 @@
 	{#if status === 'loading'}
 		<p class="p-6 text-sm text-fg-muted" role="status">Загрузка…</p>
 	{:else if status === 'error'}
-		<div class="card w-full max-w-sm space-y-3 p-5" role="alert">
-			<h1 class="text-lg font-semibold">Приглашение</h1>
+		<div class="card w-full max-w-sm space-y-4 p-6" role="alert">
+			<AuthHeader title="Приглашение" />
 			<p class="text-sm text-bad-fg">{errorMessage}</p>
 			<a href="/login" class="btn w-full">На страницу входа</a>
 		</div>
 	{:else if status === 'form'}
-		<form class="card w-full max-w-sm space-y-4 p-5" onsubmit={submit}>
-			<div>
-				<h1 class="text-lg font-semibold">pyrobot</h1>
-				<p class="text-sm text-fg-muted">Регистрация по приглашению</p>
-			</div>
+		<form class="card w-full max-w-sm space-y-4 p-6" onsubmit={submit}>
+			<AuthHeader subtitle="Регистрация по приглашению" />
 			<label class="block space-y-1">
 				<span class="label">Логин</span>
 				<input
@@ -159,13 +157,11 @@
 			</button>
 		</form>
 	{:else if status === 'codes'}
-		<div class="card w-full max-w-md space-y-4 p-5">
-			<div>
-				<h1 class="text-lg font-semibold">Коды восстановления</h1>
-				<p class="text-sm text-fg-muted">
-					Сохраните эти одноразовые коды. Они понадобятся для входа, если вы забудете пароль. Коды показываются один раз.
-				</p>
-			</div>
+		<div class="card w-full max-w-md space-y-4 p-6">
+			<AuthHeader
+				title="Коды восстановления"
+				subtitle="Сохраните эти одноразовые коды. Они понадобятся для входа, если вы забудете пароль. Коды показываются один раз."
+			/>
 			<RecoveryCodes {codes} />
 			<label class="flex items-center gap-2 text-sm text-fg cursor-pointer">
 				<input type="checkbox" bind:checked={saved} />

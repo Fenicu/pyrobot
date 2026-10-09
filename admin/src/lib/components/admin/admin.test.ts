@@ -899,6 +899,18 @@ describe('Консоль владельца', () => {
 		expect(formatAdminError(fail4)).toBe('Максимум аккаунтов на сервере: не больше 10000');
 	});
 
+	it('заголовок «Сервер» в шапке, вкладки — переключателем под ней', async () => {
+		const fetch = mockFetch(() => json([], 200));
+		const store = new AdminStore(createApi(hooks, fetch));
+		render(AdminView, { store, role: 'owner', initialTab: 'users' });
+
+		const header = screen.getByRole('banner');
+		expect(within(header).getByRole('heading', { level: 1, name: 'Сервер' })).toBeInTheDocument();
+		const nav = screen.getByRole('navigation', { name: 'Вкладки сервера' });
+		expect(header.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(within(nav).getAllByRole('button')).toHaveLength(6);
+	});
+
 	it('переключение вкладок в AdminView', async () => {
 		const fetch = mockFetch((c) => json([], 200));
 		const api = createApi(hooks, fetch);

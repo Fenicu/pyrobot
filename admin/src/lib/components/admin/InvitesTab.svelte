@@ -101,14 +101,14 @@
 	}
 </script>
 
-<div class="space-y-4">
+<div class="space-y-[14px]">
 	{#if store.invitesError}
 		<p class="card text-sm text-bad-fg" role="alert">{store.invitesError}</p>
 	{/if}
 
 	{#if createdResult}
 		<div class="card space-y-3 border-accent bg-accent-soft p-4" role="region" aria-label="Созданное приглашение">
-			<h2 class="text-sm font-semibold text-fg">Приглашение создано</h2>
+			<h2 class="card-title mb-0">Приглашение создано</h2>
 			<p class="text-xs text-fg-muted">
 				Ссылка с секретным токеном показывается только один раз. Скопируйте её и передайте пользователю.
 			</p>
@@ -138,7 +138,7 @@
 	{/if}
 
 	<form class="card space-y-3" onsubmit={createInvite} novalidate>
-		<h2 class="text-sm font-semibold text-fg">Новое приглашение</h2>
+		<h2 class="card-title mb-0">Новое приглашение</h2>
 		<div class="grid gap-3 sm:grid-cols-3">
 			<label class="block space-y-1">
 				<span class="label">Лимит аккаунтов (1..1000)</span>
@@ -188,7 +188,7 @@
 	</form>
 
 	<section class="space-y-2">
-		<h2 class="text-sm font-semibold text-fg">Неиспользованные приглашения</h2>
+		<h2 class="card-title mb-0">Неиспользованные приглашения</h2>
 
 		{#if store.invitesLoading && !store.invites}
 			<p class="text-sm text-fg-muted" role="status">Загрузка приглашений…</p>

@@ -123,7 +123,7 @@
 	}
 </script>
 
-<div class="space-y-3">
+<div class="space-y-[14px]">
 	{#if store.usersError}
 		<p class="card text-sm text-bad-fg" role="alert">{store.usersError}</p>
 	{/if}
@@ -136,11 +136,11 @@
 		<div
 			role="table"
 			aria-label="Пользователи"
-			class="space-y-2 md:space-y-0 md:overflow-hidden md:rounded-lg md:border md:border-line md:bg-surface"
+			class="space-y-2 xl:space-y-0 xl:overflow-hidden xl:rounded-lg xl:border xl:border-line xl:bg-surface"
 		>
 			<div
 				role="row"
-				class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_8rem]"
+				class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,1fr)_8rem]"
 			>
 				<span role="columnheader">Логин</span>
 				<span role="columnheader">Роль</span>
@@ -155,7 +155,7 @@
 				<div
 					role="row"
 					data-testid="user-row-{u.id}"
-					class="card grid gap-2 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_8rem] md:items-center md:gap-3 md:rounded-none md:border-0 md:border-b md:border-line-soft md:last:border-b-0"
+					class="card grid gap-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_minmax(0,1fr)_8rem] xl:items-center xl:gap-3 xl:rounded-none xl:border-0 xl:border-b xl:border-line-soft xl:last:border-b-0"
 				>
 					<div role="cell" class="min-w-0 font-medium">
 						<span class="font-mono">{u.login}</span>
@@ -192,7 +192,7 @@
 						{/if}
 					</div>
 
-					<div role="cell" class="flex flex-wrap items-center gap-1.5 md:justify-end">
+					<div role="cell" class="flex flex-wrap items-center gap-1.5 xl:justify-end">
 						{#if !u.deleting}
 							<button
 								type="button"
@@ -202,7 +202,7 @@
 								disabled={actionBusy}
 							>
 								<Pencil class="size-3.5" aria-hidden="true" />
-								<span class="md:sr-only">Лимит</span>
+								<span class="xl:sr-only">Лимит</span>
 							</button>
 
 							{#if u.disabled}
@@ -214,7 +214,7 @@
 									disabled={actionBusy}
 								>
 									<Power class="size-3.5" aria-hidden="true" />
-									<span class="md:sr-only">Включить</span>
+									<span class="xl:sr-only">Включить</span>
 								</button>
 							{:else}
 								<button
@@ -225,7 +225,7 @@
 									disabled={actionBusy}
 								>
 									<PowerOff class="size-3.5" aria-hidden="true" />
-									<span class="md:sr-only">Отключить</span>
+									<span class="xl:sr-only">Отключить</span>
 								</button>
 							{/if}
 
@@ -237,7 +237,7 @@
 								disabled={actionBusy}
 							>
 								<Trash2 class="size-3.5" aria-hidden="true" />
-								<span class="md:sr-only">Удалить</span>
+								<span class="xl:sr-only">Удалить</span>
 							</button>
 						{/if}
 					</div>

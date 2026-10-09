@@ -7,9 +7,12 @@
 	const entries = parseChangelog();
 </script>
 
-<Page title="История изменений">
-	<p class="mb-3 text-sm text-fg-muted">Установлена версия <span class="font-mono">{APP_VERSION}</span></p>
-	<div class="max-w-3xl space-y-3">
+{#snippet status()}
+	<span class="pill pill-muted">установлена версия <span class="font-mono">{APP_VERSION}</span></span>
+{/snippet}
+
+<Page title="История изменений" {status}>
+	<div class="max-w-[72ch] space-y-[14px]">
 		{#each entries as entry (entry.version)}
 			<section class="card">
 				<ChangelogEntry {entry} heading="h2" installed={entry.version === APP_VERSION} />

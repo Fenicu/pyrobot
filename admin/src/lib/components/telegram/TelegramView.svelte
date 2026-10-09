@@ -5,6 +5,7 @@
 	import type { EngineStatus, TgStatus } from '$lib/api/types';
 	import { dialogs } from '$lib/stores/confirm.svelte';
 	import { tgStateLabel } from '$lib/util/game';
+	import Page from '../shell/Page.svelte';
 	import Pill from '../Pill.svelte';
 
 	interface Props {
@@ -334,235 +335,245 @@
 	);
 </script>
 
-<div class="max-w-lg space-y-3">
-	<section class="card" aria-labelledby="tg-status">
-		<h2 id="tg-status" class="card-title">Статус</h2>
-		{#if status}
-			<p class="flex flex-wrap items-center gap-2 text-sm">
-				<Pill tone={status.state === 'online' ? 'ok' : status.state === 'error' ? 'bad' : 'warn'}>
-					{tgStateLabel(status.state)}
-				</Pill>
-				{#if status.user_id}<span>user_id <span class="font-mono">{status.user_id}</span></span>{/if}
-			</p>
-			{#if status.state === 'overload'}
-				<p class="mt-1 text-sm text-fg-muted">
-					Обновлений из Telegram больше, чем бот успевает записать: приём приостановлен. Когда накопленное
-					разобрано, бот подключится сам — входить заново не нужно, пропущенное он дочитает из истории чатов.
-				</p>
-			{/if}
-			{#if status.error}
-				<p class="ext-text mt-1 text-sm text-bad-fg">{statusError(status.error)}</p>
-			{/if}
-			{#if status.bound_user_id}
-				<p class="mt-2 text-sm text-fg-muted">
-					Аккаунт навсегда привязан к пользователю Telegram <span class="font-mono">{status.bound_user_id}</span>.
-					Другой персонаж — это новый аккаунт.
-				</p>
-			{:else if phase !== 'stopped'}
-				<p class="mt-2 text-sm text-fg-muted">
-					Первый вход навсегда привяжет аккаунт к пользователю Telegram. Другой персонаж — это новый аккаунт.
-				</p>
-			{/if}
-		{:else}
-			<p class="text-sm text-fg-muted">…</p>
-		{/if}
-		{#if message}<p class="ext-text mt-2 text-sm text-warn-fg" role="alert">{message}</p>{/if}
-	</section>
-
+{#snippet actions()}
 	{#if phase === 'online'}
 		<button type="button" class="btn btn-danger" disabled={busy} onclick={logout}>Выйти из Telegram</button>
-	{:else if waiting && attempt === null}
-		<section class="card space-y-2 text-sm">
-			<p>Вход уже начат в другой вкладке или сессии. Можно начать заново здесь или отменить его.</p>
-			<form class="flex gap-2" onsubmit={start}>
-				<label class="flex-1"><span class="sr-only">Телефон</span>
-					<input class="input" type="tel" placeholder="+7…" autocomplete="off" bind:value={phone} required />
-				</label>
-				<button type="submit" class="btn btn-primary" disabled={busy || !phone.trim()}>Получить код</button>
-			</form>
-			{@render cancelButton()}
-		</section>
-	{:else if phase === 'awaiting_email'}
-		<form class="card space-y-2" onsubmit={sendEmail}>
-			<p class="text-sm text-fg-muted">
-				Для этого номера Telegram требует привязать адрес электронной почты для входа.
-			</p>
-			<label class="block space-y-1">
-				<span class="label">Электронная почта</span>
-				<input
-					class="input"
-					type="email"
-					autocomplete="email"
-					name="tg-email"
-					placeholder="name@example.com"
-					bind:value={email}
-					required
-				/>
-			</label>
-			<div class="flex flex-wrap gap-2">
-				<button type="submit" class="btn btn-primary" disabled={busy || !email.trim()}>
-					Отправить код на почту
-				</button>
-				{@render cancelButton()}
-			</div>
-		</form>
-	{:else if phase === 'awaiting_email_code'}
-		<form class="card space-y-2" onsubmit={sendEmailCode}>
-			{#if deliveryText(status)}
-				<p class="text-sm text-fg-muted">{deliveryText(status)}</p>
-			{/if}
-			<label class="block space-y-1">
-				<span class="label">Код из почты</span>
-				<input
-					class="input"
-					inputmode="numeric"
-					autocomplete="one-time-code"
-					name="tg-email-code"
-					bind:value={emailCode}
-					required
-				/>
-			</label>
-			<div class="flex flex-wrap gap-2">
-				<button type="submit" class="btn btn-primary" disabled={busy || !emailCode.trim()}>
-					Подтвердить почту
-				</button>
-				{@render cancelButton()}
-			</div>
-		</form>
-	{:else if phase === 'awaiting_code'}
-		<form class="card space-y-2" onsubmit={sendCode}>
-			{#if deliveryText(status)}
-				<p class="text-sm text-fg-muted">{deliveryText(status)}</p>
-			{/if}
-			<p class="text-sm text-fg-muted">{viaText()}</p>
-			<label class="block space-y-1">
-				<span class="label">Код из Telegram</span>
-				<input
-					class="input"
-					inputmode="numeric"
-					autocomplete="one-time-code"
-					name="tg-code"
-					bind:value={code}
-					required
-				/>
-			</label>
-			{#if app === 'server'}
-				<details class="text-sm">
-					<summary class="cursor-pointer">Код не пришёл?</summary>
-					<div class="mt-2 space-y-2 text-fg-muted">
-						<p>
-							Telegram иногда не доставляет коды для общего приложения сервера. Создайте своё приложение
-							Telegram — это пара минут:
-						</p>
-						<ol class="list-decimal space-y-1 pl-5">
-							<li>
-								откройте
-								<a class="underline" href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org</a>
-								и войдите по номеру телефона — код придёт в приложение Telegram;
-							</li>
-							<li>выберите «API development tools»;</li>
-							<li>
-								заполните форму: App title — любое, Short name — 5–32 латинских букв или цифр, Platform — любая
-								(например, Desktop);
-							</li>
-							<li>нажмите «Create application»;</li>
-							<li>скопируйте api_id и api_hash;</li>
-							<li>
-								нажмите «Отменить вход», впишите их в блоке «Своё приложение Telegram» ниже и запросите код
-								снова.
-							</li>
-						</ol>
-					</div>
-				</details>
-			{/if}
-			<div class="flex flex-wrap gap-2">
-				<button type="submit" class="btn btn-primary" disabled={busy || !code.trim()}>Войти</button>
-				{#if status?.delivery_next_type}
-					<button type="button" class="btn" disabled={busy || resendCountdown > 0} onclick={resend}>
-						{resendLabel(status)}
-					</button>
-				{/if}
-				{@render cancelButton()}
-			</div>
-		</form>
-	{:else if phase === 'awaiting_password'}
-		<form class="card space-y-2" onsubmit={sendPassword}>
-			<label class="block space-y-1">
-				<span class="label">Пароль 2FA</span>
-				<input class="input" type="password" autocomplete="off" name="tg-2fa" bind:value={password} required />
-			</label>
-			<div class="flex flex-wrap gap-2">
-				<button type="submit" class="btn btn-primary" disabled={busy || !password}>Войти</button>
-				{@render cancelButton()}
-			</div>
-		</form>
-	{:else if status && phase !== 'overload' && phase !== 'stopped'}
-		<form class="card space-y-2" onsubmit={start}>
-			<label class="block space-y-1">
-				<span class="label">Телефон аккаунта</span>
-				<input class="input" type="tel" placeholder="+7…" autocomplete="off" bind:value={phone} required />
-			</label>
-			<button type="submit" class="btn btn-primary" disabled={busy || !phone.trim()}>Получить код</button>
-		</form>
 	{/if}
+{/snippet}
 
-	{#snippet cancelButton()}
-		<button type="button" class="btn" disabled={busy} onclick={cancel}>Отменить вход</button>
-	{/snippet}
-
-	<section
-		class="card {phase === 'awaiting_code' && app === 'server' ? 'border-warn-bg' : ''}"
-		aria-labelledby="tg-app"
-	>
-		<h2 id="tg-app" class="card-title">Своё приложение Telegram</h2>
-		{#if status === null}
-			<p class="text-sm text-fg-muted">…</p>
-		{:else}
-			<p class="text-sm">
-				{app === null || app === 'server' ? 'Серверное приложение' : `Своё: api_id ${app.api_id}`}
-			</p>
-			{#if appLocked}
-				<p class="mt-1 text-sm text-fg-muted">Сначала выйдите из Telegram</p>
-			{:else}
-				{#if app === 'server'}
-					<p class="mt-1 text-sm">
-						Если код входа не приходит, создайте своё приложение: войдите на
-						<a class="underline" href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org</a>
-						по номеру телефона (код придёт в приложение Telegram) → «API development tools» → App title любое,
-						Short name — 5–32 латинских букв или цифр, Platform любая → «Create application» → скопируйте api_id
-						и api_hash сюда и запросите код снова.
+<Page title="Telegram" {actions}>
+	<div class="grid items-start gap-[14px] lg:grid-cols-2">
+		<div class="min-w-0 space-y-[14px]">
+			<section class="card" aria-labelledby="tg-status">
+				<h2 id="tg-status" class="card-title">Статус</h2>
+				{#if status}
+					<p class="flex flex-wrap items-center gap-2 text-sm">
+						<Pill tone={status.state === 'online' ? 'ok' : status.state === 'error' ? 'bad' : 'warn'}>
+							{tgStateLabel(status.state)}
+						</Pill>
+						{#if status.user_id}<span>user_id <span class="font-mono">{status.user_id}</span></span>{/if}
 					</p>
+					{#if status.state === 'overload'}
+						<p class="mt-1 text-sm text-fg-muted">
+							Обновлений из Telegram больше, чем бот успевает записать: приём приостановлен. Когда накопленное
+							разобрано, бот подключится сам — входить заново не нужно, пропущенное он дочитает из истории чатов.
+						</p>
+					{/if}
+					{#if status.error}
+						<p class="ext-text mt-1 text-sm text-bad-fg">{statusError(status.error)}</p>
+					{/if}
+					{#if status.bound_user_id}
+						<p class="mt-2 text-sm text-fg-muted">
+							Аккаунт навсегда привязан к пользователю Telegram <span class="font-mono">{status.bound_user_id}</span>.
+							Другой персонаж — это новый аккаунт.
+						</p>
+					{:else if phase !== 'stopped'}
+						<p class="mt-2 text-sm text-fg-muted">
+							Первый вход навсегда привяжет аккаунт к пользователю Telegram. Другой персонаж — это новый аккаунт.
+						</p>
+					{/if}
+				{:else}
+					<p class="text-sm text-fg-muted">…</p>
 				{/if}
-				<p class="mt-1 text-sm text-fg-muted">
-					Приложение действует со следующего входа в Telegram; начатый вход при сохранении сбрасывается.
-				</p>
-				<form class="mt-2 space-y-2" onsubmit={saveApp}>
+				{#if message}<p class="ext-text mt-2 text-sm text-warn-fg" role="alert">{message}</p>{/if}
+			</section>
+
+			{#if phase === 'online'}
+				<!-- Выход из Telegram — в шапке страницы. -->
+			{:else if waiting && attempt === null}
+				<section class="card space-y-2 text-sm">
+					<p>Вход уже начат в другой вкладке или сессии. Можно начать заново здесь или отменить его.</p>
+					<form class="flex gap-2" onsubmit={start}>
+						<label class="flex-1"><span class="sr-only">Телефон</span>
+							<input class="input" type="tel" placeholder="+7…" autocomplete="off" bind:value={phone} required />
+						</label>
+						<button type="submit" class="btn btn-primary" disabled={busy || !phone.trim()}>Получить код</button>
+					</form>
+					{@render cancelButton()}
+				</section>
+			{:else if phase === 'awaiting_email'}
+				<form class="card space-y-2" onsubmit={sendEmail}>
+					<p class="text-sm text-fg-muted">
+						Для этого номера Telegram требует привязать адрес электронной почты для входа.
+					</p>
 					<label class="block space-y-1">
-						<span class="label">api_id</span>
+						<span class="label">Электронная почта</span>
 						<input
 							class="input"
-							type="text"
-							inputmode="numeric"
-							bind:value={appId}
-							autocomplete="off"
+							type="email"
+							autocomplete="email"
+							name="tg-email"
+							placeholder="name@example.com"
+							bind:value={email}
 							required
 						/>
 					</label>
-					<label class="block space-y-1">
-						<span class="label">api_hash</span>
-						<input class="input" type="password" autocomplete="new-password" bind:value={appHash} required />
-					</label>
 					<div class="flex flex-wrap gap-2">
-						<button type="submit" class="btn btn-primary" disabled={appBusy || !appId.trim() || !appHash.trim()}>
-							Сохранить
+						<button type="submit" class="btn btn-primary" disabled={busy || !email.trim()}>
+							Отправить код на почту
 						</button>
-						{#if app !== 'server'}
-							<button type="button" class="btn" disabled={appBusy} onclick={removeApp}>Убрать</button>
-						{/if}
+						{@render cancelButton()}
 					</div>
 				</form>
+			{:else if phase === 'awaiting_email_code'}
+				<form class="card space-y-2" onsubmit={sendEmailCode}>
+					{#if deliveryText(status)}
+						<p class="text-sm text-fg-muted">{deliveryText(status)}</p>
+					{/if}
+					<label class="block space-y-1">
+						<span class="label">Код из почты</span>
+						<input
+							class="input"
+							inputmode="numeric"
+							autocomplete="one-time-code"
+							name="tg-email-code"
+							bind:value={emailCode}
+							required
+						/>
+					</label>
+					<div class="flex flex-wrap gap-2">
+						<button type="submit" class="btn btn-primary" disabled={busy || !emailCode.trim()}>
+							Подтвердить почту
+						</button>
+						{@render cancelButton()}
+					</div>
+				</form>
+			{:else if phase === 'awaiting_code'}
+				<form class="card space-y-2" onsubmit={sendCode}>
+					{#if deliveryText(status)}
+						<p class="text-sm text-fg-muted">{deliveryText(status)}</p>
+					{/if}
+					<p class="text-sm text-fg-muted">{viaText()}</p>
+					<label class="block space-y-1">
+						<span class="label">Код из Telegram</span>
+						<input
+							class="input"
+							inputmode="numeric"
+							autocomplete="one-time-code"
+							name="tg-code"
+							bind:value={code}
+							required
+						/>
+					</label>
+					{#if app === 'server'}
+						<details class="text-sm">
+							<summary class="cursor-pointer">Код не пришёл?</summary>
+							<div class="mt-2 space-y-2 text-fg-muted">
+								<p>
+									Telegram иногда не доставляет коды для общего приложения сервера. Создайте своё приложение
+									Telegram — это пара минут:
+								</p>
+								<ol class="list-decimal space-y-1 pl-5">
+									<li>
+										откройте
+										<a class="underline" href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org</a>
+										и войдите по номеру телефона — код придёт в приложение Telegram;
+									</li>
+									<li>выберите «API development tools»;</li>
+									<li>
+										заполните форму: App title — любое, Short name — 5–32 латинских букв или цифр, Platform — любая
+										(например, Desktop);
+									</li>
+									<li>нажмите «Create application»;</li>
+									<li>скопируйте api_id и api_hash;</li>
+									<li>
+										нажмите «Отменить вход», впишите их в блоке «Своё приложение Telegram» ниже и запросите код
+										снова.
+									</li>
+								</ol>
+							</div>
+						</details>
+					{/if}
+					<div class="flex flex-wrap gap-2">
+						<button type="submit" class="btn btn-primary" disabled={busy || !code.trim()}>Войти</button>
+						{#if status?.delivery_next_type}
+							<button type="button" class="btn" disabled={busy || resendCountdown > 0} onclick={resend}>
+								{resendLabel(status)}
+							</button>
+						{/if}
+						{@render cancelButton()}
+					</div>
+				</form>
+			{:else if phase === 'awaiting_password'}
+				<form class="card space-y-2" onsubmit={sendPassword}>
+					<label class="block space-y-1">
+						<span class="label">Пароль 2FA</span>
+						<input class="input" type="password" autocomplete="off" name="tg-2fa" bind:value={password} required />
+					</label>
+					<div class="flex flex-wrap gap-2">
+						<button type="submit" class="btn btn-primary" disabled={busy || !password}>Войти</button>
+						{@render cancelButton()}
+					</div>
+				</form>
+			{:else if status && phase !== 'overload' && phase !== 'stopped'}
+				<form class="card space-y-2" onsubmit={start}>
+					<label class="block space-y-1">
+						<span class="label">Телефон аккаунта</span>
+						<input class="input" type="tel" placeholder="+7…" autocomplete="off" bind:value={phone} required />
+					</label>
+					<button type="submit" class="btn btn-primary" disabled={busy || !phone.trim()}>Получить код</button>
+				</form>
 			{/if}
-			{#if appError}<p class="ext-text mt-2 text-sm text-warn-fg" role="alert">{appError}</p>{/if}
-		{/if}
-	</section>
-</div>
+		</div>
+
+		{#snippet cancelButton()}
+			<button type="button" class="btn" disabled={busy} onclick={cancel}>Отменить вход</button>
+		{/snippet}
+
+		<section
+			class="card {phase === 'awaiting_code' && app === 'server' ? 'border-warn-bg' : ''}"
+			aria-labelledby="tg-app"
+		>
+			<h2 id="tg-app" class="card-title">Своё приложение Telegram</h2>
+			{#if status === null}
+				<p class="text-sm text-fg-muted">…</p>
+			{:else}
+				<p class="text-sm">
+					{app === null || app === 'server' ? 'Серверное приложение' : `Своё: api_id ${app.api_id}`}
+				</p>
+				{#if appLocked}
+					<p class="mt-1 text-sm text-fg-muted">Сначала выйдите из Telegram</p>
+				{:else}
+					{#if app === 'server'}
+						<p class="mt-1 text-sm">
+							Если код входа не приходит, создайте своё приложение: войдите на
+							<a class="underline" href="https://my.telegram.org" target="_blank" rel="noopener noreferrer">my.telegram.org</a>
+							по номеру телефона (код придёт в приложение Telegram) → «API development tools» → App title любое,
+							Short name — 5–32 латинских букв или цифр, Platform любая → «Create application» → скопируйте api_id
+							и api_hash сюда и запросите код снова.
+						</p>
+					{/if}
+					<p class="mt-1 text-sm text-fg-muted">
+						Приложение действует со следующего входа в Telegram; начатый вход при сохранении сбрасывается.
+					</p>
+					<form class="mt-2 space-y-2" onsubmit={saveApp}>
+						<label class="block space-y-1">
+							<span class="label">api_id</span>
+							<input
+								class="input"
+								type="text"
+								inputmode="numeric"
+								bind:value={appId}
+								autocomplete="off"
+								required
+							/>
+						</label>
+						<label class="block space-y-1">
+							<span class="label">api_hash</span>
+							<input class="input" type="password" autocomplete="new-password" bind:value={appHash} required />
+						</label>
+						<div class="flex flex-wrap gap-2">
+							<button type="submit" class="btn btn-primary" disabled={appBusy || !appId.trim() || !appHash.trim()}>
+								Сохранить
+							</button>
+							{#if app !== 'server'}
+								<button type="button" class="btn" disabled={appBusy} onclick={removeApp}>Убрать</button>
+							{/if}
+						</div>
+					</form>
+				{/if}
+				{#if appError}<p class="ext-text mt-2 text-sm text-warn-fg" role="alert">{appError}</p>{/if}
+			{/if}
+		</section>
+	</div>
+</Page>

@@ -38,9 +38,9 @@
 	const tone = (l: string) => (l === 'error' ? 'bad' : l === 'warn' ? 'warn' : 'muted');
 </script>
 
-<div class="space-y-3">
+<div class="space-y-[14px]">
 	<div class="flex items-center justify-between">
-		<h2 class="text-sm font-semibold text-fg">Уведомления сервера</h2>
+		<h2 class="card-title mb-0">Уведомления сервера</h2>
 		<button
 			type="button"
 			class="btn gap-1.5 text-xs"

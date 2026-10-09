@@ -21,7 +21,7 @@
 	}
 </script>
 
-<div class="space-y-3">
+<div class="space-y-[14px]">
 	{#if store.auditError}
 		<p class="card text-sm text-bad-fg" role="alert">{store.auditError}</p>
 	{/if}
@@ -38,7 +38,7 @@
 		>
 			<div
 				role="row"
-				class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,2fr)]"
+				class="hidden gap-3 border-b border-line-soft px-3 py-2 text-xs font-semibold tracking-wide text-fg-muted uppercase md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,2fr)]"
 			>
 				<span role="columnheader">Время</span>
 				<span role="columnheader">Кто</span>
@@ -50,7 +50,7 @@
 			{#each store.audit as item (item.id)}
 				<div
 					role="row"
-					class="card grid gap-1.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,2fr)] md:items-center md:gap-3 md:rounded-none md:border-0 md:border-b md:border-line-soft md:last:border-b-0"
+					class="card grid gap-1.5 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,2fr)] md:items-center md:gap-3 md:rounded-none md:border-0 md:border-b md:border-line-soft md:last:border-b-0"
 				>
 					<div role="cell" class="text-xs text-fg-muted">
 						<span class="md:hidden">Время: </span>
@@ -62,7 +62,7 @@
 						{item.actor_login}
 					</div>
 
-					<div role="cell" class="font-mono text-xs text-accent">
+					<div role="cell" class="min-w-0 font-mono text-xs text-accent [overflow-wrap:anywhere]">
 						<span class="text-fg-muted md:hidden">Действие: </span>
 						{item.action}
 					</div>

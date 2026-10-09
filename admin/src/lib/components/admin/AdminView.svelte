@@ -9,6 +9,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import type { AdminStore } from '$lib/admin/store.svelte';
+	import Page from '../shell/Page.svelte';
 	import UsersTab from './UsersTab.svelte';
 	import AccountsTab from './AccountsTab.svelte';
 	import InvitesTab from './InvitesTab.svelte';
@@ -63,50 +64,56 @@
 	const isNotOwner = $derived(role !== 'owner' || store.forbidden);
 </script>
 
-{#if isNotOwner}
-	<div class="card my-6 flex flex-col items-center justify-center p-8 text-center" role="alert">
-		<ShieldAlert class="size-12 text-bad-fg" aria-hidden="true" />
-		<h2 class="mt-4 text-lg font-semibold text-fg">Раздел только для владельца сервера</h2>
-		<p class="mt-2 text-sm text-fg-muted">
-			У вашей учётной записи нет прав для просмотра панели управления сервером.
-		</p>
-		<div class="mt-6">
-			<a href="/" class="btn btn-primary">Перейти на главную</a>
+<Page title="Сервер">
+	{#if isNotOwner}
+		<div class="card my-6 flex flex-col items-center justify-center p-8 text-center" role="alert">
+			<ShieldAlert class="size-12 text-bad-fg" aria-hidden="true" />
+			<h2 class="mt-4 text-lg font-semibold text-fg">Раздел только для владельца сервера</h2>
+			<p class="mt-2 text-sm text-fg-muted">
+				У вашей учётной записи нет прав для просмотра панели управления сервером.
+			</p>
+			<div class="mt-6">
+				<a href="/" class="btn btn-primary">Перейти на главную</a>
+			</div>
 		</div>
-	</div>
-{:else}
-	<div class="space-y-4">
-		<nav class="flex gap-1 overflow-x-auto border-b border-line-soft pb-2" aria-label="Вкладки сервера">
-			{#each tabs as t (t.id)}
-				<button
-					type="button"
-					class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors {currentTab ===
-					t.id
-						? 'bg-accent-soft text-accent'
-						: 'text-fg-muted hover:bg-surface-2 hover:text-fg'}"
-					aria-current={currentTab === t.id ? 'page' : undefined}
-					onclick={() => switchTab(t.id)}
-				>
-					<t.icon class="size-4 shrink-0" aria-hidden="true" />
-					<span>{t.label}</span>
-				</button>
-			{/each}
-		</nav>
+	{:else}
+		<div class="space-y-[14px]">
+			<nav
+				class="flex w-fit max-w-full gap-0.5 overflow-x-auto rounded-card border border-line bg-surface p-[3px]"
+				aria-label="Вкладки сервера"
+			>
+				{#each tabs as t (t.id)}
+					<button
+						type="button"
+						class="flex min-h-8 items-center gap-2 rounded-ctl px-3 max-xl:min-h-9 text-[13px] font-medium whitespace-nowrap transition-colors {currentTab ===
+						t.id
+							? 'bg-accent-soft text-accent'
+							: 'text-fg-muted hover:bg-surface-2 hover:text-fg'}"
+						aria-current={currentTab === t.id ? 'page' : undefined}
+						title={t.label}
+						onclick={() => switchTab(t.id)}
+					>
+						<t.icon class="size-4 shrink-0" aria-hidden="true" />
+						<span class={currentTab === t.id ? '' : 'max-xl:sr-only'}>{t.label}</span>
+					</button>
+				{/each}
+			</nav>
 
-		<main>
-			{#if currentTab === 'users'}
-				<UsersTab {store} />
-			{:else if currentTab === 'accounts'}
-				<AccountsTab {store} />
-			{:else if currentTab === 'invites'}
-				<InvitesTab {store} />
-			{:else if currentTab === 'server'}
-				<ServerTab {store} />
-			{:else if currentTab === 'audit'}
-				<AuditTab {store} />
-			{:else if currentTab === 'notifications'}
-				<ServerNotificationsTab {store} />
-			{/if}
-		</main>
-	</div>
-{/if}
+			<div>
+				{#if currentTab === 'users'}
+					<UsersTab {store} />
+				{:else if currentTab === 'accounts'}
+					<AccountsTab {store} />
+				{:else if currentTab === 'invites'}
+					<InvitesTab {store} />
+				{:else if currentTab === 'server'}
+					<ServerTab {store} />
+				{:else if currentTab === 'audit'}
+					<AuditTab {store} />
+				{:else if currentTab === 'notifications'}
+					<ServerNotificationsTab {store} />
+				{/if}
+			</div>
+		</div>
+	{/if}
+</Page>

@@ -3,6 +3,7 @@
 	import { ApiFailure } from '$lib/api/errors';
 	import { recoverFinish, recoverStart } from '$lib/api/public';
 	import { session as defaultSession, startApp as defaultStartApp, stopApp as defaultStopApp } from '$lib/app.svelte';
+	import AuthHeader from '$lib/components/auth/AuthHeader.svelte';
 	import type { Session } from '$lib/stores/session.svelte';
 
 	interface Props {
@@ -99,11 +100,8 @@
 <svelte:head><title>Восстановление пароля · pyrobot</title></svelte:head>
 
 <main class="flex min-h-dvh items-center justify-center p-4">
-	<div class="card w-full max-w-sm space-y-4 p-5">
-		<div>
-			<h1 class="text-lg font-semibold">pyrobot</h1>
-			<p class="text-sm text-fg-muted">Восстановление пароля</p>
-		</div>
+	<div class="card w-full max-w-sm space-y-4 p-6">
+		<AuthHeader subtitle="Восстановление пароля" />
 
 		{#if step === 1}
 			<form class="space-y-4" onsubmit={submitStart}>

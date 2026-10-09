@@ -306,7 +306,7 @@
 	}
 </script>
 
-<div class="space-y-4">
+<div class="space-y-[14px]">
 	{#if store.conflictVersion !== null || store.serverError === 'Настройки изменились, перечитать'}
 		<div class="card flex flex-wrap items-center justify-between gap-3 border-warn-bg bg-accent-soft p-4" role="alert">
 			<span class="text-sm font-medium text-fg">
@@ -330,120 +330,122 @@
 	{#if store.serverLoading && !store.serverSettings}
 		<p class="text-sm text-fg-muted" role="status">Загрузка настроек сервера…</p>
 	{:else if store.serverSettings}
-		<form onsubmit={save} novalidate class="space-y-6">
-			<!-- Retention -->
-			<div class="card space-y-3">
-				<h2 class="text-sm font-semibold text-fg">Сроки хранения данных (Retention)</h2>
-				<p class="text-xs text-fg-muted">Политика очистки старых данных сервера и аккаунтов (в днях).</p>
-				<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-					<label class="block space-y-1">
-						<span class="label">Сообщения (1..3650 дн)</span>
-						<input type="number" class="input" bind:value={messagesDays} min="1" max="3650" required />
-					</label>
-					<label class="block space-y-1">
-						<span class="label">Решения (1..3650 дн)</span>
-						<input type="number" class="input" bind:value={decisionsDays} min="1" max="3650" required />
-					</label>
-					<label class="block space-y-1">
-						<span class="label">Метрики (1..3650 дн)</span>
-						<input type="number" class="input" bind:value={metricsDays} min="1" max="3650" required />
-					</label>
-					<label class="block space-y-1">
-						<span class="label">Приход / леджер (31..3650 дн)</span>
-						<input type="number" class="input" bind:value={ledgerDays} min="31" max="3650" required />
-					</label>
-					<label class="block space-y-1">
-						<span class="label">Журнал действий / аудит (1..3650 дн)</span>
-						<input type="number" class="input" bind:value={auditDays} min="1" max="3650" required />
-					</label>
+		<form onsubmit={save} novalidate class="space-y-[14px]">
+			<div class="grid items-start gap-[14px] xl:grid-cols-2">
+				<!-- Retention -->
+				<div class="card space-y-3">
+					<h2 class="card-title mb-0">Сроки хранения данных (Retention)</h2>
+					<p class="text-xs text-fg-muted">Политика очистки старых данных сервера и аккаунтов (в днях).</p>
+					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2">
+						<label class="block space-y-1">
+							<span class="label block">Сообщения (1..3650 дн)</span>
+							<input type="number" class="input" bind:value={messagesDays} min="1" max="3650" required />
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">Решения (1..3650 дн)</span>
+							<input type="number" class="input" bind:value={decisionsDays} min="1" max="3650" required />
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">Метрики (1..3650 дн)</span>
+							<input type="number" class="input" bind:value={metricsDays} min="1" max="3650" required />
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">Приход / леджер (31..3650 дн)</span>
+							<input type="number" class="input" bind:value={ledgerDays} min="31" max="3650" required />
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">Журнал действий / аудит (1..3650 дн)</span>
+							<input type="number" class="input" bind:value={auditDays} min="1" max="3650" required />
+						</label>
+					</div>
 				</div>
-			</div>
 
-			<!-- Invites defaults -->
-			<div class="card space-y-3">
-				<h2 class="text-sm font-semibold text-fg">Приглашения по умолчанию</h2>
-				<p class="text-xs text-fg-muted">Значения по умолчанию для создаваемых приглашений.</p>
-				<div class="grid gap-3 sm:grid-cols-2">
-					<label class="block space-y-1">
-						<span class="label">Срок действия по умолчанию (1..720 ч)</span>
-						<input type="number" class="input" bind:value={defaultTtlH} min="1" max="720" required />
-					</label>
-					<label class="block space-y-1">
-						<span class="label">Лимит аккаунтов по умолчанию (1..1000)</span>
-						<input type="number" class="input" bind:value={defaultMaxAccounts} min="1" max="1000" required />
-					</label>
+				<!-- Invites defaults -->
+				<div class="card space-y-3">
+					<h2 class="card-title mb-0">Приглашения по умолчанию</h2>
+					<p class="text-xs text-fg-muted">Значения по умолчанию для создаваемых приглашений.</p>
+					<div class="grid gap-3 sm:grid-cols-2">
+						<label class="block space-y-1">
+							<span class="label block">Срок действия по умолчанию (1..720 ч)</span>
+							<input type="number" class="input" bind:value={defaultTtlH} min="1" max="720" required />
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">Лимит аккаунтов по умолчанию (1..1000)</span>
+							<input type="number" class="input" bind:value={defaultMaxAccounts} min="1" max="1000" required />
+						</label>
+					</div>
 				</div>
-			</div>
 
-			<!-- Limits -->
-			<div class="card space-y-3">
-				<h2 class="text-sm font-semibold text-fg">Ограничения сервера (Limits)</h2>
-				<p class="text-xs text-fg-muted">Лимиты емкости и запросов Telegram.</p>
-				<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-					<label class="block space-y-1">
-						<span class="label">Всего аккаунтов (1..10000)</span>
-						<input type="number" class="input" bind:value={maxAccountsTotal} min="1" max="10000" required />
-					</label>
-					<label class="block space-y-1">
-						<span class="label">SSE на пользователя (1..100)</span>
-						<input type="number" class="input" bind:value={ssePerUser} min="1" max="100" required />
-					</label>
-					<label class="block space-y-1">
-						<span class="label">TG кодов в час на хост (≥ 1)</span>
-						<input type="number" class="input" bind:value={tgCodesPerHour} min="1" required />
-					</label>
-					<label class="block space-y-1">
-						<span class="label">TG кодов в час на аккаунт (≥ 1)</span>
-						<input type="number" class="input" bind:value={tgCodesPerAccountHour} min="1" required />
-					</label>
+				<!-- Limits -->
+				<div class="card space-y-3">
+					<h2 class="card-title mb-0">Ограничения сервера (Limits)</h2>
+					<p class="text-xs text-fg-muted">Лимиты емкости и запросов Telegram.</p>
+					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-2">
+						<label class="block space-y-1">
+							<span class="label block">Всего аккаунтов (1..10000)</span>
+							<input type="number" class="input" bind:value={maxAccountsTotal} min="1" max="10000" required />
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">SSE на пользователя (1..100)</span>
+							<input type="number" class="input" bind:value={ssePerUser} min="1" max="100" required />
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">TG кодов в час на хост (≥ 1)</span>
+							<input type="number" class="input" bind:value={tgCodesPerHour} min="1" required />
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">TG кодов в час на аккаунт (≥ 1)</span>
+							<input type="number" class="input" bind:value={tgCodesPerAccountHour} min="1" required />
+						</label>
+					</div>
 				</div>
-			</div>
 
-			<!-- Engine bounds -->
-			<div class="card space-y-3">
-				<h2 class="text-sm font-semibold text-fg">Границы настроек движка (Engine bounds)</h2>
-				<p class="text-xs text-fg-muted">Допустимые рамки для индивидуальных настроек аккаунтов.</p>
-				<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-					<label class="block space-y-1">
-						<span class="label">Мин. интервал запросов (0..60 с)</span>
-						<input
-							type="number"
-							step="any"
-							class="input"
-							bind:value={minRequestIntervalSMin}
-							min="0"
-							max="60"
-							required
-						/>
-					</label>
-					<label class="block space-y-1">
-						<span class="label">Мин. пауза антифлуда (0..600 с)</span>
-						<input
-							type="number"
-							step="any"
-							class="input"
-							bind:value={antifloodPauseSMin}
-							min="0"
-							max="600"
-							required
-						/>
-					</label>
-					<label class="block space-y-1">
-						<span class="label">Макс. повторов антифлуда (≥ 0)</span>
-						<input type="number" class="input" bind:value={antifloodRetryMaxMax} min="0" required />
-					</label>
-					<label class="block space-y-1">
-						<span class="label">Макс. TTL действия (&gt; 0..3600 с)</span>
-						<input
-							type="number"
-							step="any"
-							class="input"
-							bind:value={actionTtlSMax}
-							min="0.1"
-							max="3600"
-							required
-						/>
-					</label>
+				<!-- Engine bounds -->
+				<div class="card space-y-3">
+					<h2 class="card-title mb-0">Границы настроек движка (Engine bounds)</h2>
+					<p class="text-xs text-fg-muted">Допустимые рамки для индивидуальных настроек аккаунтов.</p>
+					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-2">
+						<label class="block space-y-1">
+							<span class="label block">Мин. интервал запросов (0..60 с)</span>
+							<input
+								type="number"
+								step="any"
+								class="input"
+								bind:value={minRequestIntervalSMin}
+								min="0"
+								max="60"
+								required
+							/>
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">Мин. пауза антифлуда (0..600 с)</span>
+							<input
+								type="number"
+								step="any"
+								class="input"
+								bind:value={antifloodPauseSMin}
+								min="0"
+								max="600"
+								required
+							/>
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">Макс. повторов антифлуда (≥ 0)</span>
+							<input type="number" class="input" bind:value={antifloodRetryMaxMax} min="0" required />
+						</label>
+						<label class="block space-y-1">
+							<span class="label block">Макс. TTL действия (&gt; 0..3600 с)</span>
+							<input
+								type="number"
+								step="any"
+								class="input"
+								bind:value={actionTtlSMax}
+								min="0.1"
+								max="3600"
+								required
+							/>
+						</label>
+					</div>
 				</div>
 			</div>
 

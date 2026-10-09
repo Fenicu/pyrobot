@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { createAccountApi } from '$lib/api/account';
@@ -56,6 +56,22 @@ describe('Вход в Telegram', () => {
 		// Пользователь входа и привязка аккаунта.
 		expect(await screen.findAllByText('267519921')).toHaveLength(2);
 		expect(screen.getByRole('button', { name: 'Выйти из Telegram' })).toBeInTheDocument();
+	});
+
+	it('выход из Telegram — в шапке страницы, статус и своё приложение — карточками рядом', async () => {
+		setup(() => json(fixture('tg_status')));
+		const header = screen.getByRole('banner');
+		expect(within(header).getByRole('heading', { level: 1, name: 'Telegram' })).toBeInTheDocument();
+		expect(await within(header).findByRole('button', { name: 'Выйти из Telegram' })).toBeInTheDocument();
+		const status = screen.getByRole('region', { name: 'Статус' });
+		const app = screen.getByRole('region', { name: 'Своё приложение Telegram' });
+		expect(status.parentElement?.parentElement).toBe(app.parentElement);
+	});
+
+	it('без входа в Telegram в шапке нет выхода', async () => {
+		setup(() => json(st('unauthorized')));
+		expect(await screen.findByLabelText('Телефон аккаунта')).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Выйти из Telegram' })).not.toBeInTheDocument();
 	});
 
 	it('перегрузка — пояснение, без формы входа', async () => {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { errorText } from '$lib/api/errors';
 	import { session } from '$lib/app.svelte';
+	import AuthHeader from '$lib/components/auth/AuthHeader.svelte';
 
 	let login = $state('admin');
 	let password = $state('');
@@ -23,11 +24,8 @@
 <svelte:head><title>Вход · pyrobot</title></svelte:head>
 
 <main class="flex min-h-dvh items-center justify-center p-4">
-	<form class="card w-full max-w-sm space-y-4 p-5" onsubmit={submit}>
-		<div>
-			<h1 class="text-lg font-semibold">pyrobot</h1>
-			<p class="text-sm text-fg-muted">Вход в админку</p>
-		</div>
+	<form class="card w-full max-w-sm space-y-4 p-6" onsubmit={submit}>
+		<AuthHeader subtitle="Вход в админку" />
 		<label class="block space-y-1">
 			<span class="label">Логин</span>
 			<input class="input" bind:value={login} autocomplete="username" required maxlength="64" />
