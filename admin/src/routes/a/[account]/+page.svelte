@@ -50,6 +50,11 @@
 	const layout = $derived(homeLayout.draft ?? homeLayout.layout);
 	const editing = $derived(wide.current && homeLayout.editing);
 
+	async function beginLayout(): Promise<void> {
+		const ok = await homeLayout.begin();
+		if (!ok && homeLayout.error) toasts.show(`Раскладка не прочитана: ${errorText(homeLayout.error)}`, 'error');
+	}
+
 	async function saveLayout(): Promise<boolean> {
 		const ok = await homeLayout.save();
 		if (!ok && homeLayout.error) toasts.show(`Раскладка не сохранена: ${errorText(homeLayout.error)}`, 'error');
@@ -134,7 +139,7 @@
 			type="button"
 			class="btn"
 			title="Переставить, скрыть и вернуть блоки главной"
-			onclick={() => homeLayout.begin()}
+			onclick={() => void beginLayout()}
 		>
 			<LayoutDashboard class="size-4" aria-hidden="true" /> Настроить
 		</button>

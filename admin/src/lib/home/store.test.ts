@@ -22,7 +22,7 @@ const saved = (): HomeLayout => {
 };
 
 describe('HomeLayoutStore: загрузка', () => {
-	it('до загрузки — раскладка по умолчанию, не в режиме правки', () => {
+	it('до загрузки — раскладка по умолчанию, не в режиме правки', async () => {
 		const { store } = setup(() => json({ layout: null }));
 		expect(store.layout).toEqual(DEFAULT_LAYOUT);
 		expect(store.draft).toBeNull();
@@ -63,7 +63,7 @@ describe('HomeLayoutStore: загрузка', () => {
 		store.start();
 		await expect.poll(() => store.layout).toEqual(saved());
 		expect(fetch.calls).toHaveLength(1);
-		store.begin();
+		await store.begin();
 		store.stop();
 		expect(store.layout).toEqual(DEFAULT_LAYOUT);
 		expect(store.draft).toBeNull();
@@ -76,7 +76,7 @@ describe('HomeLayoutStore: правка', () => {
 	it('begin — черновик-копия, без изменений не dirty; cancel — выход без изменений', async () => {
 		const { store } = setup(() => json({ layout: saved() }));
 		await store.load();
-		store.begin();
+		await store.begin();
 		expect(store.editing).toBe(true);
 		expect(store.draft).toEqual(saved());
 		expect(store.draft).not.toBe(store.layout);
@@ -88,9 +88,9 @@ describe('HomeLayoutStore: правка', () => {
 		expect(store.layout).toEqual(saved());
 	});
 
-	it('hide убирает блок в скрытые, restore возвращает его в первое свободное место с размером по умолчанию', () => {
+	it('hide убирает блок в скрытые, restore возвращает его в первое свободное место с размером по умолчанию', async () => {
 		const { store } = setup(() => json({ layout: null }));
-		store.begin();
+		await store.begin();
 		store.hide('character');
 		expect(store.draft!.items.map((i) => i.id)).not.toContain('character');
 		expect(store.draft!.hidden).toEqual(['character']);
@@ -108,9 +108,9 @@ describe('HomeLayoutStore: правка', () => {
 		expect(store.layout).toEqual(DEFAULT_LAYOUT);
 	});
 
-	it('restore в занятой сетке — ниже, где помещается', () => {
+	it('restore в занятой сетке — ниже, где помещается', async () => {
 		const { store } = setup(() => json({ layout: null }));
-		store.begin();
+		await store.begin();
 		store.hide('artifact');
 		store.update({ ...store.draft!, items: store.draft!.items.map((i) => (i.id === 'daily' ? { ...i, h: 12 } : i)) });
 		store.restore('artifact');
@@ -120,14 +120,14 @@ describe('HomeLayoutStore: правка', () => {
 	it('reset — раскладка по умолчанию в черновике, сохранённая не трогается', async () => {
 		const { store } = setup(() => json({ layout: saved() }));
 		await store.load();
-		store.begin();
+		await store.begin();
 		store.reset();
 		expect(store.draft).toEqual(DEFAULT_LAYOUT);
 		expect(store.dirty).toBe(true);
 		expect(store.layout).toEqual(saved());
 	});
 
-	it('update вне режима правки — только то, что видно на экране, без записи', () => {
+	it('update вне режима правки — только то, что видно на экране, без записи', async () => {
 		const { store, fetch } = setup(() => json({ layout: null }));
 		const fixed = clone(DEFAULT_LAYOUT);
 		fixed.items[0]!.y = 1;
@@ -137,7 +137,7 @@ describe('HomeLayoutStore: правка', () => {
 		expect(fetch.calls).toHaveLength(0);
 	});
 
-	it('операции правки вне режима правки ничего не делают', () => {
+	it('операции правки вне режима правки ничего не делают', async () => {
 		const { store } = setup(() => json({ layout: null }));
 		store.hide('now');
 		store.restore('now');
@@ -150,7 +150,7 @@ describe('HomeLayoutStore: правка', () => {
 describe('HomeLayoutStore: сохранение', () => {
 	it('успех — PUT черновика с CSRF, раскладка = черновик, режим правки закрыт', async () => {
 		const { store, fetch } = setup((c) => (c.method === 'PUT' ? json(null, 204) : json({ layout: null })));
-		store.begin();
+		await store.begin();
 		store.hide('artifact');
 		const draft = clone(store.draft!);
 		const pending = store.save();
@@ -168,7 +168,7 @@ describe('HomeLayoutStore: сохранение', () => {
 
 	it('ошибка — черновик и режим правки остаются, ошибка запомнена', async () => {
 		const { store } = setup((c) => (c.method === 'PUT' ? json({ detail: 'store_failed' }, 503) : json({ layout: null })));
-		store.begin();
+		await store.begin();
 		store.hide('artifact');
 		const draft = clone(store.draft!);
 		expect(await store.save()).toBe(false);
@@ -180,10 +180,88 @@ describe('HomeLayoutStore: сохранение', () => {
 	});
 
 	it('без изменений — выход из режима правки без запроса', async () => {
-		const { store, fetch } = setup(() => json(null, 204));
-		store.begin();
+		const { store, fetch } = setup((c) => (c.method === 'PUT' ? json(null, 204) : json({ layout: null })));
+		await store.begin();
 		expect(await store.save()).toBe(true);
 		expect(store.editing).toBe(false);
-		expect(fetch.calls).toHaveLength(0);
+		expect(fetch.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+	});
+});
+
+describe('HomeLayoutStore: «Настроить» без прочитанной раскладки', () => {
+	it('чтение упало — begin читает заново и открывает правку на серверной раскладке', async () => {
+		let fail = true;
+		const { store, fetch } = setup(() => (fail ? json({ detail: 'boom' }, 500) : json({ layout: saved() })));
+		await store.load();
+		expect(store.error).toMatchObject({ status: 500 });
+		fail = false;
+		expect(await store.begin()).toBe(true);
+		expect(fetch.calls.filter((c) => c.method === 'GET')).toHaveLength(2);
+		expect(store.editing).toBe(true);
+		expect(store.draft).toEqual(saved());
+		expect(store.error).toBeNull();
+	});
+
+	it('повторное чтение тоже упало — режим правки не открывается, ошибка остаётся', async () => {
+		const { store } = setup(() => json({ detail: 'boom' }, 500));
+		await store.load();
+		expect(await store.begin()).toBe(false);
+		expect(store.editing).toBe(false);
+		expect(store.draft).toBeNull();
+		expect(store.error).toMatchObject({ status: 500 });
+	});
+
+	it('раскладка прочитана — begin не ходит на сервер', async () => {
+		const { store, fetch } = setup(() => json({ layout: saved() }));
+		await store.load();
+		expect(await store.begin()).toBe(true);
+		expect(fetch.calls).toHaveLength(1);
+	});
+
+	it('после stop прочитанность сбрасывается', async () => {
+		const { store, fetch } = setup(() => json({ layout: saved() }));
+		await store.load();
+		store.stop();
+		await store.begin();
+		expect(fetch.calls.filter((c) => c.method === 'GET')).toHaveLength(2);
+	});
+});
+
+describe('HomeLayoutStore: выход во время записи', () => {
+	it('PUT, завершившийся после stop, раскладку и ошибку не меняет', async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => (release = r));
+		const { store } = setup(async (c) => {
+			if (c.method !== 'PUT') return json({ layout: null });
+			await gate;
+			return json(null, 204);
+		});
+		await store.begin();
+		store.hide('artifact');
+		const pending = store.save();
+		store.stop();
+		release();
+		expect(await pending).toBe(false);
+		expect(store.layout).toEqual(DEFAULT_LAYOUT);
+		expect(store.draft).toBeNull();
+		expect(store.saving).toBe(false);
+		expect(store.error).toBeNull();
+	});
+
+	it('ошибка PUT после stop не попадает в ошибку нового входа', async () => {
+		let release: () => void = () => {};
+		const gate = new Promise<void>((r) => (release = r));
+		const { store } = setup(async (c) => {
+			if (c.method !== 'PUT') return json({ layout: null });
+			await gate;
+			return json({ detail: 'store_failed' }, 503);
+		});
+		await store.begin();
+		store.hide('artifact');
+		const pending = store.save();
+		store.stop();
+		release();
+		expect(await pending).toBe(false);
+		expect(store.error).toBeNull();
 	});
 });

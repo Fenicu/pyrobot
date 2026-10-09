@@ -19,6 +19,10 @@ export class HomeLayoutStore {
 	#started = false;
 	// Номер чтения: ответ после `stop()` или более нового чтения не применяется.
 	#request = 0;
+	// Поколение входа: ответ записи, пришедший после `stop()`, не применяется.
+	#generation = 0;
+	// Серверная раскладка прочитана: до этого правка записала бы поверх неё умолчание.
+	#loaded = false;
 
 	constructor(api: Api) {
 		this.#api = api;
@@ -30,6 +34,7 @@ export class HomeLayoutStore {
 			const out = await call(this.#api.GET(PATH));
 			if (mine !== this.#request) return;
 			this.layout = normalizeLayout(out.layout ?? DEFAULT_LAYOUT);
+			this.#loaded = true;
 			this.error = null;
 		} catch (e) {
 			if (mine === this.#request && e instanceof ApiFailure) this.error = e.error;
@@ -46,14 +51,22 @@ export class HomeLayoutStore {
 	/** Выход: забыть раскладку и черновик. */
 	stop(): void {
 		this.#started = false;
+		this.#loaded = false;
 		this.#request += 1;
+		this.#generation += 1;
+		this.saving = false;
 		this.layout = copyLayout(DEFAULT_LAYOUT);
 		this.draft = null;
 		this.error = null;
 	}
 
-	begin(): void {
+	/** «Настроить»: true — режим правки открыт. Если раскладка с сервера ещё не прочитана
+	 * (чтение упало), сначала читает её снова; не вышло — режим не открывается, ошибка в `error`. */
+	async begin(): Promise<boolean> {
+		if (!this.#loaded) await this.load();
+		if (!this.#loaded) return false;
 		if (this.draft === null) this.draft = copyLayout(this.layout);
+		return true;
 	}
 
 	cancel(): void {
@@ -96,18 +109,22 @@ export class HomeLayoutStore {
 			this.draft = null;
 			return true;
 		}
+		const generation = this.#generation;
 		this.saving = true;
 		try {
 			await call(this.#api.PUT(PATH, { body: d }));
+			if (generation !== this.#generation) return false;
 			this.layout = d;
 			if (this.draft === d) this.draft = null;
 			this.error = null;
 			return true;
 		} catch (e) {
-			this.error = e instanceof ApiFailure ? e.error : { kind: 'network', status: 0, message: String(e) };
+			if (generation === this.#generation) {
+				this.error = e instanceof ApiFailure ? e.error : { kind: 'network', status: 0, message: String(e) };
+			}
 			return false;
 		} finally {
-			this.saving = false;
+			if (generation === this.#generation) this.saving = false;
 		}
 	}
 }

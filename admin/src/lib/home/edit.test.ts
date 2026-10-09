@@ -17,6 +17,7 @@ import { DEFAULT_LAYOUT, type HomeLayout } from './layout';
 const h = vi.hoisted(() => ({
 	puts: [] as string[],
 	putStatus: 204,
+	getFails: false,
 	guards: [] as ((nav: unknown) => void)[]
 }));
 
@@ -51,6 +52,7 @@ vi.mock('$lib/app.svelte', async () => {
 			h.puts.push(c.body);
 			return h.putStatus === 204 ? json(null, 204) : json({ detail: 'store_failed' }, h.putStatus);
 		}
+		if (c.url === '/api/v1/me/ui/home-layout') return h.getFails ? json({ detail: 'boom' }, 500) : json({ layout: null });
 		if (c.url === '/api/v1/accounts') return json([account(1)]);
 		if (c.url === '/api/v1/accounts/1/engine/status') {
 			return json({ ...fixture<object>('engine_status'), running: true, status: 'enabled' });
@@ -100,8 +102,9 @@ function nav(to = '/a/1/journal') {
 	return { n, cancel };
 }
 
-async function openHome() {
+async function openHome(opts: { layoutLoaded?: boolean } = {}) {
 	await accounts.load();
+	if (opts.layoutLoaded !== false) await homeLayout.load();
 	page.params = { account: '1' };
 	render(HomeRoute);
 	render(ConfirmDialog);
@@ -118,6 +121,7 @@ afterEach(() => {
 	toasts.items = [];
 	h.puts.length = 0;
 	h.putStatus = 204;
+	h.getFails = false;
 	h.guards.length = 0;
 	vi.mocked(goto).mockClear();
 	delete (window as Partial<Window>).matchMedia;
@@ -149,6 +153,22 @@ describe('главная: режим «Настроить»', () => {
 		expect(block('artifact').gridstackNode?.id).toBe('artifact');
 		expect(homeLayout.layout).toEqual(DEFAULT_LAYOUT);
 		expect(h.puts).toEqual([]);
+	});
+
+	it('раскладка не прочиталась: «Настроить» читает снова; опять ошибка — тост, правки нет', async () => {
+		const user = userEvent.setup();
+		h.getFails = true;
+		await openHome({ layoutLoaded: false });
+		await homeLayout.load();
+		await user.click(screen.getByRole('button', { name: 'Настроить' }));
+		expect(homeLayout.editing).toBe(false);
+		expect(screen.queryByRole('region', { name: 'Настройка главной' })).toBeNull();
+		expect(toasts.items.map((t) => t.text)).toEqual([expect.stringContaining('Раскладка не прочитана')]);
+
+		h.getFails = false;
+		await user.click(screen.getByRole('button', { name: 'Настроить' }));
+		expect(homeLayout.editing).toBe(true);
+		expect(screen.getByRole('region', { name: 'Настройка главной' })).toBeInTheDocument();
 	});
 
 	it('скрыть, вернуть, сбросить — по черновику; «Готово» сохраняет раскладку на сервере', async () => {
@@ -194,8 +214,9 @@ describe('главная: режим «Настроить»', () => {
 		const l = structuredClone(DEFAULT_LAYOUT) as HomeLayout;
 		l.items = l.items.filter((i) => i.id !== 'artifact');
 		l.hidden = ['artifact'];
+		await openHome({ layoutLoaded: false });
 		homeLayout.update(l);
-		await openHome();
+		await flush();
 		expect(document.querySelector('.grid-stack')).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Настроить' })).toBeNull();
 		expect(screen.queryByRole('region', { name: (n) => n.startsWith(BLOCK_TITLES.artifact) })).toBeNull();
