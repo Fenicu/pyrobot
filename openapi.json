@@ -3435,6 +3435,124 @@
         "title": "MeOut",
         "type": "object"
       },
+      "MemoryOut": {
+        "properties": {
+          "peak_mb": {
+            "title": "Peak Mb",
+            "type": "number"
+          },
+          "rss_mb": {
+            "title": "Rss Mb",
+            "type": "number"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/MemorySampleOut"
+            },
+            "title": "Samples",
+            "type": "array"
+          },
+          "threads": {
+            "title": "Threads",
+            "type": "integer"
+          },
+          "top_types": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryTypeOut"
+            },
+            "title": "Top Types",
+            "type": "array"
+          },
+          "trim": {
+            "$ref": "#/components/schemas/MemoryTrimOut"
+          }
+        },
+        "required": [
+          "rss_mb",
+          "peak_mb",
+          "threads",
+          "samples",
+          "trim",
+          "top_types"
+        ],
+        "title": "MemoryOut",
+        "type": "object"
+      },
+      "MemorySampleOut": {
+        "properties": {
+          "rss_mb": {
+            "title": "Rss Mb",
+            "type": "number"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "rss_mb"
+        ],
+        "title": "MemorySampleOut",
+        "type": "object"
+      },
+      "MemoryTrimOut": {
+        "properties": {
+          "last_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last At"
+          },
+          "last_freed_mb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Freed Mb"
+          },
+          "total_freed_mb": {
+            "title": "Total Freed Mb",
+            "type": "number"
+          }
+        },
+        "required": [
+          "last_freed_mb",
+          "total_freed_mb",
+          "last_at"
+        ],
+        "title": "MemoryTrimOut",
+        "type": "object"
+      },
+      "MemoryTypeOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "count"
+        ],
+        "title": "MemoryTypeOut",
+        "type": "object"
+      },
       "MessageItem": {
         "properties": {
           "at": {
@@ -15508,6 +15626,48 @@
           }
         },
         "summary": "Revoke Invite",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/memory": {
+      "get": {
+        "description": "Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и самые\nчастые типы объектов (считаются на запрос).",
+        "operationId": "memory_api_v1_admin_memory_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not found"
+          }
+        },
+        "summary": "Memory",
         "tags": [
           "admin"
         ]

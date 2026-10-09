@@ -29,6 +29,7 @@ from app.engine.host.host import EngineHost
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
 from app.engine.transport.kurigram import logout_offline
+from app.memwatch import MemWatch, load_malloc_trim
 
 log = logging.getLogger("pyrobot")
 
@@ -55,7 +56,7 @@ class Runtime:
     """Процесс: база и пул, вход в админку, `Container` и HTTP, аренды аккаунтов, хост движков
     всех аккаунтов (`EngineHost` — он же реестр движков для API) и задачи процесса на
     супервизоре хоста: продление аренды, монитор задержки цикла, очистка сессий админки,
-    ретеншн."""
+    ретеншн, замеры памяти."""
 
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -67,6 +68,7 @@ class Runtime:
         self.accounts = AccountRepo(self.db)
         self.auth = AuthRepo(self.db)
         self.lag = LoopLagMonitor()
+        self.memwatch = MemWatch(trim_fn=load_malloc_trim())
         self.leases = LeaseManager(self.db, uuid4().hex)
         self.box = _secret_box(config)
         self.server_notifier = ServerNotifier(self.db)
@@ -129,6 +131,7 @@ class Runtime:
             recovery_key=self.recovery_key,
             recovery_requests=self.recovery_requests,
             box=self.box,
+            memwatch=self.memwatch,
         )
         self.session_purge_s = SESSION_PURGE_S
         self.retention_first_s = RETENTION_FIRST_S
@@ -157,6 +160,7 @@ class Runtime:
         self.supervisor.start("lag", self.lag.run)
         self.supervisor.start("session-purge", self._purge_sessions)
         self.supervisor.start("retention", self._retention)
+        self.supervisor.start("memwatch", self.memwatch.run)
         # Движки включённых аккаунтов хост поднимает в фоне: HTTP и /readyz готовы сразу.
         await self.host.start()
 

@@ -125,7 +125,7 @@ async def test_fake_runtime_ready_without_telegram(clean_db: Database) -> None:
             runtime = app.state.runtime
             engine = _engine(runtime)
             assert {"reactions", "team-forward", "bulls-walk"} <= set(engine.supervisor._tasks)
-            assert {"reconcile", "lease", "lag", "session-purge", "retention"} <= set(
+            assert {"reconcile", "lease", "lag", "session-purge", "retention", "memwatch"} <= set(
                 runtime.supervisor._tasks
             )
             assert runtime.host.status().tasks_ok

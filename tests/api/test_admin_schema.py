@@ -145,6 +145,12 @@ def test_admin_responses_only_service_fields(app: FastAPI) -> None:
         if path == "/api/v1/admin/notifications":
             path_allowed.add("text")
             path_forbidden.discard("text")
+        if path == "/api/v1/admin/memory":
+            # Память процесса — метрики хоста, без данных аккаунтов.
+            path_allowed.update(
+                {"rss_mb", "peak_mb", "threads", "samples", "ts", "trim", "top_types", "count"}
+                | {"last_freed_mb", "total_freed_mb", "last_at"}
+            )
         for op in ops.values():
             if not isinstance(op, dict):
                 continue

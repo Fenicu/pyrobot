@@ -1163,6 +1163,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Memory
+         * @description Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и самые
+         *     частые типы объектов (считаются на запрос).
+         */
+        get: operations["memory_api_v1_admin_memory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/notifications": {
         parameters: {
             query?: never;
@@ -2666,6 +2687,46 @@ export interface components {
              * @enum {string}
              */
             role: "owner" | "user";
+        };
+        /** MemoryOut */
+        MemoryOut: {
+            /** Peak Mb */
+            peak_mb: number;
+            /** Rss Mb */
+            rss_mb: number;
+            /** Samples */
+            samples: components["schemas"]["MemorySampleOut"][];
+            /** Threads */
+            threads: number;
+            /** Top Types */
+            top_types: components["schemas"]["MemoryTypeOut"][];
+            trim: components["schemas"]["MemoryTrimOut"];
+        };
+        /** MemorySampleOut */
+        MemorySampleOut: {
+            /** Rss Mb */
+            rss_mb: number;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+        };
+        /** MemoryTrimOut */
+        MemoryTrimOut: {
+            /** Last At */
+            last_at: string | null;
+            /** Last Freed Mb */
+            last_freed_mb: number | null;
+            /** Total Freed Mb */
+            total_freed_mb: number;
+        };
+        /** MemoryTypeOut */
+        MemoryTypeOut: {
+            /** Count */
+            count: number;
+            /** Type */
+            type: string;
         };
         /** MessageItem */
         MessageItem: {
@@ -9057,6 +9118,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    memory_api_v1_admin_memory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

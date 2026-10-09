@@ -166,3 +166,18 @@ async def test_planner_held_while_walk_offer_handled(runtime: AccountRuntime) ->
     assert runtime._planner_ready() == "bulls_walk"
     runtime.bulls_walk = SimpleNamespace(holding=False)  # type: ignore[assignment]
     assert runtime._planner_ready() is None
+
+
+async def test_memwatch_shared_with_container_and_http() -> None:
+    from app.main import create_application
+    from app.memwatch import InFlightMiddleware
+
+    app = create_application(AppConfig(_env_file=None, transport="fake"))
+    runtime = app.state.runtime
+    try:
+        assert runtime.container.memwatch is runtime.memwatch
+        assert [
+            m.kwargs["inflight"] for m in app.user_middleware if m.cls is InFlightMiddleware
+        ] == [runtime.memwatch.inflight]
+    finally:
+        await runtime.db.dispose()

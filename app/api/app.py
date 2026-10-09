@@ -27,6 +27,7 @@ from app.api.routes_ui import router as ui_router
 from app.db.base import Database
 from app.engine.fence import LeaseLost
 from app.engine.settings import ChatIsSelf, SettingsOutOfBounds
+from app.memwatch import InFlightMiddleware
 
 
 async def _lease_lost(_: Request, __: Exception) -> JSONResponse:
@@ -71,6 +72,7 @@ def create_api(container: Container) -> FastAPI:
     app.add_exception_handler(LeaseLost, _lease_lost)
     app.add_exception_handler(ChatIsSelf, _chat_is_self)
     app.add_exception_handler(SettingsOutOfBounds, _out_of_bounds)
+    app.add_middleware(InFlightMiddleware, inflight=container.memwatch.inflight)
     app.include_router(auth_router)
     app.include_router(ui_router)
     app.include_router(invites_router)

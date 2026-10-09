@@ -16,6 +16,7 @@ from app.db.auth_repo import AuthRepo
 from app.db.base import Database
 from app.db.users import UserRepo
 from app.engine.clock import Clock, SystemClock
+from app.memwatch import MemWatch
 
 if TYPE_CHECKING:
     from app.api.scope import EngineRegistry
@@ -62,6 +63,7 @@ class Container:
     recovery_requests: RecoveryRequests = field(default=None)  # type: ignore[assignment]
     recover_limiter: WindowLimiter = field(default_factory=lambda: WindowLimiter(3, 3600.0))
     recovery_code_limiter: WindowLimiter = field(default_factory=lambda: WindowLimiter(10, 3600.0))
+    memwatch: MemWatch = field(default_factory=MemWatch)
     _tasks: set[asyncio.Task[Any]] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:

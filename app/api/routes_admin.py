@@ -38,6 +38,7 @@ from app.db.users import LastOwner, Role
 from app.engine.host.host import EngineStats
 from app.engine.server_settings import ServerSettings
 from app.engine.settings import SettingsConflict, SettingsPatchError
+from app.memwatch import kb_to_mb, top_types
 
 router = APIRouter(
     prefix="/api/v1/admin",
@@ -627,3 +628,53 @@ async def read_server_notifications(
     assert c.server_notifier is not None
     await c.server_notifier.mark_read(body.up_to_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class MemorySampleOut(BaseModel):
+    ts: datetime
+    rss_mb: float
+
+
+class MemoryTrimOut(BaseModel):
+    last_freed_mb: float | None
+    total_freed_mb: float
+    last_at: datetime | None
+
+
+class MemoryTypeOut(BaseModel):
+    type: str
+    count: int
+
+
+class MemoryOut(BaseModel):
+    rss_mb: float
+    peak_mb: float
+    threads: int
+    samples: list[MemorySampleOut]
+    trim: MemoryTrimOut
+    top_types: list[MemoryTypeOut]
+
+
+def _at(ts: float) -> datetime:
+    return datetime.fromtimestamp(ts, UTC)
+
+
+@router.get("/memory", response_model=MemoryOut, responses=AUTH)
+async def memory(c: Annotated[Container, Depends(container)]) -> MemoryOut:
+    """Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и самые
+    частые типы объектов (считаются на запрос)."""
+    watch = c.memwatch
+    st = watch.status()
+    last_freed = watch.trim_last_freed_kb
+    return MemoryOut(
+        rss_mb=kb_to_mb(st.rss_kb),
+        peak_mb=kb_to_mb(st.hwm_kb),
+        threads=st.threads,
+        samples=[MemorySampleOut(ts=_at(ts), rss_mb=kb_to_mb(kb)) for ts, kb in watch.samples],
+        trim=MemoryTrimOut(
+            last_freed_mb=None if last_freed is None else kb_to_mb(last_freed),
+            total_freed_mb=kb_to_mb(watch.trim_total_freed_kb),
+            last_at=None if watch.trim_last_at is None else _at(watch.trim_last_at),
+        ),
+        top_types=[MemoryTypeOut(type=t, count=n) for t, n in top_types()],
+    )
