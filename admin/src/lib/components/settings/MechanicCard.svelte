@@ -29,7 +29,7 @@
 	);
 </script>
 
-<section class="card min-w-0" aria-labelledby={titleId} data-card={card.id}>
+<section class="card @container min-w-0" aria-labelledby={titleId} data-card={card.id}>
 	<div class="flex items-center gap-2.5">
 		{#if feature}
 			<span class="inline-flex rounded-full {toggled ? 'ring-1 ring-accent ring-offset-2 ring-offset-surface' : ''}">

@@ -37,6 +37,9 @@
 	const historyKey = $derived(editor.conflict ?? editor.version ?? 0);
 	const replyTo = (v: unknown) => (typeof v === 'number' ? v : null);
 
+	// Карточки колонками по ширине (без выравнивания по строкам): короткая не оставляет пустоту под собой.
+	const FLOW = 'columns-[30rem] gap-x-3.5 *:mb-3.5 *:break-inside-avoid';
+
 	const placed = $derived(placeFields(editor.sections));
 	const byKey = $derived(
 		new Map(editor.sections.flatMap((s) => leaves(editable(s.fields))).map((f) => [pathKey(f.path), f]))
@@ -227,7 +230,7 @@
 
 			{#if q}
 				<section class="min-w-0" aria-label="Найденные настройки">
-					<div class="grid items-start gap-3 xl:grid-cols-2">
+					<div class={FLOW}>
 						{#each found as r (r.card.id)}
 							<MechanicCardView {editor} card={r.card} feature={r.feature} fields={r.fields} after={tangerine} />
 						{:else}
@@ -237,7 +240,7 @@
 				</section>
 			{:else if group}
 				<section class="min-w-0" aria-label={group.title}>
-					<div class="grid items-start gap-3 xl:grid-cols-2">
+					<div class={FLOW}>
 						{#each group.cards as card (card.id)}
 							<MechanicCardView {editor} {card} feature={featureOf(card)} fields={fieldsOf(card)} after={tangerine} />
 						{/each}

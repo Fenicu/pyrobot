@@ -335,6 +335,22 @@ describe('Настройки', () => {
 		);
 	});
 
+	it('раскладка: карточки колонками без выравнивания по строкам, значение рядом с подписью', async () => {
+		const user = userEvent.setup();
+		await view();
+		const flow = card('Дела').parentElement!;
+		expect(flow).toHaveClass('columns-[30rem]', 'gap-x-3.5', '*:break-inside-avoid', '*:mb-3.5');
+		expect(flow).not.toHaveClass('grid');
+		const weight = card('Дела').querySelector('[data-path="strategy.weight_xp"]') as HTMLElement;
+		expect(card('Дела')).toHaveClass('@container');
+		expect(weight).toHaveClass('grid-cols-[minmax(0,1fr)_auto]', '@xl:grid-cols-[minmax(0,24rem)_auto]', '@xl:justify-start', 'py-1.5');
+		expect(within(weight).getByRole('spinbutton', { name: 'Вес опыта' })).toHaveClass('w-28');
+
+		await user.type(screen.getByRole('searchbox', { name: 'Поиск настройки' }), 'аптеч');
+		const found = screen.getByRole('region', { name: 'Найденные настройки' });
+		expect(card('Метро', found).parentElement).toHaveClass('columns-[30rem]', '*:break-inside-avoid');
+	});
+
 	it('поиск: результаты — карточками механик («аптеч» → поле сундука в «Метро»)', async () => {
 		const user = userEvent.setup();
 		await view();

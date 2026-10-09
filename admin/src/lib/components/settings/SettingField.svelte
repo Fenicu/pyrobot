@@ -48,6 +48,8 @@
 	const span = $derived(
 		wide(field.type) ? 'col-span-2' : NARROW.includes(field.type.kind) ? '' : 'max-sm:col-span-2'
 	);
+	// В широкой карточке (одна колонка) подпись не шире 24rem: значение остаётся рядом с ней, а не у края.
+	const capped = $derived(wide(field.type) ? '' : '@xl:grid-cols-[minmax(0,24rem)_auto] @xl:justify-start');
 </script>
 
 {#if field.type.kind === 'group'}
@@ -56,13 +58,13 @@
 			{label}{#if settingPaths.show}
 				<span class="font-mono font-normal normal-case">({key})</span>{/if}
 		</legend>
-		{#if help}<p class="mb-1 text-xs text-fg-muted">{help}</p>{/if}
+		{#if help}<p class="mb-1 text-[11px] leading-snug text-fg-muted">{help}</p>{/if}
 		{#each field.type.fields as child (pathKey(child.path))}
 			<Self {editor} field={child} />
 		{/each}
 	</fieldset>
 {:else}
-	<div class="group/field relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-t border-line-soft py-2" data-path={key}>
+	<div class="group/field relative grid grid-cols-[minmax(0,1fr)_auto] {capped} items-center gap-x-3 gap-y-0.5 border-t border-line-soft py-1.5" data-path={key}>
 		<div class="min-w-0 {span}">
 			<div class="flex items-start gap-1">
 				<label for={id} class="min-w-0 text-sm {field.unused ? 'text-fg-muted' : ''}">
@@ -90,7 +92,7 @@
 		</div>
 		<div class="flex min-w-0 items-center gap-1.5 {span} {wide(field.type) ? '' : 'sm:justify-end'}">
 			{#if notDefault}
-				<span class="size-1.5 shrink-0 rounded-full bg-accent" title="Отличается от умолчания"></span>
+				<span class="size-1.5 shrink-0 rounded-full bg-accent {capped ? '@xl:-ml-3' : ''}" title="Отличается от умолчания"></span>
 			{/if}
 			<div class="min-w-0 rounded-md {changed ? 'ring-1 ring-accent ring-offset-2 ring-offset-surface' : ''} {wide(field.type) ? 'flex-1' : ''}">
 				{#if field.readOnly}
@@ -118,7 +120,7 @@
 			     (место под неё не резервируется). -->
 			<button
 				type="button"
-				class="ext-text col-span-2 justify-self-start text-left text-[11px] text-accent hover:underline md:invisible md:absolute md:top-full md:right-0 md:z-10 md:max-w-80 md:-translate-y-2 md:rounded-md md:border md:border-line md:bg-surface-2 md:px-2 md:py-0.5 md:shadow-lg md:group-focus-within/field:visible md:group-hover/field:visible"
+				class="ext-text col-span-2 justify-self-start text-left text-[11px] text-accent hover:underline md:invisible md:absolute md:top-full md:right-0 md:z-10 {capped ? '@xl:right-auto @xl:left-[24.75rem]' : ''} md:max-w-80 md:-translate-y-1 md:rounded-md md:border md:border-line md:bg-surface-2 md:px-2 md:py-0.5 md:shadow-lg md:group-focus-within/field:visible md:group-hover/field:visible"
 				onclick={() => editor.resetToDefault(field.path)}>сбросить к умолчанию ({fmtValue(fallback)})</button
 			>
 		{/if}

@@ -70,7 +70,7 @@
 		<span class="text-xs text-fg-muted">{value === true ? 'вкл' : 'выкл'}</span>
 	</label>
 {:else if kind.kind === 'enum'}
-	<select {id} class="input" aria-label={label} aria-invalid={invalid || undefined} aria-describedby={describedby} value={String(value ?? '')} onchange={(e) => onchange(e.currentTarget.value)}>
+	<select {id} class="input max-w-40" aria-label={label} aria-invalid={invalid || undefined} aria-describedby={describedby} value={String(value ?? '')} onchange={(e) => onchange(e.currentTarget.value)}>
 		{#each kind.options as o (o)}<option value={o}>{o}</option>{/each}
 	</select>
 {:else if kind.kind === 'const'}
@@ -78,7 +78,7 @@
 {:else if kind.kind === 'number'}
 	<input
 		{id}
-		class="input max-w-40"
+		class="input {id.endsWith('_id') ? 'w-40' : 'w-28'}"
 		type="number"
 		inputmode={kind.integer ? 'numeric' : 'decimal'}
 		step={kind.integer ? 1 : 'any'}
@@ -91,7 +91,7 @@
 		oninput={(e) => onchange(num(e.currentTarget.value))}
 	/>
 {:else if kind.kind === 'string'}
-	<input {id} class="input" aria-label={label} aria-invalid={invalid || undefined} aria-describedby={describedby} value={String(value ?? '')} oninput={(e) => onchange(e.currentTarget.value)} />
+	<input {id} class="input max-w-48" aria-label={label} aria-invalid={invalid || undefined} aria-describedby={describedby} value={String(value ?? '')} oninput={(e) => onchange(e.currentTarget.value)} />
 {:else if kind.kind === 'enum_tags'}
 	<TagsInput value={(value as string[]) ?? []} options={kind.options} {label} {labels} {describedby} onchange={onchange} />
 {:else if kind.kind === 'string_tags'}
