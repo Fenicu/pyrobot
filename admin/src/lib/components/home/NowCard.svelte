@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { errorText, type ApiError } from '$lib/api/errors';
 	import type { MetroLive, Outlook, PlanCandidate, PublicState } from '$lib/api/types';
-	import { shown } from '$lib/metro/live';
+	import { endText, shown } from '$lib/metro/live';
+	import { accountHref } from '$lib/nav';
 	import { basisText, explain, nowView } from '$lib/plan/now';
 	import { actDetail, candidateDetail, scenarioText, verdictText, verdictTone } from '$lib/plan/text';
 	import { fmtTime } from '$lib/util/format';
@@ -49,7 +50,16 @@
 		const timer = setTimeout(() => (woke = new Date(wake)), left);
 		return () => clearTimeout(timer);
 	});
-	const running = $derived(metro !== null && shown(metro.frame, metro.receivedAt, now.getTime()));
+	// Идущий забег заменяет план картой; кончившийся (ещё в окне `shown`) — строка итога над планом.
+	const visible = $derived(metro !== null && shown(metro.frame, metro.receivedAt, now.getTime()));
+	const running = $derived(visible && metro?.frame?.running === true);
+	const ended = $derived(visible && metro?.frame?.running === false ? metro.frame : null);
+	// Виден другой запуск метро. Забег, не дошедший до конца, продолжается в том же сообщении
+	// (персонаж ещё в метро) — это не новый забег; дошедший — итог прошлого.
+	const endNote = $derived.by(() => {
+		if (!ended || metro === null || metro.metroRunId === null || metro.metroRunId === ended.scenario_run_id) return '';
+		return ended.outcome === 'finished' ? 'итог прошлого, идёт вход в новый' : 'забег продолжается';
+	});
 	// Движок не запущен (или ещё регистрируется) — это не сбой: приглушённо, как на плашке.
 	const stopped = $derived(error?.kind === 'engine_down' && error.code !== 'planner not started');
 	const view = $derived(plan ? nowView(plan, clock) : null);
@@ -79,15 +89,20 @@
 
 <Card title="Сейчас" action={running ? badge : undefined}>
 	{#if running && metro?.frame}
-		<MetroLiveCard
-			frame={metro.frame}
-			receivedAt={metro.receivedAt}
-			{now}
-			{account}
-			metroRunning={plan?.loop.current === 'metro'}
-			metroRunId={metro.metroRunId}
-		/>
-	{:else if !plan}
+		<MetroLiveCard frame={metro.frame} receivedAt={metro.receivedAt} {now} />
+	{:else}
+		{#if ended}
+			<p class="mb-2 flex items-baseline justify-between gap-2 text-sm" role="status" aria-label="Итог забега">
+				<span class="min-w-0">🚇 {endText(ended)}{#if endNote}<span class="text-fg-muted">{` · ${endNote}`}</span>{/if}</span>
+				<a class="shrink-0 text-xs text-accent hover:underline" href={accountHref(account, '/metro')}>забеги →</a>
+			</p>
+		{/if}
+		{@render planBody()}
+	{/if}
+</Card>
+
+{#snippet planBody()}
+	{#if !plan}
 		{#if stopped}
 			<p class="text-sm text-fg-muted" role="status">План недоступен: движок не запущен.</p>
 		{:else if error}
@@ -149,4 +164,4 @@
 			{/if}
 		</details>
 	{/if}
-</Card>
+{/snippet}

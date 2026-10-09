@@ -9,18 +9,8 @@ import NowCard from './NowCard.svelte';
 const NOW = new Date('2026-10-07T18:10:00Z');
 const TITLE = 'Метро — прохождение';
 
-function card(
-	frame: MetroLive | null,
-	over: { receivedAt?: number; metroRunning?: boolean; metroRunId?: number | null; now?: Date } = {}
-) {
-	render(MetroLiveCard, {
-		frame,
-		receivedAt: over.receivedAt ?? NOW.getTime(),
-		now: over.now ?? NOW,
-		account: 1,
-		metroRunning: over.metroRunning ?? false,
-		metroRunId: over.metroRunId ?? null
-	});
+function card(frame: MetroLive | null, over: { receivedAt?: number; now?: Date } = {}) {
+	render(MetroLiveCard, { frame, receivedAt: over.receivedAt ?? NOW.getTime(), now: over.now ?? NOW });
 	return screen.queryByRole('group', { name: TITLE });
 }
 
@@ -59,37 +49,6 @@ describe('«Метро — прохождение» внутри «Сейчас�
 		expect(block).toHaveTextContent('обновлено 45 с назад');
 	});
 
-	it('конец забега: итог, найденное и ссылка на забеги', () => {
-		const block = card(liveFrame({ running: false, outcome: 'finished', mode: 'leave', found: { money: 157, burger: 1 } }))!;
-		expect(block).toHaveTextContent('Забег завершён: вышел сам');
-		expect(within(block).getByText('Найдено').parentElement).toHaveTextContent('💵 157 🍔 1');
-		expect(within(block).getByRole('link', { name: 'повтор' })).toHaveAttribute('href', '/a/1/metro');
-		expect(within(block).queryByRole('progressbar', { name: 'Время забега' })).toBeNull();
-		expect(block).not.toHaveTextContent('итог прошлого забега');
-	});
-
-	it('итог прошлого забега — только когда известен новый запуск метро', () => {
-		const done = liveFrame({ running: false, outcome: 'finished', mode: 'leave' });
-		const block = card(done, { metroRunning: true, metroRunId: 8 })!;
-		expect(block).toHaveTextContent('Забег завершён: вышел сам');
-		expect(block).toHaveTextContent('Это итог прошлого забега');
-	});
-
-	it('пауза и продолжение в том же сообщении — не «прошлый забег»; строка «остановлен»', () => {
-		const paused = liveFrame({ running: false, outcome: 'paused' });
-		const block = card(paused, { metroRunning: true, metroRunId: 8 })!;
-		expect(block).toHaveTextContent('Забег остановлен: пауза');
-		expect(block).not.toHaveTextContent('Забег завершён');
-		expect(block).not.toHaveTextContent('итог прошлого забега');
-		expect(block).toHaveTextContent('Забег продолжается: карта обновится с первым шагом.');
-	});
-
-	it('прерван перезапуском — остановка, не сбой', () => {
-		const block = card(liveFrame({ running: false, outcome: 'cancelled' }))!;
-		expect(block).toHaveTextContent('Забег остановлен: прерван перезапуском');
-		expect(block).not.toHaveTextContent('сбой');
-	});
-
 	it('без битвы (бюджет неизвестен) — без полосы времени; 🔋 неизвестна — без пустой полосы', () => {
 		const blind = liveFrame({ battle_at: null, kick_at: null, budget: { total_s: null, used: 0, step_s: 5.2 }, stamina: null });
 		const block = card(blind)!;
@@ -98,13 +57,6 @@ describe('«Метро — прохождение» внутри «Сейчас�
 		expect(block).not.toHaveTextContent('0%');
 		expect(within(block).queryByRole('progressbar', { name: 'Выносливость' })).toBeNull();
 		expect(block).toHaveTextContent('🔋 —');
-	});
-
-	it('план ещё держит метро, а нового запуска не видно — мягко: «последний забег»', () => {
-		const done = liveFrame({ running: false, outcome: 'finished', mode: 'leave' });
-		const block = card(done, { metroRunning: true, metroRunId: 7 })!;
-		expect(block).not.toHaveTextContent('итог прошлого забега');
-		expect(block).toHaveTextContent('Последний забег');
 	});
 
 	it('кадры не приходят 5 минут — связь потеряна: без времени и выброса', () => {
@@ -131,7 +83,7 @@ describe('«Метро — прохождение» внутри «Сейчас�
 
 });
 
-describe('«Сейчас»: во время забега — карта и ход забега вместо плана', () => {
+describe('«Сейчас»: идущий забег — карта вместо плана, кончившийся — строка итога над планом', () => {
 	const plan = fixture<Outlook>('outlook');
 	const prod = fixture<StateOut>('state');
 	const running: Outlook = { ...plan, loop: { ...plan.loop, current: 'metro', current_params: {} } };
@@ -170,18 +122,54 @@ describe('«Сейчас»: во время забега — карта и хо�
 		expect(block).not.toHaveTextContent('Загрузка плана');
 	});
 
-	it('итог прошлого забега — по плану, что метро идёт, и новому запуску', () => {
+	it('связь с идущим забегом потеряна — всё ещё карта с пометкой', () => {
+		const block = now(liveFrame(), { receivedAt: NOW.getTime() - 6 * 60_000 });
+		expect(within(block).getByRole('group', { name: TITLE })).toHaveTextContent('связь потеряна');
+		expect(within(block).getByText('🚇 забег')).toBeInTheDocument();
+	});
+
+	it('забег кончился — обычный план, над ним строка итога со ссылкой на забеги, без «🚇 забег»', () => {
+		const done = liveFrame({ running: false, outcome: 'finished', mode: 'leave', found: { money: 157 } });
+		const block = now(done, { plan });
+		const line = within(block).getByRole('status', { name: 'Итог забега' });
+		expect(line).toHaveTextContent('Забег завершён: вышел сам');
+		expect(within(line).getByRole('link', { name: 'забеги →' })).toHaveAttribute('href', '/a/1/metro');
+		expect(block.querySelector('p')).toBe(line);
+		expect(within(block).queryByRole('group', { name: TITLE })).toBeNull();
+		expect(block).not.toHaveTextContent('🚇 забег');
+		expect(block).toHaveTextContent('🤑 билеты лотереи (все — max)');
+		expect(within(block).getByRole('region', { name: 'Почему не другое' })).toBeInTheDocument();
+	});
+
+	it('итог при уже идущем новом запуске — «итог прошлого»; пауза в том же сообщении — «продолжается»', () => {
 		const done = liveFrame({ running: false, outcome: 'finished', mode: 'leave' });
-		const block = now(done, { runId: 8 });
-		expect(block).toHaveTextContent('Забег завершён: вышел сам');
-		expect(block).toHaveTextContent('Это итог прошлого забега');
-		expect(within(block).getByRole('link', { name: 'повтор' })).toHaveAttribute('href', '/a/1/metro');
+		let line = within(now(done, { runId: 8 })).getByRole('status', { name: 'Итог забега' });
+		expect(line).toHaveTextContent('Забег завершён: вышел сам · итог прошлого, идёт вход в новый');
+		cleanup();
+		line = within(now(liveFrame({ running: false, outcome: 'paused' }), { runId: 8 })).getByRole('status', {
+			name: 'Итог забега'
+		});
+		expect(line).toHaveTextContent('Забег остановлен: пауза · забег продолжается');
+		cleanup();
+		// Тот же запуск или запуск не виден — только итог.
+		line = within(now(liveFrame({ running: false, outcome: 'cancelled' }), { runId: 7 })).getByRole('status', {
+			name: 'Итог забега'
+		});
+		expect(line).toHaveTextContent('Забег остановлен: прерван перезапуском');
+		expect(line).not.toHaveTextContent('·');
+	});
+
+	it('итог, а план ещё не пришёл — строка итога и загрузка плана', () => {
+		const block = now(liveFrame({ running: false, outcome: 'finished', mode: 'leave' }), { plan: null });
+		expect(within(block).getByRole('status', { name: 'Итог забега' })).toBeInTheDocument();
+		expect(block).toHaveTextContent('Загрузка плана…');
 	});
 
 	it('без кадра, связь потеряна больше 30 минут назад, итог старше 30 минут — обычный план', () => {
 		const plain = (frame: MetroLive | null, receivedAt?: number) => {
 			const block = now(frame, { plan, receivedAt });
 			expect(within(block).queryByRole('group', { name: TITLE })).toBeNull();
+			expect(within(block).queryByRole('status', { name: 'Итог забега' })).toBeNull();
 			expect(block).not.toHaveTextContent('🚇 забег');
 			expect(block).toHaveTextContent('🤑 билеты лотереи (все — max)');
 			cleanup();
