@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
 import { accounts, current } from '$lib/app.svelte';
 import { BLOCK_IDS, BLOCK_TITLES } from '$lib/home/blocks';
+import { DEFAULT_LAYOUT, phoneOrder } from '$lib/home/layout';
 import { page } from '$lib/test/page.svelte';
 import HomeRoute from './home-route.test.svelte';
 import JournalRoute from './journal-route.test.svelte';
@@ -137,16 +138,17 @@ describe('экраны аккаунта /a/[account]', () => {
 		expect(h.calls.filter((u) => u === '/api/v1/accounts').length).toBe(lists + 1);
 	});
 
-	it('главная — семь блоков в порядке раскладки, без отдельного блока «Управление»', async () => {
+	it('главная — семь блоков одной колонкой в порядке раскладки, без отдельного блока «Управление»', async () => {
 		await accounts.load();
 		page.params = { account: '1' };
 		render(HomeRoute);
 		const home = await screen.findByRole('heading', { name: 'acc1 · Главная' });
 		const main = home.closest('header')!.parentElement!;
-		const blocks = BLOCK_IDS.map((id) =>
+		// Узкий экран (в jsdom медиазапросов нет): сверху вниз, в ряду — слева направо.
+		const blocks = phoneOrder(DEFAULT_LAYOUT).map((id) =>
 			within(main).getByRole('region', { name: (name) => name.startsWith(BLOCK_TITLES[id]) })
 		);
-		// Порядок в разметке — порядок одной колонки телефона.
+		expect(blocks).toHaveLength(BLOCK_IDS.length);
 		for (let i = 1; i < blocks.length; i++) {
 			expect(blocks[i - 1]!.compareDocumentPosition(blocks[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		}

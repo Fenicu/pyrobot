@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
+	import { page } from '$app/state';
 	import { ArtifactStore } from '$lib/artifact/store.svelte';
 	import { current } from '$lib/app.svelte';
 	import DailyCard from '$lib/components/daily/DailyCard.svelte';
@@ -13,8 +14,12 @@
 	import Page from '$lib/components/shell/Page.svelte';
 	import { DailyStore } from '$lib/daily/store.svelte';
 	import { GadgetsStore } from '$lib/gadgets/store.svelte';
+	import type { BlockId } from '$lib/home/blocks';
+	import HomeGrid from '$lib/home/HomeGrid.svelte';
+	import { DEFAULT_LAYOUT, phoneOrder, type HomeLayout } from '$lib/home/layout';
 	import { MetroLiveStore } from '$lib/metro/store.svelte';
 	import { PlanStore } from '$lib/plan/store.svelte';
+	import { media, WIDE } from '$lib/util/media.svelte';
 
 	const { id: account, api, live, engine, character } = current.get();
 
@@ -32,6 +37,21 @@
 	const metro = new MetroLiveStore(api);
 	// Версия настроек из потока: сменилась — «Персонаж» перечитывает, кому дарятся 🍊.
 	let settingsVersion = $state<number | null>(null);
+
+	// Сетка из 12 колонок — только на широком экране; уже — одна колонка в порядке раскладки.
+	const wide = media(WIDE);
+	let layout = $state.raw<HomeLayout>(DEFAULT_LAYOUT);
+	// Временный переключатель режима правки для проверки сетки в браузере (до кнопки «Настроить»).
+	const editing = $derived(page.url.searchParams.get('editgrid') === '1');
+	const blocks: Record<BlockId, Snippet> = {
+		now: nowBlock,
+		next: nextBlock,
+		character: characterBlock,
+		gadgets: gadgetsBlock,
+		today: todayBlock,
+		daily: dailyBlock,
+		artifact: artifactBlock
+	};
 
 	// Готовность цикла (tg_offline, spending_blocked, lock_lost, pipeline_unhealthy) не шлёт своего
 	// кадра потока — её доходит только опрос статуса движка (раз в 15 с). Пауза и kill уже приходят
@@ -77,46 +97,60 @@
 	<HeaderControls {api} status={engine.status} onchange={() => void engine.load()} />
 {/snippet}
 
-<!-- Временная статичная сетка: блоки по раскладке по умолчанию; в разметке — порядок одной
-     колонки телефона. -->
+{#snippet nowBlock()}
+	<NowCard plan={plan.outlook} error={plan.error} state={character.state} {now} {account} {metro} />
+{/snippet}
+{#snippet nextBlock()}
+	<NextCard plan={plan.outlook} error={plan.error} {now} />
+{/snippet}
+{#snippet characterBlock()}
+	<CharacterCard
+		state={character.state}
+		stale={character.stale}
+		{now}
+		days={daily.data?.days ?? []}
+		{api}
+		{settingsVersion}
+	/>
+{/snippet}
+{#snippet gadgetsBlock()}
+	<GadgetsCard
+		{api}
+		state={character.state}
+		stale={character.stale}
+		gadgets={gadgets.data}
+		error={gadgets.error}
+		status={engine.status}
+		onchange={(out) => gadgets.set(out)}
+	/>
+{/snippet}
+{#snippet todayBlock()}
+	<TodayCard state={character.state} stale={character.stale} {now} />
+{/snippet}
+{#snippet dailyBlock()}
+	<DailyCard
+		day={daily.data?.days[0] ?? null}
+		ledgerSince={daily.data?.ledger_since ?? null}
+		error={daily.error}
+		{now}
+		loadedAt={daily.loadedAt}
+	/>
+{/snippet}
+{#snippet artifactBlock()}
+	<ArtifactCard {api} artifact={artifact.data} error={artifact.error} {now} onchange={(out) => artifact.set(out)} />
+{/snippet}
+
 <Page title="Главная" {actions}>
 	{#if character.error && !character.loaded}
 		<p class="card mb-3.5 text-sm text-bad-fg" role="alert">Состояние недоступно: движок не отвечает.</p>
 	{/if}
-	<div class="grid items-start gap-3.5 md:grid-cols-2 xl:grid-cols-[5fr_4fr_3fr]">
-		<div class="flex min-w-0 flex-col gap-3.5">
-			<NowCard plan={plan.outlook} error={plan.error} state={character.state} {now} {account} {metro} />
-			<NextCard plan={plan.outlook} error={plan.error} {now} />
+	{#if wide.current}
+		<HomeGrid {layout} {editing} {blocks} onchange={(l) => (layout = l)} />
+	{:else}
+		<div class="flex flex-col gap-3.5">
+			{#each phoneOrder(layout) as id (id)}
+				{@render blocks[id]()}
+			{/each}
 		</div>
-		<div class="flex min-w-0 flex-col gap-3.5">
-			<CharacterCard
-				state={character.state}
-				stale={character.stale}
-				{now}
-				days={daily.data?.days ?? []}
-				{api}
-				{settingsVersion}
-			/>
-			<GadgetsCard
-				{api}
-				state={character.state}
-				stale={character.stale}
-				gadgets={gadgets.data}
-				error={gadgets.error}
-				status={engine.status}
-				onchange={(out) => gadgets.set(out)}
-			/>
-		</div>
-		<div class="grid min-w-0 items-start gap-3.5 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1">
-			<TodayCard state={character.state} stale={character.stale} {now} />
-			<DailyCard
-				day={daily.data?.days[0] ?? null}
-				ledgerSince={daily.data?.ledger_since ?? null}
-				error={daily.error}
-				{now}
-				loadedAt={daily.loadedAt}
-			/>
-			<ArtifactCard {api} artifact={artifact.data} error={artifact.error} {now} onchange={(out) => artifact.set(out)} />
-		</div>
-	</div>
+	{/if}
 </Page>

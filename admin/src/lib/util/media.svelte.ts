@@ -10,3 +10,6 @@ export function media(query: string): { readonly current: boolean } {
 
 /** Ширина ПК-раскладки (Tailwind md). */
 export const DESKTOP = '(min-width: 768px)';
+
+/** Ширина сетки главной из 12 колонок (Tailwind xl): уже три колонки блоков не помещаются. */
+export const WIDE = '(min-width: 1280px)';
