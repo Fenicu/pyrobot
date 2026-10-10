@@ -1,4 +1,5 @@
 import logging
+import platform
 from collections.abc import Callable
 
 import pytest
@@ -77,6 +78,7 @@ def test_trim_without_libc_is_noop() -> None:
     assert watch.trim_last_at is None
 
 
+@pytest.mark.skipif(platform.libc_ver()[0] != "glibc", reason="needs glibc")
 def test_malloc_trim_loaded_from_glibc() -> None:
     trim_fn = load_malloc_trim()
     assert trim_fn is not None
@@ -109,6 +111,52 @@ def test_trim_records_freed_amount() -> None:
     watch.trim()
     assert watch.trim_last_freed_kb == 0
     assert watch.trim_total_freed_kb == 50_000
+
+
+def test_jump_counts_from_rss_after_trim(caplog: pytest.LogCaptureFixture) -> None:
+    # Замер 200 МБ, malloc_trim вернул до 150 МБ, следующий замер 195 МБ: рост на 45 МБ от
+    # RSS после trim — скачок, хотя от прошлого замера всего -5 МБ.
+    reader = Reader(204_800, 204_800, 153_600, 199_680)
+    watch = MemWatch(read_status=reader, trim_fn=lambda: 1)
+    with caplog.at_level(logging.WARNING, logger="app.memwatch"):
+        watch.sample()
+        watch.trim()
+        watch.sample()
+    [record] = caplog.records
+    assert "delta_mb=45.0" in record.getMessage()
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_jump_lists_slow_requests_finished_since_last_sample(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    clock = Clock()
+    watch = MemWatch(read_status=Reader(100_000, 150_000, 200_000), trim_fn=None)
+    watch.inflight = InFlight(clock=clock)
+    watch.sample()
+    watch.inflight.start(1, "GET", "/api/v1/accounts/1/journal")
+    watch.inflight.start(2, "POST", "/api/v1/auth/login")
+    watch.inflight.start(3, "GET", "/api/v1/accounts/1/events")
+    clock.now = 0.5
+    watch.inflight.finish(2)
+    clock.now = 2.5
+    watch.inflight.finish(1)
+    watch.inflight.finish(3)
+    with caplog.at_level(logging.WARNING, logger="app.memwatch"):
+        watch.sample()
+        watch.sample()
+    first, second = (r.getMessage() for r in caplog.records)
+    assert 'finished="GET /api/v1/accounts/1/journal 2.5s"' in first
+    assert "/auth/login" not in first and "/events" not in first
+    # Список — только с прошлого замера.
+    assert 'finished=""' in second
 
 
 def _app(inflight: InFlight, seen: list[list[str]]) -> FastAPI:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -664,6 +665,8 @@ async def memory(c: Annotated[Container, Depends(container)]) -> MemoryOut:
     """Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и самые
     частые типы объектов (считаются на запрос)."""
     watch = c.memwatch
+    # Обход всех объектов — доли секунды: вне цикла событий.
+    types = await asyncio.to_thread(top_types)
     st = watch.status()
     last_freed = watch.trim_last_freed_kb
     return MemoryOut(
@@ -676,5 +679,5 @@ async def memory(c: Annotated[Container, Depends(container)]) -> MemoryOut:
             total_freed_mb=kb_to_mb(watch.trim_total_freed_kb),
             last_at=None if watch.trim_last_at is None else _at(watch.trim_last_at),
         ),
-        top_types=[MemoryTypeOut(type=t, count=n) for t, n in top_types()],
+        top_types=[MemoryTypeOut(type=t, count=n) for t, n in types],
     )

@@ -25,6 +25,9 @@ SAMPLE_S = 60.0
 MAX_SAMPLES = 1440
 TRIM_EVERY = 5
 JUMP_KB = 40 * 1024
+# Завершённые между замерами запросы дольше порога попадают в `memory_jump`.
+SLOW_S = 1.0
+MAX_FINISHED = 20
 TOP_TYPES = 25
 
 
@@ -73,27 +76,40 @@ class _Request:
     scope: MutableMapping[str, Any] | None
 
 
-class InFlight:
-    """HTTP-запросы в работе: метод, шаблон пути (после маршрутизации) и начало."""
+def _path(req: _Request) -> str:
+    route = req.scope.get("route") if req.scope is not None else None
+    return getattr(route, "path", None) or req.path
 
-    def __init__(self) -> None:
+
+class InFlight:
+    """HTTP-запросы в работе: метод, шаблон пути (после маршрутизации) и начало; и завершённые
+    дольше `SLOW_S` — до `take_finished`."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
         self._requests: dict[int, _Request] = {}
+        self._finished: deque[tuple[str, str, float]] = deque(maxlen=MAX_FINISHED)
 
     def start(
         self, key: int, method: str, path: str, scope: MutableMapping[str, Any] | None = None
     ) -> None:
-        self._requests[key] = _Request(method, path, time.monotonic(), scope)
+        self._requests[key] = _Request(method, path, self._clock(), scope)
 
     def finish(self, key: int) -> None:
-        self._requests.pop(key, None)
+        req = self._requests.pop(key, None)
+        if req is None:
+            return
+        took = self._clock() - req.started
+        if took >= SLOW_S:
+            self._finished.append((req.method, _path(req), took))
 
     def snapshot(self) -> list[tuple[str, str, float]]:
-        now = time.monotonic()
-        out = []
-        for req in list(self._requests.values()):
-            route = req.scope.get("route") if req.scope is not None else None
-            path = getattr(route, "path", None) or req.path
-            out.append((req.method, path, now - req.started))
+        now = self._clock()
+        return [(r.method, _path(r), now - r.started) for r in list(self._requests.values())]
+
+    def take_finished(self) -> list[tuple[str, str, float]]:
+        out = list(self._finished)
+        self._finished.clear()
         return out
 
 
@@ -119,6 +135,15 @@ def kb_to_mb(kb: int) -> float:
     return round(kb / 1024, 1)
 
 
+def _requests(items: list[tuple[str, str, float]]) -> str:
+    # Потоки SSE длятся часами, к скачку отношения не имеют.
+    return "; ".join(
+        f"{method} {path} {took:.1f}s"
+        for method, path, took in items
+        if not path.endswith("/events")
+    )
+
+
 class MemWatch:
     def __init__(
         self,
@@ -132,6 +157,8 @@ class MemWatch:
         self.inflight = InFlight()
         # (unix time, RSS в КБ)
         self.samples: deque[tuple[float, int]] = deque(maxlen=max_samples)
+        # Точка отсчёта скачка: прошлый замер или RSS после malloc_trim.
+        self._baseline_kb: int | None = None
         self.trim_last_freed_kb: int | None = None
         self.trim_total_freed_kb = 0
         self.trim_last_at: float | None = None
@@ -141,19 +168,16 @@ class MemWatch:
 
     def sample(self) -> None:
         rss = self.status().rss_kb
-        prev = self.samples[-1][1] if self.samples else None
+        prev, self._baseline_kb = self._baseline_kb, rss
         self.samples.append((time.time(), rss))
+        finished = self.inflight.take_finished()
         if prev is not None and rss - prev >= JUMP_KB:
-            requests = "; ".join(
-                f"{method} {path} {age:.1f}s"
-                for method, path, age in self.inflight.snapshot()
-                if not path.endswith("/events")
-            )
             log.warning(
-                'memory_jump delta_mb=%.1f rss_mb=%.1f inflight="%s"',
+                'memory_jump delta_mb=%.1f rss_mb=%.1f inflight="%s" finished="%s"',
                 kb_to_mb(rss - prev),
                 kb_to_mb(rss),
-                requests,
+                _requests(self.inflight.snapshot()),
+                _requests(finished),
             )
 
     def trim(self) -> None:
@@ -161,7 +185,10 @@ class MemWatch:
             return
         before = self.status().rss_kb
         self._trim_fn()
-        freed = max(0, before - self.status().rss_kb)
+        after = self.status().rss_kb
+        freed = max(0, before - after)
+        if self._baseline_kb is not None:
+            self._baseline_kb = min(self._baseline_kb, after)
         self.trim_last_freed_kb = freed
         self.trim_total_freed_kb += freed
         self.trim_last_at = time.time()
