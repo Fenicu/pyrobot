@@ -12,8 +12,8 @@ export default {
 		// SPA за FastAPI: единственная страница index.html, маршруты — на клиенте.
 		adapter: adapter({ fallback: 'index.html' }),
 		prerender: { entries: [] },
-		// Опрос версии не нужен: если после выката чанк прошлой сборки не загрузился, SvelteKit
-		// сам сверяет _app/version.json (он отдаётся с no-cache) и перезагружает страницу.
-		version: { pollInterval: 0 }
+		// Открытая надолго вкладка и приложение на телефоне сидят на старой сборке: раз в 5 минут
+		// сверяем _app/version.json (no-cache) и показываем «Вышла новая версия» (UpdateBanner).
+		version: { pollInterval: 300_000 }
 	}
 };

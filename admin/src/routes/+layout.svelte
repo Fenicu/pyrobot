@@ -8,6 +8,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import Shell from '$lib/components/Shell.svelte';
 	import Toasts from '$lib/components/Toasts.svelte';
+	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import { isLegacy, isPublic, lastAccount, legacyHref, loginHref, pickAccount, safeNext } from '$lib/nav';
 	import { theme } from '$lib/stores/theme.svelte';
 
@@ -65,3 +66,4 @@
 {/if}
 <ConfirmDialog />
 <Toasts />
+<UpdateBanner />

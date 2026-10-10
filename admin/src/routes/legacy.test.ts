@@ -4,8 +4,11 @@ import { goto } from '$app/navigation';
 import { page } from '$lib/test/page.svelte';
 import LegacyRoute from './legacy-route.test.svelte';
 
-vi.mock('$app/state', async () => ({ page: (await import('$lib/test/page.svelte')).page }));
-vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}) }));
+vi.mock('$app/state', async () => ({
+	page: (await import('$lib/test/page.svelte')).page,
+	updated: (await import('$lib/test/updated.svelte')).updated
+}));
+vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}), onNavigate: () => {} }));
 vi.mock('$lib/app.svelte', () => ({
 	session: { status: 'authenticated', offline: false, start: async () => {}, stop: () => {} },
 	accounts: { list: [{ id: 2 }, { id: 5 }], error: null, load: async () => {} },
