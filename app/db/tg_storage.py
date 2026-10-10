@@ -1,11 +1,13 @@
 """Сессия kurigram в Postgres вместо файла `*.session`: поля сессии и пиры настроенных чатов лежат
-в базе, остальное (другие пиры, usernames, состояние обновлений) — в памяти процесса.
+в базе, остальное (другие пиры, usernames, состояние обновлений) — в памяти процесса; другие пиры
+и usernames — не больше `PEER_CAPACITY`, давно не встречавшиеся вытесняются.
 
 Импорт pyrogram создаёт event loop с DeprecationWarning (в тестах — ошибка), поэтому модуль
 подключают лениво, внутри работающего цикла, как и сам pyrogram в `transport/kurigram.py`."""
 
 import asyncio
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -74,6 +76,9 @@ class PgSessionStorage(Storage):
     кэша диалогов. Состояние обновлений и usernames в базу не попадают."""
 
     USERNAME_TTL = SQLiteStorage.USERNAME_TTL
+    # Пиров и usernames в памяти; давно не встречавшиеся вытесняются, настроенные (`peer_ids()`) —
+    # никогда. Вытесненный пир для kurigram — неизвестный: `resolve_peer` спросит Telegram.
+    PEER_CAPACITY = 5000
 
     def __init__(
         self,
@@ -93,10 +98,10 @@ class PgSessionStorage(Storage):
 
     def _reset(self) -> None:
         self._fields = dict(_NEW_SESSION)
-        self._peers: dict[int, _Peer] = {}
+        self._peers: OrderedDict[int, _Peer] = OrderedDict()
         # Что из пиров уже лежит в `tg_peers`: одинаковое повторение в базу не пишется.
         self._persisted: dict[int, tuple[int, str, str | None]] = {}
-        self._usernames: dict[int, tuple[str, ...]] = {}
+        self._usernames: OrderedDict[int, tuple[str, ...]] = OrderedDict()
         self._states: dict[int, UpdateState] = {}
 
     async def open(self) -> None:
@@ -169,8 +174,11 @@ class PgSessionStorage(Storage):
         for peer_id, access_hash, peer_type, phone_number in peers:
             peer = _Peer(access_hash, peer_type, phone_number, now)
             self._peers[peer_id] = peer
+            self._peers.move_to_end(peer_id)
             if peer_id in persist and self._persisted.get(peer_id) != peer.row:
                 changed[peer_id] = peer.row
+        for gone in self._evict(self._peers, persist):
+            self._usernames.pop(gone, None)
         if not changed:
             return
         stmt = pg_insert(TgPeer).values(
@@ -203,8 +211,25 @@ class PgSessionStorage(Storage):
             kept = tuple(name for name in names if name is not None)
             if kept:
                 self._usernames[peer_id] = kept
+                self._usernames.move_to_end(peer_id)
             else:
                 self._usernames.pop(peer_id, None)
+        self._evict(self._usernames, self._peer_ids())
+
+    def _evict(self, entries: OrderedDict[int, Any], pinned: set[int]) -> list[int]:
+        """Давние записи сверх `PEER_CAPACITY`, кроме настроенных; возвращает вытесненные id."""
+        excess = len(entries) - self.PEER_CAPACITY
+        if excess <= 0:
+            return []
+        gone: list[int] = []
+        for peer_id in entries:
+            if peer_id not in pinned:
+                gone.append(peer_id)
+                if len(gone) == excess:
+                    break
+        for peer_id in gone:
+            del entries[peer_id]
+        return gone
 
     async def get_update_states(self, ids: int | Iterable[int] | None = None) -> list[UpdateState]:
         if ids is None:
@@ -233,6 +258,7 @@ class PgSessionStorage(Storage):
         peer = self._peers.get(peer_id)
         if peer is None:
             raise KeyError(f"ID not found: {peer_id}")
+        self._peers.move_to_end(peer_id)
         return self._input_peer(peer_id, peer)
 
     async def get_peer_by_username(self, username: str) -> raw.base.InputPeer:

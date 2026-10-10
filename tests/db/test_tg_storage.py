@@ -317,6 +317,44 @@ async def test_only_configured_peers_persist(clean_db: Database) -> None:
     assert set(await _peer_rows(clean_db)) == {GAME, SWINFO}
 
 
+async def test_peers_bounded_lru_keeps_configured(clean_db: Database) -> None:
+    configured = {GAME}
+    pg = _pg(clean_db, configured)
+    pg.PEER_CAPACITY = 3
+    await pg.open()
+    await pg.update_peers([(GAME, 42, "supergroup", None)])
+    await pg.update_peers([(1, 10, "user", None), (2, 20, "user", None)])
+    await pg.update_usernames([(1, ["one"]), (2, ["two"]), (GAME, ["game"])])
+    await pg.update_peers([(3, 30, "user", None)])
+    # Вытеснен самый давний из ненастроенных; настроенный чат остаётся, хоть он и старше.
+    with pytest.raises(KeyError):
+        await pg.get_peer_by_id(1)
+    with pytest.raises(KeyError):
+        await pg.get_peer_by_username("one")
+    assert 1 not in pg._usernames
+    assert await pg.get_peer_by_id(GAME) is not None
+    # Чтение освежает пир: следующим вытесняется 3, а не 2.
+    assert await pg.get_peer_by_id(2) is not None
+    await pg.update_peers([(4, 40, "user", None)])
+    with pytest.raises(KeyError):
+        await pg.get_peer_by_id(3)
+    assert await pg.get_peer_by_id(2) is not None and await pg.get_peer_by_id(4) is not None
+    # Чат, ставший настроенным, больше не вытесняется.
+    configured.add(2)
+    await pg.update_peers([(5, 50, "user", None), (6, 60, "user", None)])
+    assert await pg.get_peer_by_id(2) is not None and await pg.get_peer_by_username("two")
+    assert await pg.get_peer_by_id(GAME) is not None and await pg.get_peer_by_username("game")
+    assert len(pg._peers) == 3
+
+
+async def test_usernames_bounded(clean_db: Database) -> None:
+    pg = _pg(clean_db, {GAME})
+    pg.PEER_CAPACITY = 2
+    await pg.open()
+    await pg.update_usernames([(GAME, ["game"]), (1, ["one"]), (2, ["two"]), (3, ["three"])])
+    assert set(pg._usernames) == {GAME, 3}
+
+
 async def test_persisted_peer_is_rewritten_only_on_change(clean_db: Database) -> None:
     pg = _pg(clean_db, {GAME})
     await pg.open()
