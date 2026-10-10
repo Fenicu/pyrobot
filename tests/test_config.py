@@ -57,7 +57,7 @@ def test_secret_key_and_host_limits_defaults(monkeypatch: pytest.MonkeyPatch) ->
         monkeypatch.delenv(key, raising=False)
     cfg = AppConfig(_env_file=None, transport="fake")
     assert cfg.secret_key is None and cfg.secret_key_reset is False
-    assert (cfg.db_pool_size, cfg.db_max_overflow, cfg.max_engines) == (4, 4, 20)
+    assert (cfg.db_pool_size, cfg.db_max_overflow, cfg.max_engines) == (6, 4, 20)
     assert cfg.engine_start_gap_s == 3.0
 
 

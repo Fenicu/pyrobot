@@ -4,6 +4,11 @@ from typing import Literal, Self
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Пул соединений базы на процесс: постоянные и сверх них. Одно постоянное всё время занимает
+# соединение блокировок хоста (`app/engine/host/lease.py`).
+DB_POOL_SIZE = 6
+DB_MAX_OVERFLOW = 4
+
 
 class DbConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="PYROBOT_", env_file=".env", extra="ignore")
@@ -32,8 +37,8 @@ class AppConfig(DbConfig):
     log_level: str = "INFO"
     planner: bool = True
     # Пул соединений базы на процесс; ёмкость хоста движков и пауза между стартами движков.
-    db_pool_size: int = 4
-    db_max_overflow: int = 4
+    db_pool_size: int = DB_POOL_SIZE
+    db_max_overflow: int = DB_MAX_OVERFLOW
     max_engines: int = 20
     engine_start_gap_s: float = 3.0
     # Собранная админка (SvelteKit, `admin/build`): её отдаёт то же приложение; каталога нет —

@@ -9,13 +9,17 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
+from app.config import DB_MAX_OVERFLOW, DB_POOL_SIZE
+
 
 class Base(DeclarativeBase):
     type_annotation_map: ClassVar[dict[type, Any]] = {dict[str, Any]: JSONB, list[Any]: JSONB}
 
 
 class Database:
-    def __init__(self, url: str, *, pool_size: int = 10, max_overflow: int = 20) -> None:
+    def __init__(
+        self, url: str, *, pool_size: int = DB_POOL_SIZE, max_overflow: int = DB_MAX_OVERFLOW
+    ) -> None:
         # Пул — на все движки процесса: `pool_size` постоянных соединений и до `max_overflow`
         # сверх них.
         self.engine: AsyncEngine = create_async_engine(

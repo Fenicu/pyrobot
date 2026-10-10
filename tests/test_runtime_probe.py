@@ -116,6 +116,18 @@ async def test_pool_size_from_config() -> None:
         await runtime.db.dispose()
 
 
+async def test_database_pool_defaults_match_config() -> None:
+    db = Database(AppConfig.model_fields["database_url"].default)
+    try:
+        pool: Any = db.engine.pool
+        assert (pool.size(), pool._max_overflow) == (
+            AppConfig.model_fields["db_pool_size"].default,
+            AppConfig.model_fields["db_max_overflow"].default,
+        )
+    finally:
+        await db.dispose()
+
+
 async def test_stop_cancels_planner_before_closing_gateway(runtime: AccountRuntime) -> None:
     events: list[str] = []
 
