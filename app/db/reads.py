@@ -290,10 +290,10 @@ class DbReads:
             return {key: (ts, value) for key, ts, value in rows.all()}
 
     async def runs_done(
-        self, scenarios: Sequence[str], start: datetime, end: datetime
+        self, scenarios: Sequence[str], start: datetime, end: datetime, limit: int
     ) -> list[tuple[datetime, str]]:
         """Удачные запуски этих сценариев, закончившиеся в `[start, end)`: момент конца и сценарий,
-        по времени — метки событий на графиках метрик."""
+        по времени — метки событий на графиках метрик; не больше `limit` последних."""
         query = (
             select(ScenarioRunRow.finished_at, ScenarioRunRow.scenario)
             .where(
@@ -303,11 +303,12 @@ class DbReads:
                 ScenarioRunRow.finished_at >= start,
                 ScenarioRunRow.finished_at < end,
             )
-            .order_by(ScenarioRunRow.finished_at, ScenarioRunRow.id)
+            .order_by(ScenarioRunRow.finished_at.desc(), ScenarioRunRow.id.desc())
+            .limit(limit)
         )
         async with self._db.sessions() as session:
-            rows = await session.execute(query)
-            return [(at, scenario) for at, scenario in rows.all() if at is not None]
+            rows = (await session.execute(query)).all()
+        return [(at, scenario) for at, scenario in reversed(rows) if at is not None]
 
     async def day_values(
         self, keys: Sequence[str], first: date, until: datetime

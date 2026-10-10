@@ -17,6 +17,8 @@ DEFAULT_WINDOW = timedelta(hours=24)
 # Сценарии, после которых заметно меняются деньги, 🔋 и опыт: метки на графиках метрик.
 EVENT_SCENARIOS = ("stocks_dump", "lottery_buy", "sleep", "gorbushka", "metro")
 MAX_ACK = 500
+# Меток событий на графиках за окно не больше этого (точки окна ограничены страницей `limit`).
+MAX_EVENTS = 1000
 
 Point = tuple[datetime, float]
 
@@ -33,6 +35,8 @@ class MetricsOut(BaseModel):
     # Удачные запуски, которые двигают метрики, по концу в окне — метки на графиках (только на
     # первой странице): слив налички в акции, лотерея, сон, Горбушка, метро.
     events: list[MetricEvent]
+    # Меток в окне больше `MAX_EVENTS`: в `events` — только последние.
+    events_truncated: bool = False
     next_cursor: str | None
 
 
@@ -186,12 +190,15 @@ async def metrics(
     for p in page:
         series.setdefault(p.key, []).append((p.ts, p.value))
     initial = {} if cursor else await scope.reads.metrics_before(keys, start)
-    runs = [] if cursor else await scope.reads.runs_done(EVENT_SCENARIOS, start, end)
+    runs = (
+        [] if cursor else await scope.reads.runs_done(EVENT_SCENARIOS, start, end, MAX_EVENTS + 1)
+    )
     last = page[-1] if page else None
     return MetricsOut(
         series=series,
         initial=initial,
-        events=[MetricEvent(at=at, scenario=scenario) for at, scenario in runs],
+        events=[MetricEvent(at=at, scenario=scenario) for at, scenario in runs[-MAX_EVENTS:]],
+        events_truncated=len(runs) > MAX_EVENTS,
         next_cursor=(
             encode_cursor([last.ts.isoformat(), last.id])
             if last is not None and len(points) > limit

@@ -2782,6 +2782,11 @@ export interface components {
         MetricsOut: {
             /** Events */
             events: components["schemas"]["MetricEvent"][];
+            /**
+             * Events Truncated
+             * @default false
+             */
+            events_truncated: boolean;
             /** Initial */
             initial: {
                 [key: string]: [

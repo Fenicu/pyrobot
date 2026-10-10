@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx import AsyncClient
 
+from app.api import routes_reference
 from app.api.container import Container
 from app.db.base import Database
 from app.db.journal import DbJournal
@@ -111,6 +112,30 @@ async def test_metrics_events_are_done_runs_that_move_metrics(
         {"at": _at(2).isoformat().replace("+00:00", "Z"), "scenario": "stocks_dump"},
         {"at": _at(6).isoformat().replace("+00:00", "Z"), "scenario": "sleep"},
     ]
+    assert body["events_truncated"] is False
+
+
+async def test_metrics_events_are_bounded_to_latest(
+    container: Container,
+    api_client: AsyncClient,
+    clean_db: Database,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(routes_reference, "MAX_EVENTS", 2)
+    planner = DbPlannerStore(clean_db, 1)
+    for start in (1, 3, 5):
+        decision = await planner.record(_at(start), Act("sleep", {}, "test"))
+        run_id = await planner.run_started(decision, "sleep", {}, _at(start))
+        await planner.run_finished(run_id, "done", "", _at(start + 1))
+    await login(api_client)
+    window = {"from": _at(0).isoformat(), "to": _at(10).isoformat()}
+    body = (await api_client.get("/api/v1/accounts/1/metrics", params=window)).json()
+    # Меток в окне больше предела — последние по времени (по возрастанию) и признак обрезки.
+    assert [e["at"] for e in body["events"]] == [
+        _at(4).isoformat().replace("+00:00", "Z"),
+        _at(6).isoformat().replace("+00:00", "Z"),
+    ]
+    assert body["events_truncated"] is True
 
 
 async def test_metro_runs_list_and_detail(
