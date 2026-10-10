@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import Date, Select, and_, cast, func, or_, select, update
+from sqlalchemy import Date, Select, and_, case, cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import distinct_on
 
 from app.db.accounts import engine_section
@@ -108,6 +108,21 @@ class UpgradeProgress:
 
 
 _UPGRADE_KINDS = ("white", "blue", "red")
+# Поля сводки забега метро в списке (`MetroRunSummary` без `visited`).
+_METRO_SUMMARY = (
+    "id",
+    "scenario_run_id",
+    "started_at",
+    "finished_at",
+    "status",
+    "outcome",
+    "steps",
+    "duration_s",
+    "step_s",
+    "buffs",
+    "result",
+    "summary",
+)
 
 
 class DbReads:
@@ -355,9 +370,18 @@ class DbReads:
                 spent[kind] -= amounts.get(f"upgrades_{kind}", 0)
         return UpgradeProgress(len(rows), ok, fail, spent)
 
-    async def metro_runs(self, limit: int, before: int | None) -> list[MetroRunRow]:
+    async def metro_runs(self, limit: int, before: int | None) -> list[dict[str, Any]]:
+        """Сводки забегов от новых к старым: без карты, пути, событий и 🔋 по шагам, но с числом
+        посещённых клеток (`grid.visited`; не список — 0), посчитанным в базе."""
+        visited = MetroRunRow.grid["visited"]
         query = (
-            select(MetroRunRow)
+            select(
+                *(getattr(MetroRunRow, c) for c in _METRO_SUMMARY),
+                case(
+                    (func.jsonb_typeof(visited) == "array", func.jsonb_array_length(visited)),
+                    else_=0,
+                ).label("visited"),
+            )
             .where(MetroRunRow.account_id == self._account_id)
             .order_by(MetroRunRow.id.desc())
             .limit(limit)
@@ -365,7 +389,7 @@ class DbReads:
         if before is not None:
             query = query.where(MetroRunRow.id < before)
         async with self._db.sessions() as session:
-            return list(await session.scalars(query))
+            return [dict(r) for r in (await session.execute(query)).mappings()]
 
     async def metro_run(self, run_id: int) -> MetroRunRow | None:
         async with self._db.sessions() as session:

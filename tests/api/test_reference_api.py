@@ -151,6 +151,11 @@ async def test_metro_runs_list_and_detail(
     assert full["visited"] == 0
     assert (await api_client.get(f"/api/v1/accounts/1/metro/runs/{second}")).json()["visited"] == 3
     assert (await api_client.get("/api/v1/accounts/1/metro/runs/999999")).status_code == 404
+    # Пункт списка — та же сводка, что у забега целиком, только без тяжёлых полей.
+    heavy = {"grid", "path", "events", "vitals"}
+    for item in runs["items"]:
+        detail = (await api_client.get(f"/api/v1/accounts/1/metro/runs/{item['id']}")).json()
+        assert item == {k: v for k, v in detail.items() if k not in heavy}
 
 
 async def test_metro_live_last_frame_of_running_engine(

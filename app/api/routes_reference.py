@@ -200,10 +200,12 @@ async def metrics(
     )
 
 
-def _metro_run[T: MetroRunSummary](model: type[T], row: MetroRunRow) -> T:
+def _metro_detail(row: MetroRunRow) -> MetroRunDetail:
+    # Список считает `visited` в базе (`DbReads.metro_runs`), забег целиком — здесь.
     visited = row.grid.get("visited") if isinstance(row.grid, dict) else None
     count = len(visited) if isinstance(visited, list) else 0
-    return model.model_validate(row, from_attributes=True).model_copy(update={"visited": count})
+    detail = MetroRunDetail.model_validate(row, from_attributes=True)
+    return detail.model_copy(update={"visited": count})
 
 
 @router.get("/metro/runs", response_model=MetroRunsPage, responses=AUTH)
@@ -215,8 +217,8 @@ async def metro_runs(
     rows = await scope.reads.metro_runs(limit + 1, before)
     page = rows[:limit]
     return MetroRunsPage(
-        items=[_metro_run(MetroRunSummary, r) for r in page],
-        next_before=page[-1].id if len(rows) > limit else None,
+        items=[MetroRunSummary.model_validate(r) for r in page],
+        next_before=page[-1]["id"] if len(rows) > limit else None,
     )
 
 
@@ -232,7 +234,7 @@ async def metro_run(
     row = await scope.reads.metro_run(run_id)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "metro run not found")
-    return _metro_run(MetroRunDetail, row)
+    return _metro_detail(row)
 
 
 @router.get(

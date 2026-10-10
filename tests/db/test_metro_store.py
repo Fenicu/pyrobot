@@ -8,6 +8,7 @@ from app.db.base import Database
 from app.db.metro import DbMetroRunStore
 from app.db.models import MetroRunRow
 from app.db.planner import DbPlannerStore
+from app.db.reads import DbReads
 from app.engine.planner.types import Act
 
 pytestmark = pytest.mark.db
@@ -64,3 +65,54 @@ async def test_durations_of_finished_runs_oldest_first(clean_db: Database) -> No
     await store.save(None, "done", record(AT + timedelta(hours=32), 1200.0))
     assert await store.durations() == [900.0, 1200.0]
     assert await store.durations(limit=1) == [1200.0]
+
+
+SUMMARY_COLUMNS = {
+    "id",
+    "scenario_run_id",
+    "started_at",
+    "finished_at",
+    "status",
+    "outcome",
+    "steps",
+    "duration_s",
+    "step_s",
+    "buffs",
+    "result",
+    "summary",
+    "visited",
+}
+
+
+async def test_metro_runs_list_reads_summary_columns_and_counts_visited(
+    clean_db: Database,
+) -> None:
+    grids: list[dict[str, Any]] = [
+        {"cells": {}, "visited": [[0, 0], [0, 1], [1, 1]]},
+        {"cells": {}},
+        {"cells": {}, "visited": {"0,0": 1}},
+        {"cells": {}, "visited": "0,0"},
+    ]
+    async with clean_db.sessions() as s, s.begin():
+        s.add_all(
+            MetroRunRow(
+                account_id=1,
+                started_at=AT + timedelta(minutes=i),
+                status="done",
+                outcome="finished",
+                steps=i,
+                duration_s=1.0,
+                buffs=[],
+                grid=grid,
+                path=[[0, 0]],
+                events=[{"kind": "metro_exit"}],
+                vitals=[{"stamina": 1}],
+                summary={},
+            )
+            for i, grid in enumerate(grids)
+        )
+    rows = await DbReads(clean_db, 1).metro_runs(10, None)
+    # Список — без тяжёлых полей (карта, путь, события, 🔋 по шагам): их нет даже в выборке.
+    assert all(set(r) == SUMMARY_COLUMNS for r in rows)
+    # Посещённые клетки считает база: только у списка `grid.visited`, иначе 0.
+    assert [r["visited"] for r in rows] == [0, 0, 0, 3]
