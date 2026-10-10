@@ -89,6 +89,52 @@
         "title": "AccountErrorOut",
         "type": "object"
       },
+      "AccountOrder": {
+        "additionalProperties": false,
+        "description": "Порядок аккаунтов в списках админки. Неизвестные и чужие id принимаются: это только\nнастройка пользователя, клиент отсеивает их по своему списку.",
+        "properties": {
+          "ids": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 500,
+            "title": "Ids",
+            "type": "array"
+          },
+          "version": {
+            "const": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "ids"
+        ],
+        "title": "AccountOrder",
+        "type": "object"
+      },
+      "AccountOrderOut": {
+        "description": "`order` - `null`, пока пользователь ничего не сохранял.",
+        "properties": {
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AccountOrder"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "order"
+        ],
+        "title": "AccountOrderOut",
+        "type": "object"
+      },
       "AccountOut": {
         "properties": {
           "alert": {
@@ -16865,6 +16911,107 @@
         "summary": "Accept Invite",
         "tags": [
           "invites"
+        ]
+      }
+    },
+    "/api/v1/me/ui/account-order": {
+      "get": {
+        "operationId": "get_account_order_api_v1_me_ui_account_order_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          }
+        },
+        "summary": "Get Account Order",
+        "tags": [
+          "ui"
+        ]
+      },
+      "put": {
+        "operationId": "put_account_order_api_v1_me_ui_account_order_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountOrder"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Account Order",
+        "tags": [
+          "ui"
         ]
       }
     },

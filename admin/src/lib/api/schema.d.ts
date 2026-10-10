@@ -1450,6 +1450,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/ui/account-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Account Order */
+        get: operations["get_account_order_api_v1_me_ui_account_order_get"];
+        /** Put Account Order */
+        put: operations["put_account_order_api_v1_me_ui_account_order_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/ui/home-layout": {
         parameters: {
             query?: never;
@@ -1565,6 +1583,27 @@ export interface components {
             account_id: number;
             /** Detail */
             detail: string;
+        };
+        /**
+         * AccountOrder
+         * @description Порядок аккаунтов в списках админки. Неизвестные и чужие id принимаются: это только
+         *     настройка пользователя, клиент отсеивает их по своему списку.
+         */
+        AccountOrder: {
+            /** Ids */
+            ids: number[];
+            /**
+             * Version
+             * @constant
+             */
+            version: 1;
+        };
+        /**
+         * AccountOrderOut
+         * @description `order` - `null`, пока пользователь ничего не сохранял.
+         */
+        AccountOrderOut: {
+            order: components["schemas"]["AccountOrder"] | null;
         };
         /** AccountOut */
         AccountOut: {
@@ -10064,6 +10103,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_account_order_api_v1_me_ui_account_order_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountOrderOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    put_account_order_api_v1_me_ui_account_order_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

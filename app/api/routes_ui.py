@@ -19,11 +19,14 @@ from app.api.errors import AUTH, CSRF
 router = APIRouter(prefix="/api/v1/me/ui", tags=["ui"])
 
 HOME_LAYOUT_KEY = "home_layout"
+ACCOUNT_ORDER_KEY = "account_order"
+MAX_ORDERED_ACCOUNTS = 500
 GRID_COLUMNS = 12
 MAX_BLOCKS = 50
 _BLOCK_ID = r"^[a-z_]{1,32}$"
 
 BlockId = Annotated[str, StringConstraints(pattern=_BLOCK_ID)]
+AccountId = Annotated[int, Field(strict=True, gt=0)]
 
 
 class LayoutItem(BaseModel):
@@ -95,4 +98,50 @@ async def put_home_layout(
 ) -> Response:
     data: dict[str, Any] = body.model_dump(mode="json")
     await c.ui_prefs.put(ctx.user_id, HOME_LAYOUT_KEY, data)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class AccountOrder(BaseModel):
+    """Порядок аккаунтов в списках админки. Неизвестные и чужие id принимаются: это только
+    настройка пользователя, клиент отсеивает их по своему списку."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1]
+    ids: list[AccountId] = Field(max_length=MAX_ORDERED_ACCOUNTS)
+
+    @model_validator(mode="after")
+    def _unique_ids(self) -> Self:
+        if len(set(self.ids)) != len(self.ids):
+            raise ValueError("duplicate id")
+        return self
+
+
+class AccountOrderOut(BaseModel):
+    """`order` - `null`, пока пользователь ничего не сохранял."""
+
+    order: AccountOrder | None
+
+
+@router.get("/account-order", response_model=AccountOrderOut, responses=AUTH)
+async def get_account_order(
+    ctx: Annotated[SessionContext, Depends(current_session)],
+    c: Annotated[Container, Depends(container)],
+) -> AccountOrderOut:
+    data = await c.ui_prefs.get(ctx.user_id, ACCOUNT_ORDER_KEY)
+    if data is None:
+        return AccountOrderOut(order=None)
+    try:
+        return AccountOrderOut(order=AccountOrder.model_validate(data))
+    except ValidationError:
+        return AccountOrderOut(order=None)
+
+
+@router.put("/account-order", status_code=status.HTTP_204_NO_CONTENT, responses=CSRF)
+async def put_account_order(
+    body: AccountOrder,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    c: Annotated[Container, Depends(container)],
+) -> Response:
+    await c.ui_prefs.put(ctx.user_id, ACCOUNT_ORDER_KEY, body.model_dump(mode="json"))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
