@@ -19,7 +19,7 @@ from app.engine.host.account import pipeline_deliver
 from app.engine.memory import MemoryJournal
 from app.engine.notify import Level
 from app.engine.parsing import default_parser
-from app.engine.pipeline import NullReducer, Pipeline
+from app.engine.pipeline import PIPELINE_QUEUE_MAX, NullReducer, Pipeline
 from app.engine.settings import ChatsSection
 from app.engine.tg_auth import (
     AttemptMismatch,
@@ -38,7 +38,13 @@ from app.engine.transport.base import (
     TransportRejected,
 )
 from app.engine.transport.history import HistorySync
-from app.engine.transport.kurigram import OVERLOAD_HIGH, OVERLOAD_LOW, ChatFilter
+from app.engine.transport.kurigram import (
+    OVERLOAD_HIGH,
+    OVERLOAD_LOW,
+    RECEIVE_QUEUE_MAX,
+    ChatFilter,
+    CountingQueue,
+)
 from app.engine.types import IncomingMessage
 from tests.conftest import TEST_DB_URL
 from tests.engine.helpers import GAME, tg_auth, until
@@ -1123,6 +1129,45 @@ def _burst(t: FakeKurigram, first: int, count: int) -> None:
     queue = t.client.dispatcher.updates_queue
     for msg_id in range(first, first + count):
         queue.put_nowait(_game_message(msg_id))
+
+
+def test_intake_bounds_are_consistent() -> None:
+    # Порция сверки истории (1000 новых и 50 правок) с живыми обновлениями перегрузку не включает;
+    # предел очереди kurigram выше порога — до него приём перекрывает перегрузка; а принятое до
+    # остановки приёма `terminate()` всегда кладёт в очередь конвейера, не дожидаясь места.
+    assert OVERLOAD_HIGH <= 1500 and OVERLOAD_HIGH - 1050 >= 400
+    assert OVERLOAD_LOW < OVERLOAD_HIGH < RECEIVE_QUEUE_MAX
+    assert PIPELINE_QUEUE_MAX >= OVERLOAD_HIGH + RECEIVE_QUEUE_MAX
+
+
+def test_counting_queue_drops_over_limit_and_reports_once() -> None:
+    puts: list[int] = []
+    drops: list[int] = []
+    queue = CountingQueue(lambda: puts.append(1), lambda: drops.append(1), limit=3)
+    for i in range(5):
+        queue.put_nowait(i)
+    assert queue.qsize() == 3 and len(puts) == 3 and drops == [1]
+    # Знак остановки обработчиков проходит и в полную очередь.
+    queue.put_nowait(None)
+    assert queue.qsize() == 4 and len(puts) == 3
+    queue.get_nowait()
+    queue.get_nowait()
+    queue.put_nowait(9)
+    queue.put_nowait(10)
+    # Новое переполнение после приёма — новое сообщение транспорту.
+    assert drops == [1, 1] and len(puts) == 4
+
+
+async def test_receive_queue_overflow_requests_history() -> None:
+    t = FakeKurigram()
+    history: list[str] = []
+    t.on_history_needed = history.append
+    client = t.client
+    # Клиент ещё не в сети: очередь некому разбирать, перегрузка не считается — держит предел.
+    _burst(t, 1, RECEIVE_QUEUE_MAX + 5)
+    assert client.dispatcher.updates_queue.qsize() == RECEIVE_QUEUE_MAX
+    assert history == ["overflow"]
+    await t.stop()
 
 
 async def test_overload_stop_order_and_drain() -> None:

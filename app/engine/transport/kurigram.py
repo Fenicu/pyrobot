@@ -52,9 +52,13 @@ DIALOGS_WARMUP = 200
 HISTORY_PAGE = 100
 # Перегрузка (раздел 4.2 спеки): очередь kurigram и очередь конвейера вместе выше OVERLOAD_HIGH —
 # приём останавливается; ниже OVERLOAD_LOW (проверка раз в OVERLOAD_CHECK_S) — новый клиент.
-# Не подключился — повтор через OVERLOAD_RETRY_S, дальше раз в последнюю паузу.
-OVERLOAD_HIGH = 5000
-OVERLOAD_LOW = 500
+# Не подключился — повтор через OVERLOAD_RETRY_S, дальше раз в последнюю паузу. Порог — порция
+# сверки истории (до 1050 сообщений) с запасом на живые обновления.
+OVERLOAD_HIGH = 1500
+OVERLOAD_LOW = 150
+# Предел очереди kurigram: сверх него обновления, пришедшие, пока приём останавливается (или пока
+# клиент не в сети), отбрасываются, а пропущенное возвращает сверка истории.
+RECEIVE_QUEUE_MAX = 2 * OVERLOAD_HIGH
 OVERLOAD_CHECK_S = 1.0
 OVERLOAD_RETRY_S = (5.0, 30.0, 60.0)
 # Устройство сессии в списке сессий пользователя в Telegram — у клиента движка и у временного
@@ -313,17 +317,36 @@ def _client_class() -> type[Any]:
 class CountingQueue(asyncio.Queue[Any]):
     """Очередь обновлений диспетчера kurigram (`dispatcher.updates_queue`), которая сообщает
     транспорту о каждом принятом обновлении (`on_put`), — по ней транспорт считает перегрузку.
-    Размер не ограничен: сетевой слой kurigram кладёт через `put_nowait` и ждать места не умеет."""
+    Сетевой слой kurigram кладёт через `put_nowait` и ждать места не умеет: обновление сверх
+    `limit` отбрасывается, а о начале таких отказов транспорт узнаёт (`on_drop`) — один раз,
+    до следующего принятого обновления."""
 
-    def __init__(self, on_put: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        on_put: Callable[[], None],
+        on_drop: Callable[[], None],
+        *,
+        limit: int = RECEIVE_QUEUE_MAX,
+    ) -> None:
         super().__init__()
         self._on_put = on_put
+        self._on_drop = on_drop
+        self._limit = limit
+        self._dropping = False
 
     def put_nowait(self, item: Any) -> None:
+        # None — знак остановки обработчиков (`Dispatcher.stop`), а не обновление: проходит всегда.
+        if item is None:
+            super().put_nowait(item)
+            return
+        if self.qsize() >= self._limit:
+            if not self._dropping:
+                self._dropping = True
+                self._on_drop()
+            return
+        self._dropping = False
         super().put_nowait(item)
-        # None — знак остановки обработчиков (`Dispatcher.stop`), а не обновление.
-        if item is not None:
-            self._on_put()
+        self._on_put()
 
 
 def _fenced[**P, T](
@@ -487,7 +510,9 @@ class KurigramTransport:
 
     def _new_client(self) -> Any:
         client = self._make_client()
-        client.dispatcher.updates_queue = CountingQueue(lambda: self._queued(client))
+        client.dispatcher.updates_queue = CountingQueue(
+            lambda: self._queued(client), self._receive_overflow
+        )
         return client
 
     def _make_client(self) -> Any:
@@ -512,6 +537,13 @@ class KurigramTransport:
     def _history_needed(self, reason: str) -> None:
         if self.on_history_needed is not None:
             self.on_history_needed(reason)
+
+    def _receive_overflow(self) -> None:
+        log.warning(
+            "telegram updates queue full (%d): updates dropped, history pass requested",
+            RECEIVE_QUEUE_MAX,
+        )
+        self._history_needed("overflow")
 
     def _pending(self, client: Any) -> int:
         """Принятое, но ещё не записанное: очередь kurigram клиента и очередь конвейера."""
