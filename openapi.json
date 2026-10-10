@@ -15638,8 +15638,22 @@
     },
     "/api/v1/admin/memory": {
       "get": {
-        "description": "Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и самые\nчастые типы объектов (считаются на запрос).",
+        "description": "Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и по `types`\nсамые частые типы объектов (без него — пустой список).",
         "operationId": "memory_api_v1_admin_memory_get",
+        "parameters": [
+          {
+            "description": "count the most common object types",
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "count the most common object types",
+              "title": "Types",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -15670,6 +15684,16 @@
               }
             },
             "description": "not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Memory",

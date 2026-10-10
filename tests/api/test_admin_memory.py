@@ -3,6 +3,7 @@ from datetime import datetime
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.api import routes_admin
 from app.api.app import create_api
 from app.memwatch import MemWatch
 from tests.api.conftest import Api, login, make_user
@@ -23,7 +24,7 @@ async def test_owner_gets_memory_report(api: Api) -> None:
     watch.sample()
     watch.trim()
 
-    resp = await api.client.get(URL)
+    resp = await api.client.get(URL, params={"types": "true"})
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert set(body) == {"rss_mb", "peak_mb", "threads", "samples", "trim", "top_types"}
@@ -39,6 +40,20 @@ async def test_owner_gets_memory_report(api: Api) -> None:
     assert all(set(t) == {"type", "count"} for t in types)
     counts = [t["count"] for t in types]
     assert counts == sorted(counts, reverse=True)
+
+
+async def test_memory_report_counts_types_only_on_request(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def walk() -> list[tuple[str, int]]:
+        raise AssertionError("top_types without types=true")
+
+    monkeypatch.setattr(routes_admin, "top_types", walk)
+    api.container.memwatch = MemWatch(read_status=lambda: _status(102400))
+    resp = await api.client.get(URL)
+    assert resp.status_code == 200, resp.text
+    # Обход всех объектов процесса — только по `types=true`: без него список пуст.
+    assert resp.json()["top_types"] == []
 
 
 async def test_memory_report_before_any_trim(api: Api) -> None:

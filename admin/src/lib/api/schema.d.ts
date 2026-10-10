@@ -1172,8 +1172,8 @@ export interface paths {
         };
         /**
          * Memory
-         * @description Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и самые
-         *     частые типы объектов (считаются на запрос).
+         * @description Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и по `types`
+         *     самые частые типы объектов (без него — пустой список).
          */
         get: operations["memory_api_v1_admin_memory_get"];
         put?: never;
@@ -9129,7 +9129,10 @@ export interface operations {
     };
     memory_api_v1_admin_memory_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description count the most common object types */
+                types?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -9161,6 +9164,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

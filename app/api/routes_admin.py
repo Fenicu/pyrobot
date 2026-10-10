@@ -661,12 +661,15 @@ def _at(ts: float) -> datetime:
 
 
 @router.get("/memory", response_model=MemoryOut, responses=AUTH)
-async def memory(c: Annotated[Container, Depends(container)]) -> MemoryOut:
-    """Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и самые
-    частые типы объектов (считаются на запрос)."""
+async def memory(
+    c: Annotated[Container, Depends(container)],
+    types: Annotated[bool, Query(description="count the most common object types")] = False,
+) -> MemoryOut:
+    """Память процесса: RSS сейчас и пик, замеры за сутки, возврат памяти системе и по `types`
+    самые частые типы объектов (без него — пустой список)."""
     watch = c.memwatch
-    # Обход всех объектов — доли секунды: вне цикла событий.
-    types = await asyncio.to_thread(top_types)
+    # Обход всех объектов — доли секунды и всплеск памяти: только по запросу и вне цикла событий.
+    counted = await asyncio.to_thread(top_types) if types else []
     st = watch.status()
     last_freed = watch.trim_last_freed_kb
     return MemoryOut(
@@ -679,5 +682,5 @@ async def memory(c: Annotated[Container, Depends(container)]) -> MemoryOut:
             total_freed_mb=kb_to_mb(watch.trim_total_freed_kb),
             last_at=None if watch.trim_last_at is None else _at(watch.trim_last_at),
         ),
-        top_types=[MemoryTypeOut(type=t, count=n) for t, n in types],
+        top_types=[MemoryTypeOut(type=t, count=n) for t, n in counted],
     )
