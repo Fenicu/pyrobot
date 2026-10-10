@@ -84,6 +84,28 @@ class DbJournal:
             rows = await session.scalars(query)
             return [_restored(row) for row in rows]
 
+    async def latest_revision(
+        self, chat_id: int, msg_id: int, *, received_since: datetime
+    ) -> IncomingMessage | None:
+        """Последняя записанная ревизия сообщения, если она принята не раньше `received_since`
+        (старта движка). Принятая раньше могла устареть, пока движка не было: её перечитывают
+        из Telegram."""
+        query = (
+            select(MessageRow)
+            .where(
+                MessageRow.account_id == self._account_id,
+                MessageRow.chat_id == chat_id,
+                MessageRow.msg_id == msg_id,
+            )
+            .order_by(MessageRow.revision.desc(), MessageRow.id.desc())
+            .limit(1)
+        )
+        async with self._db.sessions() as session:
+            row = await session.scalar(query)
+        if row is None or row.received_at < received_since:
+            return None
+        return _restored(row)
+
     async def known(
         self, chat_id: int, keys: Sequence[tuple[int, int, str]]
     ) -> set[tuple[int, int, str]]:

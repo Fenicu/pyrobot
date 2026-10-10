@@ -11,7 +11,7 @@ from app.engine.events import AntiFlood, Event
 from app.engine.fence import LeaseLost
 from app.engine.memory import MemoryJournal
 from app.engine.parsing import default_parser
-from app.engine.pipeline import PIPELINE_QUEUE_MAX, NullReducer, Pipeline
+from app.engine.pipeline import LATEST_CAPACITY, PIPELINE_QUEUE_MAX, NullReducer, Pipeline
 from app.engine.state.ledger import Effect
 from app.engine.types import IncomingMessage
 from tests.engine.helpers import GAME, make_msg, now
@@ -352,6 +352,52 @@ async def test_latest_evicted_over_capacity() -> None:
     await pipe.process(make_msg("m2 edit", msg_id=2, kind="edit", revision=5))
     await pipe.process(make_msg("m4", msg_id=4))
     assert pipe.latest(GAME, 3) is None and pipe.latest(GAME, 2) is not None
+
+
+async def test_latest_bounded_by_default_capacity() -> None:
+    pipe, _, _ = _pipeline()
+    assert LATEST_CAPACITY <= 300
+    for i in range(LATEST_CAPACITY + 1):
+        await pipe.process(make_msg(f"m{i}", msg_id=i))
+    assert pipe.latest(GAME, 0) is None
+    assert pipe.latest(GAME, 1) is not None and pipe.latest(GAME, LATEST_CAPACITY) is not None
+
+
+async def test_recall_reads_evicted_message_and_primes_it() -> None:
+    journal = MemoryJournal()
+    asked: list[tuple[int, int]] = []
+
+    async def recall(chat_id: int, msg_id: int) -> IncomingMessage | None:
+        asked.append((chat_id, msg_id))
+        found = await journal.revisions(chat_id, msg_id)
+        return max(found, key=lambda m: m.revision) if found else None
+
+    pipe = Pipeline(
+        journal=journal,
+        parser=default_parser(),
+        reducer=NullReducer(),
+        bus=Bus(),
+        latest_capacity=2,
+        recall=recall,
+    )
+    first = make_msg("m1", msg_id=1)
+    edited = make_msg("m1 правка", msg_id=1, kind="edit", revision=7)
+    for msg in (first, edited, make_msg("m2", msg_id=2), make_msg("m3", msg_id=3)):
+        await pipe.process(msg)
+    assert pipe.latest(GAME, 1) is None
+    # Свежее сообщение — из кэша, журнал не спрашивается.
+    assert (await pipe.recall(GAME, 3)) is not None and asked == []
+    assert await pipe.recall(GAME, 1) == edited
+    assert asked == [(GAME, 1)] and pipe.latest(GAME, 1) == edited
+    assert await pipe.recall(GAME, 99) is None
+
+
+async def test_recall_without_fallback_is_cache_only() -> None:
+    pipe, _, _ = _pipeline()
+    assert await pipe.recall(GAME, 1) is None
+    msg = make_msg("m1", msg_id=1)
+    await pipe.process(msg)
+    assert await pipe.recall(GAME, 1) == msg
 
 
 async def test_prime_restores_latest_after_restart() -> None:

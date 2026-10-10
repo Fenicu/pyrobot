@@ -349,6 +349,47 @@ async def test_unknown_message_reread_only_for_click_that_may_be_sent(rig: Rig) 
     assert reads == [(GAME, 5)]
 
 
+async def test_evicted_message_recalled_from_journal_before_reread(rig: Rig) -> None:
+    reads: list[tuple[int, int]] = []
+    recalls: list[tuple[int, int]] = []
+    btn = (Button("⬅️", 0, 0, data="maze_left"),)
+    journaled = {5: make_msg("карта", msg_id=5, revision=3, buttons=btn)}
+
+    async def reread(chat_id: int, msg_id: int) -> IncomingMessage | None:
+        reads.append((chat_id, msg_id))
+        return None
+
+    async def recall(chat_id: int, msg_id: int) -> IncomingMessage | None:
+        # Как Pipeline.recall: найденное в журнале становится последней ревизией кэша.
+        recalls.append((chat_id, msg_id))
+        found = journaled.get(msg_id)
+        if found is not None:
+            rig.latest[(chat_id, msg_id)] = found
+        return found
+
+    rig.gw._reread = reread
+    rig.gw._recall = recall
+
+    def click(msg_id: int) -> ActionRequest:
+        return ActionRequest(
+            kind=ActionKind.CLICK,
+            chat_id=GAME,
+            message_id=msg_id,
+            data="maze_left",
+            expect=expect_text("x", timeout=0.05),
+            expect_revision=3,
+        )
+
+    recalled = await rig.gw.submit(click(5))
+    assert recalled.reason != "stale_button"
+    assert [s.payload for s in rig.transport.sent] == ["maze_left"]
+    assert recalls == [(GAME, 5)] and reads == []
+    # Не нашлось в журнале — текущая версия перечитывается из Telegram, как после рестарта.
+    missing = await rig.gw.submit(click(6))
+    assert (missing.status, missing.reason) == (ActionStatus.REJECTED, "stale_button")
+    assert recalls == [(GAME, 5), (GAME, 6)] and reads == [(GAME, 6)]
+
+
 async def _features(rig: Rig, **flags: bool) -> None:
     await rig.settings.update(
         lambda s: s.model_copy(update={"features": s.features.model_copy(update=flags)}),

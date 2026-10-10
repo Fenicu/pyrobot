@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import OrderedDict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import timedelta
 from typing import Any, Protocol
 
@@ -20,6 +20,11 @@ State = dict[str, Any]
 # Очередь конвейера ограничена (раздел 4.2 спеки): при заполнении обработчик kurigram ждёт места.
 # Поток обновлений транспорт перекрывает раньше — перегрузкой (`OVERLOAD_HIGH`).
 PIPELINE_QUEUE_MAX = 10000
+# Последние ревизии в памяти — на аккаунт (около 6 часов обычного потока игры); вытесненное
+# конвейер достаёт из журнала (`recall`).
+LATEST_CAPACITY = 300
+# Последняя ревизия сообщения из журнала; None — её нет.
+Recall = Callable[[int, int], Awaitable[IncomingMessage | None]]
 
 
 class Reducer(Protocol):
@@ -66,7 +71,8 @@ class Pipeline:
         bus: Bus,
         metrics: Callable[[State, State], Mapping[str, float]] | None = None,
         react_max_age: timedelta = timedelta(minutes=10),
-        latest_capacity: int = 5000,
+        latest_capacity: int = LATEST_CAPACITY,
+        recall: Recall | None = None,
         retry_base_s: float = 0.5,
         retry_max_s: float = 30.0,
     ) -> None:
@@ -79,6 +85,7 @@ class Pipeline:
         self._queue: asyncio.Queue[IncomingMessage] = asyncio.Queue(maxsize=PIPELINE_QUEUE_MAX)
         self._latest: OrderedDict[tuple[int, int], IncomingMessage] = OrderedDict()
         self._capacity = latest_capacity
+        self._recall = recall
         self._retry_base = retry_base_s
         self._retry_max = retry_max_s
         self._state: State = {}
@@ -107,6 +114,17 @@ class Pipeline:
         self._state, self._version = await self._journal.load_state()
 
     def latest(self, chat_id: int, msg_id: int) -> IncomingMessage | None:
+        return self._latest.get((chat_id, msg_id))
+
+    async def recall(self, chat_id: int, msg_id: int) -> IncomingMessage | None:
+        """Последняя ревизия: из кэша, а вытесненная из него — из журнала (и снова в кэш)."""
+        cached = self._latest.get((chat_id, msg_id))
+        if cached is not None or self._recall is None:
+            return cached
+        found = await self._recall(chat_id, msg_id)
+        if found is None:
+            return None
+        self._remember(found)
         return self._latest.get((chat_id, msg_id))
 
     def prime(self, msg: IncomingMessage) -> None:

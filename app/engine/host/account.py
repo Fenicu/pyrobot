@@ -42,7 +42,7 @@ from app.engine.lag import LoopLagMonitor
 from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
 from app.engine.parsing.sleep import RobberyAlert
-from app.engine.pipeline import Pipeline
+from app.engine.pipeline import Pipeline, Recall
 from app.engine.planner.loop import PlannerLoop
 from app.engine.reactions import RobberyDefense
 from app.engine.reconcile import Reconciler
@@ -89,6 +89,15 @@ def journal_history(journal: DbJournal) -> History:
         return await journal.revisions(chat_id, msg_id)
 
     return history
+
+
+def journal_recall(journal: DbJournal, *, received_since: datetime) -> Recall:
+    """Ревизия, вытесненная из кэша конвейера, — из журнала, если её принял этот движок."""
+
+    async def recall(chat_id: int, msg_id: int) -> IncomingMessage | None:
+        return await journal.latest_revision(chat_id, msg_id, received_since=received_since)
+
+    return recall
 
 
 def live_reread(transport: Transport, pipeline: Pipeline) -> Reread:
@@ -233,6 +242,7 @@ class AccountRuntime:
             metrics=reducer.metrics,
             bus=bus,
             react_max_age=timedelta(minutes=react_age),
+            recall=journal_recall(journal, received_since=SystemClock().now()),
         )
         await self.pipeline.load()
         transport, backend = await self._make_transport(self.pipeline)
@@ -249,6 +259,7 @@ class AccountRuntime:
             state_version=lambda: pipeline.version,
             own_company=lambda: company_of(pipeline.state),
             reread=live_reread(transport, pipeline),
+            recall=pipeline.recall,
         )
         pending = await actions.unreconciled()
         if pending:

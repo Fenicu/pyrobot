@@ -201,6 +201,7 @@ class ActionGateway:
         state_version: StateVersion | None = None,
         own_company: OwnCompany = _company_unknown,
         reread: Reread | None = None,
+        recall: Reread | None = None,
     ) -> None:
         self._transport = transport
         self._own_company = own_company
@@ -212,6 +213,9 @@ class ActionGateway:
         self._boundary = boundary
         self._clock = clock
         self._reread = reread
+        # Ревизия, вытесненная из кэша конвейера, — из журнала (и снова в кэш): после неё
+        # перечитывание из Telegram не нужно.
+        self._recall = recall
         self.on_uncertain = on_uncertain
         self._queue: list[_Pending] = []
         self._cond = asyncio.Condition()
@@ -446,16 +450,25 @@ class ActionGateway:
                 log.exception("uncertain hook failed")
 
     async def _reread_unknown(self, req: ActionRequest) -> None:
-        """Клик по сообщению, правки которого нет в кэше (рестарт): кнопки и ревизия
-        проверяются по перечитанному из Telegram. Клик, который всё равно не уйдёт, не читает."""
+        """Клик по сообщению, правки которого нет в кэше: вытесненная правка, принятая этим
+        движком, берётся из журнала, а после рестарта кнопки и ревизия проверяются по
+        перечитанному из Telegram. Клик, который всё равно не уйдёт, не читает."""
         if (
-            self._reread is None
+            (self._recall is None and self._reread is None)
             or req.kind is not ActionKind.CLICK
             or req.message_id is None
             or req.chat_id not in self._allowed_chats()
             or self._can_send() is not None
             or self._latest(req.chat_id, req.message_id) is not None
         ):
+            return
+        if self._recall is not None:
+            try:
+                if await self._recall(req.chat_id, req.message_id) is not None:
+                    return
+            except Exception as exc:
+                log.warning("recall of %s/%s failed: %r", req.chat_id, req.message_id, exc)
+        if self._reread is None:
             return
         try:
             await self._reread(req.chat_id, req.message_id)

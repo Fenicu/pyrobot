@@ -214,3 +214,30 @@ async def test_outcome_key_unique_across_messages(clean_db: Database) -> None:
         ("book", 1, None),
         ("book", 2, None),
     ]
+
+
+async def test_latest_revision_received_since(clean_db: Database) -> None:
+    from datetime import timedelta
+
+    from tests.engine.helpers import now
+
+    journal = DbJournal(clean_db, account_id=1)
+    start = now()
+    before = make_msg("до старта", msg_id=8, received_at=start - timedelta(minutes=5))
+    first = make_msg("🔋88%", msg_id=9, received_at=start)
+    edit = make_msg("правка", msg_id=9, kind="edit", revision=5, received_at=start)
+    # Повтор старой ревизии, записанный позже, последней ревизией не становится.
+    late_old = make_msg("старая", msg_id=9, kind="edit", revision=3, received_at=start)
+    # Последняя ревизия записана до старта, а более старая — после: последней остаётся первая.
+    newer = make_msg("новее", msg_id=10, revision=5, received_at=start - timedelta(minutes=5))
+    older = make_msg("старее", msg_id=10, revision=3, received_at=start)
+    other = DbJournal(clean_db, account_id=2)
+    for msg in (before, first, edit, late_old, newer, older):
+        assert await journal.append(msg, [], None, 1) is not None
+    latest = await journal.latest_revision(first.chat_id, 9, received_since=start)
+    assert latest is not None and (latest.revision, latest.text) == (5, "правка")
+    # Записанное до старта процесса не возвращается: его текущую версию перечитывают.
+    assert await journal.latest_revision(first.chat_id, 8, received_since=start) is None
+    assert await journal.latest_revision(first.chat_id, 10, received_since=start) is None
+    assert await journal.latest_revision(first.chat_id, 404, received_since=start) is None
+    assert await other.latest_revision(first.chat_id, 9, received_since=start) is None
