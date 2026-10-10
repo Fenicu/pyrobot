@@ -783,6 +783,9 @@ class _Planner(DailyTasks):
     def trips_refresh(self, reason: str, params: dict[str, Any]) -> Act | None:
         """Экран «Транспорт» — не чаще `engine.refresh_min_interval_s`."""
         self.reject("trip", params, "stale:trips")
+        if self.battle_running():
+            self.reject("trips_refresh", {}, "battle_window")
+            return None
         last = self.last_refresh.get("trips")
         if last is not None and self.now - last < self.refresh_every:
             self.reject("trips_refresh", {}, "rate_limited")

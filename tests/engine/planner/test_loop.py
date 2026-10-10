@@ -766,6 +766,18 @@ async def test_battle_refusal_of_deed_holds_all_deeds_until_battle_end(world: Wo
     assert rig.loop._cooldowns == dict.fromkeys(DEEDS, battle + BATTLE_AFTER)
 
 
+async def test_battle_refusal_of_deed_keeps_longer_pause_of_other_deed(world: World) -> None:
+    rig = Rig(world)
+    battle = msk_at(28, 22)
+    at = battle - timedelta(minutes=2)
+    tomorrow = msk_at(29, 0)
+    rig.loop._cooldowns = {"deed:harvest": tomorrow, "deed:walk": at + timedelta(seconds=30)}
+    job = Act("deed:job", {}, "best")
+    await rig.loop._after(job, ScenarioResult("refused", "battle_soon"), at, at)
+    hold = battle + BATTLE_AFTER
+    assert rig.loop._cooldowns == {**dict.fromkeys(DEEDS, hold), "deed:harvest": tomorrow}
+
+
 async def test_battle_refusal_at_battle_end_retries_shortly(world: World) -> None:
     rig = Rig(world)
     at = msk_at(28, 22) + timedelta(seconds=55)

@@ -811,8 +811,11 @@ class PlannerLoop:
             until = finished + RETRY_AFTER
             if result.status == "refused" and result.reason in BATTLE_REFUSALS:
                 until = battle_hold(finished) or until
-            for target in DEEDS if shared else (key,):
-                self._cooldowns[target] = until
+            self._cooldowns[key] = until
+            # Общий отказ не укорачивает более длинную паузу другого дела (например, до завтра).
+            for target in DEEDS if shared else ():
+                if target != key:
+                    self._hold(target, until)
         if tries >= FACTORY_REPORT_TRIES:
             # Третий /fb за день без сегодняшнего отчёта — до завтра, каким бы ни был исход.
             self._cooldowns[key] = day_start(tasks_day(started) + timedelta(days=1))

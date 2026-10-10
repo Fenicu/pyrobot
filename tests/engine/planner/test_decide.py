@@ -615,6 +615,25 @@ def test_no_refresh_while_battle_runs() -> None:
     assert act(decide(stale, BASE, before)) == ("refresh", {"source": "profile"})
 
 
+@pytest.mark.parametrize(
+    ("name", "feature"), [("daily_refresh", "daily_tasks"), ("trips_refresh", "trips")]
+)
+def test_no_screen_refresh_while_battle_runs(name: str, feature: str) -> None:
+    # Экраны заданий и транспорта неизвестны: их рефреш тоже ждёт конца первой минуты битвы.
+    settings = config({"features": {feature: True}})
+    battle = m(60)
+    during = battle + timedelta(seconds=10)
+    seen = awake(battle - timedelta(minutes=1), battle_at=battle)
+    decision = decide(seen, settings, during)
+    assert decision == Wait(w(61), "battle", decision.candidates)
+    assert verdicts(decision)[name] == "battle_window"
+    after = battle + timedelta(minutes=1)
+    later = awake(after, battle_at=battle + timedelta(hours=1))
+    assert act(decide(later, settings, after))[0] == name
+    before = battle - timedelta(minutes=3)
+    assert act(decide(awake(before, battle_at=battle), settings, before))[0] == name
+
+
 def test_no_motivation_waits_for_regen() -> None:
     decision = decide(awake(motivation=0), BASE, NOW)
     assert decision == Wait(w(30), "motivation", decision.candidates)
