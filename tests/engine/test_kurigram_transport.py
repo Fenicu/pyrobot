@@ -1467,6 +1467,48 @@ async def test_logout_offline_uses_account_app(
     assert made[0]["api_id"] == 12345 and made[0]["api_hash"] == "a" * 32
 
 
+@pytest.mark.db
+async def test_logout_offline_client_does_not_cache_messages(
+    clean_db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import pyrogram
+
+    from app.db.tg_storage import PgSessionStorage
+    from app.engine.transport.kurigram import logout_offline
+
+    stored = PgSessionStorage(clean_db, 1, BOX, lambda: {GAME})
+    await stored.open()
+    await stored.auth_key(b"k" * 256)
+    await stored.user_id(EXPECTED)
+    made: list[dict[str, Any]] = []
+
+    def client(_name: str, **kwargs: Any) -> FakeClient:
+        made.append(kwargs)
+        return FakeClient(kwargs["storage_engine"])
+
+    monkeypatch.setattr(pyrogram, "Client", client)
+    await logout_offline(clean_db, BOX, _kurigram_config(), 1)
+    assert made[0]["fetch_replies"] is False and made[0]["max_message_cache_size"] == 1
+
+
+def test_engine_client_does_not_cache_messages(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.engine.transport import kurigram
+
+    made: list[dict[str, Any]] = []
+
+    class Recorder(FakeClient):
+        def __init__(self, _name: str, **kwargs: Any) -> None:
+            made.append(kwargs)
+            super().__init__(kwargs["storage_engine"])
+
+        def add_handler(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+    monkeypatch.setattr(kurigram, "_client_class", lambda: Recorder)
+    kurigram.KurigramTransport._make_client(FakeKurigram())  # type: ignore[arg-type]
+    assert made[0]["fetch_replies"] is False and made[0]["max_message_cache_size"] == 1
+
+
 async def test_send_saved_uses_input_peer_self_through_fence() -> None:
     from pyrogram import raw
 

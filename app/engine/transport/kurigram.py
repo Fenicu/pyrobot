@@ -66,6 +66,9 @@ _DEVICE: dict[str, Any] = {
     "system_version": "Linux",
     "lang_code": "ru",
 }
+# reply_to_message мы не читаем, а кеш держал уже обработанные сообщения (сотни на клиента):
+# кеш сведён к минимуму (kurigram не принимает размер меньше 1), ответы не догружаются.
+_NO_MESSAGE_CACHE: dict[str, Any] = {"fetch_replies": False, "max_message_cache_size": 1}
 
 
 def _aware(dt: datetime) -> datetime:
@@ -498,6 +501,7 @@ class KurigramTransport:
             workers=1,
             skip_updates=True,
             **_DEVICE,
+            **_NO_MESSAGE_CACHE,
         )
         client.history_needed = self._history_needed
         client.add_handler(MessageHandler(self._on_new))
@@ -1483,6 +1487,7 @@ async def logout_offline(db: Database, box: SecretBox, config: AppConfig, accoun
         storage_engine=storage,
         no_updates=True,
         **_DEVICE,
+        **_NO_MESSAGE_CACHE,
     )
     failure: Exception | None = None
     try:
