@@ -14,7 +14,7 @@ from app.engine.gateway.types import Source
 from app.engine.metro.store import MemoryMetroRunStore
 from app.engine.notify import Level
 from app.engine.parsing.food import FoodMenu
-from app.engine.planner.base import TIMER_MARGIN
+from app.engine.planner.base import BATTLE_AFTER, TIMER_MARGIN
 from app.engine.planner.decide import decide
 from app.engine.planner.loop import (
     DEEDS,
@@ -733,6 +733,70 @@ async def test_battle_refusal_holds_all_deeds(world: World) -> None:
     ]
     assert set(DEEDS) <= set(rig.loop._cooldowns)
     assert rig.store.decisions[-1][1].kind == "wait"
+
+
+BOOK = Act("book", {}, "book_ready")
+PROFILE = Act("refresh", {"source": "profile"}, "state needs busy")
+
+
+@pytest.mark.parametrize(
+    ("act", "reason", "before"),
+    [
+        (BOOK, "battle_soon", timedelta(seconds=21)),
+        (BOOK, "battle_soon", timedelta(minutes=6)),
+        (PROFILE, "battle_running", timedelta(seconds=-3)),
+    ],
+)
+async def test_battle_refusal_holds_until_battle_end(
+    world: World, act: Act, reason: str, before: timedelta
+) -> None:
+    rig = Rig(world)
+    battle = msk_at(28, 22)
+    at = battle - before
+    await rig.loop._after(act, ScenarioResult("refused", reason), at, at)
+    assert rig.loop._cooldowns == {loop_module.cooldown_key(act): battle + BATTLE_AFTER}
+
+
+async def test_battle_refusal_of_deed_holds_all_deeds_until_battle_end(world: World) -> None:
+    rig = Rig(world)
+    battle = msk_at(28, 22)
+    at = battle - timedelta(minutes=2)
+    job = Act("deed:job", {}, "best")
+    await rig.loop._after(job, ScenarioResult("refused", "battle_soon"), at, at)
+    assert rig.loop._cooldowns == dict.fromkeys(DEEDS, battle + BATTLE_AFTER)
+
+
+async def test_battle_refusal_at_battle_end_retries_shortly(world: World) -> None:
+    rig = Rig(world)
+    at = msk_at(28, 22) + timedelta(seconds=55)
+    await rig.loop._after(PROFILE, ScenarioResult("refused", "battle_running"), at, at)
+    assert rig.loop._cooldowns == {"refresh:profile": at + timedelta(seconds=10)}
+
+
+async def test_battle_refusal_far_from_battle_hour_retries_as_usual(world: World) -> None:
+    # Отказ не вяжется с часом битвы по нашим часам: обычный повтор, а не пауза до часа.
+    rig = Rig(world)
+    for at in (msk_at(28, 21, 30), msk_at(28, 22, 1) + timedelta(seconds=30)):
+        await rig.loop._after(BOOK, ScenarioResult("refused", "battle_soon"), at, at)
+        assert rig.loop._cooldowns == {"book": at + RETRY_AFTER}
+
+
+async def test_book_refused_before_battle_waits_for_its_end(world: World) -> None:
+    world.game.on_text("/read_exp", ("refusals", 3520502))
+    await world.feed("profile", 3624478)
+    await world.feed("items", 3625102)
+    await set_engine(world, state_stale_after_min=120)
+    rig = Rig(world)
+    real = datetime.now(UTC)
+    battle = real.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    rig.clock.shift = battle - timedelta(seconds=21) - real
+    world.game.clock = rig.clock
+    await rig.loop.step()
+    assert world.game.payloads() == ["/read_exp"]
+    assert [(r.scenario, r.status, r.reason) for r in rig.store.runs] == [
+        ("book", "refused", "battle_soon")
+    ]
+    assert rig.loop._cooldowns == {"book": battle + BATTLE_AFTER}
 
 
 async def test_failed_profile_refresh_does_not_hold_inventory(world: World) -> None:

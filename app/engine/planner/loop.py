@@ -17,7 +17,13 @@ from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.gateway.types import Source
 from app.engine.metro.store import METRO_HISTORY, MetroRunStore
 from app.engine.notify import NotifierPort
-from app.engine.planner.base import METRO_PROBE
+from app.engine.planner.base import (
+    BATTLE_AFTER,
+    BATTLE_BEFORE,
+    BATTLE_SKEW,
+    METRO_PROBE,
+    battle_hour,
+)
 from app.engine.planner.daily import UNKNOWN_FIRE
 from app.engine.planner.decide import Outlook, decide, lottery_params, outlook, resume_metro
 from app.engine.planner.obligations import LOTTERY_OPEN, METRO_PROBES
@@ -68,6 +74,9 @@ DEEDS = tuple(name for name in SCENARIOS if name.startswith("deed:"))
 SHARED_REFUSALS = frozenset(
     {"battle_soon", "battle_running", "factory_running", "tired", "levelup_required"}
 )
+# Отказы окна битвы: повтор — сразу после её первой минуты, а не через `RETRY_AFTER`.
+BATTLE_REFUSALS = frozenset({"battle_soon", "battle_running"})
+BATTLE_RETRY = timedelta(seconds=10)
 # Отказ из-за уровня или профессии за минуты не изменится: пауза сценария до следующих суток. Пауза
 # в памяти, перезапуск её сбрасывает — одна лишняя попытка допустима.
 LONG_REFUSALS = frozenset({"min_level", "not_harvester", "startup_level"})
@@ -799,8 +808,11 @@ class PlannerLoop:
             self._cooldowns[key] = day_start(tasks_day(started) + timedelta(days=1))
         else:
             shared = is_deed and result.reason in SHARED_REFUSALS
+            until = finished + RETRY_AFTER
+            if result.status == "refused" and result.reason in BATTLE_REFUSALS:
+                until = battle_hold(finished) or until
             for target in DEEDS if shared else (key,):
-                self._cooldowns[target] = finished + RETRY_AFTER
+                self._cooldowns[target] = until
         if tries >= FACTORY_REPORT_TRIES:
             # Третий /fb за день без сегодняшнего отчёта — до завтра, каким бы ни был исход.
             self._cooldowns[key] = day_start(tasks_day(started) + timedelta(days=1))
@@ -822,6 +834,16 @@ class PlannerLoop:
             await self._notifier.notify(
                 "warn", "scenario_failed", f"{key}: {result.status} {result.reason}"
             )
+
+
+def battle_hold(at: datetime) -> datetime | None:
+    """До какого момента держать сценарий после отказа окна битвы в `at`: битвы — в начале часа,
+    «Скоро Битва» — за минуты до неё, «Битва уже началась» — в первую минуту. None — отказ не
+    вяжется с часом битвы по нашим часам."""
+    battle = battle_hour(at)
+    if battle - at > BATTLE_BEFORE + BATTLE_SKEW or at >= battle + BATTLE_AFTER:
+        return None
+    return max(at + BATTLE_RETRY, battle + BATTLE_AFTER)
 
 
 def _blind_team_pick(act: Act) -> str:
