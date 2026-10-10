@@ -433,6 +433,8 @@ class _Planner(DailyTasks):
         if (ready := self.timer(ready_at)) is not None:
             self.wake(ready, ready_kind)
             return None
+        if self.battle_reject(name):
+            return None
         if busy is not None:
             self.reject(name, {}, "busy")
             return None
@@ -463,6 +465,8 @@ class _Planner(DailyTasks):
                 return self.refresh(name, field)
             if self.value(f"containers_{size}") <= 0:
                 continue
+            if self.battle_reject(name):
+                return None
             # Контейнеры во время дела игра не открывает («занят»), в отличие от коробки.
             if busy is not None:
                 self.reject(name, {}, "busy")
@@ -481,6 +485,8 @@ class _Planner(DailyTasks):
         if (ready := self.timer("prizebox_ready_at")) is not None:
             self.wake(ready, "prizebox_ready")
             return None
+        if self.battle_reject("prizebox"):
+            return None
         return self.act("prizebox", {}, "prizebox_ready")
 
     def tangerine_gifts(self, busy: BusyState | None) -> Decision | None:
@@ -492,6 +498,8 @@ class _Planner(DailyTasks):
             return self.refresh("tangerine_gifts", field)
         buy = self.value("tangerines") >= TANGERINE_GIFT_PRICE
         if not buy and self.value("tangerine_gifts") <= 0:
+            return None
+        if self.battle_reject("tangerine_gifts"):
             return None
         if busy is not None and not buy:
             self.reject("tangerine_gifts", {}, "busy")
@@ -536,6 +544,8 @@ class _Planner(DailyTasks):
                 return None
             reason = "gorbushka_comeback"
         else:
+            return None
+        if self.battle_reject(name):
             return None
         if busy is not None:
             self.reject(name, {"buy": buy}, "busy")

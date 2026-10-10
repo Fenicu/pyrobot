@@ -288,6 +288,10 @@ class PlannerBase:
         """Нужное поле неизвестно или устарело: обновить источник, если позволяет лимит."""
         source = SOURCE[field]
         self.reject(scenario, {}, f"stale:{field}")
+        if self.battle_running():
+            # В первую минуту битвы игра отвечает на любой экран «Битва уже началась».
+            self.reject("refresh", {"source": source}, "battle_window")
+            return None
         last = self.last_refresh.get(source)
         if last is not None and self.now - last < self.refresh_every:
             self.wake(last + self.refresh_every, "refresh", source)
@@ -348,6 +352,31 @@ class PlannerBase:
         """Время битвы по наблюдению, приведённое к началу часа; свежесть не проверяется."""
         obs = self.s.battle_at
         return None if obs is None else battle_hour(obs.value, obs.at)
+
+    def battle_blocks(self, end: datetime) -> bool:
+        """Занятие до `end` задевает окно битвы (`BATTLE_BEFORE` до неё — `BATTLE_AFTER` после):
+        цикл проснётся к концу окна."""
+        battle = self.battle_time()
+        if battle is None or self.now >= battle + BATTLE_AFTER or end <= battle - BATTLE_BEFORE:
+            return False
+        self.wake(battle + BATTLE_AFTER, "battle")
+        return True
+
+    def battle_reject(self, scenario: str) -> bool:
+        """Действие сейчас попало бы в окно битвы: игра откажет «Скоро Битва» — отказ
+        `battle_window`."""
+        if not self.battle_blocks(self.now):
+            return False
+        self.reject(scenario, {}, "battle_window")
+        return True
+
+    def battle_running(self) -> bool:
+        """Битва идёт: от её начала до `BATTLE_AFTER`; к концу цикл проснётся."""
+        battle = self.battle_time()
+        if battle is None or not battle <= self.now < battle + BATTLE_AFTER:
+            return False
+        self.wake(battle + BATTLE_AFTER, "battle")
+        return True
 
     def upcoming_battle(self) -> datetime | None:
         if self.stale_of("battle_at") is not None:

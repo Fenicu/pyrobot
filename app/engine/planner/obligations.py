@@ -205,14 +205,8 @@ class Obligations(PlannerBase):
 
     def window_verdict(self, end: datetime) -> str | None:
         """Занятие до `end` не помещается в окно: битва, дедлайн сна, запись на фабрику."""
-        battle = self.battle_time()
         deadline: datetime | None = self.value("sleep_deadline")
-        if (
-            battle is not None
-            and self.now < battle + BATTLE_AFTER
-            and end > battle - BATTLE_BEFORE
-        ):
-            self.wake(battle + BATTLE_AFTER, "battle")
+        if self.battle_blocks(end):
             return "battle_window"
         if deadline is not None and end > deadline:
             return "sleep_deadline"
@@ -367,6 +361,8 @@ class Obligations(PlannerBase):
             self.reject("tangerine", {}, "not_player")
             self.wake(refused.at + NOT_PLAYER_PAUSE, "tangerine_not_player")
             return None
+        if self.battle_reject("tangerine"):
+            return None
         params = {"chat": self.cfg.chats.tangerine_chat_id, "reply_to": reply_to}
         return self.act("tangerine", params, "tangerine_ready")
 
@@ -389,6 +385,8 @@ class Obligations(PlannerBase):
             need = recipe_need(recipe.value.recipe)
             if any(stock.value.get(name, 0) < n for name, n in need.items()):
                 return None
+        if self.battle_reject("smoothie"):
+            return None
         if busy is not None:
             self.reject("smoothie", {}, "busy")
             return None
@@ -414,6 +412,8 @@ class Obligations(PlannerBase):
             self.wake(opens, "lottery_open")
             return None
         if self.now > last:
+            return None
+        if self.battle_reject("lottery_buy"):
             return None
         params = self.lottery_params()
         seen = self.s.lottery

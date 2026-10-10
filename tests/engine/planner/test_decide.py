@@ -563,6 +563,58 @@ def test_battle_window(battle_in: float, chosen: str | None) -> None:
         assert act(decision) == (chosen, {})
 
 
+# Предметы и коробки игра в окне битвы не даёт открыть («Скоро Битва, некогда отвлекаться»).
+ITEMS_AT_BATTLE = [
+    ("book", BASE, {"books": 3}),
+    ("card", BASE, {"cards": 2}),
+    ("container_small", BASE, {"containers_small": 1}),
+    ("prizebox", BASE, {"prizebox": True}),
+    (
+        "tangerine_gifts",
+        config({"features": {"tangerine_gifts": True}}),
+        {"tangerines": 42, "tangerine_gifts": 0},
+    ),
+    ("gorbushka", BASE, {"gorbushka": GorbushkaState(state="done", comeback_at=m(-60))}),
+]
+
+
+@pytest.mark.parametrize(("name", "settings", "over"), ITEMS_AT_BATTLE)
+def test_items_wait_for_battle_end(name: str, settings: Settings, over: dict[str, Any]) -> None:
+    battle = m(60)
+    now = battle - timedelta(minutes=1)
+    decision = decide(awake(now, battle_at=battle, **over), settings, now)
+    assert decision == Wait(w(61), "battle", decision.candidates)
+    assert verdicts(decision)[name] == "battle_window"
+    early = battle - timedelta(minutes=7)
+    assert act(decide(awake(early, battle_at=battle, **over), settings, early))[0] == name
+
+
+def test_lottery_waits_for_battle_end() -> None:
+    settings = config({"features": {"lottery": True}})
+    # 21:00 МСК: продажа ещё открыта.
+    battle = datetime(2026, 9, 26, 18, 0, tzinfo=UTC)
+    now = battle - timedelta(minutes=1)
+    decision = decide(awake(now, battle_at=battle), settings, now)
+    assert isinstance(decision, Wait) and decision.reason == "battle"
+    assert decision.until == battle + timedelta(minutes=1) + TIMER_MARGIN
+    assert verdicts(decision)["lottery_buy"] == "battle_window"
+    early = battle - timedelta(minutes=7)
+    assert act(decide(awake(early, battle_at=battle), settings, early))[0] == "lottery_buy"
+
+
+def test_no_refresh_while_battle_runs() -> None:
+    battle = m(60)
+    seen = awake(battle - timedelta(minutes=20), battle_at=battle)
+    during = decide(seen, BASE, battle)
+    assert during == Wait(w(61), "battle", during.candidates)
+    assert verdicts(during)["state"] == "stale:busy"
+    after = battle + timedelta(minutes=1)
+    assert act(decide(seen, BASE, after)) == ("refresh", {"source": "profile"})
+    before = battle - timedelta(minutes=3)
+    stale = awake(before - timedelta(minutes=20), battle_at=battle)
+    assert act(decide(stale, BASE, before)) == ("refresh", {"source": "profile"})
+
+
 def test_no_motivation_waits_for_regen() -> None:
     decision = decide(awake(motivation=0), BASE, NOW)
     assert decision == Wait(w(30), "motivation", decision.candidates)
