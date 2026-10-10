@@ -12492,7 +12492,7 @@
                 }
               }
             },
-            "description": "scenario_not_manual"
+            "description": "scenario_not_manual | manual_queue_full"
           },
           "422": {
             "description": "invalid body, params contradicting fixed scenario params, missing or invalid required params, or idempotency_key reused with other parameters"

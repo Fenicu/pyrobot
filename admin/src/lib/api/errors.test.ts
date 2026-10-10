@@ -123,7 +123,8 @@ describe('normalizeError', () => {
 			[429, 'too_many_streams', 'Слишком много активных подключений'],
 			[422, 'invalid_tg_app', 'Неверные api_id или api_hash приложения Telegram'],
 			[503, 'secret_key_unavailable', 'Ключ шифрования сервера недоступен — попробуйте позже'],
-			[409, 'scenario_not_manual', 'Этот сценарий запускает только бот']
+			[409, 'scenario_not_manual', 'Этот сценарий запускает только бот'],
+			[409, 'manual_queue_full', 'Очередь ручных запусков полна — дождитесь, пока пройдут поставленные']
 		];
 		for (const [status, code, text] of cases) {
 			const err = normalizeError(status, { detail: code });

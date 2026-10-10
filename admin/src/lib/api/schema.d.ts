@@ -6933,7 +6933,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description scenario_not_manual */
+            /** @description scenario_not_manual | manual_queue_full */
             409: {
                 headers: {
                     [name: string]: unknown;

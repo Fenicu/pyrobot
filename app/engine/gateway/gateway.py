@@ -65,6 +65,9 @@ MAX_KEY_LEN = 100
 _NEXT_ERROR_PAUSE_S = 0.05
 _ABANDON_WRITE_S = 5.0
 RECONCILE_REASON = "reconcile_required"
+# Ручных действий в очереди шлюза (админка): сверх — отказ `queue_full`. У остальных источников
+# в очереди не больше действия на задачу (реакции, сценарий, пересылка, сверка).
+MANUAL_PENDING_MAX = 20
 # Ключ ручного действия не записан: запрос проваливается, повтор тем же ключом безопасен.
 STORE_FAILED = "store_failed"
 # Чтение источника пересылки: клиент Telegram сам повторяет запросы (до ~160 с) — шлюз столько
@@ -297,19 +300,24 @@ class ActionGateway:
             return await self._reject(pending, *blocked)
         async with self._cond:
             if self._closed:
-                closed_now = True
+                refused: Blocked | None = ActionStatus.SUPPRESSED, "shutdown"
+            elif req.source is Source.MANUAL and self._manual_full():
+                refused = ActionStatus.REJECTED, "queue_full"
             else:
                 self._queue.append(pending)
                 self._cond.notify_all()
-                closed_now = False
-        if closed_now:
-            return await self._reject(pending, ActionStatus.SUPPRESSED, "shutdown")
+                refused = None
+        if refused is not None:
+            return await self._reject(pending, *refused)
         try:
             return await asyncio.shield(pending.future)
         except asyncio.CancelledError:
             if req.idempotency_key is None:
                 await self._withdraw(pending)
             raise
+
+    def _manual_full(self) -> bool:
+        return sum(p.req.source is Source.MANUAL for p in self._queue) >= MANUAL_PENDING_MAX
 
     def pending_key(self, key: str) -> bool:
         """Действие с этим ключом идемпотентности ещё не завершено в этом процессе."""

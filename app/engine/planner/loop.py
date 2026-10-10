@@ -74,6 +74,8 @@ LONG_REFUSALS = frozenset({"min_level", "not_harvester", "startup_level"})
 # Отказ без срока, который за минуты не пройдёт: «Ты уже покинул метро» — кулдаун метро неизвестной
 # длины; повтор — не чаще раза в час.
 REFUSED_HOLD: dict[tuple[str, str], timedelta] = {("metro", "metro_left"): timedelta(hours=1)}
+# Ручных запусков в очереди цикла: сверх — отказ (`ManualQueueFull`) до записи запуска.
+MANUAL_RUNS_MAX = 10
 
 
 class FixedParams(ValueError):
@@ -82,6 +84,10 @@ class FixedParams(ValueError):
 
 class InvalidParams(ValueError):
     """Обязательного параметра ручного запуска нет или он недопустим."""
+
+
+class ManualQueueFull(Exception):
+    """В очереди уже `MANUAL_RUNS_MAX` ручных запусков."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,7 +229,8 @@ class PlannerLoop:
         """Ручной запуск сценария: в очередь перед решениями планировщика. Возвращает id
         запуска и признак, что он создан сейчас (иначе ключ уже встречался). KeyError — нет
         такого сценария, FixedParams — параметр противоречит зафиксированному в реестре,
-        InvalidParams — обязательного параметра нет или он недопустим."""
+        InvalidParams — обязательного параметра нет или он недопустим, ManualQueueFull — очередь
+        полна (повтор ключа тоже: до записи запуска ключ не сверяется)."""
         spec = SCENARIOS[scenario]
         fixed = spec.params
         clash = sorted(k for k, v in params.items() if k in fixed and fixed[k] != v)
@@ -232,6 +239,8 @@ class PlannerLoop:
         merged = {**params, **fixed}
         if bad := spec.invalid(merged):
             raise InvalidParams(bad)
+        if len(self._manual) >= MANUAL_RUNS_MAX:
+            raise ManualQueueFull
         run_id, created = await self._store.run_requested(
             scenario, merged, requested=params, key=key, by=by, at=self._clock.now()
         )

@@ -112,6 +112,17 @@ async def test_manual_scenario_run(world: World, api_client: AsyncClient) -> Non
     assert code == 422
 
 
+async def test_full_manual_queue_is_409(
+    world: World, api_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.engine.planner.loop as loop_module
+
+    monkeypatch.setattr(loop_module, "MANUAL_RUNS_MAX", 0)
+    h = {"X-CSRF-Token": await login(api_client)}
+    code, body = await _run(api_client, h, "book", "f1")
+    assert (code, body) == (409, {"detail": "manual_queue_full"})
+
+
 async def test_run_without_required_params_is_422(world: World, api_client: AsyncClient) -> None:
     h = {"X-CSRF-Token": await login(api_client)}
     code, body = await _run(api_client, h, "refresh", "q1")

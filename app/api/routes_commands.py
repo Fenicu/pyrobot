@@ -32,7 +32,7 @@ from app.engine.manual import (
     manual_key,
     send_request,
 )
-from app.engine.planner.loop import FixedParams, InvalidParams
+from app.engine.planner.loop import FixedParams, InvalidParams, ManualQueueFull
 from app.engine.scenarios.registry import SCENARIOS
 
 log = logging.getLogger(__name__)
@@ -303,7 +303,7 @@ async def scenarios(_: Annotated[SessionContext, Depends(current_session)]) -> l
         200: {"model": ScenarioRunAccepted, "description": "Key already used: existing run"},
         **CSRF,
         404: error(ACCOUNT_NOT_FOUND, "unknown scenario", "scenario run not found"),
-        409: error("scenario_not_manual"),
+        409: error("scenario_not_manual", "manual_queue_full"),
         422: {
             "description": "invalid body, params contradicting fixed scenario params, "
             "missing or invalid required params, or idempotency_key reused with other parameters"
@@ -329,6 +329,8 @@ async def scenario_run(
         )
     except ScenarioNotManual as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, "scenario_not_manual") from exc
+    except ManualQueueFull as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "manual_queue_full") from exc
     except PlannerUnavailable as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "planner not started") from exc
     except FixedParams as exc:

@@ -55,7 +55,8 @@ const REASON: Record<string, string> = {
 	confirm_stale: 'подтверждение устарело — отправьте снова',
 	dry_run: 'режим dry_run',
 	killed: 'kill включён',
-	paused: 'пауза'
+	paused: 'пауза',
+	queue_full: 'очередь ручных команд полна — дождитесь поставленных'
 };
 
 export function isStale(out: CommandOut): boolean {

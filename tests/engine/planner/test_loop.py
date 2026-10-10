@@ -18,11 +18,13 @@ from app.engine.planner.base import TIMER_MARGIN
 from app.engine.planner.decide import decide
 from app.engine.planner.loop import (
     DEEDS,
+    MANUAL_RUNS_MAX,
     MAX_RETRY,
     NOTHING_RETRY,
     RETRY_AFTER,
     FixedParams,
     InvalidParams,
+    ManualQueueFull,
     PlannerLoop,
 )
 from app.engine.planner.store import MemoryPlannerStore
@@ -242,6 +244,19 @@ async def test_manual_run_steps_carry_their_run(world: World) -> None:
     assert [
         (r.req.text, r.req.source, r.req.scenario_run_id) for r in world.store.rows.values()
     ] == [("/inv", Source.MANUAL, run_id)]
+
+
+async def test_manual_queue_bounded(world: World) -> None:
+    rig = Rig(world, auto=False)
+    for i in range(MANUAL_RUNS_MAX):
+        await rig.loop.request("refresh", {"source": "inventory"}, key=f"k{i}", by="admin")
+    runs = len(rig.store.runs)
+    with pytest.raises(ManualQueueFull):
+        await rig.loop.request("refresh", {"source": "inventory"}, key="over", by="admin")
+    # Отказ — до записи запуска: строки «queued», которая никогда не пойдёт, нет.
+    assert len(rig.store.runs) == runs and rig.loop.loop_view().manual_queue == MANUAL_RUNS_MAX
+    await rig.loop.run_manual()
+    await rig.loop.request("refresh", {"source": "inventory"}, key="over", by="admin")
 
 
 async def test_repeated_wait_recorded_once(world: World) -> None:

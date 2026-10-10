@@ -12,7 +12,7 @@ from app.engine.settings import ArtifactRunSection, GadgetUpgradeSection, Settin
 from app.engine.transport.fake import Sent
 from app.engine.types import Button, IncomingMessage
 from tests.engine.gateway_rig import LIVE, Rig, expect_text, running_rig, send
-from tests.engine.helpers import GAME, make_msg
+from tests.engine.helpers import GAME, make_msg, until
 
 
 @pytest.fixture
@@ -388,6 +388,35 @@ async def test_evicted_message_recalled_from_journal_before_reread(rig: Rig) -> 
     missing = await rig.gw.submit(click(6))
     assert (missing.status, missing.reason) == (ActionStatus.REJECTED, "stale_button")
     assert recalls == [(GAME, 5), (GAME, 6)] and reads == [(GAME, 6)]
+
+
+async def test_manual_queue_bounded() -> None:
+    from app.engine.gateway.gateway import MANUAL_PENDING_MAX
+
+    # Шлюз не запущен: поданное стоит в очереди.
+    rig = Rig()
+    manual = [
+        asyncio.create_task(
+            rig.gw.submit(send("/job", source=Source.MANUAL, expect=expect_text("x")))
+        )
+        for i in range(MANUAL_PENDING_MAX)
+    ]
+    urgent = asyncio.create_task(
+        rig.gw.submit(send("/job", source=Source.URGENT, expect=expect_text("x")))
+    )
+    await until(lambda: rig.gw.queue_size == MANUAL_PENDING_MAX + 1)
+    over = await rig.gw.submit(send("/job", source=Source.MANUAL, expect=expect_text("x")))
+    assert (over.status, over.reason) == (ActionStatus.REJECTED, "queue_full")
+    # Срочное и шаги сценариев пределом ручных не ограничены.
+    scenario = asyncio.create_task(
+        rig.gw.submit(send("/job", source=Source.SCENARIO, expect=expect_text("x")))
+    )
+    await until(lambda: rig.gw.queue_size == MANUAL_PENDING_MAX + 2)
+    tasks = [*manual, urgent, scenario]
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    assert rig.gw.queue_size == 0
 
 
 async def _features(rig: Rig, **flags: bool) -> None:

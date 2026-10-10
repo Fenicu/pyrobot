@@ -101,6 +101,7 @@ const CODE_TEXT: Record<string, string> = {
 	'idempotency_key reused': 'Этот ключ уже использован с другими параметрами',
 	'unknown scenario': 'Нет такого сценария',
 	scenario_not_manual: 'Этот сценарий запускает только бот',
+	manual_queue_full: 'Очередь ручных запусков полна — дождитесь, пока пройдут поставленные',
 	'account not found': 'Аккаунт не найден',
 	account_deleting: 'Аккаунт удаляется',
 	name_taken: 'Аккаунт с таким именем уже есть',
