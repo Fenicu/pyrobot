@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from app.engine.gametime import tasks_day
@@ -134,15 +134,62 @@ def _order(kind: str, order: tuple[str, ...]) -> tuple[int, str]:
     return (order.index(kind) if kind in order else len(order), kind)
 
 
-def _sums(entries: list[LedgerEntry], order: tuple[str, ...]) -> tuple[KindSum, ...]:
-    grouped: dict[str, KindSum] = {}
-    for e in entries:
-        known = grouped.get(e.kind) or KindSum(e.kind, 0, {})
-        sums = dict(known.amounts)
-        for key, value in e.amounts.items():
-            sums[key] = sums.get(key, 0) + value
-        grouped[e.kind] = KindSum(e.kind, known.count + 1, sums)
-    return tuple(grouped[k] for k in sorted(grouped, key=lambda k: _order(k, order)))
+def _add(into: dict[str, int], values: Mapping[str, int]) -> None:
+    # Ключи — в порядке первого появления: от него зависит порядок в теле ответа.
+    for key, value in values.items():
+        into[key] = into.get(key, 0) + value
+
+
+@dataclass(slots=True)
+class _KindLedger:
+    count: int = 0
+    amounts: dict[str, int] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class _DayLedger:
+    trophies: int = 0
+    items: dict[str, int] = field(default_factory=dict)
+    income: dict[str, _KindLedger] = field(default_factory=dict)
+    losses: dict[str, _KindLedger] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class LedgerDays:
+    """Журнал прихода, свёрнутый по суткам по мере чтения: 🏆, предметы крафта, разовое и потери
+    по видам — без списка всех записей окна."""
+
+    days: dict[date, _DayLedger] = field(default_factory=dict)
+
+    @classmethod
+    def of(cls, entries: Iterable[LedgerEntry]) -> LedgerDays:
+        out = cls()
+        for entry in entries:
+            out.add(entry)
+        return out
+
+    def add(self, e: LedgerEntry) -> None:
+        day = self.days.get(e.day)
+        if day is None:
+            day = self.days[e.day] = _DayLedger()
+        day.trophies += e.amounts.get("trophies", 0)
+        if e.kind not in NOT_CRAFT:
+            _add(day.items, e.items)
+        if e.kind == DEED:
+            return
+        group = day.losses if e.kind in LOSS_ORDER else day.income
+        kind = group.get(e.kind)
+        if kind is None:
+            kind = group[e.kind] = _KindLedger()
+        kind.count += 1
+        _add(kind.amounts, e.amounts)
+
+
+def _sums(grouped: Mapping[str, _KindLedger], order: tuple[str, ...]) -> tuple[KindSum, ...]:
+    return tuple(
+        KindSum(k, grouped[k].count, grouped[k].amounts)
+        for k in sorted(grouped, key=lambda k: _order(k, order))
+    )
 
 
 def summarize(
@@ -151,27 +198,18 @@ def summarize(
     days: int,
     last: Mapping[str, Mapping[date, float]],
     level_before: float | None,
-    ledger: Iterable[LedgerEntry],
+    ledger: LedgerDays | Iterable[LedgerEntry],
     ledger_since: date | None,
 ) -> list[DaySummary]:
     """Итоги `days` суток МСК, сегодня первым. `last` — последнее значение ключа в каждые сутки
     (с суток до первого показываемого дня), `level_before` — уровень до этих суток, `ledger` —
-    записи журнала прихода, `ledger_since` — первый день журнала (None — журнал пуст)."""
-    by_day: dict[date, list[LedgerEntry]] = {}
-    for entry in ledger:
-        by_day.setdefault(entry.day, []).append(entry)
+    журнал прихода (свёрнутый по суткам или записями по порядку), `ledger_since` — первый день
+    журнала (None — журнал пуст)."""
+    folded = ledger if isinstance(ledger, LedgerDays) else LedgerDays.of(ledger)
     out: list[DaySummary] = []
     for back in range(days):
         day = today - timedelta(days=back)
-        entries = by_day.get(day, [])
-        items: dict[str, int] = {}
-        trophies = 0
-        for e in entries:
-            trophies += e.amounts.get("trophies", 0)
-            if e.kind in NOT_CRAFT:
-                continue
-            for name, n in e.items.items():
-                items[name] = items.get(name, 0) + n
+        got = folded.days.get(day) or _DayLedger()
         partial = day == today or ledger_since is None or day <= ledger_since
         out.append(
             DaySummary(
@@ -179,13 +217,10 @@ def summarize(
                 partial=partial,
                 balance={k: _balance(last.get(k, {}), day) for k in BALANCE_KEYS},
                 level=_level(last.get(LEVEL_KEY, {}), level_before, day),
-                trophies=trophies,
-                items=items,
-                income=_sums(
-                    [e for e in entries if e.kind != DEED and e.kind not in LOSS_ORDER],
-                    INCOME_ORDER,
-                ),
-                losses=_sums([e for e in entries if e.kind in LOSS_ORDER], LOSS_ORDER),
+                trophies=got.trophies,
+                items=got.items,
+                income=_sums(got.income, INCOME_ORDER),
+                losses=_sums(got.losses, LOSS_ORDER),
             )
         )
     return out

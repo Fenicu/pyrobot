@@ -5,7 +5,7 @@ import pytest
 from app.db.base import Database
 from app.db.models import LedgerRow, MetricRow
 from app.db.reads import DbReads, UpgradeProgress
-from app.engine.daily import LedgerEntry, last_by_day
+from app.engine.daily import LedgerDays, LedgerEntry, last_by_day
 from app.engine.gametime import MSK
 
 pytestmark = pytest.mark.db
@@ -38,9 +38,9 @@ async def test_last_value_per_msk_day_matches_pure_version(clean_db: Database) -
     assert got["money"] == {date(2026, 9, 26): 1.0, date(2026, 9, 27): 4.0, date(2026, 9, 28): 5.0}
 
 
-async def test_ledger_entries_from_day_and_first_day(clean_db: Database) -> None:
+async def test_ledger_days_from_day_and_first_day(clean_db: Database) -> None:
     reads = DbReads(clean_db, 1)
-    assert await reads.ledger_entries(date(2026, 9, 27)) == ([], None)
+    assert await reads.ledger_days(date(2026, 9, 27)) == (LedgerDays(), None)
     rows = [
         (date(2026, 9, 20), "book", {"exp": 1}, {}),
         (date(2026, 9, 27), "deed", {"exp": 2}, {"Нитки": 1}),
@@ -64,12 +64,14 @@ async def test_ledger_entries_from_day_and_first_day(clean_db: Database) -> None
             )
             for i, (d, kind, amounts, items) in enumerate(rows)
         )
-    entries, since = await reads.ledger_entries(date(2026, 9, 27))
+    folded, since = await reads.ledger_days(date(2026, 9, 27))
     assert since == date(2026, 9, 20)
-    assert entries == [
-        LedgerEntry(date(2026, 9, 27), "deed", {"exp": 2}, {"Нитки": 1}),
-        LedgerEntry(date(2026, 9, 28), "task", {"trophies": 90}, {}),
-    ]
+    assert folded == LedgerDays.of(
+        [
+            LedgerEntry(date(2026, 9, 27), "deed", {"exp": 2}, {"Нитки": 1}),
+            LedgerEntry(date(2026, 9, 28), "task", {"trophies": 90}, {}),
+        ]
+    )
 
 
 async def test_ledger_since_is_first_recording_not_effect_day(clean_db: Database) -> None:
@@ -86,8 +88,8 @@ async def test_ledger_since_is_first_recording_not_effect_day(clean_db: Database
     await journal.append(report, [], None, 1, effects=[Effect("factory", {"exp": 1}, at=battle)])
     book = make_msg("book", msg_id=2, date=msk(12, 9), received_at=msk(12, 9))
     await journal.append(book, [], None, 1, effects=[Effect("book", {"exp": 5})])
-    entries, since = await DbReads(clean_db, 1).ledger_entries(date(2026, 9, 1))
-    assert [e.day for e in entries] == [date(2026, 9, 9), date(2026, 9, 12)]
+    folded, since = await DbReads(clean_db, 1).ledger_days(date(2026, 9, 1))
+    assert list(folded.days) == [date(2026, 9, 9), date(2026, 9, 12)]
     assert since == date(2026, 9, 12)
 
 

@@ -24,7 +24,7 @@ from app.db.models import (
     StateSnapshot,
     UnrecognizedRow,
 )
-from app.engine.daily import LedgerEntry
+from app.engine.daily import LedgerDays, LedgerEntry
 from app.engine.gametime import day_start, tasks_day
 from app.engine.settings import EngineSection, Settings, settings_diff, stored_values
 
@@ -108,6 +108,8 @@ class UpgradeProgress:
 
 
 _UPGRADE_KINDS = ("white", "blue", "red")
+# Записей журнала прихода за одну выборку курсора итогов дня.
+_LEDGER_BATCH = 500
 # Поля сводки забега метро в списке (`MetroRunSummary` без `visited`).
 _METRO_SUMMARY = (
     "id",
@@ -329,8 +331,9 @@ class DbReads:
                 out.setdefault(key, {})[when] = value
         return out
 
-    async def ledger_entries(self, first: date) -> tuple[list[LedgerEntry], date | None]:
-        """Записи журнала прихода с суток `first` и первый день журнала — сутки МСК самой ранней
+    async def ledger_days(self, first: date) -> tuple[LedgerDays, date | None]:
+        """Журнал прихода с суток `first`, свёрнутый по суткам по мере чтения (курсором, пачками —
+        записи окна целиком в памяти не лежат), и первый день журнала — сутки МСК самой ранней
         записи (`recorded_at`), а не самого раннего эффекта: отчёт о прошлой битве датирован ею, но
         дни до записи журнал не видел (None — журнал пуст)."""
         own = LedgerRow.account_id == self._account_id
@@ -339,11 +342,14 @@ class DbReads:
             .where(own, LedgerRow.day >= first)
             .order_by(LedgerRow.day, LedgerRow.id)
         )
+        folded = LedgerDays()
         async with self._db.sessions() as session:
-            rows = (await session.execute(query)).all()
+            rows = await session.stream(query, execution_options={"yield_per": _LEDGER_BATCH})
+            async for d, kind, amounts, items in rows:
+                folded.add(LedgerEntry(d, kind, amounts, items))
             started = await session.scalar(select(func.min(LedgerRow.recorded_at)).where(own))
         since = tasks_day(started) if started is not None else None
-        return [LedgerEntry(d, kind, amounts, items) for d, kind, amounts, items in rows], since
+        return folded, since
 
     async def upgrade_progress(
         self, slot: str, since: datetime, until: datetime | None = None

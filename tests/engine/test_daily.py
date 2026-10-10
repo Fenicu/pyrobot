@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from app.engine.daily import (
     Balance,
     KindSum,
+    LedgerDays,
     LedgerEntry,
     Level,
     last_by_day,
@@ -153,6 +154,33 @@ def test_gadget_rows_are_losses_without_craft_items() -> None:
         KindSum("gadget_buy", 1, {"money": -3}),
         KindSum("gadget_upgrade", 2, {"upgrades_white": -2}),
     )
+
+
+def test_ledger_folded_as_read_matches_list() -> None:
+    """Журнал, свёрнутый по суткам по мере чтения, даёт те же итоги, что и список записей,
+    вплоть до порядка ключей (первое появление): от него зависит тело ответа."""
+    ledger = [
+        LedgerEntry(TODAY, "deed", {"exp": 158}, {"Пуговица": 1, "Нитки": 1}),
+        LedgerEntry(TODAY, "book", {"exp": 457}, {}),
+        LedgerEntry(TODAY, "deed_start", {"money": -30}, {}),
+        LedgerEntry(TODAY, "book", {"knowledge": 3, "exp": 263}, {"Флюс": 1}),
+        LedgerEntry(TODAY, "gadget_upgrade", {"upgrades_white": -1}, {"up:right": 1}),
+        LedgerEntry(TODAY, "deed_start", {"raw": -1, "money": -30}, {}),
+        LedgerEntry(TODAY, "task", {"trophies": 90}, {}),
+        LedgerEntry(date(2026, 9, 27), "book", {"exp": 1}, {"Нитки": 2}),
+    ]
+    folded = LedgerDays()
+    for entry in ledger:
+        folded.add(entry)
+    assert folded == LedgerDays.of(ledger)
+    want = summarize(**one(days=2, ledger=ledger))  # type: ignore[arg-type]
+    got = summarize(**one(days=2, ledger=folded))  # type: ignore[arg-type]
+    assert got == want
+    [day, _] = got
+    assert list(day.items) == ["Пуговица", "Нитки", "Флюс"]
+    assert [list(s.amounts) for s in day.income] == [["exp", "knowledge"], ["trophies"]]
+    assert [list(s.amounts) for s in day.losses] == [["money", "raw"], ["upgrades_white"]]
+    assert (day.trophies, got[1].items) == (90, {"Нитки": 2})
 
 
 def test_days_today_first_and_partial() -> None:

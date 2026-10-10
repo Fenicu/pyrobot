@@ -93,7 +93,7 @@ async def daily(
     before = first - timedelta(days=1)
     last = await scope.reads.day_values([*BALANCE_KEYS, LEVEL_KEY], before, now)
     level = (await scope.reads.metrics_before([LEVEL_KEY], day_start(before))).get(LEVEL_KEY)
-    ledger, since = await scope.reads.ledger_entries(first)
+    ledger, since = await scope.reads.ledger_days(first)
     summary = summarize(
         today=today,
         days=days,
