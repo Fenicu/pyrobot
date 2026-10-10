@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
+	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Power from '@lucide/svelte/icons/power';
@@ -8,6 +9,7 @@
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Unplug from '@lucide/svelte/icons/unplug';
 	import { onMount } from 'svelte';
+	import { Reorder } from '$lib/accounts/reorder.svelte';
 	import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, tgOffline, type Activity } from '$lib/accounts/status';
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
@@ -46,8 +48,13 @@
 	let removeError = $state('');
 	// «учёба до …» кончается между опросами списка — по часам страницы.
 	let now = $state(new Date());
+	let listEl = $state<HTMLUListElement>();
 
 	const list = $derived(store.list);
+	const reorder = new Reorder(
+		() => (store.list ?? []).map((a) => a.id),
+		(ids) => store.reorder(ids)
+	);
 	const hasDeleting = $derived(list?.some((a) => a.status === 'deleting') ?? false);
 	// Имя сверяется как есть: сервер сравнивает так же, и удаление необратимо.
 	const nameMatches = $derived(removing !== null && confirmName === removing.name);
@@ -213,11 +220,20 @@
 	{:else if list.length === 0}
 		<p class="text-sm text-fg-muted">Аккаунтов нет — создайте первый.</p>
 	{:else}
-		<ul class="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3" aria-label="Аккаунты">
-			{#each list as a (a.id)}
+		<ul bind:this={listEl} class="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3" aria-label="Аккаунты">
+			{#each list as a, i (a.id)}
 				{@const act = activity(a)}
 				{@const open = menuFor === a.id}
-				<li class="relative" data-menu={a.id}>
+				{@const lifted = reorder.drag?.from === i}
+				<li
+					class={[
+						'relative',
+						reorder.drag && !lifted && 'transition-transform duration-150 motion-reduce:transition-none',
+						lifted && 'z-10 rounded-card shadow-lg'
+					]}
+					data-menu={a.id}
+					style:transform={reorder.shift(i)}
+				>
 					<div
 						class="flex items-start gap-1 rounded-card border bg-surface text-sm {act.tone === 'bad'
 							? 'border-bad/60'
@@ -234,6 +250,22 @@
 							>
 								{@render summary(a, act)}
 							</a>
+							<button
+								type="button"
+								class="btn btn-ghost mt-2 size-8 min-h-0 shrink-0 touch-none p-0 text-fg-faint hover:text-fg-muted md:min-h-0 {lifted
+									? 'cursor-grabbing'
+									: 'cursor-grab'}"
+								aria-label="Перетащить {accountTitle(a)}"
+								title="Перетащить; стрелки вверх и вниз — по одному"
+								data-reorder-handle={a.id}
+								onpointerdown={(e) => listEl && reorder.down(e, i, [...listEl.children] as HTMLElement[])}
+								onpointermove={(e) => reorder.move(e)}
+								onpointerup={() => reorder.up()}
+								onpointercancel={() => reorder.cancel()}
+								onkeydown={(e) => void reorder.key(e, i, listEl)}
+							>
+								<GripVertical class="size-4" aria-hidden="true" />
+							</button>
 							<button
 								type="button"
 								class="btn btn-ghost mt-2 mr-1.5 size-8 min-h-0 shrink-0 p-0 text-fg-muted md:min-h-0"

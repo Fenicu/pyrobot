@@ -128,7 +128,9 @@ describe('телефон: нижние вкладки', () => {
 		accounts.list = [account(1), account(2)];
 		open('/a/1', { account: '1' });
 		expect(screen.queryByRole('button', { name: /Ещё/ })).toBeNull();
-		expect(screen.queryByRole('button', { name: /acc1/ })).toBeNull();
+		// Ручки перестановки в колонке аккаунтов — не плашка.
+		const plaque = screen.queryAllByRole('button', { name: /acc1/ }).filter((b) => !b.hasAttribute('data-reorder-handle'));
+		expect(plaque).toEqual([]);
 	});
 });
 

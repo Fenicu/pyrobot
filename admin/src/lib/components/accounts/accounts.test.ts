@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/svelt
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
+import { AccountOrderStore } from '$lib/accounts/order.svelte';
 import { createApi } from '$lib/api/client';
 import type { AccountOut, EngineStatus } from '$lib/api/types';
 import { AccountsStore } from '$lib/stores/accounts.svelte';
@@ -443,5 +444,43 @@ describe('плашка «движок не запущен»', () => {
 		banner(down({ status: 'deleting' }));
 		expect(screen.getByRole('status')).toHaveTextContent('Движок не запущен: аккаунт удаляется');
 		expect(screen.queryByRole('button', { name: 'Включить' })).toBeNull();
+	});
+});
+
+describe('экран аккаунтов: порядок', () => {
+	async function setupOrdered(saved: number[] | null) {
+		const fetch = mockFetch((c) => {
+			if (c.url === '/api/v1/accounts') return json(LIST);
+			if (c.url === '/api/v1/me/ui/account-order' && c.method === 'GET')
+				return json({ order: saved && { version: 1, ids: saved } });
+			if (c.url === '/api/v1/me/ui/account-order' && c.method === 'PUT') return json(null, 204);
+			return json({ detail: 'x' }, 500);
+		});
+		const api = createApi(hooks, fetch);
+		const order = new AccountOrderStore(api);
+		const store = new AccountsStore(api, undefined, order);
+		await Promise.all([store.load(), order.load()]);
+		render(AccountsView, { api, store });
+		return { fetch, user: userEvent.setup() };
+	}
+	const order = () => screen.getAllByRole('listitem').map((li) => li.querySelector('[id$="-name-' + li.dataset.menu + '"]')?.textContent);
+
+	it('карточки — в сохранённом порядке; у удаляемого ручки нет', async () => {
+		await setupOrdered([3, 1]);
+		expect(order()).toEqual(['broken', 'main', 'twink', 'old']);
+		expect(within(card('old')).queryByRole('button')).toBeNull();
+	});
+
+	it('стрелка на ручке переставляет карточку и сохраняет порядок', async () => {
+		const { fetch, user } = await setupOrdered(null);
+		within(card('twink')).getByRole('button', { name: 'Перетащить twink' }).focus();
+		await user.keyboard('{ArrowUp}');
+		expect(order()).toEqual(['twink', 'main', 'broken', 'old']);
+		await waitFor(() =>
+			expect(fetch.calls.filter((c) => c.method === 'PUT').map((c) => JSON.parse(c.body))).toEqual([
+				{ version: 1, ids: [2, 1, 3, 4] }
+			])
+		);
+		expect(within(card('twink')).getByRole('button', { name: 'Перетащить twink' })).toHaveFocus();
 	});
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ChevronsLeft from '@lucide/svelte/icons/chevrons-left';
 	import ChevronsRight from '@lucide/svelte/icons/chevrons-right';
+	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Unplug from '@lucide/svelte/icons/unplug';
 	import { onMount } from 'svelte';
@@ -12,6 +13,7 @@
 		tgOffline,
 		type Activity
 	} from '$lib/accounts/status';
+	import { Reorder } from '$lib/accounts/reorder.svelte';
 	import type { Api } from '$lib/api/client';
 	import type { AccountOut } from '$lib/api/types';
 	import { switchHref } from '$lib/nav';
@@ -23,8 +25,8 @@
 
 	interface Props {
 		api: Api;
-		/** Аккаунты учётки (list null — ещё не загружены). */
-		store: { list: AccountOut[] | null; load(): Promise<void> };
+		/** Аккаунты учётки (list null — ещё не загружены); reorder — сохранить новый порядок. */
+		store: { list: AccountOut[] | null; load(): Promise<void>; reorder(ids: number[]): Promise<boolean> };
 		/** Аккаунт меню. */
 		current: number | null;
 		/** Путь экрана: другой аккаунт открывается на том же разделе. */
@@ -36,6 +38,11 @@
 
 	let collapsed = $state(readCollapsed());
 	let creating = $state(false);
+	let listEl = $state<HTMLUListElement>();
+	const reorder = new Reorder(
+		() => (store.list ?? []).map((a) => a.id),
+		(ids) => store.reorder(ids)
+	);
 	// «учёба» кончается между опросами списка — по часам страницы.
 	let now = $state(new Date());
 
@@ -127,12 +134,20 @@
 			{/if}
 		</button>
 	</div>
-	<ul class="flex flex-col gap-0.5 {collapsed ? 'items-center' : ''}" aria-label="Список аккаунтов">
-		{#each store.list ?? [] as a (a.id)}
+	<ul bind:this={listEl} class="flex flex-col gap-0.5 {collapsed ? 'items-center' : ''}" aria-label="Список аккаунтов">
+		{#each store.list ?? [] as a, i (a.id)}
 			{@const active = a.id === current}
-			{@const cls = `rounded-[8px] text-[13px] ${collapsed ? 'flex size-9 items-center justify-center gap-1' : 'block px-1.5 py-1.5'}`}
+			{@const cls = `rounded-[8px] text-[13px] ${collapsed ? 'flex size-9 items-center justify-center gap-1' : 'block min-w-0 flex-1 px-1.5 py-1.5'}`}
 			{@const full = `${accountTitle(a)} · ${activityLine(a, accountActivity(a, now))}`}
-			<li>
+			{@const lifted = reorder.drag?.from === i}
+			<li
+				class={[
+					!collapsed && 'flex items-center rounded-[8px]',
+					reorder.drag && !lifted && 'transition-transform duration-150 motion-reduce:transition-none',
+					lifted && 'relative z-10 bg-surface shadow-lg'
+				]}
+				style:transform={reorder.shift(i)}
+			>
 				{#if a.status === 'deleting'}
 					<div class="{cls} text-fg-faint" title={full}>{@render row(a)}</div>
 				{:else}
@@ -145,6 +160,24 @@
 					>
 						{@render row(a)}
 					</a>
+				{/if}
+				{#if !collapsed && a.status !== 'deleting'}
+					<button
+						type="button"
+						class="flex h-8 w-4 shrink-0 touch-none items-center justify-center rounded text-fg-faint hover:text-fg-muted {lifted
+							? 'cursor-grabbing'
+							: 'cursor-grab'}"
+						aria-label="Перетащить {accountTitle(a)}"
+						title="Перетащить; стрелки вверх и вниз — по одному"
+						data-reorder-handle={a.id}
+						onpointerdown={(e) => listEl && reorder.down(e, i, [...listEl.children] as HTMLElement[])}
+						onpointermove={(e) => reorder.move(e)}
+						onpointerup={() => reorder.up()}
+						onpointercancel={() => reorder.cancel()}
+						onkeydown={(e) => void reorder.key(e, i, listEl)}
+					>
+						<GripVertical class="size-3.5" aria-hidden="true" />
+					</button>
 				{/if}
 			</li>
 		{/each}

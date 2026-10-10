@@ -1,16 +1,18 @@
 import { goto } from '$app/navigation';
 import { AccountContext, CurrentAccount } from '$lib/account.svelte';
+import { AccountOrderStore } from '$lib/accounts/order.svelte';
 import { createApi } from '$lib/api/client';
 import { HomeLayoutStore } from '$lib/home/store.svelte';
 import { loginHref } from '$lib/nav';
 import { AccountsStore } from '$lib/stores/accounts.svelte';
 import { Session } from '$lib/stores/session.svelte';
 
-/** Синглтоны вкладки: сессия, глобальный клиент API, список аккаунтов, раскладка главной и
- * открытый аккаунт. */
+/** Синглтоны вкладки: сессия, глобальный клиент API, список аккаунтов и их порядок, раскладка
+ * главной и открытый аккаунт. */
 export const session = new Session(undefined, () => void goto(loginHref(new URL(location.href))));
 export const api = createApi(session.hooks);
-export const accounts = new AccountsStore(api, (list) => current.dropUnlisted(list));
+export const accountOrder = new AccountOrderStore(api);
+export const accounts = new AccountsStore(api, (list) => current.dropUnlisted(list), accountOrder);
 // Раскладка главной — у пользователя, одна на все его аккаунты: смена аккаунта её не перечитывает.
 export const homeLayout = new HomeLayoutStore(api);
 export const current = new CurrentAccount(
@@ -28,14 +30,17 @@ export function startAccount(id: number): AccountContext {
 	return current.start(id);
 }
 
-/** После входа — общее (список аккаунтов, раскладка главной); аккаунт открывает макет `/a/[account]`. */
+/** После входа — общее (список аккаунтов и их порядок, раскладка главной); аккаунт открывает
+ * макет `/a/[account]`. */
 export function startApp(): void {
 	accounts.start();
+	accountOrder.start();
 	homeLayout.start();
 }
 
 export function stopApp(): void {
 	current.stop();
 	accounts.stop();
+	accountOrder.stop();
 	homeLayout.stop();
 }

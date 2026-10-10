@@ -1,14 +1,17 @@
 import { call, type Api } from '$lib/api/client';
 import { ApiFailure, type ApiError } from '$lib/api/errors';
 import type { AccountOut } from '$lib/api/types';
+import { applyOrder } from '$lib/accounts/order';
+import type { AccountOrderStore } from '$lib/accounts/order.svelte';
 
 export const ACCOUNTS_POLL_MS = 30_000;
 
 /** Аккаунты учётки со статусами. Общего потока событий нет: список перечитывается раз в 30 с и при
  * возвращении на вкладку. */
 export class AccountsStore {
-	/** null — ещё не загружен. */
-	list = $state<AccountOut[] | null>(null);
+	#raw = $state<AccountOut[] | null>(null);
+	#order: AccountOrderStore | undefined;
+	#ordered = $derived.by(() => this.#raw && applyOrder(this.#raw, this.#order?.ids ?? null));
 	/** Последняя ошибка чтения (список остаётся прежним). */
 	error = $state<ApiError | null>(null);
 	#api: Api;
@@ -17,10 +20,25 @@ export class AccountsStore {
 	// Номер чтения: ответ, который обогнало более новое чтение или `stop()`, не применяется.
 	#request = 0;
 
-	/** `onLoad` — после каждого применённого чтения списка. */
-	constructor(api: Api, onLoad?: (list: AccountOut[]) => void) {
+	/** `onLoad` — после каждого применённого чтения списка; `order` — порядок пользователя. */
+	constructor(api: Api, onLoad?: (list: AccountOut[]) => void, order?: AccountOrderStore) {
 		this.#api = api;
 		this.#onLoad = onLoad;
+		this.#order = order;
+	}
+
+	/** null — ещё не загружен. В порядке пользователя, если он сохранён. */
+	get list(): AccountOut[] | null {
+		return this.#ordered;
+	}
+
+	set list(list: AccountOut[] | null) {
+		this.#raw = list;
+	}
+
+	/** Новый порядок (id всего списка): сразу на экране, не сохранился — прежний и тост. */
+	reorder(ids: number[]): Promise<boolean> {
+		return this.#order?.save(ids) ?? Promise.resolve(false);
 	}
 
 	async load(): Promise<void> {
