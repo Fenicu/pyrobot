@@ -54,6 +54,16 @@ def test_reset_reasons() -> None:
     assert stream.subscribe("e1:4").replay == []
 
 
+def test_default_history_keeps_last_300_events() -> None:
+    stream = EventStream(epoch="e1")
+    for n in range(301):
+        stream.publish("notification", {"code": str(n)})
+    # Хранятся события 2..301: после 1 ничего не пропало, после 0 пропало бы первое.
+    assert stream.subscribe("e1:0").reset == "evicted"
+    ok = stream.subscribe("e1:1")
+    assert ok.reset is None and len(ok.replay) == 300 and ok.replay[0].seq == 2
+
+
 def test_live_frame_keeps_only_latest_in_history() -> None:
     # Живой кадр метро — снимок целиком: в истории только последний, история не раздувается.
     stream = EventStream(epoch="e1", history=3)

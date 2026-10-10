@@ -19,7 +19,7 @@ from app.engine.gateway.types import ActionRequest, ActionStatus
 from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Decision
 
-HISTORY = 1000
+HISTORY = 300
 QUEUE_SIZE = 256
 # Служебное поле редьюсера в поток не входит (как и в GET /state).
 _INTERNAL = frozenset({"applied"})
