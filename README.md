@@ -511,9 +511,9 @@ mkdir -p backups
 миграции. Дамп — от той же или более старой версии бота, чем образ:
 
 ```bash
-# 1. Дамп текущей базы на всякий случай, остановить бот
-(umask 077; docker compose exec -T postgres pg_dump -U pyrobot --format=custom pyrobot > backups/before-restore.dump)
+# 1. Остановить бот, затем дамп текущей базы на всякий случай (имя с временем, чтобы не затереть прежний)
 docker compose stop pyrobot
+(umask 077; docker compose exec -T postgres pg_dump -U pyrobot --format=custom pyrobot > backups/before-restore-$(date -u +%Y%m%dT%H%M%SZ).dump)
 # 2. Пересоздать пустую базу
 docker compose exec postgres dropdb -U pyrobot --force pyrobot
 docker compose exec postgres createdb -U pyrobot pyrobot
@@ -525,7 +525,7 @@ docker compose up -d
 ```
 
 Ошибка на шаге 3 — база пустая, бот не запущен: проверь дамп и повтори шаг 3 или верни базу из
-`before-restore.dump` теми же шагами 2–4.
+`backups/before-restore-<время>.dump` теми же шагами 2–4.
 
 **Сессии Telegram** — в базе, в таблице `tg_sessions`, зашифрованные ключом `PYROBOT_SECRET_KEY`
 (AES-256-GCM; зашифровано то, чем бот входит в аккаунт, — ключ авторизации). Это вход в твои

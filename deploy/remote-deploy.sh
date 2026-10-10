@@ -14,17 +14,29 @@ docker compose pull pyrobot
 # работает дальше. Хранятся три последних pre-deploy-*.dump; pyrobot-*.dump старого сервиса не трогаем.
 running=$(docker compose ps --status running --services)
 if grep -qx postgres <<<"$running"; then
+    old_umask=$(umask)
     umask 077
     mkdir -p backups
+    if [ ! -w backups ]; then
+        echo "backups/ is not writable by $USER: run sudo chown -R $USER: ~/pyrobot/backups" >&2
+        exit 1
+    fi
+    # Оборванный выкат (SIGHUP при обрыве ssh) не должен оставлять недописанный дамп с хэшами паролей.
+    tmp=""
+    trap 'rm -f -- "$tmp"' EXIT
+    trap 'exit 1' HUP INT TERM
+    rm -f backups/pre-deploy-*.dump.tmp
     dump="backups/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ).dump"
-    if ! docker compose exec -T postgres pg_dump -U pyrobot --format=custom pyrobot > "$dump.tmp"; then
-        rm -f "$dump.tmp"
+    tmp="$dump.tmp"
+    if ! docker compose exec -T postgres pg_dump -U pyrobot --format=custom pyrobot > "$tmp"; then
         echo "database dump failed, deploy aborted" >&2
         exit 1
     fi
-    mv "$dump.tmp" "$dump"
+    mv "$tmp" "$dump"
+    tmp=""
     echo "database dump written: $dump"
     ls -1 backups/pre-deploy-*.dump | head -n -3 | xargs -r rm -f --
+    umask "$old_umask"
 else
     echo "postgres is not running yet, dump skipped"
 fi
