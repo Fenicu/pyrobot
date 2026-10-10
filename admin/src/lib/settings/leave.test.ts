@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { deferred, flush } from '$lib/test/deferred';
 import { leaveGuard, type LeaveNavigation } from './leave';
 
-function nav(type: LeaveNavigation['type'], to: string | null, willUnload = type === 'leave') {
+function nav(type: LeaveNavigation['type'], to: string | null, willUnload = type === 'leave', from: string | null = null) {
 	const cancel = vi.fn();
-	const n: LeaveNavigation = { type, willUnload, to: to === null ? null : { url: new URL(to, 'https://sw.example') }, cancel };
+	const at = (path: string | null) => (path === null ? null : { url: new URL(path, 'https://sw.example') });
+	const n: LeaveNavigation = { type, willUnload, from: at(from), to: at(to), cancel };
 	return { n, cancel };
 }
 
@@ -73,5 +74,17 @@ describe('уход с несохранёнными настройками', () =
 		expect(next.cancel).toHaveBeenCalledTimes(1);
 		expect(confirm).toHaveBeenCalledTimes(2);
 	});
-});
 
+	it('смена query на той же странице (вкладка настроек) — без вопросов, черновик остаётся', () => {
+		const confirm = vi.fn(async () => true);
+		const guard = leaveGuard({ dirty: () => true, confirm, go: vi.fn() });
+		const same = nav('goto', '/a/1/settings?tab=battle', false, '/a/1/settings?tab=food');
+		guard(same.n);
+		expect(same.cancel).not.toHaveBeenCalled();
+		expect(confirm).not.toHaveBeenCalled();
+		// Тот же раздел другого аккаунта — уже уход.
+		const other = nav('link', '/a/2/settings?tab=battle', false, '/a/1/settings?tab=battle');
+		guard(other.n);
+		expect(other.cancel).toHaveBeenCalledTimes(1);
+	});
+});

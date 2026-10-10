@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { goto } from '$app/navigation';
 import { createAccountApi } from '$lib/api/account';
 import type { SettingsOut } from '$lib/api/types';
 import { SettingsEditor } from '$lib/settings/editor.svelte';
@@ -9,9 +10,18 @@ import schemaJson from '$lib/settings/settings.schema.json';
 import { toasts } from '$lib/stores/toasts.svelte';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
+import { page } from '$lib/test/page.svelte';
 import SettingsView from './SettingsView.svelte';
 
+vi.mock('$app/state', async () => ({ page: (await import('$lib/test/page.svelte')).page }));
+vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}) }));
+
 const settings = fixture<SettingsOut>('settings');
+
+afterEach(() => {
+	page.url = new URL('http://app.invalid/');
+	vi.mocked(goto).mockClear();
+});
 
 async function view(
 	patch?: (c: Call) => Response,
@@ -444,6 +454,28 @@ describe('Настройки', () => {
 		expect(search).toHaveValue('');
 		expect(screen.getByRole('region', { name: 'Еда и сон' })).toBeInTheDocument();
 		expect(within(groups()).getByRole('button', { name: 'Еда и сон' })).toHaveAttribute('aria-current', 'true');
+	});
+
+	it('группа — из адреса (?tab=)', async () => {
+		page.url = new URL('http://app.invalid/a/1/settings?tab=battle');
+		await view();
+		expect(screen.getByRole('region', { name: 'Битва и деньги' })).toBeInTheDocument();
+		expect(within(groups()).getByRole('button', { name: 'Битва и деньги' })).toHaveAttribute('aria-current', 'true');
+	});
+
+	it('неизвестная группа в адресе — первая', async () => {
+		page.url = new URL('http://app.invalid/a/1/settings?tab=nope');
+		await view();
+		expect(screen.getByRole('region', { name: 'Дела и прокачка' })).toBeInTheDocument();
+	});
+
+	it('выбор группы пишет её в адрес без новой записи истории, прочий query остаётся', async () => {
+		page.url = new URL('http://app.invalid/a/1/settings?x=1');
+		const user = userEvent.setup();
+		await view();
+		await openGroup(user, 'Еда и сон');
+		expect(goto).toHaveBeenCalledWith('/a/1/settings?x=1&tab=food', { replaceState: true, noScroll: true, keepFocus: true });
+		expect(screen.getByRole('region', { name: 'Еда и сон' })).toBeInTheDocument();
 	});
 
 	async function openHistory(user: ReturnType<typeof userEvent.setup>) {

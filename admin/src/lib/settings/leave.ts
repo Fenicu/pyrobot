@@ -1,6 +1,7 @@
 import type { BeforeNavigate } from '@sveltejs/kit';
 
 export type LeaveNavigation = Pick<BeforeNavigate, 'type' | 'willUnload' | 'cancel'> & {
+	from: { url: URL } | null;
 	to: { url: URL } | null;
 };
 
@@ -23,9 +24,11 @@ export function leaveGuard({ dirty, confirm, go }: LeaveDeps): (nav: LeaveNaviga
 			allowed = false;
 			return;
 		}
+		const to = nav.to;
+		// Меняется только query (вкладка, фильтр) — страница с черновиком остаётся.
+		if (nav.type !== 'leave' && to !== null && nav.from?.url.pathname === to.url.pathname) return;
 		if (!dirty()) return;
 		nav.cancel();
-		const to = nav.to;
 		if (nav.type === 'leave' || to === null) return;
 		void confirm().then((ok) => {
 			if (!ok) return;

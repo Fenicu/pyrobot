@@ -137,6 +137,13 @@ describe('колонка аккаунтов', () => {
 		expect(links[1]).not.toHaveAttribute('aria-current');
 	});
 
+	it('из настроек другой аккаунт открывается на той же группе настроек', () => {
+		accounts.list = [account(1), account(2)];
+		open('/a/1/settings?tab=battle', { account: '1' });
+		const links = within(column()).getAllByRole('link', { name: /acc\d/ });
+		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/a/1/settings?tab=battle', '/a/2/settings?tab=battle']);
+	});
+
 	it('с общего экрана — главная аккаунта', () => {
 		accounts.list = [account(1), account(2)];
 		open('/password');

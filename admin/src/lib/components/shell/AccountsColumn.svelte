@@ -31,8 +31,10 @@
 		current: number | null;
 		/** Путь экрана: другой аккаунт открывается на том же разделе. */
 		path: string;
+		/** Query экрана: вкладка переносится и в другой аккаунт. */
+		search?: string;
 	}
-	let { api, store, current, path }: Props = $props();
+	let { api, store, current, path, search = '' }: Props = $props();
 
 	const COLLAPSED = 'pyrobot.accountsCollapsed';
 
@@ -152,7 +154,7 @@
 					<div class="{cls} text-fg-faint" title={full}>{@render row(a)}</div>
 				{:else}
 					<a
-						href={switchHref(path, a.id)}
+						href={switchHref(path, a.id, search)}
 						class="{cls} {active ? 'bg-surface-2 text-fg' : 'text-fg-muted hover:bg-surface-2 hover:text-fg'}"
 						aria-current={active ? 'true' : undefined}
 						aria-label={collapsed ? accountTitle(a) : undefined}

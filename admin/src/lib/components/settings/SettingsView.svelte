@@ -1,6 +1,8 @@
 <script lang="ts">
 	import History from '@lucide/svelte/icons/history';
 	import Search from '@lucide/svelte/icons/search';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import type { AccountApi } from '$lib/api/account';
 	import type { AccountOut } from '$lib/api/types';
 	import { errorText } from '$lib/api/errors';
@@ -29,7 +31,8 @@
 		accounts?: AccountOut[] | null;
 	}
 	let { api, editor, running = true, now, accountId, accounts = null }: Props = $props();
-	let active = $state<string | null>(null);
+	// Группа — в адресе (?tab=): переживает перезагрузку и переключение аккаунта (switchHref).
+	let active = $state<string | null>(page.url.searchParams.get('tab'));
 	let query = $state('');
 	let historyOpen = $state(false);
 	// История перечитывается с каждой новой версией: своё сохранение, перечитывание после чужого
@@ -96,6 +99,14 @@
 			};
 		})
 	);
+
+	function openGroup(id: string) {
+		active = id;
+		query = '';
+		const url = new URL(page.url);
+		url.searchParams.set('tab', id);
+		void goto(url.pathname + url.search, { replaceState: true, noScroll: true, keepFocus: true });
+	}
 
 	async function save() {
 		const result = await editor.save(() =>
@@ -212,10 +223,7 @@
 									? 'bg-accent-soft font-medium'
 									: 'text-fg-muted'}"
 								aria-current={current ? 'true' : undefined}
-								onclick={() => {
-									active = g.id;
-									query = '';
-								}}
+								onclick={() => openGroup(g.id)}
 							>
 								<span class="flex-1">{g.title}{#if dirtyGroups.has(g.id)}<span class="text-accent" title="Есть несохранённые правки" aria-hidden="true"> •</span
 									><span class="sr-only">, есть несохранённые правки</span>{/if}</span

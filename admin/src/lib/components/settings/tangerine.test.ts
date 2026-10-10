@@ -11,6 +11,9 @@ import ConfirmDialog from '../ConfirmDialog.svelte';
 import SettingsView from './SettingsView.svelte';
 import TangerineExchange from './TangerineExchange.svelte';
 
+vi.mock('$app/state', async () => ({ page: (await import('$lib/test/page.svelte')).page }));
+vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}) }));
+
 const hooks = { csrf: () => 'c', refreshCsrf: async () => null, unauthorized: () => {} };
 
 const account = (id: number, name: string, over: Partial<AccountOut> = {}): AccountOut => ({

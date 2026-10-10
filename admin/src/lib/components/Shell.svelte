@@ -60,7 +60,7 @@
 <div class="min-h-dvh md:flex">
 	<div class="hidden md:contents">
 		<Rail {account} role={session.role} {path} {unread} login={session.login} onlogout={logout} />
-		<AccountsColumn {api} store={accounts} current={account} {path} />
+		<AccountsColumn {api} store={accounts} current={account} {path} search={page.url.search} />
 	</div>
 
 	<header

@@ -93,10 +93,14 @@ export function isActive(pathname: string, href: string): boolean {
 		: pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** Переключение аккаунта: тот же раздел другого аккаунта (без query — номера у каждого свои);
- * с общих экранов — главная аккаунта. */
-export function switchHref(pathname: string, id: number): string {
-	return accountHref(id, IN_ACCOUNT.exec(pathname)?.[1] ?? '');
+/** Переключение аккаунта: тот же раздел другого аккаунта; из query — только вкладка (`tab`, группа
+ * настроек), прочее у каждого своё (номера забегов). С общих экранов — главная аккаунта. */
+export function switchHref(pathname: string, id: number, search = ''): string {
+	const section = IN_ACCOUNT.exec(pathname);
+	if (section === null) return accountHref(id, '');
+	const tab = new URLSearchParams(search).get('tab');
+	const href = accountHref(id, section[1] ?? '');
+	return tab ? `${href}?${new URLSearchParams({ tab })}` : href;
 }
 
 /** Номер аккаунта из адреса; не число — null. */

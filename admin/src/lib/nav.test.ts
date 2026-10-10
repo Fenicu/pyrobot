@@ -102,6 +102,13 @@ describe('экраны аккаунта', () => {
 		expect(switchHref('/a/3', 5)).toBe('/a/5');
 		expect(switchHref('/password', 5)).toBe('/a/5');
 		expect(switchHref('/accounts', 5)).toBe('/a/5');
+		// Из query переносится только вкладка (группа настроек), остальное — у аккаунта своё.
+		expect(switchHref('/a/3/settings', 5, '?tab=battle')).toBe('/a/5/settings?tab=battle');
+		expect(switchHref('/a/3/metro', 5, '?run=12&tab=x')).toBe('/a/5/metro?tab=x');
+		expect(switchHref('/a/3/metro', 5, '?run=12')).toBe('/a/5/metro');
+		expect(switchHref('/a/3/settings', 5, '')).toBe('/a/5/settings');
+		// С общего экрана (вкладки консоли владельца) — главная аккаунта без query.
+		expect(switchHref('/admin', 5, '?tab=users')).toBe('/a/5');
 
 		expect(parseAccount('7')).toBe(7);
 		for (const bad of [undefined, '', 'x', '0', '07', '-1', '1.5', '1e3', '99999999999999999999']) {

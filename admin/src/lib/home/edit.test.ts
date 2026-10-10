@@ -98,7 +98,13 @@ const block = (id: keyof typeof BLOCK_TITLES) => document.querySelector<GridItem
 
 function nav(to = '/a/1/journal') {
 	const cancel = vi.fn();
-	const n: LeaveNavigation = { type: 'link', willUnload: false, to: { url: new URL(to, 'http://app.invalid') }, cancel };
+	const n: LeaveNavigation = {
+		type: 'link',
+		willUnload: false,
+		from: null,
+		to: { url: new URL(to, 'http://app.invalid') },
+		cancel
+	};
 	return { n, cancel };
 }
 
