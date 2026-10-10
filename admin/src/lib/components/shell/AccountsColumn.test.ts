@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
+import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AccountOrderStore, SAVE_FAILED } from '$lib/accounts/order.svelte';
 import { createApi } from '$lib/api/client';
@@ -37,8 +38,9 @@ const account = (id: number, over: Partial<AccountOut> = {}): AccountOut => ({
 });
 
 async function setup(saved: number[] | null, putStatus = 204) {
+	let accounts = [1, 2, 3];
 	const fetch = mockFetch((c) => {
-		if (c.url === '/api/v1/accounts') return json([account(1), account(2), account(3)]);
+		if (c.url === '/api/v1/accounts') return json(accounts.map((id) => account(id)));
 		if (c.url === ORDER && c.method === 'GET') return json({ order: saved && { version: 1, ids: saved } });
 		if (c.url === ORDER && c.method === 'PUT') return json(putStatus === 204 ? null : { detail: 'boom' }, putStatus);
 		return json({ detail: 'x' }, 500);
@@ -48,7 +50,12 @@ async function setup(saved: number[] | null, putStatus = 204) {
 	const store = new AccountsStore(api, undefined, order);
 	await Promise.all([store.load(), order.load()]);
 	render(AccountsColumn, { api, store, current: 1, path: '/a/1' });
-	return { fetch, user: userEvent.setup() };
+	const reload = async (ids: number[]) => {
+		accounts = ids;
+		await store.load();
+		await tick();
+	};
+	return { fetch, user: userEvent.setup(), reload };
 }
 
 const titles = () =>
@@ -120,5 +127,43 @@ describe('колонка аккаунтов: порядок', () => {
 
 		await user.click(screen.getByRole('button', { name: 'Свернуть список аккаунтов' }));
 		expect(screen.queryByRole('button', { name: /^Перетащить/ })).toBeNull();
+	});
+
+	const rows = () => within(screen.getByRole('list', { name: 'Список аккаунтов' })).getAllByRole('listitem');
+	const placeRows = () =>
+		rows().forEach((li, i) => {
+			li.getBoundingClientRect = () => new DOMRect(0, i * 40, 200, 40);
+		});
+
+	it('потерянный захват указателя отменяет перетаскивание, следующее работает', async () => {
+		const { fetch } = await setup(null);
+		placeRows();
+		const h = handle(1);
+		await fireEvent.pointerDown(h, { pointerId: 1, button: 0, pointerType: 'mouse', clientX: 190, clientY: 20 });
+		await fireEvent.pointerMove(h, { pointerId: 1, pointerType: 'mouse', clientX: 190, clientY: 70 });
+		expect(rows()[0]!.style.transform).toBe('translate(0px, 50px)');
+		await fireEvent.lostPointerCapture(h, { pointerId: 1, pointerType: 'mouse' });
+		expect(rows().map((li) => li.style.transform)).toEqual(['', '', '']);
+		expect(puts(fetch.calls)).toEqual([]);
+
+		await fireEvent.pointerDown(h, { pointerId: 2, button: 0, pointerType: 'mouse', clientX: 190, clientY: 20 });
+		await fireEvent.pointerMove(h, { pointerId: 2, pointerType: 'mouse', clientX: 190, clientY: 70 });
+		await fireEvent.pointerUp(h, { pointerId: 2, pointerType: 'mouse', clientX: 190, clientY: 70 });
+		expect(titles()).toEqual(['/a/2', '/a/1', '/a/3']);
+		await waitFor(() => expect(puts(fetch.calls)).toEqual([{ version: 1, ids: [2, 1, 3] }]));
+	});
+
+	it('список сменился во время перетаскивания — отпускание не переставляет', async () => {
+		const { fetch, reload } = await setup(null);
+		placeRows();
+		const h = handle(1);
+		await fireEvent.pointerDown(h, { pointerId: 1, button: 0, pointerType: 'mouse', clientX: 190, clientY: 20 });
+		await fireEvent.pointerMove(h, { pointerId: 1, pointerType: 'mouse', clientX: 190, clientY: 70 });
+		await reload([1, 3]);
+		await fireEvent.pointerUp(h, { pointerId: 1, pointerType: 'mouse', clientX: 190, clientY: 70 });
+		expect(titles()).toEqual(['/a/1', '/a/3']);
+		expect(rows().map((li) => li.style.transform)).toEqual(['', '']);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(puts(fetch.calls)).toEqual([]);
 	});
 });

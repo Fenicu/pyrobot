@@ -97,10 +97,94 @@ describe('AccountOrderStore: сохранение', () => {
 		let puts = 0;
 		const { store } = setup(() => (++puts === 1 ? first.promise : json(null, 204)));
 		const a = store.save([2, 1]);
-		await store.save([3, 2, 1]);
+		const b = store.save([3, 2, 1]);
 		first.resolve(json({ detail: 'boom' }, 500));
 		expect(await a).toBe(false);
+		expect(await b).toBe(true);
 		expect(store.ids).toEqual([3, 2, 1]);
+		expect(toasts.items).toEqual([]);
+	});
+});
+
+describe('AccountOrderStore: записи по одной', () => {
+	// PUT-ы ждут, пока тест их не завершит; GET — сохранённый [1, 2, 3].
+	function controlled() {
+		const pending: { body: unknown; reply: ReturnType<typeof deferred<Response>> }[] = [];
+		const { store, fetch } = setup((c) => {
+			if (c.method !== 'PUT') return json({ order: { version: 1, ids: [1, 2, 3] } });
+			const reply = deferred<Response>();
+			pending.push({ body: JSON.parse(c.body), reply });
+			return reply.promise;
+		});
+		return { store, fetch, pending };
+	}
+
+	it('быстрые перестановки: одна запись в полёте, следом — только последняя', async () => {
+		const { store, pending } = controlled();
+		await store.load();
+		const a = store.save([2, 1, 3]);
+		const b = store.save([2, 3, 1]);
+		const c = store.save([3, 2, 1]);
+		expect(store.ids).toEqual([3, 2, 1]);
+		await flush();
+		expect(pending.map((p) => p.body)).toEqual([{ version: 1, ids: [2, 1, 3] }]);
+		pending[0]!.reply.resolve(json(null, 204));
+		await flush();
+		expect(pending.map((p) => p.body)).toEqual([
+			{ version: 1, ids: [2, 1, 3] },
+			{ version: 1, ids: [3, 2, 1] }
+		]);
+		pending[1]!.reply.resolve(json(null, 204));
+		expect(await Promise.all([a, b, c])).toEqual([true, true, true]);
+		await flush();
+		expect(pending).toHaveLength(2);
+		expect(store.ids).toEqual([3, 2, 1]);
+		expect(toasts.items).toEqual([]);
+	});
+
+	it('упали обе записи — откат к порядку с сервера и один тост', async () => {
+		const { store, pending } = controlled();
+		await store.load();
+		const a = store.save([2, 1, 3]);
+		const b = store.save([2, 3, 1]);
+		await flush();
+		pending[0]!.reply.resolve(json({ detail: 'boom' }, 500));
+		await flush();
+		expect(store.ids).toEqual([2, 3, 1]);
+		expect(toasts.items).toEqual([]);
+		pending[1]!.reply.resolve(json({ detail: 'boom' }, 500));
+		expect(await Promise.all([a, b])).toEqual([false, false]);
+		expect(store.ids).toEqual([1, 2, 3]);
+		expect(toasts.items.map((t) => [t.kind, t.text])).toEqual([['error', SAVE_FAILED]]);
+	});
+
+	it('первая записалась, последняя упала — откат к первой', async () => {
+		const { store, pending } = controlled();
+		await store.load();
+		const a = store.save([2, 1, 3]);
+		const b = store.save([2, 3, 1]);
+		await flush();
+		pending[0]!.reply.resolve(json(null, 204));
+		await flush();
+		pending[1]!.reply.resolve(json({ detail: 'boom' }, 500));
+		expect(await Promise.all([a, b])).toEqual([true, false]);
+		expect(store.ids).toEqual([2, 1, 3]);
+		expect(toasts.items).toHaveLength(1);
+	});
+
+	it('stop во время записи — ждущая не уходит', async () => {
+		const { store, pending } = controlled();
+		await store.load();
+		const a = store.save([2, 1, 3]);
+		const b = store.save([3, 2, 1]);
+		await flush();
+		store.stop();
+		pending[0]!.reply.resolve(json(null, 204));
+		await Promise.all([a, b]);
+		await flush();
+		expect(pending).toHaveLength(1);
+		expect(store.ids).toBeNull();
+		expect(toasts.items).toEqual([]);
 	});
 });
 

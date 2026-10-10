@@ -18,6 +18,9 @@ export class Reorder {
 	#rects: DOMRect[] = [];
 	#x = 0;
 	#y = 0;
+	// Порядок на момент захвата: индексы перетаскивания относятся к нему.
+	#snapshot: number[] = [];
+	#pointer = -1;
 
 	constructor(ids: () => number[], commit: (ids: number[]) => unknown) {
 		this.#ids = ids;
@@ -31,6 +34,11 @@ export class Reorder {
 		this.#rects = items.map((el) => el.getBoundingClientRect());
 		this.#x = e.clientX;
 		this.#y = e.clientY;
+		this.#snapshot = this.#ids();
+		this.#pointer = e.pointerId;
+		// Ручка, снятая со страницы посреди перетаскивания, теряет захват, и событие уходит
+		// уже документу, а pointerup до неё не дойдёт; слушаем на документе.
+		document.addEventListener('lostpointercapture', this.#lost, true);
 		this.drag = { from: index, over: index, dx: 0, dy: 0 };
 	}
 
@@ -46,13 +54,21 @@ export class Reorder {
 	up(): void {
 		const d = this.drag;
 		if (d === null) return;
-		this.drag = null;
-		if (d.over !== d.from) void this.#commit(moveItem(this.#ids(), d.from, d.over));
+		this.cancel();
+		const ids = this.#ids();
+		// Список сменился (удаление, опрос): индексы старого снимка к нему не подходят.
+		if (!same(ids, this.#snapshot)) return;
+		if (d.over !== d.from) void this.#commit(moveItem(ids, d.from, d.over));
 	}
 
 	cancel(): void {
+		document.removeEventListener('lostpointercapture', this.#lost, true);
 		this.drag = null;
 	}
+
+	#lost = (e: PointerEvent) => {
+		if (e.pointerId === this.#pointer) this.cancel();
+	};
 
 	/** Сдвиг строки: перетаскиваемая идёт за указателем, остальные — на освободившееся место. */
 	shift(index: number): string | undefined {
@@ -97,4 +113,8 @@ export class Reorder {
 		});
 		return best;
 	}
+}
+
+function same(a: readonly number[], b: readonly number[]): boolean {
+	return a.length === b.length && a.every((id, i) => id === b[i]);
 }
