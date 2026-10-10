@@ -4962,6 +4962,10 @@ no-cache` и `X-Accel-Buffering: no` отключают буферизацию �
 шторки учитывают `env(safe-area-inset-bottom)` (`viewport-fit=cover`). Раскладка ПК/телефон в
 скриптах — `MediaQuery`
 из `svelte/reactivity` (`util/media.svelte.ts`: слушатель `change` живёт, пока значение читают).
+Админку можно поставить на главный экран телефона как приложение (`static/manifest.webmanifest`,
+PNG-иконки рендерит `icons/render.sh`): в Android Chrome — «Установить приложение» или «Добавить
+на главный экран», в iOS Safari — «Поделиться → На экран „Домой“»; на iOS у установленного
+приложения свои cookies, поэтому войти придётся ещё раз.
 
 ### Разработка админки
 
