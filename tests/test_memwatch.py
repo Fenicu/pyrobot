@@ -46,7 +46,7 @@ def test_samples_capped() -> None:
 
 
 def test_jump_logs_delta_and_inflight_paths(caplog: pytest.LogCaptureFixture) -> None:
-    watch = MemWatch(read_status=Reader(100_000, 150_000), trim_fn=None)
+    watch = MemWatch(read_status=Reader(100_000, 150_000), trim_fn=None, grace_s=0)
     watch.inflight.start(1, "GET", "/api/v1/accounts/1/state")
     watch.inflight.start(2, "GET", "/api/v1/accounts/1/events")
     with caplog.at_level(logging.WARNING, logger="app.memwatch"):
@@ -63,11 +63,33 @@ def test_jump_logs_delta_and_inflight_paths(caplog: pytest.LogCaptureFixture) ->
 
 
 def test_small_growth_is_not_a_jump(caplog: pytest.LogCaptureFixture) -> None:
-    watch = MemWatch(read_status=Reader(100_000, 140_000), trim_fn=None)
+    watch = MemWatch(read_status=Reader(100_000, 140_000), trim_fn=None, grace_s=0)
     with caplog.at_level(logging.WARNING, logger="app.memwatch"):
         watch.sample()
         watch.sample()
     assert not caplog.records
+
+
+def test_jump_is_silent_during_startup_grace(caplog: pytest.LogCaptureFixture) -> None:
+    now = [1000.0]
+    watch = MemWatch(
+        read_status=Reader(100_000, 200_000, 300_000, 400_000),
+        trim_fn=None,
+        clock=lambda: now[0],
+    )
+    with caplog.at_level(logging.WARNING, logger="app.memwatch"):
+        watch.sample()
+        now[0] += 60
+        watch.sample()
+        now[0] += memwatch.GRACE_S - 61
+        watch.sample()
+        assert not caplog.records
+        assert [rss for _, rss in watch.samples] == [100_000, 200_000, 300_000]
+        # Грейс кончился ровно на пятой минуте: следующий скачок виден.
+        now[0] += 1
+        watch.sample()
+    [record] = caplog.records
+    assert "delta_mb=97.7" in record.getMessage()
 
 
 def test_trim_without_libc_is_noop() -> None:
@@ -117,7 +139,7 @@ def test_jump_counts_from_rss_after_trim(caplog: pytest.LogCaptureFixture) -> No
     # Замер 200 МБ, malloc_trim вернул до 150 МБ, следующий замер 195 МБ: рост на 45 МБ от
     # RSS после trim — скачок, хотя от прошлого замера всего -5 МБ.
     reader = Reader(204_800, 204_800, 153_600, 199_680)
-    watch = MemWatch(read_status=reader, trim_fn=lambda: 1)
+    watch = MemWatch(read_status=reader, trim_fn=lambda: 1, grace_s=0)
     with caplog.at_level(logging.WARNING, logger="app.memwatch"):
         watch.sample()
         watch.trim()
@@ -138,7 +160,7 @@ def test_jump_lists_slow_requests_finished_since_last_sample(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     clock = Clock()
-    watch = MemWatch(read_status=Reader(100_000, 150_000, 200_000), trim_fn=None)
+    watch = MemWatch(read_status=Reader(100_000, 150_000, 200_000), trim_fn=None, grace_s=0)
     watch.inflight = InFlight(clock=clock)
     watch.sample()
     watch.inflight.start(1, "GET", "/api/v1/accounts/1/journal")

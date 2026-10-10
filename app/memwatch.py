@@ -1,6 +1,6 @@
 """Память процесса: замеры RSS раз в минуту (сутки — в памяти), возврат освобождённой памяти
 glibc системе (`malloc_trim`) раз в 5 минут и предупреждение `memory_jump` о скачке RSS со
-списком HTTP-запросов в работе."""
+списком HTTP-запросов в работе (первые 5 минут после старта замера скачки не предупреждают)."""
 
 from __future__ import annotations
 
@@ -25,6 +25,9 @@ SAMPLE_S = 60.0
 MAX_SAMPLES = 1440
 TRIM_EVERY = 5
 JUMP_KB = 40 * 1024
+# Запуск аккаунтов даёт ожидаемый рост на десятки мегабайт: после старта замера `memory_jump`
+# молчит, пока не прошёл этот срок (замеры пишутся).
+GRACE_S = 300.0
 # Завершённые между замерами запросы дольше порога попадают в `memory_jump`.
 SLOW_S = 1.0
 MAX_FINISHED = 20
@@ -151,8 +154,13 @@ class MemWatch:
         read_status: Callable[[], str] = read_proc_status,
         trim_fn: Callable[[], int] | None = None,
         max_samples: int = MAX_SAMPLES,
+        clock: Callable[[], float] = time.monotonic,
+        grace_s: float = GRACE_S,
     ) -> None:
         self._read = read_status
+        self._clock = clock
+        self._grace_s = grace_s
+        self._started: float | None = None
         self._trim_fn = trim_fn
         self.inflight = InFlight()
         # (unix time, RSS в КБ)
@@ -171,7 +179,10 @@ class MemWatch:
         prev, self._baseline_kb = self._baseline_kb, rss
         self.samples.append((time.time(), rss))
         finished = self.inflight.take_finished()
-        if prev is not None and rss - prev >= JUMP_KB:
+        now = self._clock()
+        if self._started is None:
+            self._started = now
+        if prev is not None and rss - prev >= JUMP_KB and now - self._started >= self._grace_s:
             log.warning(
                 'memory_jump delta_mb=%.1f rss_mb=%.1f inflight="%s" finished="%s"',
                 kb_to_mb(rss - prev),
