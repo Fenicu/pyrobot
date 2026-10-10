@@ -1134,10 +1134,11 @@ def _burst(t: FakeKurigram, first: int, count: int) -> None:
 def test_intake_bounds_are_consistent() -> None:
     # Порция сверки истории (1000 новых и 50 правок) с живыми обновлениями перегрузку не включает;
     # предел очереди kurigram выше порога — до него приём перекрывает перегрузка; а принятое до
-    # остановки приёма `terminate()` всегда кладёт в очередь конвейера, не дожидаясь места.
+    # остановки приёма `terminate()` кладёт в очередь конвейера, не дожидаясь места, даже если
+    # туда же идёт порция сверки, начатая до перегрузки.
     assert OVERLOAD_HIGH <= 1500 and OVERLOAD_HIGH - 1050 >= 400
     assert OVERLOAD_LOW < OVERLOAD_HIGH < RECEIVE_QUEUE_MAX
-    assert PIPELINE_QUEUE_MAX >= OVERLOAD_HIGH + RECEIVE_QUEUE_MAX
+    assert PIPELINE_QUEUE_MAX >= OVERLOAD_HIGH + RECEIVE_QUEUE_MAX + 1050
 
 
 def test_counting_queue_drops_over_limit_and_reports_once() -> None:

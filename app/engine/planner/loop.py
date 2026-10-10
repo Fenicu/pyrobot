@@ -230,7 +230,7 @@ class PlannerLoop:
         запуска и признак, что он создан сейчас (иначе ключ уже встречался). KeyError — нет
         такого сценария, FixedParams — параметр противоречит зафиксированному в реестре,
         InvalidParams — обязательного параметра нет или он недопустим, ManualQueueFull — очередь
-        полна (повтор ключа тоже: до записи запуска ключ не сверяется)."""
+        полна, а ключ не встречался."""
         spec = SCENARIOS[scenario]
         fixed = spec.params
         clash = sorted(k for k, v in params.items() if k in fixed and fixed[k] != v)
@@ -240,7 +240,11 @@ class PlannerLoop:
         if bad := spec.invalid(merged):
             raise InvalidParams(bad)
         if len(self._manual) >= MANUAL_RUNS_MAX:
-            raise ManualQueueFull
+            # Повтор уже записанного ключа — его запуск, как и при неполной очереди.
+            known = await self._store.run_by_key(key)
+            if known is None:
+                raise ManualQueueFull
+            return known, False
         run_id, created = await self._store.run_requested(
             scenario, merged, requested=params, key=key, by=by, at=self._clock.now()
         )

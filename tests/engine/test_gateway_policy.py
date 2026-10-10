@@ -407,12 +407,18 @@ async def test_manual_queue_bounded() -> None:
     await until(lambda: rig.gw.queue_size == MANUAL_PENDING_MAX + 1)
     over = await rig.gw.submit(send("/job", source=Source.MANUAL, expect=expect_text("x")))
     assert (over.status, over.reason) == (ActionStatus.REJECTED, "queue_full")
-    # Срочное и шаги сценариев пределом ручных не ограничены.
+    # Срочное, шаги сценариев и шаги ручного запуска сценария (MANUAL с id запуска) пределом
+    # ручных команд не ограничены.
     scenario = asyncio.create_task(
         rig.gw.submit(send("/job", source=Source.SCENARIO, expect=expect_text("x")))
     )
-    await until(lambda: rig.gw.queue_size == MANUAL_PENDING_MAX + 2)
-    tasks = [*manual, urgent, scenario]
+    run_step = asyncio.create_task(
+        rig.gw.submit(
+            send("/job", source=Source.MANUAL, scenario_run_id=7, expect=expect_text("x"))
+        )
+    )
+    await until(lambda: rig.gw.queue_size == MANUAL_PENDING_MAX + 3)
+    tasks = [*manual, urgent, scenario, run_step]
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)

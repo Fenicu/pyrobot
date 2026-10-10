@@ -292,6 +292,9 @@ class PublishingPlannerStore:
             self._run(run_id, scenario, "queued")
         return run_id, created
 
+    async def run_by_key(self, key: str) -> int | None:
+        return await self.inner.run_by_key(key)
+
     async def run_begin(self, run_id: int, at: datetime) -> None:
         await self.inner.run_begin(run_id, at)
         self._run(run_id, None, "running")

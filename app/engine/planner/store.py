@@ -64,6 +64,10 @@ class PlannerStore(Protocol):
         False)."""
         ...
 
+    async def run_by_key(self, key: str) -> int | None:
+        """Ручной запуск с этим ключом идемпотентности; None — ключ не встречался."""
+        ...
+
     async def run_begin(self, run_id: int, at: datetime) -> None:
         """Запуск из очереди начал исполняться (`running`, начало — `at`)."""
         ...
@@ -141,9 +145,9 @@ class MemoryPlannerStore:
         by: str,
         at: datetime,
     ) -> tuple[int, bool]:
-        for run_id, run in enumerate(self.runs, start=1):
-            if run.key == key:
-                return run_id, False
+        known = await self.run_by_key(key)
+        if known is not None:
+            return known, False
         self.runs.append(
             MemoryRun(
                 None,
@@ -157,6 +161,12 @@ class MemoryPlannerStore:
             )
         )
         return len(self.runs), True
+
+    async def run_by_key(self, key: str) -> int | None:
+        for run_id, run in enumerate(self.runs, start=1):
+            if run.key == key:
+                return run_id
+        return None
 
     async def run_begin(self, run_id: int, at: datetime) -> None:
         run = self.runs[run_id - 1]

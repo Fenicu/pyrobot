@@ -19,9 +19,10 @@ log = logging.getLogger(__name__)
 State = dict[str, Any]
 # Очередь конвейера ограничена (раздел 4.2 спеки): при заполнении обработчик kurigram ждёт места.
 # Поток обновлений транспорт перекрывает раньше — перегрузкой (`OVERLOAD_HIGH`); предел — порог
-# перегрузки и предел очереди kurigram (`RECEIVE_QUEUE_MAX`) вместе: принятое до остановки приёма
-# `terminate()` разбирает сюда, не дожидаясь места.
-PIPELINE_QUEUE_MAX = 4500
+# перегрузки, предел очереди kurigram (`RECEIVE_QUEUE_MAX`) и порция сверки истории (до 1050)
+# вместе: принятое до остановки приёма `terminate()` разбирает сюда, не дожидаясь места, даже
+# посреди прохода сверки. Предел памяти не резервирует: она занята, только пока очередь полна.
+PIPELINE_QUEUE_MAX = 6000
 # Последние ревизии в памяти — на аккаунт (около 6 часов обычного потока игры); вытесненное
 # конвейер достаёт из журнала (`recall`).
 LATEST_CAPACITY = 300
@@ -124,10 +125,12 @@ class Pipeline:
         if cached is not None or self._recall is None:
             return cached
         found = await self._recall(chat_id, msg_id)
-        if found is None:
-            return None
+        # Пока шло чтение журнала, конвейер мог записать правку: она новее прочитанного.
+        cached = self._latest.get((chat_id, msg_id))
+        if cached is not None or found is None:
+            return cached
         self._remember(found)
-        return self._latest.get((chat_id, msg_id))
+        return found
 
     def prime(self, msg: IncomingMessage) -> None:
         """Текущая версия сообщения, прочитанная из Telegram (продолжение после рестарта), —

@@ -117,10 +117,15 @@ async def test_full_manual_queue_is_409(
 ) -> None:
     import app.engine.planner.loop as loop_module
 
-    monkeypatch.setattr(loop_module, "MANUAL_RUNS_MAX", 0)
     h = {"X-CSRF-Token": await login(api_client)}
+    code, first = await _run(api_client, h, "book", "f0")
+    assert code == 202
+    monkeypatch.setattr(loop_module, "MANUAL_RUNS_MAX", 0)
     code, body = await _run(api_client, h, "book", "f1")
     assert (code, body) == (409, {"detail": "manual_queue_full"})
+    # Повтор ключа, который уже записан, — его запуск, как при неполной очереди.
+    code, again = await _run(api_client, h, "book", "f0")
+    assert code == 200 and again["scenario_run_id"] == first["scenario_run_id"]
 
 
 async def test_run_without_required_params_is_422(world: World, api_client: AsyncClient) -> None:

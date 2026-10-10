@@ -253,6 +253,9 @@ async def test_manual_queue_bounded(world: World) -> None:
     runs = len(rig.store.runs)
     with pytest.raises(ManualQueueFull):
         await rig.loop.request("refresh", {"source": "inventory"}, key="over", by="admin")
+    # Повтор записанного ключа и при полной очереди отдаёт его запуск.
+    again = await rig.loop.request("refresh", {"source": "inventory"}, key="k3", by="admin")
+    assert again == (4, False)
     # Отказ — до записи запуска: строки «queued», которая никогда не пойдёт, нет.
     assert len(rig.store.runs) == runs and rig.loop.loop_view().manual_queue == MANUAL_RUNS_MAX
     await rig.loop.run_manual()

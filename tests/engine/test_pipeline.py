@@ -392,6 +392,27 @@ async def test_recall_reads_evicted_message_and_primes_it() -> None:
     assert await pipe.recall(GAME, 99) is None
 
 
+async def test_recall_keeps_revision_cached_while_journal_was_read() -> None:
+    pipe: Pipeline | None = None
+    newer = make_msg("правка", msg_id=1, kind="edit", revision=9)
+
+    async def recall(chat_id: int, msg_id: int) -> IncomingMessage | None:
+        # Пока читается журнал, конвейер записывает новую правку того же сообщения.
+        assert pipe is not None
+        await pipe.process(newer)
+        return make_msg("старое", msg_id=1, kind="edit", revision=9)
+
+    pipe = Pipeline(
+        journal=MemoryJournal(),
+        parser=default_parser(),
+        reducer=NullReducer(),
+        bus=Bus(),
+        recall=recall,
+    )
+    assert await pipe.recall(GAME, 1) == newer
+    assert pipe.latest(GAME, 1) == newer
+
+
 async def test_recall_without_fallback_is_cache_only() -> None:
     pipe, _, _ = _pipeline()
     assert await pipe.recall(GAME, 1) is None

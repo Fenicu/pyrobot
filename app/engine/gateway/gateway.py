@@ -65,8 +65,9 @@ MAX_KEY_LEN = 100
 _NEXT_ERROR_PAUSE_S = 0.05
 _ABANDON_WRITE_S = 5.0
 RECONCILE_REASON = "reconcile_required"
-# Ручных действий в очереди шлюза (админка): сверх — отказ `queue_full`. У остальных источников
-# в очереди не больше действия на задачу (реакции, сценарий, пересылка, сверка).
+# Ручных команд админки в очереди шлюза: сверх — отказ `queue_full`. Шаги ручного запуска сценария
+# (тоже `MANUAL`, но с `scenario_run_id`) и остальные источники в счёт не идут: у каждой их задачи
+# в очереди не больше одного действия (реакции, сценарий, пересылка, сверка).
 MANUAL_PENDING_MAX = 20
 # Ключ ручного действия не записан: запрос проваливается, повтор тем же ключом безопасен.
 STORE_FAILED = "store_failed"
@@ -185,6 +186,11 @@ def _bulls_walk(req: ActionRequest) -> bool:
     return req.source is Source.URGENT and req.scenario == BULLS_WALK
 
 
+def _admin_command(req: ActionRequest) -> bool:
+    """Ручная команда из админки, а не шаг ручного запуска сценария."""
+    return req.source is Source.MANUAL and req.scenario_run_id is None
+
+
 def _fight_accept(req: ActionRequest) -> bool:
     return req.kind is ActionKind.CLICK and FIGHT_ACCEPT.match(req.data or "") is not None
 
@@ -301,7 +307,7 @@ class ActionGateway:
         async with self._cond:
             if self._closed:
                 refused: Blocked | None = ActionStatus.SUPPRESSED, "shutdown"
-            elif req.source is Source.MANUAL and self._manual_full():
+            elif _admin_command(req) and self._manual_full():
                 refused = ActionStatus.REJECTED, "queue_full"
             else:
                 self._queue.append(pending)
@@ -317,7 +323,7 @@ class ActionGateway:
             raise
 
     def _manual_full(self) -> bool:
-        return sum(p.req.source is Source.MANUAL for p in self._queue) >= MANUAL_PENDING_MAX
+        return sum(_admin_command(p.req) for p in self._queue) >= MANUAL_PENDING_MAX
 
     def pending_key(self, key: str) -> bool:
         """Действие с этим ключом идемпотентности ещё не завершено в этом процессе."""

@@ -73,6 +73,17 @@ class DbPlannerStore:
                 .values(status=status, reason=reason[:200], finished_at=at)
             )
 
+    def _by_key(self, key: str) -> Any:
+        return select(ScenarioRunRow.id).where(
+            ScenarioRunRow.account_id == self._account_id,
+            ScenarioRunRow.idempotency_key == key,
+        )
+
+    async def run_by_key(self, key: str) -> int | None:
+        async with self._db.sessions() as session:
+            run_id = await session.scalar(self._by_key(key))
+        return int(run_id) if run_id is not None else None
+
     async def run_requested(
         self,
         scenario: str,
@@ -105,12 +116,7 @@ class DbPlannerStore:
             run_id = await session.scalar(stmt)
             if run_id is not None:
                 return int(run_id), True
-            existing = await session.scalar(
-                select(ScenarioRunRow.id).where(
-                    ScenarioRunRow.account_id == self._account_id,
-                    ScenarioRunRow.idempotency_key == key,
-                )
-            )
+            existing = await session.scalar(self._by_key(key))
         if existing is None:
             raise RuntimeError(f"scenario run with key {key} vanished")
         return int(existing), False
