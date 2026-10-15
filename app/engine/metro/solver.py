@@ -244,9 +244,8 @@ class MetroSolver:
 
     def _moved(self, window: tuple[str, ...], direction: str) -> bool:
         """Окно расходится с картой на клетке до хода и сходится на клетке после него."""
-        return self.grid.conflicts(window, self.pos) and not self.grid.conflicts(
-            window, step(self.pos, direction)
-        )
+        before = self.grid.conflicts(window, self.pos)
+        return before > 0 and self.grid.conflicts(window, step(self.pos, direction)) == 0
 
     def _npc_stays(self, window: tuple[str, ...], origin: Pos, seen: bool) -> None:
         """После боя с NPC персонаж на его клетке, но если там остался ещё 👨 (окно не сдвинулось,
