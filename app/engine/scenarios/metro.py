@@ -135,9 +135,58 @@ class Halted(Exception):
 async def _halt(
     ctx: ScenarioContext, reason: str, details: dict[str, Any] | None = None
 ) -> ScenarioResult:
-    text = f"metro: stopped ({reason}); the planner will try to resume the run"
+    text = f"metro: stopped ({reason}); the character may still be in the metro"
     await ctx.notify("warn", "metro_halted", text)
     return ScenarioResult("stopped", reason, details)
+
+
+async def _press(
+    ctx: ScenarioContext, shown: IncomingMessage, data: str, timeout_s: float
+) -> IncomingMessage | None:
+    """Клик по кадру `shown` (ревизия и хеш — шлюзу); правка-ответ или None — ответа нет."""
+    step = await ctx.click(
+        shown.msg_id,
+        data,
+        expect_metro(shown.msg_id),
+        revision=shown.revision,
+        content=shown.content_hash(),
+        timeout_s=timeout_s,
+    )
+    return step.delivery.msg if step.step is Step.OK and step.delivery is not None else None
+
+
+async def _escape(
+    ctx: ScenarioContext,
+    shown: IncomingMessage,
+    solver: MetroSolver,
+    stages: list[str],
+    record: Callable[[str], dict[str, Any]],
+    reason: str,
+    wait_s: float,
+) -> ScenarioResult:
+    """Решатель дальше не может (позиция потеряна, карта разошлась с игрой, нет пути): в метро
+    персонажа ждёт обвал за 15 минут до битвы — треть найденного, а 🚪 и «Выйти» — половина.
+    Только с кадра карты с 🚪; без диалога досрочного выхода или итога в ответ — остановка."""
+    screen = metro_screen(shown)
+    door = shown.button("maze_exit")
+    if not isinstance(screen, MetroMap) or screen.footer == "going" or door is None:
+        return await _halt(ctx, reason, record(reason))
+    await ctx.safe_point()
+    offer = await _press(ctx, shown, "maze_exit", wait_s)
+    if offer is None or not isinstance(metro_screen(offer), MetroEarlyExit):
+        return await _halt(ctx, reason, record(reason))
+    await ctx.safe_point()
+    await _settle(ctx, offer)
+    answer = await _press(ctx, offer, "maze_exit_accept", wait_s)
+    finished = metro_screen(answer) if answer is not None else None
+    if not isinstance(finished, MetroFinished):
+        return await _halt(ctx, reason, record(reason))
+    solver.abandon(reason)
+    solver.observe(finished)
+    stages.append("halt_exit")
+    text = f"metro: stopped ({reason}), left early via the door with half of the found loot"
+    await ctx.notify("warn", "metro_halt_exit", text)
+    return ScenarioResult("done", "finished", record("finished"))
 
 
 def _buffs_of(step: StepResult) -> MetroBuffs:
@@ -675,7 +724,8 @@ async def _walk(
                     ScenarioResult("done", move.reason, record(move.reason)), anomaly=anomaly
                 )
             if not isinstance(move, Click):
-                return await _halt(ctx, move.reason, record(move.reason))
+                escaped = await _escape(ctx, current, solver, stages, record, move.reason, wait_s)
+                return await left(escaped)
             if move.data == "maze_exit_accept" and isinstance(screen, MetroExit):
                 await _settle(ctx, current)
             await ctx.safe_point()

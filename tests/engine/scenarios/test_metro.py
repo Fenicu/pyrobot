@@ -672,21 +672,60 @@ async def test_declines_npc_and_chest_like_second_run(world: World) -> None:
     assert all(r.req.expect_content is not None for r in moves)
 
 
+# Итог досрочного выхода (кадр корпуса с текстом итога «досрочно»).
+HALT_FINISHED = replace(game_msg("metro", RUN2, 390), text=EARLY_FINISHED, inline=())
+
+
 @certifies("metro")
-async def test_wall_answer_to_move_into_open_cell_halts(world: World) -> None:
-    """Ход вправо в проход, видный в окне, а игра отвечает «Стена»: карта разошлась с игрой —
-    остановка, а не повтор хода."""
+async def test_wall_answer_to_move_into_open_cell_leaves_early(world: World) -> None:
+    """Ход вправо в проход, видный в окне, а игра отвечает «Стена» с тем же окном: карта
+    разошлась с игрой, решатель дальше не может. Ждать в метро — обвал за 15 минут до битвы и
+    треть найденного; 🚪 и «Выйти» — половина: выход досрочно, ход не повторяется."""
     start_at(world, RUN2, 388)
     world.game.on_click("maze_right", edit=("metro", RUN2, 389))
+    world.game.on_click("maze_exit", edit=("metro", RUN2, 390))
+    world.game.on_click("maze_exit_accept", edit=HALT_FINISHED)
+    world.game.on_text("/compact", PROFILE)
     notes = Notes()
     result = await run(world, ctx(world, notes=notes))
-    assert (result.status, result.reason) == ("stopped", "unexpected_wall")
-    assert world.game.payloads()[len(ENTRY) :] == ["maze_start", "maze_right"]
-    assert notes.sent == [("warn", "metro_halted")]
+    assert (result.status, result.reason) == ("done", "finished")
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_right",
+        "maze_exit",
+        "maze_exit_accept",
+        "/compact",
+    ]
+    assert notes.sent == [("warn", "metro_halt_exit")]
+    assert "unexpected_wall" in notes.texts[0]
     assert result.details is not None
     record = result.details["metro"]
     # Шаг — только стартовый кадр (приход влево); «Стена» шага не добавляет.
     assert record["steps"] == 1 and "wall" in [e["kind"] for e in record["events"]]
+    assert (record["mode"], record["leave_reason"]) == ("leave", "halted")
+    assert record["stuck_recovered"] == ["halt_exit"] and record["result"] is not None
+
+
+@certifies("metro")
+@pytest.mark.parametrize("door", [None, OTHER])
+async def test_halt_without_early_exit_dialog_stops_in_the_metro(
+    world: World, door: tuple[str, int] | None
+) -> None:
+    """🚪 без ответа или с незнакомым экраном: «Выйти» не нажимается, остановка с
+    `metro_halted` — персонаж, возможно, ещё в метро."""
+    start_at(world, RUN2, 388)
+    world.game.on_click("maze_right", edit=("metro", RUN2, 389))
+    if door is None:
+        world.game.on_click("maze_exit")
+    else:
+        world.game.on_click("maze_exit", edit=door)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("stopped", "unexpected_wall")
+    assert world.game.payloads()[len(ENTRY) :] == ["maze_start", "maze_right", "maze_exit"]
+    assert notes.sent == [("warn", "metro_halted")]
+    assert "may still be in the metro" in notes.texts[0]
+    assert "resume" not in notes.texts[0]
 
 
 @certifies("metro")

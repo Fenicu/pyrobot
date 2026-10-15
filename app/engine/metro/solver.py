@@ -436,6 +436,11 @@ class MetroSolver:
             return True
         return self.mode == "leave" and self.policy.heal_before_exit
 
+    def abandon(self, halt: str) -> None:
+        """Дальше решатель не может (остановка `halt`): уход из метро досрочным выходом."""
+        self.mode, self.leave_reason = "leave", "halted"
+        self._note_kind("leave", reason="halted", halt=halt)
+
     def _leave(self, reason: str) -> None:
         if self.mode != "leave":
             self.mode, self.leave_reason = "leave", reason
