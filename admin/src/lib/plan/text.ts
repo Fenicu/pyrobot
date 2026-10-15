@@ -154,6 +154,7 @@ export const VERDICT: Record<string, string> = {
 	no_team: 'не в команде',
 	company_unknown: 'своя компания не распознана',
 	artifact_run: 'идёт сбор артефакта',
+	artifact_level: 'уровень персонажа ниже нужного',
 	no_raw: 'нет 🔩',
 	motivation_cap: '🔥 у максимума — сначала дело',
 	trip_pending: 'ждёт итог прошлой поездки',

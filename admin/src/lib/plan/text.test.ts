@@ -42,7 +42,8 @@ describe('словари плана', () => {
 			'not_player', 'in_metro', 'metro_unknown_screen', 'metro_stuck', 'reserved', 'no_team', 'company_unknown',
 			'artifact_run', 'no_raw', 'motivation_cap', 'trip_pending', 'no_hard_team_offer',
 			'bag_full', 'saving', 'no_upgrade', 'target_blocked', 'dump_window', 'gorbushka_meeting',
-			'upgrade_running', 'shop_mismatch', 'factory_battle'
+			'upgrade_running', 'shop_mismatch', 'factory_battle', 'artifact_level', 'startup_locked',
+			'no_knowledge'
 		];
 		expect(verdicts.filter((v) => !(v in VERDICT))).toEqual([]);
 		expect(verdictText('stale:motivation')).toBe('нужно обновить: 🔥');
