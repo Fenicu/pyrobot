@@ -84,8 +84,9 @@ _BATTLE_MENU = re.compile(
     + r")$",
     re.S | re.M,
 )
+# Строки навыков «🔨… 🎓…» под именем у части игроков нет вовсе.
 _BATTLE_REPORT = re.compile(
-    r"\A[^\n]+ \(\d+\)\n🔨\d+[^\n]*\nТвои результаты в битве на (?P<hour>\d+) часов"
+    r"\A[^\n]+ \(\d+\)\n(?:🔨\d+[^\n]*\n)?Твои результаты в битве на (?P<hour>\d+) часов"
 )
 _CONTRIBUTION = re.compile(r"^🏆Твой вклад: (?P<n>" + NUM + r")", re.M)
 _STAMINA_AFTER = re.compile(r"^🔋Выносливость: \d+% → (?P<n>\d+)%", re.M)

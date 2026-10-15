@@ -58,6 +58,27 @@ def test_screens(msg_id: int, expected: Event) -> None:
     assert recognize_screens(game_msg("screens", msg_id)) == [expected]
 
 
+# Отчёт без строки навыков «🔨… 🎓…» под именем (прод 14.10.2026, Fyrfyrblin: так все отчёты).
+REPORT_WITHOUT_SKILLS = (
+    "👨‍🎤☣️[SU]\xa0nny fennec (69)\nТвои результаты в битве на 22 часов: @startupwarsreport\n"
+    "\n⚔Ты взламывал 📯Pied Piper\n\nУронил одного соперника в своей лиге Синиоров.\n\n"
+    "👨‍💻\n🐜(1) \n\nВ первом раунде тебе не удалось никого вынести. Бывает. В следующий раз "
+    "ты им всем покажешь!\n\n\n💡Опыт: +1\n💵Деньги: -$108\n🏆Твой вклад: 0\n"
+    "🔋Выносливость: 107% → 0% /to_eat"
+)
+
+
+def test_battle_report_without_skills_line() -> None:
+    assert recognize_screens(game_text(REPORT_WITHOUT_SKILLS)) == [
+        BattleReport(
+            hour=22,
+            rewards=Rewards(exp=1, money=-108, stamina=0),
+            contribution=0,
+            digest="40a92518ff7922fb",
+        )
+    ]
+
+
 def test_full_profile_with_ceo_message() -> None:
     # Сообщение CEO игра ставит и перед полным профилем (прод 04.10.2026).
     assert recognize_screens(game_text(FULL_PROFILE)) == [InfoScreen(name="full_profile")]

@@ -104,3 +104,43 @@ def test_factory_report_of_sample() -> None:
         rage=2,
     )
     assert isinstance(report, FactoryReport) and report.battle_day == date(2026, 9, 28)
+
+
+# Отчёты без строки навыков «🔨… 🎓…» под именем (прод 12-14.10.2026, Fyrfyrblin).
+FENNEC_LOST = (
+    "☣️[SU]\xa0nny fennec (69)\nБитва за фабрику 14.10.26: @startupwarsreport\n\n"
+    "Ты прошёл первый раунд и одолел 1🐻.\n\nУвы, но во втором раунде ты не смог одолеть никого и "
+    "твоя команда проиграла. Повезёт завтра!\n\n😡Твоя Ярость: 4 (3)\n\n💡Опыт: 82\n"
+    "💵Деньги: +$121\n💵В казну: +$120\n⚪️Простые: +2\n🔋Осталось выносливости: 0% /to_eat"
+)
+FENNEC_FELL = (
+    "☣️[SU]\xa0nny fennec (69)\nБитва за фабрику 12.10.26: @startupwarsreport\n\n"
+    "Ты одолел 1🐻, но пал в первом раунде от рук 2-го.\n\n😡Твоя Ярость: 2 (0)\n\n"
+    "🔋Осталось выносливости: 0% /to_eat"
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (
+            FENNEC_LOST,
+            FactoryReport(
+                won=False,
+                day="2026-10-14",
+                rewards=Rewards(exp=82, money=121, stamina=0, upgrades_white=2),
+                treasury=120,
+                rage=4,
+            ),
+        ),
+        (
+            FENNEC_FELL,
+            FactoryReport(
+                won=False, day="2026-10-12", rewards=Rewards(stamina=0), treasury=0, rage=2
+            ),
+        ),
+    ],
+    ids=["lost", "fell"],
+)
+def test_factory_report_without_skills_line(text: str, expected: FactoryReport) -> None:
+    assert recognize_crew(replace(game_msg("crew", 3521460), text=text)) == [expected]
