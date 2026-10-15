@@ -131,7 +131,7 @@ class _Planner(DailyTasks):
         busy = self.busy()
         # Идущее дело (в т.ч. многочасовой сон) известно до `until` — старым не считается.
         if busy is None and (field := self.stale_of("busy")) is not None:
-            return self.refresh("state", field) or self.wait()
+            return self.busy_refresh(field)
         if busy is not None:
             self.wake(busy.until, "busy")
             if busy.activity.startswith("sleep_"):
@@ -142,6 +142,13 @@ class _Planner(DailyTasks):
                 return decision
         return self.wait()
 
+    def busy_refresh(self, field: str) -> Decision:
+        """Занятость устарела — обновить её, но не в идущем забеге метро: там игра на `/compact`
+        молчит; вместо него — продолжение забега или ожидание конца его паузы."""
+        if self.metro_resumable():
+            return self.metro_resume(None) or self.wait()
+        return self.refresh("state", field) or self.wait()
+
     def outlook(self, fresh: Callable[[], _Planner]) -> Outlook:
         """Ветки занятости — как в `decide`; `fresh` — такой же планировщик с чистыми
         кандидатами и таймерами для прохода «после пробуждения» и подсказок."""
@@ -150,7 +157,7 @@ class _Planner(DailyTasks):
             return self.view("free" if busy is None else "busy", busy, probe, (), fresh)
         busy = self.busy()
         if busy is None and (field := self.stale_of("busy")) is not None:
-            decision = self.refresh("state", field) or self.wait()
+            decision = self.busy_refresh(field)
             seen = self.s.busy
             if seen is None or seen.src == "doubtful":
                 return self.view("unknown", None, decision, (), fresh)

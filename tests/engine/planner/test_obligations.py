@@ -1110,6 +1110,28 @@ def test_metro_resumed_after_restart_regardless_of_cooldown() -> None:
     assert act(decision) == ("metro", {**METRO_PARAMS, "resume": 3624441})
 
 
+def test_metro_resumed_before_refreshing_stale_busy() -> None:
+    """14.10 (Frosty): забег остановился, занятость устарела — планировщик слал `/compact`, на
+    который в метро игра молчит, и до продолжения забега не доходил. Персонаж в забеге —
+    сначала продолжение, а пока оно в паузе после неудачи — ожидание без `/compact`."""
+    inside = run_in(NOON - timedelta(minutes=15))
+    old = Obs(value=None, at=NOON - timedelta(minutes=20))
+    s = metro_state(NOON, metro_message=inside, metro_ready_at=NOON + DAY, busy=old)
+    assert act(decide(s, METRO_ALONE, NOON)) == ("metro", {**METRO_PARAMS, "resume": 3624441})
+    backoff = {"metro": NOON + timedelta(minutes=10)}
+    decision = decide(s, METRO_ALONE, NOON, cooldowns=backoff)
+    assert isinstance(decision, Wait), decision
+    assert ("metro", "cooldown") in candidates(decision)
+    assert ("refresh", "chosen") not in candidates(decision)
+    view = outlook(s, METRO_ALONE, NOON, cooldowns=backoff)
+    assert isinstance(view.decision, Wait)
+    # Продолжение выключено: занятость обновляется как обычно.
+    off = METRO_ALONE.model_copy(
+        update={"features": METRO_ALONE.features.model_copy(update={"metro": False})}
+    )
+    assert act(decide(s, off, NOON)) == ("refresh", {"source": "profile"})
+
+
 @pytest.mark.parametrize(
     ("seen_min_ago", "battle", "flags"),
     [

@@ -581,6 +581,11 @@ class Obligations(PlannerBase):
             **asdict(policy_of(cfg)),
         }
 
+    def metro_resumable(self) -> bool:
+        """Персонаж в забеге, который продолжается автоматически: свежий распознанный экран забега
+        до выброса, без итога."""
+        return self.feature_on("metro_resume") and metro_live(self.s, self.now) is not None
+
     def metro_resume(self, busy: BusyState | None) -> Decision | None:
         """Персонаж остался в метро (рестарт, остановка сценария): продолжить забег сразу."""
         seen = self.s.metro_message
