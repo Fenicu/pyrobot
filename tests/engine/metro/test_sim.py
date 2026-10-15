@@ -106,6 +106,22 @@ def test_contradicting_windows_relocate_or_pause() -> None:
     assert outcomes.count("done") >= 10
 
 
+def test_long_moves_relocate_over_whole_map_and_finish() -> None:
+    """Игра одной правкой сдвинула игрока на три клетки: окно дальше соседних клеток. Как и
+    сценарий, прогон сверяет тот же кадр со всей картой и доходит до выхода."""
+    recovered = 0
+    for seed in range(12):
+        maze = _maze("tree", 7, 7, seed)
+        run = drive(maze, long_moves=frozenset({30, 60, 90}))
+        if run.outcome == Halt("lost"):
+            # По всей карте окно подходит не в одно место: позицию не восстановить.
+            continue
+        assert run.outcome == Done("finished") and _complete(maze, run)
+        kinds = [e["kind"] for e in run.solver.events]
+        recovered += "lost" in kinds
+    assert recovered >= 8
+
+
 def test_budget_leaves_before_battle() -> None:
     battle = timedelta(minutes=40)
     reasons = set()

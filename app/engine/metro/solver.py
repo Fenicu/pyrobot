@@ -221,6 +221,10 @@ class MetroSolver:
         self._pending = None
         if self._npc_from is not None:
             self._npc_stays(frame.window, *self._npc_from)
+        self._fit(frame)
+
+    def _fit(self, frame: MetroMap) -> None:
+        """Окно кадра — на карту: позиция (если окно с ней расходится), слияние, запасы."""
         if self.grid.conflicts(frame.window, self.pos):
             located = self.grid.locate(frame.window, self.pos, far=self._far)
             if located is None:
@@ -327,6 +331,18 @@ class MetroSolver:
                 took = (now - self._move_sent_at).total_seconds()
                 self.move_times = [*self.move_times, took][-RECENT_MOVES:]
             self._move_sent_at = None
+        return self._decided(now)
+
+    def relocate(self, now: datetime) -> Move:
+        """После `Halt("lost")`: ход мог унести дальше соседних клеток — тот же кадр сверяется со
+        всей картой, как свежий после рестарта. Подпись кадра (приход, стена) уже учтена."""
+        frame = self._screen
+        if self.lost and isinstance(frame, MetroMap):
+            self.resync()
+            self._fit(frame)
+        return self._decided(now)
+
+    def _decided(self, now: datetime) -> Move:
         move = self.decide(now)
         if isinstance(move, Click) and move.data.removeprefix("maze_") in _MOVES:
             self._pending = move.data.removeprefix("maze_")

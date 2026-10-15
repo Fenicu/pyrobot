@@ -260,6 +260,28 @@ def test_far_window_after_restart_relocates() -> None:
     assert s.next(lost, T0) == Halt("lost")
 
 
+def test_lost_window_relocates_over_whole_map_on_the_same_frame() -> None:
+    """Ход унёс на три клетки одной правкой: окно в двух клетках от ожидаемой позиции. Соседние
+    клетки не подходят (`lost`), а тот же кадр, сверенный со всей картой, как после рестарта,
+    находит позицию; приход по подписи кадра повторно не засчитывается."""
+    s = _known_tree((1, 1))
+    s.observe(at((1, 1), "going", direction="right"))
+    assert s.next(at((1, 4), "arrived", direction="right"), T0) == Halt("lost")
+    move = s.relocate(T0)
+    assert isinstance(move, Click)
+    assert s.pos == (1, 4) and s.steps == 1 and not s.lost
+    assert [e["kind"] for e in s.events][-2:] == ["lost", "relocated"]
+    assert s.path[-1] == (1, 4) and s.vitals[-1]["pos"] == [1, 4]
+
+
+def test_unknown_window_stays_lost_after_whole_map_search() -> None:
+    s = _known_tree((1, 1))
+    unknown = map_frame(("#####", "#.#.#", "#.@.#", "#.#.#", "#####"), "waiting")
+    assert s.next(unknown, T0) == Halt("lost")
+    assert s.relocate(T0) == Halt("lost")
+    assert s.pos == (1, 1) and s.lost
+
+
 def test_unexpected_screen_halts() -> None:
     s = solver()
     s.next(at((1, 1)), T0)

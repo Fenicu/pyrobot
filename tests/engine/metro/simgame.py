@@ -26,6 +26,7 @@ MAZE_CLICKS = frozenset(
         "maze_npc_high_decline",
         "maze_chest_accept",
         "maze_chest_decline",
+        "maze_exit",
         "maze_exit_accept",
         "maze_exit_decline",
     }

@@ -708,6 +708,30 @@ async def test_wall_answer_to_move_into_open_cell_leaves_early(world: World) -> 
 
 
 @certifies("metro")
+async def test_unknown_window_after_move_leaves_early(world: World) -> None:
+    """Окно после хода не сходится с картой ни рядом, ни по всей карте (кадр другого забега):
+    позиция потеряна — выход досрочно, как и при других остановках решателя."""
+    start_at(world, RUN2, 388)
+    world.game.on_click("maze_right", edit=("metro", RUN, 11))
+    world.game.on_click("maze_exit", edit=("metro", RUN2, 390))
+    world.game.on_click("maze_exit_accept", edit=HALT_FINISHED)
+    world.game.on_text("/compact", PROFILE)
+    notes = Notes()
+    result = await run(world, ctx(world, notes=notes))
+    assert (result.status, result.reason) == ("done", "finished")
+    assert world.game.payloads()[len(ENTRY) :] == [
+        "maze_start",
+        "maze_right",
+        "maze_exit",
+        "maze_exit_accept",
+        "/compact",
+    ]
+    assert notes.sent == [("warn", "metro_halt_exit")] and "lost" in notes.texts[0]
+    assert result.details is not None
+    assert result.details["metro"]["stuck_recovered"] == ["halt_exit"]
+
+
+@certifies("metro")
 @pytest.mark.parametrize("door", [None, OTHER])
 async def test_halt_without_early_exit_dialog_stops_in_the_metro(
     world: World, door: tuple[str, int] | None
@@ -1029,6 +1053,29 @@ async def test_long_run_on_simulator(maze_world: World) -> None:
     record = result.details["metro"]
     assert len(record["grid"]["visited"]) == len(game.sim.maze.floor())
     assert record["result"] == game.sim.bank
+
+
+async def test_long_move_relocates_over_whole_map_and_continues() -> None:
+    """Ход унёс на три клетки одной правкой: окно в двух клетках от ожидаемой позиции, рядом
+    позиции нет. Тот же кадр сверяется со всей картой, как после рестарта, — забег идёт дальше
+    до обычного выхода, без 🚪."""
+    rng = random.Random(7)
+    maze = hide_events(tree_maze(7, 7, rng), rng)
+    moves = frozenset({50, 100})
+    async for w in running_world(game=lambda pipeline: SimGame(pipeline, maze, long_moves=moves)):
+        game = w.game
+        assert isinstance(game, SimGame)
+        game.on_text("/compact", PROFILE)
+        notes = Notes()
+        result = await run(w, ctx(w, notes=notes))
+        assert (result.status, result.reason) == ("done", "finished")
+        assert game.sim.finished and not game.sim.early_exit
+        assert "maze_exit" not in game.payloads()
+        assert ("warn", "metro_halt_exit") not in notes.sent
+        assert result.details is not None
+        kinds = [e["kind"] for e in result.details["metro"]["events"]]
+        lost = [n for n, kind in enumerate(kinds) if kind == "lost"]
+        assert len(lost) == 2 and all(kinds[n + 1] == "relocated" for n in lost)
 
 
 def test_policy_params_default_to_metro_settings() -> None:

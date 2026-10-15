@@ -11,7 +11,7 @@ from app.engine.events import Event, Unrecognized
 from app.engine.gateway.types import Match, Predicate, Verdict
 from app.engine.metro.budget import Budget, prior_step_s
 from app.engine.metro.live import LiveFeed, live_frame
-from app.engine.metro.solver import Click, Done, MetroSolver, Policy, policy_of
+from app.engine.metro.solver import Click, Done, Halt, MetroSolver, Policy, policy_of
 from app.engine.parsing.metro import (
     ENTRY_COST,
     WALL,
@@ -708,6 +708,8 @@ async def _walk(
                 return await _halt(ctx, "unexpected_screen", record("unexpected_screen"))
             before, shown = shown, screen
             move = solver.next(screen, ctx.clock.now())
+            if move == Halt("lost"):
+                move = solver.relocate(ctx.clock.now())
             live.update()
             for alert in solver.alerts:
                 if alert not in notified:

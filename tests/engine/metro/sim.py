@@ -355,6 +355,8 @@ class MazeGame:
     clock: SimClock = field(default_factory=SimClock)
     # Номера ходов, на которых игра «не сдвинула» игрока, но показала подпись прихода.
     glitch_moves: frozenset[int] = frozenset()
+    # Номера ходов, на которых игра одной правкой сдвинула игрока на 3 клетки (пока проход).
+    long_moves: frozenset[int] = frozenset()
     pos: Pos = (0, 0)
     bank: dict[str, int] = field(default_factory=dict)
     screen: Event | None = None
@@ -458,6 +460,10 @@ class MazeGame:
         if self.moves in self.glitch_moves:
             return [going, self._map("arrived", direction)]
         self.pos = target
+        if self.moves in self.long_moves:
+            for _ in range(2):
+                if self.maze.passable(step(self.pos, direction)):
+                    self.pos = step(self.pos, direction)
         event = self._cell_event()
         if event is not None:
             return [going, event]
@@ -564,6 +570,8 @@ def drive(
     for _ in range(max_clicks):
         now = T0 + timedelta(seconds=sim.clock.t)
         outcome = solver.next(parsed(Frame(event)), now)
+        if outcome == Halt("lost"):
+            outcome = solver.relocate(now)
         if not isinstance(outcome, Click):
             break
         is_move = outcome.data.removeprefix("maze_") in DIRS
