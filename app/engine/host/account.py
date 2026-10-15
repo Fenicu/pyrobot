@@ -9,7 +9,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import Awaitable, Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -43,7 +43,7 @@ from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
 from app.engine.parsing.sleep import RobberyAlert
 from app.engine.pipeline import Pipeline, Recall
-from app.engine.planner.loop import PlannerLoop
+from app.engine.planner.loop import NoAnswers, PlannerLoop
 from app.engine.reactions import RobberyDefense
 from app.engine.reconcile import Reconciler
 from app.engine.scenarios.context import History, Reread
@@ -158,6 +158,8 @@ class RuntimeDeps:
     server: ServerSettingsRepo | None = None
     # Уведомления сервера (владельцам): неиспользованный код входа через серверное приложение.
     server_notifier: NotifierPort | None = None
+    # Неудачи «игра не ответила» всех аккаунтов: молчание игры снимает паузы серий.
+    no_answers: NoAnswers = field(default_factory=NoAnswers)
 
 
 class AccountRuntime:
@@ -340,6 +342,7 @@ class AccountRuntime:
             artifacts=artifacts,
             gadgets=gadgets,
             publish=self.stream.publish,
+            no_answers=self._deps.no_answers,
         )
         game_chat = settings.current.chats.game_chat_id
 

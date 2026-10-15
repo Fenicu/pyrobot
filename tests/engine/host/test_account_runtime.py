@@ -193,6 +193,15 @@ async def test_loop_and_facade_share_artifact_and_gadget_runs(
     await runtime.stop()
 
 
+async def test_account_loops_share_no_answer_log(engines: Engines, clean_db: Database) -> None:
+    # Молчание игры видно по всем аккаунтам: их циклы пишут неудачи «не ответила» в один журнал.
+    second = await _add_account(clean_db)
+    one = await engines.start(1)
+    two = await engines.start(second)
+    assert one.planner is not None and two.planner is not None
+    assert one.planner._no_answers is two.planner._no_answers is engines.deps.no_answers
+
+
 async def test_stop_drains_pipeline_abort_does_not(engines: Engines, clean_db: Database) -> None:
     first = await engines.start(1)
     assert first.pipeline is not None

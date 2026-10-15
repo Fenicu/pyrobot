@@ -25,6 +25,7 @@ from app.engine.planner.loop import (
     FixedParams,
     InvalidParams,
     ManualQueueFull,
+    NoAnswers,
     PlannerLoop,
 )
 from app.engine.planner.store import MemoryPlannerStore
@@ -78,6 +79,7 @@ class Rig:
         auto: bool = True,
         store: MemoryPlannerStore | None = None,
         notes: Notes | None = None,
+        no_answers: NoAnswers | None = None,
     ) -> None:
         self.world = world
         self.clock = ShiftClock()
@@ -94,6 +96,7 @@ class Rig:
             ready=lambda: self.ready,
             step_timeout_s=0.3,
             auto=auto,
+            no_answers=no_answers,
         )
 
     async def steps(self, n: int) -> None:
@@ -367,13 +370,18 @@ TASKS = Act("daily_refresh", {}, "tasks unknown")
 
 
 async def test_game_answer_lifts_backoff_of_unanswered_series(world: World) -> None:
-    # 14.10: игра молчала, рефреш профиля копил паузу (последняя неудача — 07:07, пауза 2 ч);
-    # в 07:30 экраны снова отвечают — профиль не ждёт до 09:07.
-    rig = Rig(world)
+    # 14.10: игра молчала для всех, рефреш профиля копил паузу (последняя неудача — 07:07,
+    # пауза 2 ч), у других аккаунтов он тоже падал по таймауту; в 07:30 экраны снова отвечают —
+    # профиль не ждёт до 09:07.
+    silence = NoAnswers()
+    rig = Rig(world, no_answers=silence)
+    other = Rig(world, no_answers=silence)
     at = moment()
     for minutes in (0, 5, 15):
         t = at + timedelta(minutes=minutes)
         await rig.loop._after(PROFILE, TIMEOUT, t, t)
+        late = t + timedelta(minutes=1)
+        await other.loop._after(PROFILE, TIMEOUT, late, late)
     assert rig.loop._cooldowns["refresh:profile"] == at + timedelta(minutes=35)
     back = at + timedelta(minutes=25)
     await rig.loop._after(TASKS, ScenarioResult("done", "screen"), back, back)
@@ -395,6 +403,25 @@ async def test_own_timeout_keeps_backoff_while_game_answers(world: World) -> Non
         read = t + timedelta(minutes=1)
         await rig.loop._after(BOOK, ScenarioResult("done", "book_read"), read, read)
     assert rig.loop._cooldowns["gorbushka"] == at + timedelta(minutes=60 + 20)
+
+
+async def test_lone_timeout_series_keeps_backoff_through_quiet_answers(world: World) -> None:
+    # Сломан только этот сценарий (например, ответ не разобран и кончается таймаутом), между его
+    # неудачами больше ничего не запускалось: done другого сценария его серию не сбрасывает —
+    # пауза растёт до предела, уведомление одно.
+    rig = Rig(world)
+    at = moment()
+    for cycle in range(4):
+        base = at + timedelta(hours=2 * cycle)
+        for minutes in (0, 5):
+            t = base + timedelta(minutes=minutes)
+            await rig.loop._after(PROFILE, TIMEOUT, t, t)
+        back = base + timedelta(minutes=50)
+        await rig.loop._after(TASKS, ScenarioResult("done", "screen"), back, back)
+    last = at + timedelta(hours=6, minutes=5)
+    assert rig.loop._failures["refresh:profile"] == 8
+    assert rig.loop._cooldowns == {"refresh:profile": last + MAX_RETRY}
+    assert rig.notes.codes == ["scenario_failed"]
 
 
 async def test_game_answer_keeps_logical_failures_and_longer_holds(world: World) -> None:

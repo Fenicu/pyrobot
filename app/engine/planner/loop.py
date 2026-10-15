@@ -45,6 +45,7 @@ MAX_RETRY = timedelta(hours=2)
 # Неудачи «игра не ответила»: таймаут ответа или ошибка отправки.
 NO_ANSWER = "timeout"
 NO_ANSWER_PREFIX = "send_error:"
+NO_ANSWER_KEEP = timedelta(days=1)
 # «Нечего делать» и «занят» уже обновили состояние; короткая пауза страхует от зацикливания.
 NOTHING_RETRY = timedelta(minutes=1)
 # «Нечего делать», которое за минуту не изменится: биржа не откроется до конца окна слива, цена
@@ -157,6 +158,22 @@ def _exit_at(state: CharacterState) -> datetime | None:
     return seen.value.exit_at if seen is not None and seen.value is not None else None
 
 
+class NoAnswers:
+    """Неудачи «игра не ответила» всех циклов процесса: (цикл, ключ) → момент последней. Общие
+    для аккаунтов: игра молчит для всех, а не отказывает одному сценарию."""
+
+    def __init__(self) -> None:
+        self._last: dict[tuple[object, str], datetime] = {}
+
+    def note(self, owner: object, key: str, at: datetime) -> None:
+        self._last = {k: t for k, t in self._last.items() if at - t < NO_ANSWER_KEEP}
+        self._last[(owner, key)] = at
+
+    def others_since(self, owner: object, key: str, since: datetime) -> bool:
+        """Не отвечала ли игра чему-то, кроме этого сценария этого цикла, начиная с `since`."""
+        return any(t >= since for k, t in self._last.items() if k != (owner, key))
+
+
 class PlannerLoop:
     def __init__(
         self,
@@ -178,6 +195,7 @@ class PlannerLoop:
         artifacts: ArtifactRuns | None = None,
         gadgets: GadgetRuns | None = None,
         publish: Publish | None = None,
+        no_answers: NoAnswers | None = None,
     ) -> None:
         self._gateway = gateway
         # Поток событий аккаунта: живые кадры сценариев (метро).
@@ -208,6 +226,7 @@ class PlannerLoop:
         # Серии «игра молчит»: ключ → кулдаун, поставленный его последней неудачей. Успех любого
         # сценария их снимает.
         self._silent: dict[str, datetime] = {}
+        self._no_answers = no_answers or NoAnswers()
         # Последний успешный запуск каждого сценария (кулдауны мандарина и т. п. после рестарта).
         self._last_done: dict[str, datetime] | None = None
         self._metro_store = metro_store
@@ -861,14 +880,20 @@ class PlannerLoop:
         self._failures[key] = count
         retry = RETRY_AFTER * 2 ** min(count - 1, 10)
         self._cooldowns[key] = finished + min(retry, MAX_RETRY)
-        # Игра молчит, а не отказывает этому сценарию: он снова не получил ответа, и после его
-        # прошлой неудачи не ответили и на остальное.
+        # Игра молчит, а не отказывает этому сценарию: он снова не получил ответа, после его
+        # прошлой неудачи ничто не кончилось done, и не ответили чему-то ещё (другому сценарию
+        # или другому аккаунту).
         previous = self._failed_at.get(key)
         self._failed_at[key] = finished
-        unanswered = result.reason == NO_ANSWER or result.reason.startswith(NO_ANSWER_PREFIX)
-        answered = self._answered_at
-        if unanswered and previous is not None and (answered is None or answered <= previous):
-            self._silent[key] = self._cooldowns[key]
+        if result.reason == NO_ANSWER or result.reason.startswith(NO_ANSWER_PREFIX):
+            answered = self._answered_at
+            if (
+                previous is not None
+                and (answered is None or answered <= previous)
+                and self._no_answers.others_since(self, key, previous)
+            ):
+                self._silent[key] = self._cooldowns[key]
+            self._no_answers.note(self, key, finished)
         if count == 1 and (key, result.reason) != ("metro", EXIT_UNCONFIRMED):
             # Одно уведомление на серию неудач, до следующего успеха. Застревание в метро после
             # итога сценарий уже сообщил (`metro_stuck_after_exit`).
