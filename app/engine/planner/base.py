@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.engine.artifact import artifact_deeds, collecting
+from app.engine.gametime import to_msk
 from app.engine.planner.types import Act, Candidate, Decision, Reserve, Wait, WakeKind, Wakeup
 from app.engine.settings import Settings
 from app.engine.state.model import (
@@ -15,12 +16,16 @@ from app.engine.state.model import (
     PriceState,
     stale_fields,
 )
+from app.engine.state.reducer import FACTORY_BATTLE
 
 # «Скоро Битва» замечено до ~6 мин до начала, «Битва уже началась» — в первую минуту.
 BATTLE_BEFORE = timedelta(minutes=6)
 BATTLE_AFTER = timedelta(minutes=1)
 # Отсчёт до битвы с секундами может указать чуть позже начала часа (HH:00:00.4).
 BATTLE_SKEW = timedelta(minutes=2)
+# Командная битва за фабрику (18:30 МСК): игрокам команд игра отвечает «Идёт командная битва за
+# Фабрику» — по журналу до 18:30:09, в 18:30:17 уже отвечает. Минута — с запасом.
+FACTORY_AFTER = timedelta(minutes=1)
 # Отсчёт от суток игра показывает с точностью до часа: двухминутный запас увёл бы отсчёт, снятый в
 # первые минуты часа, на час раньше, поэтому запас — только на задержку отправки.
 HOURLY_COUNTDOWN = timedelta(days=1)
@@ -115,6 +120,14 @@ def battle_hour(at: datetime, seen: datetime | None = None) -> datetime:
     shifted = at - (HOURLY_SKEW if hourly else BATTLE_SKEW)
     hour = shifted.replace(minute=0, second=0, microsecond=0)
     return hour if hour == shifted else hour + timedelta(hours=1)
+
+
+def factory_battle(at: datetime) -> datetime:
+    """Начало битвы за фабрику в день `at` по Москве."""
+    local = to_msk(at)
+    return local.replace(
+        hour=FACTORY_BATTLE.hour, minute=FACTORY_BATTLE.minute, second=0, microsecond=0
+    )
 
 
 def exit_unconfirmed(state: CharacterState, now: datetime) -> bool:
@@ -288,9 +301,8 @@ class PlannerBase:
         """Нужное поле неизвестно или устарело: обновить источник, если позволяет лимит."""
         source = SOURCE[field]
         self.reject(scenario, {}, f"stale:{field}")
-        if self.battle_running():
-            # В первую минуту битвы игра отвечает на любой экран «Битва уже началась».
-            self.reject("refresh", {"source": source}, "battle_window")
+        if (closed := self.screens_closed()) is not None:
+            self.reject("refresh", {"source": source}, closed)
             return None
         last = self.last_refresh.get(source)
         if last is not None and self.now - last < self.refresh_every:
@@ -377,6 +389,24 @@ class PlannerBase:
             return False
         self.wake(battle + BATTLE_AFTER, "battle")
         return True
+
+    def factory_running(self) -> bool:
+        """Идёт битва за фабрику: от её начала до `FACTORY_AFTER`, если по последнему профилю
+        персонаж в команде (или это неизвестно); к концу цикл проснётся."""
+        start = factory_battle(self.now)
+        if self._no_team_seen() is not None or not start <= self.now < start + FACTORY_AFTER:
+            return False
+        self.wake(start + FACTORY_AFTER, "battle")
+        return True
+
+    def screens_closed(self) -> str | None:
+        """Игра сейчас не отдаёт экраны — вердикт рефреша: первая минута битвы («Битва уже
+        началась») или битва за фабрику; None — отдаёт."""
+        if self.battle_running():
+            return "battle_window"
+        if self.factory_running():
+            return "factory_battle"
+        return None
 
     def upcoming_battle(self) -> datetime | None:
         if self.stale_of("battle_at") is not None:

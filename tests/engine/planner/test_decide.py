@@ -634,6 +634,40 @@ def test_no_screen_refresh_while_battle_runs(name: str, feature: str) -> None:
     assert act(decide(awake(before, battle_at=battle), settings, before))[0] == name
 
 
+# 18:30 МСК: командная битва за фабрику, игра отвечает «Не торопись. Идёт командная битва за
+# Фабрику» игрокам команд.
+FACTORY_BATTLE_AT = datetime(2026, 9, 26, 15, 30, tzinfo=UTC)
+
+
+def test_no_refresh_while_factory_battle_runs() -> None:
+    battle = FACTORY_BATTLE_AT
+    during = battle + timedelta(seconds=3)
+    seen = awake(battle - timedelta(minutes=20), team_tag="SU")
+    decision = decide(seen, BASE, during)
+    end = battle + timedelta(minutes=1)
+    assert decision == Wait(end + TIMER_MARGIN, "battle", decision.candidates)
+    assert verdicts(decision)["refresh"] == "factory_battle"
+    assert act(decide(seen, BASE, end)) == ("refresh", {"source": "profile"})
+    # Вне команды по последнему профилю игра экраны отдаёт.
+    teamless = awake(battle - timedelta(minutes=20), team_tag=None)
+    assert act(decide(teamless, BASE, during)) == ("refresh", {"source": "profile"})
+
+
+@pytest.mark.parametrize(
+    ("name", "feature"), [("daily_refresh", "daily_tasks"), ("trips_refresh", "trips")]
+)
+def test_no_screen_refresh_while_factory_battle_runs(name: str, feature: str) -> None:
+    settings = config({"features": {feature: True}})
+    battle = FACTORY_BATTLE_AT
+    seen = awake(battle - timedelta(minutes=1), team_tag="SU")
+    decision = decide(seen, settings, battle + timedelta(seconds=3))
+    end = battle + timedelta(minutes=1)
+    # Дела окно битвы за фабрику не проверяют: их отказ цикл держит до её конца.
+    assert act(decision)[0] == "deed:job"
+    assert verdicts(decision)[name] == "factory_battle"
+    assert act(decide(awake(end, team_tag="SU"), settings, end))[0] == name
+
+
 def test_no_motivation_waits_for_regen() -> None:
     decision = decide(awake(motivation=0), BASE, NOW)
     assert decision == Wait(w(30), "motivation", decision.candidates)

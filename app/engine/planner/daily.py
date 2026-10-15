@@ -127,8 +127,8 @@ class DailyTasks(GadgetSteps):
         return None
 
     def daily_refresh(self, reason: str) -> Decision | None:
-        if self.battle_running():
-            self.reject("daily_refresh", {}, "battle_window")
+        if (closed := self.screens_closed()) is not None:
+            self.reject("daily_refresh", {}, closed)
             return None
         last = self.last_refresh.get("daily")
         # Первое чтение нового дня лимит не откладывает.

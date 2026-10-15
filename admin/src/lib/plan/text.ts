@@ -135,6 +135,7 @@ export const VERDICT: Record<string, string> = {
 	battle_window: 'скоро битва',
 	sleep_deadline: 'не успеть до сна',
 	factory_window: 'мешает записи на фабрику',
+	factory_battle: 'идёт битва за фабрику',
 	uncertified: 'не сертифицирован',
 	cooldown: 'отсрочка',
 	rate_limited: 'рано перечитывать',

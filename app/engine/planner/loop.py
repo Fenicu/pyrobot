@@ -21,8 +21,10 @@ from app.engine.planner.base import (
     BATTLE_AFTER,
     BATTLE_BEFORE,
     BATTLE_SKEW,
+    FACTORY_AFTER,
     METRO_PROBE,
     battle_hour,
+    factory_battle,
 )
 from app.engine.planner.daily import UNKNOWN_FIRE
 from app.engine.planner.decide import Outlook, decide, lottery_params, outlook, resume_metro
@@ -77,6 +79,8 @@ SHARED_REFUSALS = frozenset(
 # Отказы окна битвы: повтор — сразу после её первой минуты, а не через `RETRY_AFTER`.
 BATTLE_REFUSALS = frozenset({"battle_soon", "battle_running"})
 BATTLE_RETRY = timedelta(seconds=10)
+# Отказ битвы за фабрику: повтор — после её минуты.
+FACTORY_REFUSAL = "factory_running"
 # Отказ из-за уровня или профессии за минуты не изменится: пауза сценария до следующих суток. Пауза
 # в памяти, перезапуск её сбрасывает — одна лишняя попытка допустима.
 LONG_REFUSALS = frozenset({"min_level", "not_harvester", "startup_level"})
@@ -811,6 +815,8 @@ class PlannerLoop:
             until = finished + RETRY_AFTER
             if result.status == "refused" and result.reason in BATTLE_REFUSALS:
                 until = battle_hold(finished) or until
+            elif result.status == "refused" and result.reason == FACTORY_REFUSAL:
+                until = factory_hold(finished) or until
             self._cooldowns[key] = until
             # Общий отказ не укорачивает более длинную паузу другого дела (например, до завтра).
             for target in DEEDS if shared else ():
@@ -847,6 +853,16 @@ def battle_hold(at: datetime) -> datetime | None:
     if battle - at > BATTLE_BEFORE + BATTLE_SKEW or at >= battle + BATTLE_AFTER:
         return None
     return max(at + BATTLE_RETRY, battle + BATTLE_AFTER)
+
+
+def factory_hold(at: datetime) -> datetime | None:
+    """До какого момента держать сценарий после отказа «Идёт командная битва за Фабрику» в `at`:
+    до конца минуты битвы. None — отказ не вяжется с 18:30 по нашим часам (минута расхождения
+    до начала допустима)."""
+    start = factory_battle(at)
+    if not start - FACTORY_AFTER <= at < start + FACTORY_AFTER:
+        return None
+    return max(at + BATTLE_RETRY, start + FACTORY_AFTER)
 
 
 def _blind_team_pick(act: Act) -> str:

@@ -793,6 +793,31 @@ async def test_battle_refusal_far_from_battle_hour_retries_as_usual(world: World
         assert rig.loop._cooldowns == {"book": at + RETRY_AFTER}
 
 
+@pytest.mark.parametrize("after", [timedelta(seconds=3), timedelta(seconds=-20)])
+async def test_factory_refusal_holds_until_factory_battle_end(
+    world: World, after: timedelta
+) -> None:
+    # «Идёт командная битва за Фабрику» в 18:30 — до конца её минуты, у дела — всем делам.
+    rig = Rig(world)
+    end = msk_at(28, 18, 31)
+    at = msk_at(28, 18, 30) + after
+    await rig.loop._after(PROFILE, ScenarioResult("refused", "factory_running"), at, at)
+    assert rig.loop._cooldowns == {"refresh:profile": end}
+    job = Act("deed:job", {}, "best")
+    await rig.loop._after(job, ScenarioResult("refused", "factory_running"), at, at)
+    assert rig.loop._cooldowns == {"refresh:profile": end, **dict.fromkeys(DEEDS, end)}
+
+
+async def test_factory_refusal_at_its_end_or_far_from_it_retries_as_usual(world: World) -> None:
+    rig = Rig(world)
+    late = msk_at(28, 18, 30) + timedelta(seconds=55)
+    await rig.loop._after(PROFILE, ScenarioResult("refused", "factory_running"), late, late)
+    assert rig.loop._cooldowns == {"refresh:profile": late + timedelta(seconds=10)}
+    for at in (msk_at(28, 18, 20), msk_at(28, 18, 31)):
+        await rig.loop._after(PROFILE, ScenarioResult("refused", "factory_running"), at, at)
+        assert rig.loop._cooldowns == {"refresh:profile": at + RETRY_AFTER}
+
+
 async def test_book_refused_before_battle_waits_for_its_end(world: World) -> None:
     world.game.on_text("/read_exp", ("refusals", 3520502))
     await world.feed("profile", 3624478)
