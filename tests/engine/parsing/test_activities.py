@@ -218,6 +218,21 @@ def test_motivation_full_and_magnet() -> None:
     assert (magnet[0].source, magnet[0].rewards.exp) == ("magnet", 247)
 
 
+# 💫Лайфхак (бонус 📖Библиотекаря) — отдельным сообщением сразу после итога дела (прод 11.10.2026,
+# Fyrfyrblin, после итога ⛏Добычи): ещё одна награда того же дела.
+LIFEHACK = (
+    "Ты применил крутой 💫Лайфхак!\n\nТы получил:\n💡Опыт: +233\nПуговица +1\n"
+    "🐀Ушастая хрень также добыл:\nПуговица +1\nЛьняная ткань +1"
+)
+
+
+def test_lifehack_is_bonus_rewards() -> None:
+    [bonus] = _text_events(LIFEHACK)
+    assert isinstance(bonus, BonusRewards)
+    assert (bonus.source, bonus.rewards.exp) == ("lifehack", 233)
+    assert bonus.rewards.items == {"Пуговица": 2, "Льняная ткань": 1}
+
+
 def test_deeds_menu_compact_and_full() -> None:
     deeds = {
         "job": Price(motivation=1, minutes=5),

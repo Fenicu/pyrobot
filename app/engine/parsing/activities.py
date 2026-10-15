@@ -102,6 +102,8 @@ _CANCEL_NONE = "❌Задания уже нет. Нечего отменять."
 _CANCEL_PLAIN = "Действие отменено."
 _MOT_FULL = "Поздравляю! Твоя 🔥Мотивация полностью восстановлена"
 _MAGNET = "Сработал 🧲Магнит!"
+# Бонус 📖Библиотекаря: отдельное сообщение сразу после итога дела с ещё одной наградой.
+_LIFEHACK = "Ты применил крутой 💫Лайфхак!"
 _REQ = re.compile(r"(\d+)\s?(🔥|💵|⚙️|⚪️|🔵|⏰)")
 _REQ_KEYS = {
     "🔥": "motivation",
@@ -321,6 +323,8 @@ def recognize_bonus(msg: IncomingMessage) -> list[Event]:
     text = msg.text or ""
     if text.startswith(_MAGNET):
         return [BonusRewards(source="magnet", rewards=parse_rewards(text))]
+    if text.startswith(_LIFEHACK):
+        return [BonusRewards(source="lifehack", rewards=parse_rewards(text))]
     return []
 
 
