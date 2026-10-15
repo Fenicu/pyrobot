@@ -615,3 +615,16 @@ def test_npc_on_the_map_is_a_known_cell() -> None:
         for event in recognize_metro(iko(text, buttons)):
             if isinstance(event, MetroMap):
                 assert OTHER not in "".join(event.window)
+
+
+# 🎁 на карте — сундук (прод 13.10.2026, Fyrfyrblin): шаг на него дал «Ты нашёл большой 📦Сундук».
+GIFT_SEEN = (
+    "🔋116%\n⬜️⬛️⬜️⬜️⬜️               \n⬜️⬛️⬛️⬛️⬜️               \n"
+    "⬜️⬛️😎⬜️⬜️               \n⬜️⬛️🎁⬛️⬛️               \n⬜️⬛️⬜️⬜️⬜️               \nЖдёшь"
+)
+
+
+def test_chest_on_the_map_is_a_floor_cell() -> None:
+    [screen] = recognize_metro(iko(GIFT_SEEN))
+    assert isinstance(screen, MetroMap)
+    assert screen.window == (".#...", ".###.", ".#@..", ".#.##", ".#...")
