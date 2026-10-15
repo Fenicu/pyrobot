@@ -69,6 +69,8 @@ WALK_BEAR = (
     "\n"
     "У тебя есть 3 минуты на раздумья."
 )
+# Сет на ночной прогулке пишет о себе абзацем перед встречей (прод 11-15.10.2026, Iko).
+SUMMER = "Сработал 🌞сет Летний!\n\n"
 FIGHT_BUTTONS = (
     Button("⚔Драться", 0, 0, "fight_accept"),
     Button("🚶Пропустить", 0, 1, "fight_decline"),
@@ -76,7 +78,14 @@ FIGHT_BUTTONS = (
 
 
 @pytest.mark.parametrize(
-    ("text", "enemy"), [(WALK_BULL, "bull"), (WALK_BEAR, "bear")], ids=["bull", "bear"]
+    ("text", "enemy"),
+    [
+        (WALK_BULL, "bull"),
+        (WALK_BEAR, "bear"),
+        (SUMMER + WALK_BULL, "bull"),
+        (SUMMER + WALK_BEAR, "bear"),
+    ],
+    ids=["bull", "bear", "summer-bull", "summer-bear"],
 )
 def test_walk_encounter_is_an_offer(text: str, enemy: str) -> None:
     msg = make_msg(text, buttons=FIGHT_BUTTONS)
