@@ -32,6 +32,11 @@ MAX_LOTTERY = LotterySection()
 DAY = timedelta(days=1)
 # Экран артефактов показывает конец сбора с точностью до часа: концы ближе — один сбор.
 ENDS_TOLERANCE = timedelta(hours=2)
+# Итоги `artifact_start`, отменяющие запуск: повтор ничего не даст.
+START_REFUSALS = {
+    "not_recollectable": "artifact cannot be recollected now; start cancelled",
+    "artifact_level": "character level too low for this artifact; start cancelled",
+}
 
 
 class ArtifactConflict(Exception):
@@ -390,8 +395,9 @@ class ArtifactRuns:
         await self._apply(lambda s: adopt(s, found, now), by)
 
     async def started(self, status: str, reason: str, details: Mapping[str, Any] | None) -> None:
-        """Итог сценария `artifact_start`: «Сбор начат!» — сбор идёт; пересобрать нельзя —
-        запуск отменяется. Уже идущий сбор и неясный исход клика решает `tick` по экрану."""
+        """Итог сценария `artifact_start`: «Сбор начат!» — сбор идёт; пересобрать нельзя или
+        уровень персонажа ниже нужного — запуск отменяется. Уже идущий сбор и неясный исход клика
+        решает `tick` по экрану."""
         data = details or {}
         artifact = data.get("artifact")
 
@@ -410,12 +416,8 @@ class ArtifactRuns:
             new = await self._quiet(ours(lambda s: activate(s, at, deed)))
             if new is not None:
                 await self._started(new)
-        elif reason == "not_recollectable" and await self._quiet(ours(fail_start)) is not None:
-            await self._notifier.notify(
-                "warn",
-                "artifact_start_failed",
-                "artifact cannot be recollected now; start cancelled",
-            )
+        elif reason in START_REFUSALS and await self._quiet(ours(fail_start)) is not None:
+            await self._notifier.notify("warn", "artifact_start_failed", START_REFUSALS[reason])
 
     async def tick(self) -> None:
         """Окончание по сроку и на 100 уровне, сверка запуска по экрану, внешний сбор."""

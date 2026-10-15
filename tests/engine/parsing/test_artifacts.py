@@ -15,8 +15,10 @@ from app.engine.parsing.artifacts import (
 from app.engine.parsing.refusals import Refused, recognize_refusals
 from app.engine.settings import ChatsSection
 from tests.engine.artifact_texts import (
+    BOOK_LEVEL,
     BOOK_MAX,
     LEARN_PART,
+    LIGHT_LEVEL,
     SCREEN,
     SCREEN_COLLECTING,
     SCREEN_OLD,
@@ -125,6 +127,13 @@ def test_page_line_in_learn_finish() -> None:
 
 def test_artifact_max_refusal() -> None:
     assert recognize_refusals(game_text(BOOK_MAX)) == [Refused(reason="artifact_max")]
+
+
+@pytest.mark.parametrize(
+    ("text", "need"), [(BOOK_LEVEL, 18), (LIGHT_LEVEL, 22)], ids=["book", "light"]
+)
+def test_artifact_level_refusal(text: str, need: int) -> None:
+    assert recognize_refusals(game_text(text)) == [Refused(reason="artifact_level", need=need)]
 
 
 @pytest.mark.parametrize(

@@ -26,6 +26,8 @@ _STARTUP_LEVEL = re.compile(
 )
 # Ответ на /artr_<x> при 100 уровне: «📕 Букварь Стартапера уже максимального уровня. …».
 _ARTIFACT_MAX = re.compile(r"\A\S+ ?[^\n]* уже максимального уровня\.")
+# Ответ на /artr_<x> ниже нужного уровня: «📕 Букварь Стартапера можно собирать с 🎚18 уровня.».
+_ARTIFACT_LEVEL = re.compile(r"\A[^\n]+ можно собирать с 🎚(?P<need>\d+) уровня\.")
 _PREFIXES: tuple[tuple[str, str], ...] = (
     ("no_motivation", "Тебе не хватает Мотивации"),
     ("battle_soon", "Скоро Битва, некогда отвлекаться"),
@@ -77,6 +79,8 @@ def recognize_refusals(msg: IncomingMessage) -> list[Event]:
         return [Refused(reason="startup_level", need=num(m["need"]))]
     if _ARTIFACT_MAX.match(text):
         return [Refused(reason="artifact_max")]
+    if m := _ARTIFACT_LEVEL.match(text):
+        return [Refused(reason="artifact_level", need=int(m["need"]))]
     for reason, prefix in _PREFIXES:
         if text.startswith(prefix):
             left = _LEFT.search(text)

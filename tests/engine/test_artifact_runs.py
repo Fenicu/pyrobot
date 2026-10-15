@@ -95,6 +95,15 @@ async def test_not_recollectable_cancels_start_and_returns_lottery() -> None:
     assert rig.notes.codes == ["artifact_start_failed"]
 
 
+async def test_level_refusal_cancels_start_and_returns_lottery() -> None:
+    rig = Rig()
+    await rig.runs.start("light", lottery_max=True, by="alice")
+    await rig.runs.started("refused", "artifact_level", {"artifact": "light"})
+    assert rig.run == ArtifactRunSection()
+    assert not rig.settings.current.features.lottery
+    assert rig.notes.codes == ["artifact_start_failed"]
+
+
 async def test_screen_after_request_confirms_unclear_start() -> None:
     rig = Rig()
     await rig.runs.start("light", lottery_max=False, by="alice")

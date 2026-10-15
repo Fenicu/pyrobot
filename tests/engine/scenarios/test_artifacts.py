@@ -8,6 +8,7 @@ from app.engine.scenarios.library import run_scenario
 from app.engine.settings import ArtifactRunSection
 from app.engine.state.model import CharacterState
 from tests.engine.artifact_texts import (
+    LIGHT_LEVEL,
     SCREEN,
     SCREEN_COLLECTING,
     START_BUTTONS,
@@ -77,6 +78,14 @@ async def test_not_recollectable_artifact(starting: World) -> None:
     result = await run_scenario(artifact_start, ctx, CharacterState(), {"artifact": "book"})
     assert (result.status, result.reason) == ("nothing", "not_recollectable")
     assert starting.game.payloads() == ["/artefacts"]
+
+
+@certifies("artifact_start")
+async def test_level_too_low_is_refused(starting: World) -> None:
+    screens(starting, game_text(SCREEN))
+    starting.game.on_text("/artr_light", game_text(LIGHT_LEVEL))
+    assert (await run(starting))[:2] == ("refused", "artifact_level")
+    assert starting.game.payloads() == ["/artefacts", "/artr_light"]
 
 
 @certifies("artifact_start")
