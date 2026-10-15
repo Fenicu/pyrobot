@@ -5,8 +5,8 @@ import type { ArtifactOut } from '$lib/api/types';
 import type { LiveEvent } from '$lib/live/sse';
 
 /** Поля состояния, от которых зависит карточка: уровни, идущий сбор, уровень персонажа (дела
- * Букваря). */
-const STATE_KEYS = new Set(['artifacts', 'artifact_collect', 'level']);
+ * Букваря, запертые уровнем артефакты) и нужные артефактам уровни. */
+const STATE_KEYS = new Set(['artifacts', 'artifact_collect', 'level', 'artifact_min_levels']);
 
 /** «Сбор артефакта» (`GET /artifact`): при открытии, на кадры `settings` (запись сбора — секция
  * настроек: запуск, пауза, окончание движком) и `reset`, на кадр `state` с полями карточки. Один

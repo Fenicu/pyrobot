@@ -50,7 +50,9 @@
 
 	function startLabel(key: ArtifactKey): string {
 		const level = artifact?.levels[key];
-		return `Запустить сбор: ${artifactLabel(key)}${level !== undefined ? ` (${level}/100)` : ''}`;
+		const need = artifact?.locked[key];
+		const label = `Запустить сбор: ${artifactLabel(key)}${level !== undefined ? ` (${level}/100)` : ''}`;
+		return need !== undefined ? `${label} — с 🎚${need} уровня` : label;
 	}
 
 	function open(key: ArtifactKey) {
@@ -140,7 +142,8 @@
 		{#if startable.length > 0}
 			<div class="mt-2 flex flex-wrap gap-2">
 				{#each startable as key (key)}
-					<button type="button" class="btn max-w-full py-1.5 text-left whitespace-normal" disabled={busy} onclick={() => open(key)}>{startLabel(key)}</button>
+					<button type="button" class="btn max-w-full py-1.5 text-left whitespace-normal"
+						disabled={busy || artifact.locked[key] !== undefined} onclick={() => open(key)}>{startLabel(key)}</button>
 				{/each}
 			</div>
 		{:else if !locked && !artifact.collecting}

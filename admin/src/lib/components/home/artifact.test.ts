@@ -73,6 +73,21 @@ describe('карточка «Сбор артефакта»', () => {
 		expect(within(region).queryByRole('button', { name: /SW факs/ })).toBeNull();
 	});
 
+	it('артефакт выше уровня персонажа — кнопка недоступна, подсказка «с 🎚N уровня»', async () => {
+		const user = userEvent.setup();
+		const low: ArtifactOut = { ...IDLE, levels: { book: 3, fax: 100, light: 84 }, locked: { light: 22 } };
+		const { fetch } = card(low);
+		const region = screen.getByRole('region', { name: 'Сбор артефакта' });
+		const light = within(region).getByRole('button', { name: /Фонарь/ });
+		expect(light).toBeDisabled();
+		expect(light).toHaveTextContent('с 🎚22 уровня');
+		await user.click(light);
+		expect(screen.queryByRole('dialog')).toBeNull();
+		expect(fetch.calls).toHaveLength(0);
+		const book = within(region).getByRole('button', { name: 'Запустить сбор: 📕 Букварь стартапера (3/100)' });
+		expect(book).toBeEnabled();
+	});
+
 	it('окно запуска: предупреждения, дела, переключатель лотереи — тело запроса с lottery_max', async () => {
 		const user = userEvent.setup();
 		const { fetch, onchange } = card(IDLE, () => json({ ...IDLE, run: { ...RUN, artifact: 'light', status: 'starting' } }, 202));
@@ -190,6 +205,8 @@ describe('стор сбора', () => {
 		store.onEvent({ type: 'state', id: '2', data: { version: 3, changed: { money: null } } });
 		store.onEvent({ type: 'state', id: '3', data: { version: 4, changed: { artifacts: null } } });
 		await vi.waitFor(() => expect(fetch.calls.length).toBe(3));
+		store.onEvent({ type: 'state', id: '4', data: { version: 5, changed: { artifact_min_levels: null } } });
+		await vi.waitFor(() => expect(fetch.calls.length).toBe(4));
 		store.stop();
 	});
 });
