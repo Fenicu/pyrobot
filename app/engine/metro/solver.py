@@ -208,10 +208,16 @@ class MetroSolver:
         if frame.footer == "arrived" and frame.direction is not None:
             self._arrive(frame.direction)
         elif frame.footer == "wall":
-            self._note_kind("wall", direction=self._pending)
-            if self._pending is not None and self.grid.passable(step(self.pos, self._pending)):
-                # Наш ход в проход по карте, а игра видит там стену: карта разошлась с игрой.
-                self._surprise = "unexpected_wall"
+            pending = self._pending
+            if pending is not None and self.grid.passable(step(self.pos, pending)):
+                if self._moved(frame.window, pending):
+                    # Окно уже после хода, а подпись — «Стена» (14.10: ход и упор в стену за ним
+                    # одной правкой): ход состоялся.
+                    self._arrive(pending)
+                else:
+                    # Наш ход в проход по карте, а игра видит там стену: карта разошлась с игрой.
+                    self._surprise = "unexpected_wall"
+            self._note_kind("wall", direction=pending)
         self._pending = None
         if self._npc_from is not None:
             self._npc_stays(frame.window, *self._npc_from)
@@ -235,6 +241,12 @@ class MetroSolver:
             self.packs = frame.packs
         vitals = {"stamina": self.stamina, "packs": self.packs}
         self.vitals.append({"step": self.steps, "pos": list(self.pos), **vitals})
+
+    def _moved(self, window: tuple[str, ...], direction: str) -> bool:
+        """Окно расходится с картой на клетке до хода и сходится на клетке после него."""
+        return self.grid.conflicts(window, self.pos) and not self.grid.conflicts(
+            window, step(self.pos, direction)
+        )
 
     def _npc_stays(self, window: tuple[str, ...], origin: Pos, seen: bool) -> None:
         """После боя с NPC персонаж на его клетке, но если там остался ещё 👨 (окно не сдвинулось,

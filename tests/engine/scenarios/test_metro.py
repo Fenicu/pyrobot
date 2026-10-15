@@ -45,6 +45,8 @@ from tests.engine.scenarios.certify import certifies
 from tests.fixtures import game_msg, game_versions
 
 RUN2 = 3625352
+# Забег 14.10 (Frosty): последняя правка — окно после хода вниз с подписью «Стена».
+FROSTY = 15441
 EVENTS = {run: [recognize_metro(m)[0] for m in game_versions("metro", run)] for run in (RUN, RUN2)}
 ENTRY = ["🏢Офис", "🚇Метро", "maze_enter_accept"] + [
     f"maze_buf_tokens_{b}" for b in ("fastMove", "strong", "firstAid")
@@ -784,6 +786,26 @@ async def test_resume_does_not_repeat_move_that_reached_the_game(world: World) -
     assert result.details is not None
     kinds = [e["kind"] for e in result.details["metro"]["events"]]
     assert "relocated" in kinds and "metro_chest_opened" in kinds
+
+
+@certifies("metro")
+async def test_resume_after_move_and_wall_in_one_edit_continues(world: World) -> None:
+    """14.10 (Frosty): на «Идёшь Вниз.» игра ответила одной правкой — окно уже на клетку ниже,
+    подпись «Стена». Забег остановился с `unexpected_wall`, и продолжение по журналу
+    останавливалось так же за 0.13 с. Ход засчитан — продолжение идёт дальше обходом."""
+    for version in game_versions("metro", FROSTY):
+        await world.game.show(version)
+    # Ответ на ход — находка на новой клетке (кадр того же забега).
+    for data in MOVES:
+        world.game.on_click(data, edit=("metro", FROSTY, 56))
+    notes = Notes()
+    result = await run(world, ctx(world, stop_after=1, notes=notes), resume=FROSTY)
+    assert (result.status, result.reason) == ("stopped", "paused")
+    [move] = world.game.payloads()
+    assert move in MOVES and notes.sent == []
+    assert result.details is not None
+    kinds = [e["kind"] for e in result.details["metro"]["events"]]
+    assert kinds[-2:] == ["wall", "metro_loot"] and "relocated" not in kinds
 
 
 @certifies("metro")

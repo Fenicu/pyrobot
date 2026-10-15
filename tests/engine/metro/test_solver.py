@@ -38,6 +38,8 @@ from tests.fixtures import game_versions
 
 RUN1 = Path(__file__).parents[2] / "fixtures" / "metro" / "run1.json"
 RUN2 = Path(__file__).parents[2] / "fixtures" / "metro" / "run2.json"
+# Забег 14.10 (Frosty): последняя правка — окно после хода вниз с подписью «Стена».
+FROSTY = 15441
 SYMBOLS = {"⬛": "#", "⬜": ".", "🚪": "E"}
 
 # Дерево: вход (1,1), тупик вправо, ветка вниз ведёт к выходу (4,5).
@@ -511,6 +513,32 @@ def test_wall_answer_to_move_into_open_cell_halts() -> None:
     manual = solver()
     manual.observe(at((1, 1)))
     assert isinstance(manual.next(at((1, 1), "wall"), T0), Click)
+
+
+def test_wall_frame_with_window_after_the_move_counts_the_move() -> None:
+    # Одна правка: окно уже сдвинуто ходом, а подпись — «Стена» (14.10, Frosty): ход состоялся,
+    # стена — за новой клеткой; позиция — после хода, без остановки.
+    s = solver()
+    assert s.next(at((1, 1)), T0) == Click("maze_down", "explore")
+    assert isinstance(s.next(at((2, 1), "wall"), T0), Click)
+    assert (s.pos, s.steps, s.path[-1]) == ((2, 1), 1, (2, 1))
+    assert s.events[-1] == {"step": 1, "pos": [2, 1], "kind": "wall", "direction": "down"}
+    assert "relocated" not in [e["kind"] for e in s.events]
+
+
+def test_frosty_run_replay_ends_after_the_last_move_without_halt() -> None:
+    """Все правки забега 14.10 (Frosty) до последней: «Идёшь Вниз.», затем окно, сдвинутое на
+    клетку вниз, с подписью «Стена» — ход засчитан, обход продолжается."""
+    frames = [recognize_metro(m)[0] for m in game_versions("metro", FROSTY)]
+    first = next(n for n, e in enumerate(frames) if isinstance(e, MetroMap))
+    s = MetroSolver(POLICY, budget())
+    for event in frames[first:-1]:
+        s.observe(event)
+    before = s.pos
+    move = s.next(frames[-1], T0)
+    assert isinstance(move, Click) and move.data != "maze_exit"
+    assert s.pos == (before[0] + 1, before[1])
+    assert s.events[-1]["kind"] == "wall" and not s.lost
 
 
 def test_heal_before_early_exit_counts_clicks_without_toast() -> None:
