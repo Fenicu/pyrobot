@@ -250,6 +250,54 @@ async def test_reconcile_required_allows_metro_moves_but_blocks_purchases(rig: R
     )
 
 
+async def test_reconcile_required_allows_metro_buff_bound_to_its_frame(rig: Rig) -> None:
+    """13.10 (Khalida): «Вхожу» без ответа в срок, игра всё же впустила — экран бафов пришёл
+    через 42 с, а продолжение не могло купить баф за 🕳 до сверки (`/compact` в метро без
+    ответа) и останавливалось четыре раза. Покупка бафа шагом сценария метро, привязанная к
+    ревизии и хешу показанного экрана, проходит: цена, жетоны и купленное — на нём самом."""
+    rig.gw.block_spending(RECONCILE_REASON)
+    buttons = (
+        Button("🏃 за 🕳", 0, 0, data="maze_buf_tokens_fastMove"),
+        Button("👍Вхожу", 1, 0, data="maze_enter_accept"),
+        Button("🚪", 2, 0, data="maze_exit"),
+    )
+    shown = make_msg("Бафы для метро", msg_id=77, buttons=buttons)
+    rig.latest[(GAME, 77)] = shown
+    rig.reply_with("Бафы для метро")
+
+    def click(data: str, **over: Any) -> ActionRequest:
+        req = ActionRequest(
+            kind=ActionKind.CLICK,
+            chat_id=GAME,
+            message_id=77,
+            data=data,
+            expect=expect_text("Бафы"),
+            source=Source.SCENARIO,
+            scenario="metro",
+            expect_revision=shown.revision,
+            expect_content=shown.content_hash(),
+        )
+        return replace(req, **over)
+
+    bought = await rig.gw.submit(click("maze_buf_tokens_fastMove"))
+    assert bought.status is ActionStatus.CONFIRMED
+    door = await rig.gw.submit(click("maze_exit"))
+    assert door.status is ActionStatus.CONFIRMED
+    blocked = f"blocked:{RECONCILE_REASON}"
+    # Вход тратит 🔥 — то, что сверка и проверяет; не привязанный к кадру или не шаг метро клик
+    # по-прежнему ждёт сверки.
+    for req in (
+        click("maze_enter_accept"),
+        click("maze_buf_tokens_fastMove", expect_revision=None, expect_content=None),
+        click("maze_buf_tokens_fastMove", scenario="deed:job"),
+        click("maze_buf_tokens_fastMove", source=Source.MANUAL),
+    ):
+        res = await rig.gw.submit(req)
+        assert (res.status, res.reason) == (ActionStatus.REJECTED, blocked), req
+    assert [s.payload for s in rig.transport.sent] == ["maze_buf_tokens_fastMove", "maze_exit"]
+    assert rig.gw.spending_blocked == RECONCILE_REASON
+
+
 async def test_metro_move_uncertain_does_not_block_spending(rig: Rig) -> None:
     btn_left = (Button("⬅️", 0, 1, data="maze_left"),)
     rig.latest[(GAME, 77)] = make_msg("карта", msg_id=77, buttons=btn_left)

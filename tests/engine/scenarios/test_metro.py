@@ -9,6 +9,7 @@ import pytest
 
 import app.engine.scenarios.metro as metro_module
 from app.engine.events import Event
+from app.engine.gateway.gateway import RECONCILE_REASON
 from app.engine.memory import MemoryJournal
 from app.engine.metro.solver import policy_of
 from app.engine.parsing.metro import (
@@ -979,6 +980,25 @@ async def test_resume_still_moving_after_wait_stops(
     result = await run(world, ctx(world), resume=RUN)
     assert (result.status, result.reason) == ("stopped", "resume_while_moving")
     assert world.game.payloads() == []
+
+
+@certifies("metro")
+async def test_resume_on_buffs_screen_while_reconcile_required_buys_and_starts(
+    world: World,
+) -> None:
+    """13.10 (Khalida): «Вхожу» без ответа в срок — исход траты 🔥 неизвестен, траты ждут сверки,
+    а `/compact` в метро без ответа. Экран бафов пришёл позже: продолжение покупает бафы по нему и
+    стартует, а не останавливается с `blocked:reconcile_required` до обвала."""
+    for version in game_versions("metro", RUN)[:2]:
+        await world.game.show(version)
+    world.gateway.block_spending(RECONCILE_REASON)
+    enter_with_real_frames(world.game)
+    world.game.on_click("maze_start", edit=("metro", RUN, 5))
+    expected = [*ENTRY[3:], "maze_start"]
+    result = await run(world, ctx(world, stop_after=len(expected)), resume=RUN)
+    assert (result.status, result.reason) == ("stopped", "paused")
+    assert world.game.payloads() == expected
+    assert world.gateway.spending_blocked == RECONCILE_REASON
 
 
 @certifies("metro")

@@ -74,6 +74,8 @@ STORE_FAILED = "store_failed"
 # Чтение источника пересылки: клиент Telegram сам повторяет запросы (до ~160 с) — шлюз столько
 # не ждёт, не прочитали — не пересылаем.
 SOURCE_READ_TIMEOUT_S = 10.0
+# Покупка бафа метро за 🕳 (`maze_buf_coins_*` — донат, шлюз его не пропускает вовсе).
+METRO_BUFF = re.compile(r"maze_buf_tokens_\w+\Z")
 # Клик «👍Стартуем!» экрана пересборки артефакта.
 ARTIFACT_ACCEPT = re.compile(r"artr_(book|fax|light)_accept\Z")
 GADGET_SCENARIOS = frozenset({"gadget_buy", "gadget_wear_set", "gadget_upgrade"})
@@ -179,6 +181,20 @@ def _metro_main(req: ActionRequest) -> bool:
         and req.scenario == "metro"
         and req.kind is ActionKind.SEND
         and MAIN.match((req.text or "").strip()) is not None
+    )
+
+
+def _metro_buff(req: ActionRequest) -> bool:
+    """Покупка бафа за 🕳 шагом сценария метро, привязанная к ревизии и хешу экрана бафов: цена,
+    жетоны и купленное — на самом экране, а 🔥, 💵 и 🔋, которые проверяет сверка, баф не тратит.
+    Блок сверки её не держит: в метро `/compact` без ответа, и забег стоял бы до обвала."""
+    return (
+        req.source is Source.SCENARIO
+        and req.scenario == "metro"
+        and req.kind is ActionKind.CLICK
+        and req.expect_revision is not None
+        and req.expect_content is not None
+        and METRO_BUFF.match(req.data or "") is not None
     )
 
 
@@ -532,6 +548,7 @@ class ActionGateway:
             self._spend_block is not None
             and cls is not CommandClass.NAV
             and not spends_nothing(req)
+            and not (self._spend_block == RECONCILE_REASON and _metro_buff(req))
         ):
             return ActionStatus.REJECTED, f"blocked:{self._spend_block}"
         return None
