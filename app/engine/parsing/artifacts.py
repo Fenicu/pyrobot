@@ -44,6 +44,8 @@ _STARTED = re.compile(
     r"\AСбор начат!\n\n\S+ (?P<name>[^\n]+?) выпадают при походах на "
     r"(?P<deed>🚶Прогулку|💻Работу|📚Учёбу)"
 )
+# Отказ /artr_<x> по уровню персонажа: «📕 Букварь Стартапера можно собирать с 🎚18 уровня.».
+_LEVEL_REQUIRED = re.compile(r"\A(?P<name>[^\n]+?) можно собирать с 🎚(?P<level>\d+) уровня\.")
 _PART = re.compile(
     r"^\S+[\xa0 ]\+1 ур\. артефакта (?P<name>[^\n]+?)\. Теперь (?P<level>\d+) ур\.$", re.M
 )
@@ -82,6 +84,16 @@ class ArtifactCollectStarted(Event):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ArtifactLevelRequired(Event):
+    """С какого уровня персонажа игра даёт собирать артефакт — из отказа `/artr_<x>`; отказ
+    `Refused("artifact_level")` идёт рядом отдельным событием."""
+
+    kind: ClassVar[str] = "artifact_level_required"
+    artifact: str
+    level: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ArtifactPartFound(Event):
     kind: ClassVar[str] = "artifact_part_found"
     artifact: str
@@ -112,6 +124,9 @@ def recognize_artifacts(msg: IncomingMessage) -> list[Event]:
     if m := _STARTED.match(text):
         key = artifact_key(m["name"])
         return [ArtifactCollectStarted(artifact=key, deed=DEEDS[m["deed"]])] if key else []
+    if m := _LEVEL_REQUIRED.match(text):
+        key = artifact_key(m["name"])
+        return [ArtifactLevelRequired(artifact=key, level=int(m["level"]))] if key else []
     return []
 
 

@@ -50,6 +50,8 @@ class ArtifactOut(BaseModel):
     # Уровень собираемого артефакта (у отменённого и завершённого — итоговый); null — неизвестен.
     level: int | None
     levels: dict[str, int]
+    # Артефакты, которые игра не даст собирать при нынешнем уровне персонажа: нужный уровень.
+    locked: dict[str, int]
     # Идущий в игре сбор по последнему экрану артефактов.
     collecting: ArtifactCollectOut | None
     # Идущий сбор не ведёт запись: его можно взять кнопкой «Вести сбор».
@@ -86,6 +88,7 @@ def _out(view: ArtifactView, now: datetime) -> ArtifactOut:
         ),
         level=view.level,
         levels=view.levels,
+        locked=view.locked,
         collecting=(
             ArtifactCollectOut(artifact=collect.artifact, ends_at=collect.ends_at)
             if collect is not None
@@ -141,6 +144,7 @@ async def get_artifact(scope: Annotated[AccountScope, Depends(account_scope)]) -
             TG_NOT_ONLINE,
             "dry_run",
             "artifact_max",
+            "artifact_level",
             "run_in_progress",
             "locked_until",
             "deeds_disabled",

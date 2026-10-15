@@ -1415,6 +1415,13 @@
             "title": "Levels",
             "type": "object"
           },
+          "locked": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Locked",
+            "type": "object"
+          },
           "lottery_on": {
             "title": "Lottery On",
             "type": "boolean"
@@ -1462,6 +1469,7 @@
           "run",
           "level",
           "levels",
+          "locked",
           "collecting",
           "external",
           "tactic",
@@ -6145,6 +6153,16 @@
               }
             ]
           },
+          "artifact_min_levels": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_dict_str__int__"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "artifacts": {
             "anyOf": [
               {
@@ -9927,7 +9945,7 @@
                 }
               }
             },
-            "description": "tg_not_online | dry_run | artifact_max | run_in_progress | locked_until | deeds_disabled"
+            "description": "tg_not_online | dry_run | artifact_max | artifact_level | run_in_progress | locked_until | deeds_disabled"
           },
           "422": {
             "content": {

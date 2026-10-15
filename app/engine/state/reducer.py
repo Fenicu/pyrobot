@@ -24,6 +24,7 @@ from app.engine.parsing.activities import (
 from app.engine.parsing.artifacts import (
     COLLECT_SPAN,
     ArtifactCollectStarted,
+    ArtifactLevelRequired,
     ArtifactPartFound,
     ArtifactsScreen,
 )
@@ -1546,6 +1547,12 @@ def _artifact_started(p: _Patch, e: ArtifactCollectStarted) -> None:
 @_on(ArtifactPartFound)
 def _artifact_part(p: _Patch, e: ArtifactPartFound) -> None:
     _artifact_levels(p, {e.artifact: e.level})
+
+
+@_on(ArtifactLevelRequired)
+def _artifact_level_required(p: _Patch, e: ArtifactLevelRequired) -> None:
+    known: Obs[dict[str, int]] | None = p.get("artifact_min_levels")
+    p.snap("artifact_min_levels", {**(known.value if known else {}), e.artifact: e.level})
 
 
 @_on(InfoScreen)

@@ -4,6 +4,8 @@ from typing import Any
 from app.engine.state.model import ArtifactCollect
 from app.engine.state.reducer import StateReducer
 from tests.engine.artifact_texts import (
+    BOOK_LEVEL,
+    LIGHT_LEVEL,
     SCREEN,
     SCREEN_COLLECTING,
     STARTED_LIGHT,
@@ -63,3 +65,11 @@ def test_part_sets_level_of_collected_artifact() -> None:
 def test_part_without_known_levels_starts_the_dict() -> None:
     s = apply(StateReducer(), {}, WALK_PART, 0)
     assert value(s, "artifacts") == {"light": 1}
+
+
+def test_level_refusals_teach_min_levels() -> None:
+    r = StateReducer()
+    s = apply(r, {}, BOOK_LEVEL, 0)
+    s = apply(r, s, LIGHT_LEVEL, 5, msg_id=2)
+    assert value(s, "artifact_min_levels") == {"book": 18, "light": 22}
+    assert s["artifact_min_levels"]["at"] == "2026-09-26T09:05:00Z"

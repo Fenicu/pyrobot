@@ -354,6 +354,8 @@ class CharacterState(_Frozen):
     artifacts: Obs[dict[str, int]] | None = None
     # Идущий сбор по экрану артефактов; значение None — на экране сбора нет.
     artifact_collect: Obs[ArtifactCollect | None] | None = None
+    # С какого уровня персонажа игра даёт собирать артефакт — по её отказам «…можно собирать с 🎚N».
+    artifact_min_levels: Obs[dict[str, int]] | None = None
     # Транспорт с экрана «Транспорт», стартов и отказов поездок.
     trips: Obs[TripsState] | None = None
     # Надетые гаджеты и сеты с экрана `/inv`.
@@ -428,6 +430,7 @@ TIMERS = frozenset(
         "metro_message",
         "lottery",
         "artifact_collect",
+        "artifact_min_levels",
         "trips",
     }
 )

@@ -41,7 +41,7 @@ START_REFUSALS = {
 
 class ArtifactConflict(Exception):
     """Переход сбора сейчас невозможен; `code` — код ответа API: `run_in_progress`,
-    `locked_until`, `artifact_max`, `deeds_disabled`, `no_run`, `not_collecting`,
+    `locked_until`, `artifact_max`, `artifact_level`, `deeds_disabled`, `no_run`, `not_collecting`,
     `not_external`, `other_artifact`."""
 
     def __init__(self, code: str) -> None:
@@ -81,6 +81,16 @@ def artifact_level(
     if seen is None or artifact is None or (since is not None and seen.at < since):
         return None
     return seen.value.get(artifact)
+
+
+def locked_levels(state: CharacterState) -> dict[str, int]:
+    """Артефакты, которые игра не даст собирать при нынешнем уровне персонажа: нужный уровень по
+    её прошлым отказам. Уровень персонажа неизвестен — ничего не заперто."""
+    level = char_level(state)
+    known = state.artifact_min_levels
+    if level is None or known is None:
+        return {}
+    return {a: need for a, need in known.value.items() if level < need}
 
 
 def game_collect(state: CharacterState, now: datetime) -> ArtifactCollect | None:
@@ -159,6 +169,8 @@ def start_blocker(
         return "locked_until"
     if artifact_level(state, artifact) == MAX_LEVEL:
         return "artifact_max"
+    if artifact in locked_levels(state):
+        return "artifact_level"
     if not settings.features.deeds:
         return "deeds_disabled"
     return None
@@ -284,12 +296,14 @@ class Pace:
 @dataclass(frozen=True, slots=True)
 class ArtifactView:
     """Сбор для админки: запись, уровень собираемого (итоговый у отменённого и завершённого),
-    уровни всех артефактов, идущий в игре сбор (`external` — не наш), дела по артефактам,
-    лотерея, темп и прогноз, когда можно следующий сбор."""
+    уровни всех артефактов, запертые уровнем персонажа (`locked`: артефакт → нужный уровень),
+    идущий в игре сбор (`external` — не наш), дела по артефактам, лотерея, темп и прогноз, когда
+    можно следующий сбор."""
 
     run: ArtifactRunSection
     level: int | None
     levels: dict[str, int]
+    locked: dict[str, int]
     collecting: ArtifactCollect | None
     external: bool
     tactic: dict[str, tuple[str, ...]]
@@ -326,6 +340,7 @@ def artifact_view(settings: Settings, state: CharacterState, now: datetime) -> A
         run=run,
         level=level,
         levels=dict(seen.value) if seen is not None else {},
+        locked=locked_levels(state),
         collecting=collect,
         external=collect is not None and is_external(run, collect, now),
         tactic={
@@ -448,6 +463,15 @@ class ArtifactRuns:
         await self._notifier.notify("info", code, text)
 
     async def _settle_start(self, run: ArtifactRunSection, state: CharacterState) -> None:
+        need = locked_levels(state).get(run.artifact or "")
+        if need is not None:
+            if await self._quiet(fail_start) is not None:
+                await self._notifier.notify(
+                    "warn",
+                    "artifact_start_failed",
+                    f"{run.artifact} needs character level {need}; start cancelled",
+                )
+            return
         seen = start_seen(run, state)
         if seen is None:
             return

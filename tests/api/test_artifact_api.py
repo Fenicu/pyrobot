@@ -51,6 +51,7 @@ async def test_view_without_engine_from_database(
     assert body["tactic"] == {"book": ["learn"], "fax": ["job"], "light": ["walk"]}
     assert (body["lottery_on"], body["lottery_on_start"]) == (True, True)
     assert body["pace"] == {"levels_per_day": None, "forecast_level": None}
+    assert body["locked"] == {}
     h = await headers(api_client)
     blocked = await api_client.post(f"{ART}/start", headers=h, json={"artifact": "light"})
     assert (blocked.status_code, blocked.json()) == (503, {"detail": "engine not running"})
@@ -87,6 +88,7 @@ async def test_start_snapshots_lottery_and_cancel_returns_it(
         (Settings(), None, True, "dry_run"),
         (LIVE, None, False, "tg_not_online"),
         (LIVE, {"artifacts": {"light": 100}}, True, "artifact_max"),
+        (LIVE, {"level": 17, "artifact_min_levels": {"light": 22}}, True, "artifact_level"),
         (
             LIVE,
             {

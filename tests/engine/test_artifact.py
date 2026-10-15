@@ -125,6 +125,13 @@ def test_lottery_already_on_is_not_touched() -> None:
             "locked_until",
         ),
         (Settings(), levels(light=100), "artifact_max"),
+        (
+            Settings(),
+            CharacterState(
+                level=Obs(value=17, at=T0), artifact_min_levels=Obs(value={"light": 22}, at=T0)
+            ),
+            "artifact_level",
+        ),
     ],
 )
 def test_start_blockers(settings: Settings, state: CharacterState, code: str) -> None:
@@ -227,6 +234,19 @@ def test_view_progress_pace_and_lock() -> None:
     assert (view.lottery_on, view.lottery_on_start) == (True, True)
     over = artifact_view(cancel(s, 12), state, later)
     assert (over.level, over.pace) == (12, Pace(None, None))
+
+
+def test_level_lock_by_learned_min_level() -> None:
+    known = Obs(value={"book": 18, "light": 22}, at=T0)
+    low = CharacterState(level=Obs(value=18, at=T0), artifact_min_levels=known)
+    assert artifact_view(Settings(), low, T0).locked == {"light": 22}
+    # Уровень персонажа неизвестен — не запираем: игра сама откажет.
+    unknown = CharacterState(artifact_min_levels=known)
+    assert artifact_view(Settings(), unknown, T0).locked == {}
+    run = start(Settings(), unknown, "light", lottery_max=False, now=T0).artifact_run
+    assert run.status == "starting"
+    grown = CharacterState(level=Obs(value=22, at=T0), artifact_min_levels=known)
+    assert artifact_view(Settings(), grown, T0).locked == {}
 
 
 def test_start_refused_when_deeds_disabled() -> None:

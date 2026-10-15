@@ -104,6 +104,18 @@ async def test_level_refusal_cancels_start_and_returns_lottery() -> None:
     assert rig.notes.codes == ["artifact_start_failed"]
 
 
+async def test_start_locked_by_level_is_cancelled_on_tick() -> None:
+    rig = Rig()
+    await rig.runs.start("light", lottery_max=True, by="alice")
+    rig.state = CharacterState(
+        level=Obs(value=17, at=T0), artifact_min_levels=Obs(value={"light": 22}, at=T0)
+    )
+    await rig.runs.tick()
+    assert rig.run == ArtifactRunSection()
+    assert not rig.settings.current.features.lottery
+    assert rig.notes.codes == ["artifact_start_failed"]
+
+
 async def test_screen_after_request_confirms_unclear_start() -> None:
     rig = Rig()
     await rig.runs.start("light", lottery_max=False, by="alice")

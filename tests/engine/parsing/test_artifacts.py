@@ -5,6 +5,7 @@ from app.engine.parsing import default_parser
 from app.engine.parsing.activities import ActivityFinished
 from app.engine.parsing.artifacts import (
     ArtifactCollectStarted,
+    ArtifactLevelRequired,
     ArtifactPartFound,
     ArtifactsScreen,
     ArtifactStartScreen,
@@ -134,6 +135,16 @@ def test_artifact_max_refusal() -> None:
 )
 def test_artifact_level_refusal(text: str, need: int) -> None:
     assert recognize_refusals(game_text(text)) == [Refused(reason="artifact_level", need=need)]
+
+
+def test_level_refusal_names_artifact_and_its_level() -> None:
+    assert PARSER.parse(game_text(BOOK_LEVEL)) == [
+        Refused(reason="artifact_level", need=18),
+        ArtifactLevelRequired(artifact="book", level=18),
+    ]
+    assert recognize_artifacts(game_text(LIGHT_LEVEL)) == [
+        ArtifactLevelRequired(artifact="light", level=22)
+    ]
 
 
 @pytest.mark.parametrize(

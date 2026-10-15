@@ -27,6 +27,7 @@ const IDLE: ArtifactOut = {
 	run: RUN,
 	level: null,
 	levels: { book: 100, fax: 100, light: 84 },
+	locked: {},
 	collecting: null,
 	external: false,
 	tactic: { book: ['learn'], fax: ['job'], light: ['walk'] },

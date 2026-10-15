@@ -2044,6 +2044,10 @@ export interface components {
             levels: {
                 [key: string]: number;
             };
+            /** Locked */
+            locked: {
+                [key: string]: number;
+            };
             /** Lottery On */
             lottery_on: boolean;
             /** Lottery On Start */
@@ -3787,6 +3791,7 @@ export interface components {
                 [key: string]: components["schemas"]["ActivityStat"];
             };
             artifact_collect?: components["schemas"]["Observed_Union_ArtifactCollect__NoneType__"] | null;
+            artifact_min_levels?: components["schemas"]["Observed_dict_str__int__"] | null;
             artifacts?: components["schemas"]["Observed_dict_str__int__"] | null;
             bag?: components["schemas"]["Observed_int_"] | null;
             bag_cap?: components["schemas"]["Observed_int_"] | null;
@@ -5288,7 +5293,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
-            /** @description tg_not_online | dry_run | artifact_max | run_in_progress | locked_until | deeds_disabled */
+            /** @description tg_not_online | dry_run | artifact_max | artifact_level | run_in_progress | locked_until | deeds_disabled */
             409: {
                 headers: {
                     [name: string]: unknown;

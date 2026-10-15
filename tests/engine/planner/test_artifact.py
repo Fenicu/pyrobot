@@ -188,6 +188,23 @@ def test_start_requested_runs_when_character_is_free() -> None:
     assert verdicts(decide(busy, cfg, NOW, certified=CERTIFIED))["artifact_start"] == "busy"
 
 
+def test_start_waits_while_level_below_learned_min() -> None:
+    run = ArtifactRunSection.model_validate(
+        {"artifact": "light", "status": "starting", "requested_at": m(-1)}
+    )
+    cfg = BASE.model_copy(update={"artifact_run": run})
+    known = Obs(value={"light": 22}, at=m(-60))
+    low = awake(level=21, artifact_min_levels=known)
+    decision = decide(low, cfg, NOW, certified=CERTIFIED)
+    assert not isinstance(decision, Act) or decision.scenario != "artifact_start"
+    assert verdicts(decision)["artifact_start"] == "artifact_level"
+    grown = awake(level=22, artifact_min_levels=known)
+    assert act(decide(grown, cfg, NOW, certified=CERTIFIED)) == (
+        "artifact_start",
+        {"artifact": "light"},
+    )
+
+
 def test_end_wakeup_only_for_active_collect() -> None:
     fresh = awake(artifact_collect=seen(at=m(-60)))
     end = Wakeup(END + TIMER_MARGIN, "artifact_end")

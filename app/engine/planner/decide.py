@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Literal
 
+from app.engine.artifact import locked_levels
 from app.engine.gametime import to_msk
 from app.engine.parsing.gifts import TANGERINE_GIFT_PRICE
 from app.engine.parsing.trips import TRIP_SPAN
@@ -366,6 +367,9 @@ class _Planner(DailyTasks):
             return None
         if self.metro_inside() is not None:
             self.reject("artifact_start", params, "in_metro")
+            return None
+        if run.artifact in locked_levels(self.s):
+            self.reject("artifact_start", params, "artifact_level")
             return None
         return self.act("artifact_start", params, "artifact_starting")
 
