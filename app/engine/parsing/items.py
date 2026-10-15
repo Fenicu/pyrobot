@@ -32,8 +32,10 @@ _PRIZEBOX = re.compile(
     r"^🎁[\xa0 ]?Призовая коробка /unbox(?: \((?P<t>" + DURATION + r")\))?$", re.M
 )
 _SLOTS = re.compile(r"^Занято (?P<used>\d+) из (?P<cap>\d+)$", re.M)
+# 📖Библиотекарь сразу читает вторую книгу: абзац «Как усидчивый 📖Библиотекарь…» со своим 💡.
 _BOOK = re.compile(
     r"\AТы прочёл 📒Книгу и получил:\n💡Опыт: \+(?P<exp>\d+)\n\n"
+    r"(?:Как усидчивый 📖Библиотекарь[^\n]*\n💡Опыт: \+(?P<bonus>\d+)\n\n)?"
     r"Следующую книгу можно прочесть через (?P<t>[^\n]+)"
 )
 _CARD = re.compile(
@@ -98,10 +100,14 @@ class Inventory(Event):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class BookRead(Event):
+    """Прочитана книга: `exp` — весь 💡 ответа, `books` — сколько 📒 ушло (2 — с бонусом
+    📖Библиотекаря)."""
+
     kind: ClassVar[str] = "book_read"
     outcome: ClassVar[bool] = True
     exp: int
     next_in_s: int
+    books: int = 1
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -258,7 +264,14 @@ def recognize_items(msg: IncomingMessage) -> list[Event]:
     if text.startswith(_INVENTORY):
         return _inventory(text)
     if m := _BOOK.match(text):
-        return [BookRead(exp=int(m["exp"]), next_in_s=dur(m["t"]))]
+        bonus = int(m["bonus"]) if m["bonus"] else None
+        return [
+            BookRead(
+                exp=int(m["exp"]) + (bonus or 0),
+                next_in_s=dur(m["t"]),
+                books=1 if bonus is None else 2,
+            )
+        ]
     if m := _CARD.match(text):
         return [CardUsed(money=int(m["money"]), next_in_s=dur(m["t"]))]
     if m := _GIFTS.match(text):

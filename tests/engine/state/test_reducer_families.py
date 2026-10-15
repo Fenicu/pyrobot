@@ -2,6 +2,7 @@ from dataclasses import replace
 
 from app.engine.state.reducer import StateReducer
 from app.engine.types import IncomingMessage
+from tests.engine.parsing.test_items import LIBRARIAN_BOOK
 from tests.engine.parsing.test_levelup import REFERRAL
 from tests.engine.state.helpers import PARSER, at, feed, fixture_at, value
 from tests.fixtures import game_versions
@@ -175,6 +176,15 @@ def test_inventory_books_cards() -> None:
     state = feed(reducer, state, "items", 3516678, 3)
     assert (value(state, "cards"), value(state, "money")) == (12, 867 + 597)
     assert value(state, "card_ready_at") == "2026-09-26T09:53:00Z"
+
+
+def test_librarian_bonus_book_takes_two_books() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, _profiled(reducer), "items", 3625102, 1)
+    msg = replace(fixture_at("items", 3516680, 2), text=LIBRARIAN_BOOK)
+    state = reducer.apply(state, msg, PARSER.parse(msg))
+    assert (value(state, "books"), value(state, "exp")) == (873, 17496049 + 433 + 378)
+    assert value(state, "book_ready_at") == "2026-09-26T09:52:00Z"
 
 
 def test_inventory_gadgets_snapshot() -> None:

@@ -803,7 +803,7 @@ def _upgrade_confirm_set(p: _Patch, e: UpgradeConfirmSet) -> None:
 @_on(BookRead)
 def _book(p: _Patch, e: BookRead) -> None:
     p.delta("exp", e.exp)
-    p.delta("books", -1)
+    p.delta("books", -e.books)
     p.snap("book_ready_at", p.later(e.next_in_s))
     p.effect("book", amounts(exp=e.exp))
 

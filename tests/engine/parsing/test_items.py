@@ -152,6 +152,19 @@ def test_items(msg_id: int, expected: Event) -> None:
     assert recognize_items(game_msg("items", msg_id)) == [expected]
 
 
+# 📖Библиотекарь читает вторую книгу сразу (прод 12.10.2026, Fyrfyrblin): 📒 в рюкзаке -2.
+LIBRARIAN_BOOK = (
+    "Ты прочёл 📒Книгу и получил:\n💡Опыт: +433\n\nКак усидчивый 📖Библиотекарь ты смог "
+    "быстренько прочитать ещё одну книгу!\n💡Опыт: +378\n\n"
+    "Следующую книгу можно прочесть через 50 минут"
+)
+
+
+def test_book_read_with_librarian_bonus() -> None:
+    msg = replace(game_msg("items", 3516680), text=LIBRARIAN_BOOK)
+    assert recognize_items(msg) == [BookRead(exp=433 + 378, next_in_s=3000, books=2)]
+
+
 def test_inventory_without_books_line_means_zero_books() -> None:
     msg = game_msg("items", 3625102)
     assert msg.text is not None
