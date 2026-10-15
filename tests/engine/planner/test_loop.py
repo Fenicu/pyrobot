@@ -362,6 +362,62 @@ async def test_failure_series_backs_off_until_done(world: World) -> None:
     assert rig.loop._cooldowns["gorbushka"] - at == MAX_RETRY
 
 
+TIMEOUT = ScenarioResult("failed", "timeout")
+TASKS = Act("daily_refresh", {}, "tasks unknown")
+
+
+async def test_game_answer_lifts_backoff_of_unanswered_series(world: World) -> None:
+    # 14.10: игра молчала, рефреш профиля копил паузу (последняя неудача — 07:07, пауза 2 ч);
+    # в 07:30 экраны снова отвечают — профиль не ждёт до 09:07.
+    rig = Rig(world)
+    at = moment()
+    for minutes in (0, 5, 15):
+        t = at + timedelta(minutes=minutes)
+        await rig.loop._after(PROFILE, TIMEOUT, t, t)
+    assert rig.loop._cooldowns["refresh:profile"] == at + timedelta(minutes=35)
+    back = at + timedelta(minutes=25)
+    await rig.loop._after(TASKS, ScenarioResult("done", "screen"), back, back)
+    assert rig.loop._cooldowns == {}
+    # Новая серия — с начала: 5 минут и снова уведомление.
+    await rig.loop._after(PROFILE, TIMEOUT, back, back)
+    assert rig.loop._cooldowns == {"refresh:profile": back + RETRY_AFTER}
+    assert rig.notes.codes == ["scenario_failed", "scenario_failed"]
+
+
+async def test_own_timeout_keeps_backoff_while_game_answers(world: World) -> None:
+    # Игра отвечала между неудачами: молчит только этот сценарий — пауза растёт как обычно.
+    rig = Rig(world)
+    at = moment()
+    gorbushka = Act("gorbushka", {"buy": False}, "gorbushka_fight")
+    for step in range(3):
+        t = at + timedelta(minutes=step * 30)
+        await rig.loop._after(gorbushka, TIMEOUT, t, t)
+        read = t + timedelta(minutes=1)
+        await rig.loop._after(BOOK, ScenarioResult("done", "book_read"), read, read)
+    assert rig.loop._cooldowns["gorbushka"] == at + timedelta(minutes=60 + 20)
+
+
+async def test_game_answer_keeps_logical_failures_and_longer_holds(world: World) -> None:
+    rig = Rig(world)
+    at = moment()
+    gorbushka = Act("gorbushka", {"buy": False}, "gorbushka_fight")
+    wrong = ScenarioResult("stopped", "unexpected_screen")
+    inventory = Act("refresh", {"source": "inventory"}, "book needs books")
+    for minutes in (0, 5):
+        t = at + timedelta(minutes=minutes)
+        await rig.loop._after(gorbushka, wrong, t, t)
+        await rig.loop._after(PROFILE, TIMEOUT, t, t)
+        await rig.loop._after(inventory, TIMEOUT, t, t)
+    held = at + timedelta(hours=3)
+    rig.loop._cooldowns["refresh:inventory"] = held
+    back = at + timedelta(minutes=8)
+    await rig.loop._after(TASKS, ScenarioResult("done", "screen"), back, back)
+    assert rig.loop._cooldowns == {
+        "gorbushka": at + timedelta(minutes=5 + 10),
+        "refresh:inventory": held,
+    }
+
+
 async def test_blind_team_pick_notifies_once_chosen(world: World) -> None:
     rig = Rig(world)
     at = moment()

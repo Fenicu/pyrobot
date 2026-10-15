@@ -42,6 +42,9 @@ log = logging.getLogger(__name__)
 # Серия неудач сценария: 5 мин, 10, 20… но не больше 2 ч.
 RETRY_AFTER = timedelta(minutes=5)
 MAX_RETRY = timedelta(hours=2)
+# Неудачи «игра не ответила»: таймаут ответа или ошибка отправки.
+NO_ANSWER = "timeout"
+NO_ANSWER_PREFIX = "send_error:"
 # «Нечего делать» и «занят» уже обновили состояние; короткая пауза страхует от зацикливания.
 NOTHING_RETRY = timedelta(minutes=1)
 # «Нечего делать», которое за минуту не изменится: биржа не откроется до конца окна слива, цена
@@ -198,6 +201,13 @@ class PlannerLoop:
         self._held: dict[str, datetime] = {}
         self._mode: str | None = None
         self._failures: dict[str, int] = {}
+        # Конец последней неудачи сценария (по ключу) в текущей серии.
+        self._failed_at: dict[str, datetime] = {}
+        # Конец последнего успешного запуска: игра отвечала.
+        self._answered_at: datetime | None = None
+        # Серии «игра молчит»: ключ → кулдаун, поставленный его последней неудачей. Успех любого
+        # сценария их снимает.
+        self._silent: dict[str, datetime] = {}
         # Последний успешный запуск каждого сценария (кулдауны мандарина и т. п. после рестарта).
         self._last_done: dict[str, datetime] | None = None
         self._metro_store = metro_store
@@ -778,8 +788,11 @@ class PlannerLoop:
                 self._held[held] = finished + SUPPRESSED_HOLD
             return
         tries = self._factory_report_try(started) if name == "factory_report" else 0
+        self._silent.pop(key, None)
         if result.status == "done":
             self._failures.pop(key, None)
+            self._failed_at.pop(key, None)
+            self._answered(finished)
             if self._last_done is not None:
                 self._last_done[name] = started
             today = self._done_today
@@ -832,11 +845,30 @@ class PlannerLoop:
         busy = None if seen is None or seen.src == "doubtful" else seen.value
         return max(busy.until - at, timedelta(0)) if busy is not None else timedelta(0)
 
+    def _answered(self, at: datetime) -> None:
+        """Игра снова отвечает: серии «игра молчит» сброшены, их сценарии — без паузы, если её
+        с тех пор не продлило другое."""
+        self._answered_at = at
+        for key, until in self._silent.items():
+            if self._cooldowns.get(key) == until:
+                del self._cooldowns[key]
+            self._failures.pop(key, None)
+            self._failed_at.pop(key, None)
+        self._silent.clear()
+
     async def _failed(self, key: str, result: ScenarioResult, finished: datetime) -> None:
         count = self._failures.get(key, 0) + 1
         self._failures[key] = count
         retry = RETRY_AFTER * 2 ** min(count - 1, 10)
         self._cooldowns[key] = finished + min(retry, MAX_RETRY)
+        # Игра молчит, а не отказывает этому сценарию: он снова не получил ответа, и после его
+        # прошлой неудачи не ответили и на остальное.
+        previous = self._failed_at.get(key)
+        self._failed_at[key] = finished
+        unanswered = result.reason == NO_ANSWER or result.reason.startswith(NO_ANSWER_PREFIX)
+        answered = self._answered_at
+        if unanswered and previous is not None and (answered is None or answered <= previous):
+            self._silent[key] = self._cooldowns[key]
         if count == 1 and (key, result.reason) != ("metro", EXIT_UNCONFIRMED):
             # Одно уведомление на серию неудач, до следующего успеха. Застревание в метро после
             # итога сценарий уже сообщил (`metro_stuck_after_exit`).
