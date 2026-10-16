@@ -133,7 +133,8 @@
   "manual_queue": 0,
   "next_wake": null,
   "wait_reason": null,
-  "wake_at": null
+  "wake_at": null,
+  "manual_control_until": null
  },
  "focus": [
   {
