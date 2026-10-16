@@ -58,6 +58,9 @@ class AccountTgOut(BaseModel):
     user_id: int | None
     # Движок аккаунта запущен, и Telegram в онлайне.
     online: bool
+    # С какого момента Telegram не отвечает на пробы (обрыв связи; действия ждут её возврата);
+    # null — связь есть или аккаунт не в онлайне.
+    unreachable_since: IsoDatetime | None
 
 
 class UnreadOut(BaseModel):
@@ -143,9 +146,10 @@ def _out(c: Container, o: AccountOverview) -> AccountOut:
         st = f.status()
         mode, paused, killed = st.mode, st.paused, st.killed
         online = st.tg.state is TgState.ONLINE
+        unreachable = st.tg_unreachable_since if online else None
     else:
         mode, paused, killed = o.engine.mode, o.engine.paused, o.engine.killed
-        online = False
+        online, unreachable = False, None
     return AccountOut.model_validate(
         {
             "id": info.id,
@@ -154,7 +158,9 @@ def _out(c: Container, o: AccountOverview) -> AccountOut:
             "status_reason": info.status_reason,
             "blocked": info.blocked,
             "blocked_reason": info.blocked_reason,
-            "tg": AccountTgOut(user_id=info.tg_user_id, online=online),
+            "tg": AccountTgOut(
+                user_id=info.tg_user_id, online=online, unreachable_since=unreachable
+            ),
             "mode": mode,
             "paused": paused,
             "killed": killed,

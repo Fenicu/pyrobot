@@ -101,7 +101,7 @@ def _listed(
         "status_reason": None,
         "blocked": False,
         "blocked_reason": None,
-        "tg": tg or {"user_id": None, "online": False},
+        "tg": tg or {"user_id": None, "online": False, "unreachable_since": None},
         "mode": mode,
         "paused": paused,
         "killed": killed,
@@ -140,7 +140,7 @@ async def test_list_only_own_accounts_with_live_fields(api: Api) -> None:
         _listed(
             1,
             "Основной",
-            tg={"user_id": TG_USER, "online": True},
+            tg={"user_id": TG_USER, "online": True, "unreachable_since": None},
             paused=True,
             last_action_at="2026-09-30T12:00:00+00:00",
             unread={"warn": 2, "error": 1},
@@ -150,6 +150,24 @@ async def test_list_only_own_accounts_with_live_fields(api: Api) -> None:
     ]
     api.client.cookies.clear()
     assert (await api.client.get(ACCOUNTS)).status_code == 401
+
+
+async def test_list_shows_since_when_telegram_is_unreachable(api: Api) -> None:
+    await api.container.accounts.bind_telegram(1, TG_USER)
+    facade = build(authorized=True, settings=StaticSettings(), bound_user_id=TG_USER)
+    since = datetime(2026, 10, 16, 1, 10, 5, tzinfo=UTC)
+    facade._unreachable_since = lambda: since
+    run_engine(api.container, facade)
+    # Не в сети (вход не выполнен) — метки «нет связи» нет: показывается «не в сети».
+    [row] = (await api.client.get(ACCOUNTS)).json()
+    assert row["tg"] == {"user_id": TG_USER, "online": False, "unreachable_since": None}
+    await facade.tg.boot()
+    [row] = (await api.client.get(ACCOUNTS)).json()
+    assert row["tg"] == {
+        "user_id": TG_USER,
+        "online": True,
+        "unreachable_since": "2026-10-16T01:10:05+00:00",
+    }
 
 
 async def test_list_has_company_and_team_tag_from_snapshot(api: Api) -> None:

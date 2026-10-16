@@ -1657,6 +1657,8 @@ export interface components {
         AccountTgOut: {
             /** Online */
             online: boolean;
+            /** Unreachable Since */
+            unreachable_since: string | null;
             /** User Id */
             user_id: number | null;
         };

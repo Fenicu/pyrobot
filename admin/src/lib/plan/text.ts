@@ -237,6 +237,7 @@ export const READY: Record<string, string> = {
 	pipeline_unhealthy: 'конвейер сообщений нездоров',
 	lock_lost: 'потеряна аренда аккаунта',
 	tg_offline: 'Telegram не в сети',
+	tg_unreachable: 'нет связи с Telegram',
 	bulls_walk: 'встреча с биржевиком на прогулке'
 };
 

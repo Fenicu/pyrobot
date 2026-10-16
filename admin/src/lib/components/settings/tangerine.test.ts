@@ -23,7 +23,7 @@ const account = (id: number, name: string, over: Partial<AccountOut> = {}): Acco
 	status_reason: null,
 	blocked: false,
 	blocked_reason: null,
-	tg: { user_id: 100 + id, online: true },
+	tg: { user_id: 100 + id, online: true, unreachable_since: null },
 	mode: 'live',
 	paused: false,
 	killed: false,
@@ -41,7 +41,7 @@ const account = (id: number, name: string, over: Partial<AccountOut> = {}): Acco
 const ACCOUNTS = [
 	account(1, 'main'),
 	account(2, 'twink'),
-	account(3, 'old', { tg: { user_id: 103, online: false } })
+	account(3, 'old', { tg: { user_id: 103, online: false, unreachable_since: null } })
 ];
 
 function block(reply: (c: Call) => Response | Promise<Response> = () => json({ chat_id: -1001377961602, message_id: 4242 })) {

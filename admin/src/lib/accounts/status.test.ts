@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountOut } from '$lib/api/types';
-import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, needsAttention, tgOffline } from './status';
+import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, needsAttention, tgOffline, tgUnreachable } from './status';
 
 const NOW = new Date('2026-10-09T12:00:00Z');
 
@@ -22,7 +22,7 @@ function acc(patch: Partial<AccountOut> = {}): AccountOut {
 		busy: null,
 		in_metro: false,
 		alert: null,
-		tg: { online: true, user_id: 1 },
+		tg: { online: true, user_id: 1, unreachable_since: null },
 		unread: { error: 0, warn: 0 },
 		...patch
 	};
@@ -42,8 +42,9 @@ describe('accountTone', () => {
 		['пауза и kill — kill', { paused: true, killed: true }, 'bad'],
 		['пауза', { paused: true }, 'warn'],
 		['непрочитанное предупреждение', { unread: { error: 0, warn: 3 } }, 'warn'],
-		['Telegram не в сети', { tg: { online: false, user_id: null } }, 'warn'],
-		['Telegram не в сети и ошибка — ошибка', { tg: { online: false, user_id: null }, killed: true }, 'bad']
+		['Telegram не в сети', { tg: { online: false, user_id: null, unreachable_since: null } }, 'warn'],
+		['Telegram не в сети и ошибка — ошибка', { tg: { online: false, user_id: null, unreachable_since: null }, killed: true }, 'bad'],
+		['нет связи с Telegram', { tg: { online: true, user_id: 1, unreachable_since: '2026-10-16T01:10:05Z' } }, 'warn']
 	];
 	it.each(cases)('%s → %s', (_name, patch, tone) => {
 		expect(accountTone(acc(patch))).toBe(tone);
@@ -180,11 +181,21 @@ describe('accountActivity', () => {
 
 describe('tgOffline', () => {
 	it('метка только у включённого аккаунта без Telegram', () => {
-		const off = { online: false, user_id: 1 };
+		const off = { online: false, user_id: 1, unreachable_since: null };
 		expect(tgOffline(acc({ tg: off }))).toBe(true);
 		expect(tgOffline(acc())).toBe(false);
 		expect(tgOffline(acc({ tg: off, status: 'disabled' }))).toBe(false);
 		expect(tgOffline(acc({ tg: off, status: 'deleting' }))).toBe(false);
+	});
+});
+
+describe('tgUnreachable', () => {
+	const lost = { online: true, user_id: 1, unreachable_since: '2026-10-16T01:10:05Z' };
+	it('метка «нет связи» только у включённого аккаунта в сети', () => {
+		expect(tgUnreachable(acc({ tg: lost }))).toBe(true);
+		expect(tgUnreachable(acc())).toBe(false);
+		expect(tgUnreachable(acc({ tg: { ...lost, online: false } }))).toBe(false);
+		expect(tgUnreachable(acc({ tg: lost, status: 'disabled' }))).toBe(false);
 	});
 });
 

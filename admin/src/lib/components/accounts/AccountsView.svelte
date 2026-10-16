@@ -8,9 +8,10 @@
 	import Send from '@lucide/svelte/icons/send';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Unplug from '@lucide/svelte/icons/unplug';
+	import WifiOff from '@lucide/svelte/icons/wifi-off';
 	import { onMount } from 'svelte';
 	import { Reorder } from '$lib/accounts/reorder.svelte';
-	import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, tgOffline, type Activity } from '$lib/accounts/status';
+	import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, tgOffline, tgUnreachable, type Activity } from '$lib/accounts/status';
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { AccountOut } from '$lib/api/types';
@@ -184,6 +185,10 @@
 		{#if tgOffline(a)}
 			<span class="shrink-0 text-warn-fg" title="Telegram не в сети">
 				<Unplug class="size-3.5" aria-hidden="true" /><span class="sr-only">Telegram не в сети</span>
+			</span>
+		{:else if tgUnreachable(a)}
+			<span class="shrink-0 text-warn-fg" title="Нет связи с Telegram">
+				<WifiOff class="size-3.5" aria-hidden="true" /><span class="sr-only">Нет связи с Telegram</span>
 			</span>
 		{/if}
 		{#if a.level != null}<span class="shrink-0 text-fg-muted">ур. {a.level}</span>{/if}

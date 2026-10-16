@@ -12,6 +12,7 @@ import {
 	candidateDetail,
 	deedTag,
 	lotteryTickets,
+	readyText,
 	scenarioText,
 	timerLine,
 	verdictText,
@@ -132,9 +133,11 @@ describe('словари плана', () => {
 				'paused',
 				'pipeline_unhealthy',
 				'spending_blocked',
-				'tg_offline'
+				'tg_offline',
+				'tg_unreachable'
 			].sort()
 		);
+		expect(readyText('tg_unreachable')).toBe('нет связи с Telegram');
 	});
 
 	it('строки таймеров: сон с местом, лотерея из настроек, цель битвы', () => {

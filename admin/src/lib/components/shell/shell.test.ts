@@ -30,7 +30,7 @@ const account = (id: number, over: Partial<AccountOut> = {}): AccountOut => ({
 	status_reason: null,
 	blocked: false,
 	blocked_reason: null,
-	tg: { user_id: id, online: true },
+	tg: { user_id: id, online: true, unreachable_since: null },
 	mode: 'live',
 	paused: false,
 	killed: false,
@@ -97,7 +97,7 @@ describe('колонка аккаунтов', () => {
 				name: '☣️ [LA] Iko',
 				level: 54,
 				busy: { activity: 'learn', until: FAR },
-				tg: { user_id: 2, online: false }
+				tg: { user_id: 2, online: false, unreachable_since: null }
 			}),
 			account(3, { name: '☣️ [SU] Khalida', status: 'deleting' })
 		];
@@ -161,11 +161,21 @@ describe('колонка аккаунтов', () => {
 	});
 
 	it('Telegram не в сети — значок у имени', () => {
-		accounts.list = [account(1), account(2, { tg: { user_id: 2, online: false } })];
+		accounts.list = [account(1), account(2, { tg: { user_id: 2, online: false, unreachable_since: null } })];
 		open('/a/1', { account: '1' });
 		const rows = within(column()).getAllByRole('listitem');
 		expect(within(rows[0]!).queryByTitle('Telegram не в сети')).toBeNull();
 		expect(within(rows[1]!).getByTitle('Telegram не в сети')).toBeInTheDocument();
+	});
+
+	it('нет связи с Telegram — свой значок у имени', () => {
+		const lost = { user_id: 2, online: true, unreachable_since: '2026-10-16T01:10:05Z' };
+		accounts.list = [account(1), account(2, { tg: lost })];
+		open('/a/1', { account: '1' });
+		const rows = within(column()).getAllByRole('listitem');
+		expect(within(rows[0]!).queryByTitle('Нет связи с Telegram')).toBeNull();
+		expect(within(rows[1]!).getByTitle('Нет связи с Telegram')).toBeInTheDocument();
+		expect(within(rows[1]!).queryByTitle('Telegram не в сети')).toBeNull();
 	});
 
 	it('«+» открывает создание аккаунта, «управление» ведёт на /accounts', async () => {

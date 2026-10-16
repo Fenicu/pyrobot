@@ -15,7 +15,7 @@ const TONE_LABEL: Record<Tone, string> = {
 export function accountTone(a: AccountOut): Tone {
 	if (a.status === 'disabled' || a.status === 'deleting') return 'off';
 	if (a.status === 'error' || a.blocked || a.killed || a.unread.error > 0) return 'bad';
-	if (a.paused || a.unread.warn > 0 || !a.tg.online) return 'warn';
+	if (a.paused || a.unread.warn > 0 || !a.tg.online || a.tg.unreachable_since) return 'warn';
 	return 'ok';
 }
 
@@ -65,4 +65,10 @@ export const ACTIVITY_COLOR = { muted: 'text-fg-muted', warn: 'text-warn-fg', ba
 /** Telegram не в сети у включённого аккаунта: у выключенного и удаляемого этой метки нет. */
 export function tgOffline(a: AccountOut): boolean {
 	return !a.tg.online && a.status !== 'disabled' && a.status !== 'deleting';
+}
+
+/** Telegram в сети, но не отвечает (обрыв связи — действия ждут её возврата): своя метка у
+ * имени; у выключенного и удаляемого её нет. */
+export function tgUnreachable(a: AccountOut): boolean {
+	return a.tg.unreachable_since != null && !tgOffline(a) && a.status !== 'disabled' && a.status !== 'deleting';
 }

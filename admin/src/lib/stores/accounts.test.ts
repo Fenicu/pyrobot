@@ -11,7 +11,7 @@ const account = (id: number, name: string): AccountOut => ({
 	status_reason: null,
 	blocked: false,
 	blocked_reason: null,
-	tg: { user_id: 100 + id, online: true },
+	tg: { user_id: 100 + id, online: true, unreachable_since: null },
 	mode: 'dry_run',
 	paused: false,
 	killed: false,

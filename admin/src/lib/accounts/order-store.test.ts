@@ -196,7 +196,7 @@ describe('AccountsStore с порядком', () => {
 		status_reason: null,
 		blocked: false,
 		blocked_reason: null,
-		tg: { user_id: id, online: true },
+		tg: { user_id: id, online: true, unreachable_since: null },
 		mode: 'live',
 		paused: false,
 		killed: false,

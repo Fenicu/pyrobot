@@ -332,6 +332,18 @@
             "title": "Online",
             "type": "boolean"
           },
+          "unreachable_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unreachable Since"
+          },
           "user_id": {
             "anyOf": [
               {
@@ -346,7 +358,8 @@
         },
         "required": [
           "user_id",
-          "online"
+          "online",
+          "unreachable_since"
         ],
         "title": "AccountTgOut",
         "type": "object"

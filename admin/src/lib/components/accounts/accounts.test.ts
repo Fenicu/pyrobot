@@ -23,7 +23,7 @@ const account = (id: number, name: string, over: Partial<AccountOut> = {}): Acco
 	status_reason: null,
 	blocked: false,
 	blocked_reason: null,
-	tg: { user_id: 100 + id, online: true },
+	tg: { user_id: 100 + id, online: true, unreachable_since: null },
 	mode: 'live',
 	paused: false,
 	killed: false,
@@ -40,7 +40,7 @@ const account = (id: number, name: string, over: Partial<AccountOut> = {}): Acco
 
 const LIST = [
 	account(1, 'main', {
-		tg: { user_id: 267519921, online: true },
+		tg: { user_id: 267519921, online: true, unreachable_since: null },
 		last_action_at: '2026-09-27T19:05:00Z',
 		unread: { warn: 2, error: 1 }
 	}),
@@ -49,12 +49,12 @@ const LIST = [
 		mode: 'dry_run',
 		paused: true,
 		killed: true,
-		tg: { user_id: null, online: false }
+		tg: { user_id: null, online: false, unreachable_since: null }
 	}),
 	account(3, 'broken', {
 		status: 'error',
 		status_reason: 'crash_loop:ValueError',
-		tg: { user_id: 103, online: false }
+		tg: { user_id: 103, online: false, unreachable_since: null }
 	}),
 	account(4, 'old', { status: 'deleting' })
 ];
@@ -104,7 +104,8 @@ describe('экран аккаунтов', () => {
 		await setup([
 			account(1, 'main', { level: 54, busy: { activity: 'learn', until } }),
 			account(2, 'twink', { status: 'disabled' }),
-			account(3, 'alt', { tg: { user_id: 103, online: false } })
+			account(3, 'alt', { tg: { user_id: 103, online: false, unreachable_since: null } }),
+			account(4, 'lost', { tg: { user_id: 104, online: true, unreachable_since: '2026-10-16T01:10:05Z' } })
 		]);
 		expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Аккаунты');
 		const main = within(card('main'));
@@ -119,6 +120,8 @@ describe('экран аккаунтов', () => {
 		expect(twink.getByText('выключен', { selector: 'p' })).toBeInTheDocument();
 		expect(twink.queryByText(/^ур\./)).toBeNull();
 		expect(within(card('alt')).getByTitle('Telegram не в сети')).toBeInTheDocument();
+		expect(within(card('lost')).getByTitle('Нет связи с Telegram')).toBeInTheDocument();
+		expect(within(card('lost')).getByRole('img')).toHaveAccessibleName('требует внимания');
 	});
 
 	it('проблема — текст предупреждения или причины и красная рамка', async () => {
@@ -209,7 +212,7 @@ describe('экран аккаунтов', () => {
 	it('создание ведёт на экран Telegram нового аккаунта', async () => {
 		const { fetch, state, user } = await setup([account(1, 'main')], (c) => {
 			if (c.method !== 'POST') return undefined;
-			state.list = [...state.list, account(5, 'newbie', { tg: { user_id: null, online: false } })];
+			state.list = [...state.list, account(5, 'newbie', { tg: { user_id: null, online: false, unreachable_since: null } })];
 			return json(state.list[1], 201);
 		});
 		const dialog = await startCreate(user);
@@ -264,7 +267,7 @@ describe('экран аккаунтов', () => {
 			status_reason: 'blocked_by_owner',
 			blocked: true,
 			blocked_reason: 'Спам',
-			tg: { user_id: 105, online: false }
+			tg: { user_id: 105, online: false, unreachable_since: null }
 		});
 		// Разблокированный: статус выключен, причина блокировки устарела.
 		const freed = account(6, 'freed', { status: 'disabled', status_reason: 'blocked_by_owner' });

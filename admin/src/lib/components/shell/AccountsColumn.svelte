@@ -4,6 +4,7 @@
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Unplug from '@lucide/svelte/icons/unplug';
+	import WifiOff from '@lucide/svelte/icons/wifi-off';
 	import { onMount } from 'svelte';
 	import {
 		ACTIVITY_COLOR,
@@ -11,6 +12,7 @@
 		accountDotLabel,
 		accountTone,
 		tgOffline,
+		tgUnreachable,
 		type Activity
 	} from '$lib/accounts/status';
 	import { Reorder } from '$lib/accounts/reorder.svelte';
@@ -93,6 +95,10 @@
 			{#if tgOffline(a)}
 				<span class="shrink-0 text-warn-fg" title="Telegram не в сети">
 					<Unplug class="size-3" aria-hidden="true" /><span class="sr-only">Telegram не в сети</span>
+				</span>
+			{:else if tgUnreachable(a)}
+				<span class="shrink-0 text-warn-fg" title="Нет связи с Telegram">
+					<WifiOff class="size-3" aria-hidden="true" /><span class="sr-only">Нет связи с Telegram</span>
 				</span>
 			{/if}
 		</span>

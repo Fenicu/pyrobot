@@ -56,6 +56,7 @@ const REASON: Record<string, string> = {
 	dry_run: 'режим dry_run',
 	killed: 'kill включён',
 	paused: 'пауза',
+	tg_unreachable: 'нет связи с Telegram',
 	queue_full: 'очередь ручных команд полна — дождитесь поставленных'
 };
 

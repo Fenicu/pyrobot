@@ -26,7 +26,7 @@ const account = (id: number, over: Partial<AccountOut> = {}): AccountOut => ({
 	status_reason: null,
 	blocked: false,
 	blocked_reason: null,
-	tg: { user_id: id, online: true },
+	tg: { user_id: id, online: true, unreachable_since: null },
 	mode: 'live',
 	paused: false,
 	killed: false,
@@ -109,7 +109,7 @@ describe('телефон: нижние вкладки', () => {
 			account(2, { paused: true }),
 			account(3, { status: 'error' }),
 			account(4, { status: 'disabled', blocked: true }),
-			account(5, { tg: { user_id: 5, online: false } })
+			account(5, { tg: { user_id: 5, online: false, unreachable_since: null } })
 		];
 		open('/a/1', { account: '1' });
 		const link = within(tabs()).getByRole('link', { name: /^Аккаунты/ });
