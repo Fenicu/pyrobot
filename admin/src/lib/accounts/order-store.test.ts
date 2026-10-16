@@ -200,6 +200,7 @@ describe('AccountsStore с порядком', () => {
 		mode: 'live',
 		paused: false,
 		killed: false,
+		manual_control_until: null,
 		last_action_at: null,
 		unread: { warn: 0, error: 0 },
 		company: null,

@@ -39,6 +39,7 @@ from app.engine.gadgets import GadgetRuns
 from app.engine.gateway.gateway import RECONCILE_REASON, ActionGateway
 from app.engine.host.codes import CodeLimiter
 from app.engine.lag import LoopLagMonitor
+from app.engine.manual import ManualControl
 from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
 from app.engine.parsing.sleep import RobberyAlert
@@ -198,6 +199,8 @@ class AccountRuntime:
         self._probe_soon = asyncio.Event()
         self.reconcile_poll_s = RECONCILE_POLL_S
         self.planner_poll_s = PLANNER_POLL_S
+        # Ручное управление из админки — только в памяти: перезапуск движка его снимает.
+        self.manual_control = ManualControl(SystemClock())
         self.pipeline: Pipeline | None = None
         self.gateway: ActionGateway | None = None
         self.tg: TgAuthManager | None = None
@@ -352,6 +355,7 @@ class AccountRuntime:
             gadgets=gadgets,
             publish=self.stream.publish,
             no_answers=self._deps.no_answers,
+            manual_until=lambda: self.manual_control.until,
         )
         game_chat = settings.current.chats.game_chat_id
 
@@ -402,6 +406,7 @@ class AccountRuntime:
             artifacts=artifacts,
             gadgets=gadgets,
             bounds=bounds_fn,
+            manual_control=self.manual_control,
         )
         self.supervisor.start("pipeline", pipeline.run)
         self.supervisor.start("gateway", self.gateway.run)
@@ -559,6 +564,9 @@ class AccountRuntime:
             return "pipeline_unhealthy"
         if (cannot := self._can_send()) is not None:
             return cannot
+        # Человек ведёт игру из админки: идущий сценарий доигрывается, новых решений нет.
+        if self.manual_control.until is not None:
+            return "manual_control"
         # Встреча с биржевиком на прогулке в работе: очередная /walk попала бы в экран после
         # «⚔Драться».
         if self.bulls_walk is not None and self.bulls_walk.holding:

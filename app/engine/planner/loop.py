@@ -119,7 +119,8 @@ class LoopView:
     """Что сейчас с исполнением: решение планировщика при паузе или неготовности — условное."""
 
     paused: bool
-    # Причина неготовности (`paused`, `killed`, `tg_offline`, `tg_unreachable`, …) или None.
+    # Причина неготовности (`paused`, `killed`, `tg_offline`, `tg_unreachable`, `manual_control`,
+    # …) или None.
     ready: str | None
     # Планировщик принимает свои решения (иначе — только ручные запуски).
     auto: bool
@@ -133,6 +134,8 @@ class LoopView:
     # не ждёт.
     wait_reason: str | None
     wake_at: datetime | None
+    # Ручное управление из админки до этого момента; None — его нет.
+    manual_control_until: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +199,7 @@ class PlannerLoop:
         gadgets: GadgetRuns | None = None,
         publish: Publish | None = None,
         no_answers: NoAnswers | None = None,
+        manual_until: Callable[[], datetime | None] | None = None,
     ) -> None:
         self._gateway = gateway
         # Поток событий аккаунта: живые кадры сценариев (метро).
@@ -209,6 +213,8 @@ class PlannerLoop:
         self._store = store
         self._notifier = notifier
         self._ready = ready
+        # Конец ручного управления: при нём цикл просыпается сам, не дожидаясь опроса.
+        self._manual_until = manual_until or (lambda: None)
         self._poll_s = poll_s
         self._max_idle_s = max_idle_s
         self._step_timeout_s = step_timeout_s
@@ -382,6 +388,9 @@ class PlannerLoop:
             self._waiting = None
             if ready == "spending_blocked" and await self._resume_metro(now):
                 return None
+            until = self._manual_until() if ready == "manual_control" else None
+            if until is not None:
+                return min(self._poll_s, max((until - now).total_seconds(), 0.0))
             return self._poll_s
         settings = self._settings.current
         if self._last_done is None:
@@ -592,6 +601,7 @@ class PlannerLoop:
             next_wake=self.next_wake,
             wait_reason=self._waiting[0] if self._waiting is not None else None,
             wake_at=self._waiting[1] if self._waiting is not None else None,
+            manual_control_until=self._manual_until(),
         )
 
     async def _peek_today(self, now: datetime) -> dict[str, int]:

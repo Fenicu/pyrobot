@@ -4465,7 +4465,9 @@ found`. Запрос идёт в контексте аккаунта (в стр�
 - `GET /api/v1/accounts` (сессия) — аккаунты текущей учётки, удаляемые — до конца чистки: `id`,
   `name`, `status` (`enabled`, `disabled`, `error`, `deleting`), `status_reason`, `tg` (`user_id` —
   привязка, `online`, `unreachable_since` — с какого момента Telegram в онлайне не отвечает на
-  пробы, `null` — связь есть или не в онлайне), `mode`, `paused`, `killed`, `last_action_at`, `unread` (`warn`, `error`),
+  пробы, `null` — связь есть или не в онлайне), `mode`, `paused`, `killed`, `manual_control_until`
+  (ручное управление из админки до этого момента, только у запущенного движка; `null` — его нет),
+  `last_action_at`, `unread` (`warn`, `error`),
   `company` (код: `piper`, `hooli`, `stark`, `umbrl`, `wayne`, `bmesa`) и `team_tag` (например `SU`)
   из последнего снимка состояния, `null` — снимка нет или поле ещё не наблюдалось; оттуда же
   `level` (`int | null`), `busy` (`{activity, until}` или `null`; прошедший `until` отдаётся как
@@ -4501,7 +4503,7 @@ found`. Запрос идёт в контексте аккаунта (в стр�
 «Управление настройками»), `settings/history`, `journal`, `decisions`, `actions`, `scenario-runs`,
 `metrics`, `metro`, `unrecognized`, `notifications`, `daily` — так исправляется настройка, из-за
 которой аккаунт падает при старте. Остальным нужен движок, и они отвечают 503 `engine not running`:
-`engine/kill|unkill|pause|resume|reconciled|restart`, `tg/login/*`, `tg/logout`,
+`engine/kill|unkill|pause|resume|manual-control|reconciled|restart`, `tg/login/*`, `tg/logout`,
 `tg/game-chat/join`, `tangerine/post`, `planner/outlook`, `commands/*`, `scenarios/{name}/run`,
 `events`; `tangerine/pair` без движка у аккаунта или партнёра — 409 `tg_not_online` с `account_id`;
 `tangerine/partner` без движка — 200 со `status: "offline"`.
@@ -4525,7 +4527,19 @@ found`. Запрос идёт в контексте аккаунта (в стр�
 SWINFO сверкой истории прошло, `false` — чат недоступен (`game_chat_not_member`), `null` — ещё не
 читали или движок не запущен. Админка опрашивает этот статус на всех экранах аккаунта. `POST
 /api/v1/accounts/{id}/engine/pause` и `POST /api/v1/accounts/{id}/engine/resume` (CSRF) сохраняют `engine.paused`, будят
-планировщик и пишут аудит `engine_paused`/`engine_resumed` с логином. Успешные `kill`, `unkill` и `reconciled`
+планировщик и пишут аудит `engine_paused`/`engine_resumed` с логином. `POST
+/api/v1/accounts/{id}/engine/manual-control {on}` (CSRF) — ручное управление («Взять управление» во
+вкладке «Игра»): `on: true` берёт его на 30 минут (повторно — продлевает), `on: false` сразу
+возвращает планировщику; ответ — `{until}` (до какого момента управление у человека, `null` — у
+планировщика). Пока оно идёт, планировщик не начинает новых решений (причина неготовности цикла
+`manual_control`, в плане — `loop.manual_control_until`), идущий сценарий доигрывается, а ручные
+команды (`commands/send`, `commands/click`), ручные запуски сценариев, реакции и сверка работают как
+обычно; каждая ручная команда продлевает срок до «сейчас + 30 минут». По сроку управление кончается
+само: цикл спит не дольше его конца и сразу решает дальше. Это не `engine.paused`: состояние только в
+памяти движка (`ManualControl`, `app/engine/manual.py`), перезапуск движка его снимает. Срок — в
+`manual_control_until` статуса движка и списка аккаунтов; взятие и возврат пишут аудит
+`manual_control_on`/`manual_control_off` с логином (продление — нет), каждое изменение срока — кадр
+SSE `manual_control` `{until}`. Успешные `kill`, `unkill` и `reconciled`
 пишут аудит-уведомление уровня `info` (`engine_killed`, `engine_unkilled`, `engine_reconciled`) с
 логином того, кто это сделал. `POST /api/v1/accounts/{id}/engine/kill {reason}` (CSRF) сперва латчит
 `ActionGateway` и обрывает очередь, затем сохраняет настройку — если сохранение не удалось, latch
@@ -4665,14 +4679,15 @@ Telegram не вернул id отправленного сообщения), 50
 `wakeups` — `at` (UTC), `kind` (закрытый enum причин), `key`, `after_wake` (во сне — таймер прохода
 «как после пробуждения»); `loop` — `paused`, `ready` (причина неготовности цикла: `paused`,
 `killed`, `spending_blocked`, `pipeline_unhealthy`, `lock_lost`, `tg_offline`, `tg_unreachable` — нет
-связи с Telegram, `bulls_walk` — встреча с
+связи с Telegram, `manual_control` — ручное управление из админки, `bulls_walk` — встреча с
 биржевиком на прогулке в работе — или `null`), `auto`
 (планировщик принимает свои решения), `current` (идущий сценарий) и `current_params` (параметры
 идущего запуска вместе с зафиксированными в реестре; `null` — ничего не идёт), `manual_queue`
 (ручных запусков в очереди), `next_wake`, `wait_reason` и `wake_at` — ожидание, в котором цикл спит: его причина, как
 в журнале (`kind`/`kind:key` таймера или `no_timers`), и когда цикл проснётся сам (`next_wake`, но не
 позже предела простоя цикла — 30 минут от решения; сообщение игры будит раньше), `null` — цикл не
-ждёт (исполняет, не готов, ещё не решал); `next_wake` и `wake_at` — в UTC. Решение плана считается на
+ждёт (исполняет, не готов, ещё не решал); `next_wake` и `wake_at` — в UTC; `manual_control_until` —
+до какого момента идёт ручное управление (UTC), `null` — его нет. Решение плана считается на
 текущий момент, поэтому действие при спящем цикле (чаще всего — обновить устаревший профиль) будет,
 когда цикл проснётся; при паузе, неготовности, идущем сценарии или ручной очереди решение
 условное. `basis` — занятость устарела, но известна: решение и `considered` — на текущих данных, а
@@ -5003,7 +5018,8 @@ events_truncated, next_cursor}`. Метрика пишется только пр
 reason}`; класс команды акций шлюз уточняет перед каждой попыткой и пишет в строку вместе с отправкой
 и итогом — в `/actions/{id}` он итоговый, в кадре создания — исходный), `decision` (решение планировщика без кандидатов), `scenario_run` (`queued`, `running`,
 итог; в кадре начала запуска по решению — `decision_id` этого решения, в прочих — `null`), `notification` (`{id, level, code, text}`), `settings` (новая версия настроек с `mode`,
-`paused`, `killed`), `metro_live` (живой кадр забега метро — снимок целиком, поля как у `GET
+`paused`, `killed`), `manual_control` (`{until}` — новый срок ручного управления при взятии,
+продлении и возврате, `null` — вернули; истечение по сроку кадра не даёт), `metro_live` (живой кадр забега метро — снимок целиком, поля как у `GET
 /metro/live`). Источники подключены без изменения движка: подписчик шины `StreamFeed`
 (сообщения и состояние, после планировщика), обёртки `PublishingActionStore` и
 `PublishingPlannerStore` над хранилищами шлюза и планировщика, слушатели `DbNotifier.listeners` и

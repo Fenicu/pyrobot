@@ -68,6 +68,16 @@ class KillIn(BaseModel):
     reason: str = Field(min_length=1, max_length=200)
 
 
+class ManualControlIn(BaseModel):
+    # true — взять управление (повторно — продлить), false — вернуть планировщику.
+    on: bool
+
+
+class ManualControlOut(BaseModel):
+    # До какого момента управление у человека; null — решения принимает планировщик.
+    until: IsoDatetime | None
+
+
 class PhoneIn(BaseModel):
     phone: str
 
@@ -131,6 +141,9 @@ class EngineStatusOut(BaseModel):
     host_reason: str | None
     mode: Literal["dry_run", "live"]
     paused: bool
+    # Ручное управление из админки до этого момента (в памяти движка, рестарт его снимает): новых
+    # решений планировщик не начинает; null — его нет или движок не запущен.
+    manual_control_until: IsoDatetime | None
     # Сценарий, который сейчас исполняет планировщик.
     scenario: str | None
     next_wake: IsoDatetime | None
@@ -213,6 +226,7 @@ async def engine_status(
         host_reason=host_reason,
         mode=engine.mode,
         paused=engine.paused,
+        manual_control_until=None,
         scenario=None,
         next_wake=None,
         killed=engine.killed,
@@ -267,6 +281,21 @@ async def engine_resume(
     f: Annotated[EngineFacade, Depends(running)],
 ) -> None:
     await f.resume(by=ctx.login)
+
+
+@router.post("/engine/manual-control", response_model=ManualControlOut, responses=_WRITE)
+async def engine_manual_control(
+    body: ManualControlIn,
+    ctx: Annotated[SessionContext, Depends(require_csrf)],
+    f: Annotated[EngineFacade, Depends(running)],
+) -> ManualControlOut:
+    """Ручное управление на 30 минут: планировщик не начинает новых решений (идущий сценарий
+    доигрывается), ручные команды и запуски работают и каждая команда продлевает срок; по сроку
+    управление возвращается планировщику само. `on: false` — вернуть сразу."""
+    if body.on:
+        return ManualControlOut(until=await f.take_control(by=ctx.login))
+    await f.release_control(by=ctx.login)
+    return ManualControlOut(until=None)
 
 
 @router.post("/engine/reconciled", status_code=status.HTTP_204_NO_CONTENT, responses=_WRITE)

@@ -85,6 +85,7 @@ def _listed(
     mode: str = "dry_run",
     paused: bool = False,
     killed: bool = False,
+    manual_control_until: str | None = None,
     last_action_at: str | None = None,
     unread: dict[str, int] | None = None,
     company: str | None = None,
@@ -105,6 +106,7 @@ def _listed(
         "mode": mode,
         "paused": paused,
         "killed": killed,
+        "manual_control_until": manual_control_until,
         "last_action_at": last_action_at,
         "unread": unread or {"warn": 0, "error": 0},
         "company": company,
@@ -168,6 +170,17 @@ async def test_list_shows_since_when_telegram_is_unreachable(api: Api) -> None:
         "online": True,
         "unreachable_since": "2026-10-16T01:10:05+00:00",
     }
+
+
+async def test_list_shows_manual_control(api: Api) -> None:
+    facade = build(settings=StaticSettings())
+    run_engine(api.container, facade)
+    until = await facade.take_control(by="t")
+    [row] = (await api.client.get(ACCOUNTS)).json()
+    assert row["manual_control_until"] == until.isoformat()
+    await facade.release_control(by="t")
+    [row] = (await api.client.get(ACCOUNTS)).json()
+    assert row["manual_control_until"] is None
 
 
 async def test_list_has_company_and_team_tag_from_snapshot(api: Api) -> None:

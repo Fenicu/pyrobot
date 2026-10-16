@@ -1,9 +1,17 @@
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
 
 from app.engine.bus import Delivery
 from app.engine.commands import CommandClass
 from app.engine.gateway.types import ActionKind, Source, Verdict
-from app.engine.manual import any_reply, click_request, fingerprint, send_request
+from app.engine.manual import (
+    MANUAL_CONTROL_SPAN,
+    ManualControl,
+    any_reply,
+    click_request,
+    fingerprint,
+    send_request,
+)
 from app.engine.parsing.refusals import Busy, Refused
 from tests.engine.helpers import GAME, make_msg
 
@@ -46,3 +54,46 @@ def test_manual_requests() -> None:
     assert fingerprint(nav) == fingerprint(
         send_request("😎Я", chat_id=GAME, cls=CommandClass.NAV, key="z", confirm=None)
     )
+
+
+class StepClock:
+    def __init__(self) -> None:
+        self.at = AT
+
+    def now(self) -> datetime:
+        return self.at
+
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+
+def test_manual_control_span_is_30_minutes() -> None:
+    assert MANUAL_CONTROL_SPAN == timedelta(minutes=30)
+
+
+def test_manual_control_take_extend_release() -> None:
+    clock = StepClock()
+    control = ManualControl(clock)
+    assert control.until is None
+    # Продление без взятого управления ничего не включает.
+    assert control.extend() is None and control.until is None
+    assert control.take() == (AT + MANUAL_CONTROL_SPAN, True)
+    clock.at = AT + timedelta(minutes=10)
+    assert control.extend() == AT + timedelta(minutes=40)
+    # Повторное взятие — продление, а не новое взятие.
+    clock.at = AT + timedelta(minutes=20)
+    assert control.take() == (AT + timedelta(minutes=50), False)
+    assert control.release() is True and control.until is None
+    assert control.release() is False
+
+
+def test_manual_control_expires_by_clock() -> None:
+    clock = StepClock()
+    control = ManualControl(clock)
+    control.take()
+    clock.at = AT + MANUAL_CONTROL_SPAN - timedelta(seconds=1)
+    assert control.until == AT + MANUAL_CONTROL_SPAN
+    clock.at = AT + MANUAL_CONTROL_SPAN
+    assert control.until is None
+    # Истёкшее управление не продлевается командой и не снимается повторно.
+    assert control.extend() is None and control.release() is False

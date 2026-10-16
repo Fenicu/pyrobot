@@ -58,6 +58,7 @@ async def test_status_from_db_when_not_running(api: Api) -> None:
         "host_reason": "locked_elsewhere",
         "mode": "live",
         "paused": True,
+        "manual_control_until": None,
         "scenario": None,
         "next_wake": None,
         "killed": True,
@@ -256,6 +257,7 @@ async def test_direct_write_with_active_lease_and_no_engine_503(api: Api) -> Non
     [
         ("POST", "/engine/kill", {"reason": "r"}),
         ("POST", "/engine/pause", None),
+        ("POST", "/engine/manual-control", {"on": True}),
         ("POST", "/tg/login/start", {"phone": "+888"}),
         ("GET", "/planner/outlook", None),
         ("POST", "/commands/send", {"text": "😎Я", "idempotency_key": "k"}),

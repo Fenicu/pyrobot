@@ -281,6 +281,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/accounts/{account_id}/engine/manual-control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Engine Manual Control
+         * @description Ручное управление на 30 минут: планировщик не начинает новых решений (идущий сценарий
+         *     доигрывается), ручные команды и запуски работают и каждая команда продлевает срок; по сроку
+         *     управление возвращается планировщику само. `on: false` — вернуть сразу.
+         */
+        post: operations["engine_manual_control_api_v1_accounts__account_id__engine_manual_control_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/accounts/{account_id}/engine/pause": {
         parameters: {
             query?: never;
@@ -1625,6 +1647,8 @@ export interface components {
             last_action_at: string | null;
             /** Level */
             level: number | null;
+            /** Manual Control Until */
+            manual_control_until: string | null;
             /**
              * Mode
              * @enum {string}
@@ -2390,6 +2414,8 @@ export interface components {
             killed: boolean;
             /** Lease Ok */
             lease_ok: boolean;
+            /** Manual Control Until */
+            manual_control_until: string | null;
             /**
              * Mode
              * @enum {string}
@@ -2720,6 +2746,16 @@ export interface components {
              * Format: date-time
              */
             until: string;
+        };
+        /** ManualControlIn */
+        ManualControlIn: {
+            /** On */
+            on: boolean;
+        };
+        /** ManualControlOut */
+        ManualControlOut: {
+            /** Until */
+            until: string | null;
         };
         /** MeOut */
         MeOut: {
@@ -3678,6 +3714,8 @@ export interface components {
             current_params: {
                 [key: string]: unknown;
             } | null;
+            /** Manual Control Until */
+            manual_control_until: string | null;
             /** Manual Queue */
             manual_queue: number;
             /** Next Wake */
@@ -5626,6 +5664,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description account not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description engine not running */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    engine_manual_control_api_v1_accounts__account_id__engine_manual_control_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                account_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualControlIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManualControlOut"];
+                };
             };
             /** @description not authenticated */
             401: {

@@ -86,6 +86,7 @@ class Rig:
         self.store = store or MemoryPlannerStore()
         self.notes = notes or Notes()
         self.ready = ready
+        self.manual_until: datetime | None = None
         self.loop = PlannerLoop(
             gateway=world.gateway,
             state=lambda: world.state,
@@ -97,6 +98,7 @@ class Rig:
             step_timeout_s=0.3,
             auto=auto,
             no_answers=no_answers,
+            manual_until=lambda: self.manual_until,
         )
 
     async def steps(self, n: int) -> None:
@@ -278,6 +280,25 @@ async def test_not_ready_does_not_decide(world: World, reason: str) -> None:
     rig = Rig(world, ready=reason)
     assert await rig.loop.step() == 5.0
     assert rig.store.decisions == [] and world.game.payloads() == []
+
+
+async def test_manual_control_holds_decisions_and_wakes_at_its_end(world: World) -> None:
+    rig = Rig(world, ready="manual_control")
+    rig.manual_until = rig.clock.now() + timedelta(seconds=2)
+    # Цикл спит не дольше конца ручного управления: после него планировщик решает сам.
+    pause = await rig.loop.step()
+    assert pause is not None and 0 < pause <= 2.0
+    assert rig.store.decisions == [] and world.game.payloads() == []
+    view = rig.loop.loop_view()
+    assert view.ready == "manual_control" and view.manual_control_until == rig.manual_until
+    rig.manual_until = rig.clock.now() + timedelta(minutes=30)
+    assert await rig.loop.step() == 5.0
+    rig.manual_until = rig.clock.now() - timedelta(seconds=1)
+    assert await rig.loop.step() == 0.0
+    rig.ready, rig.manual_until = None, None
+    await rig.loop.step()
+    assert rig.store.decisions != []
+    assert rig.loop.loop_view().manual_control_until is None
 
 
 async def test_not_ready_clears_next_wake(world: World) -> None:

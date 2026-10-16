@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from app.engine.bus import Delivery
+from app.engine.clock import Clock
 from app.engine.commands import CommandClass
 from app.engine.gateway.types import (
     ActionKind,
@@ -16,6 +17,9 @@ from app.engine.gateway.types import (
     Verdict,
 )
 from app.engine.parsing.refusals import Busy, Refused
+
+# Ручное управление: столько после взятия и после каждой ручной команды.
+MANUAL_CONTROL_SPAN = timedelta(minutes=30)
 
 # Свои ключи идемпотентности ручных команд не пересекаются с ключами движка.
 KEY_PREFIX = "manual:"
@@ -94,3 +98,41 @@ def click_request(
         confirm_version=confirm[0] if confirm is not None else None,
         confirm_until=confirm[1] if confirm is not None else None,
     )
+
+
+class ManualControl:
+    """Ручное управление аккаунтом из админки: пока оно идёт, планировщик не начинает своих
+    решений. Живёт в памяти движка — перезапуск его снимает; кончается само по часам."""
+
+    def __init__(self, clock: Clock, span: timedelta = MANUAL_CONTROL_SPAN) -> None:
+        self._clock = clock
+        self._span = span
+        self._until: datetime | None = None
+
+    @property
+    def until(self) -> datetime | None:
+        """До какого момента управление у человека; None — у планировщика."""
+        until = self._until
+        if until is not None and until <= self._clock.now():
+            self._until = None
+            return None
+        return until
+
+    def take(self) -> tuple[datetime, bool]:
+        """Новый срок и признак, что управление взято сейчас (иначе — продлено)."""
+        taken = self.until is None
+        self._until = self._clock.now() + self._span
+        return self._until, taken
+
+    def extend(self) -> datetime | None:
+        """Ручная команда продлевает идущее управление; без него — None."""
+        if self.until is None:
+            return None
+        self._until = self._clock.now() + self._span
+        return self._until
+
+    def release(self) -> bool:
+        """Управление снято сейчас; False — его и не было."""
+        active = self.until is not None
+        self._until = None
+        return active

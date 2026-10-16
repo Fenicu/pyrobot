@@ -13,7 +13,13 @@ from app.engine.clock import SystemClock
 from app.engine.gadgets import GadgetConflict, GadgetRuns
 from app.engine.gateway.gateway import ActionGateway
 from app.engine.gateway.types import ActionRequest, ActionResult
-from app.engine.manual import Fingerprint, KeyReused, fingerprint, manual_key
+from app.engine.manual import (
+    Fingerprint,
+    KeyReused,
+    ManualControl,
+    fingerprint,
+    manual_key,
+)
 from app.engine.notify import LogNotifier, NotifierPort
 from app.engine.pipeline import Pipeline
 from app.engine.planner.decide import Outlook
@@ -115,6 +121,8 @@ class EngineStatus:
     game_chat_member: bool | None = None
     # Telegram не отвечает на пробы с этого момента; None — связь есть.
     tg_unreachable_since: datetime | None = None
+    # Ручное управление до этого момента; None — решения принимает планировщик.
+    manual_control_until: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -162,6 +170,7 @@ class EngineFacade:
         artifacts: ArtifactRuns | None = None,
         gadgets: GadgetRuns | None = None,
         bounds: Callable[[], EngineBounds] | None = None,
+        manual_control: ManualControl | None = None,
     ) -> None:
         self.settings = settings
         self.gateway = gateway
@@ -183,6 +192,7 @@ class EngineFacade:
         self._history = history
         self._unreachable_since = unreachable_since
         self._bounds = bounds
+        self.control = manual_control or ManualControl(SystemClock())
         self._outlook: tuple[tuple[int, int, int], float, datetime, Outlook] | None = None
         # Автор сообщения-адресата мандаринов по (чат, id сообщения).
         self._partner: tuple[tuple[int, int], Sender | None] | None = None
@@ -233,6 +243,7 @@ class EngineFacade:
             lease_ok=self._lease_ok(),
             game_chat_member=self.game_chat_member(),
             tg_unreachable_since=self._unreachable_since(),
+            manual_control_until=self.control.until,
         )
 
     def game_chat_member(self) -> bool | None:
@@ -383,6 +394,29 @@ class EngineFacade:
         await self.settings.update(change, changed_by=by)
         self._wake_planner()
 
+    async def take_control(self, *, by: str) -> datetime:
+        """Ручное управление на 30 минут: планировщик не начинает новых решений, идущий
+        сценарий доигрывается. Повторное взятие — продление."""
+        until, taken = self.control.take()
+        if taken:
+            self._wake_planner()
+            await self._audit("manual_control_on", f"manual control taken by {by}")
+        self._publish_control(until)
+        return until
+
+    async def release_control(self, *, by: str) -> None:
+        if not self.control.release():
+            return
+        self._wake_planner()
+        self._publish_control(None)
+        await self._audit("manual_control_off", f"manual control released by {by}")
+
+    def _publish_control(self, until: datetime | None) -> None:
+        if self.stream is not None:
+            self.stream.publish(
+                "manual_control", {"until": until.isoformat() if until is not None else None}
+            )
+
     async def artifact_start(self, artifact: ArtifactKey, *, lottery_max: bool, by: str) -> None:
         """Запрос на сбор: только с Telegram в сети и в live, иначе запуск не уйдёт в игру."""
         if self.tg.status().state is not TgState.ONLINE:
@@ -436,6 +470,9 @@ class EngineFacade:
             known = self._inflight.get(key)
             if known is not None and known != fingerprint(req):
                 raise KeyReused(key)
+        extended = self.control.extend()
+        if extended is not None:
+            self._publish_control(extended)
         task = asyncio.ensure_future(self.gateway.submit(req))
         self._manual.add(task)
         task.add_done_callback(self._manual.discard)

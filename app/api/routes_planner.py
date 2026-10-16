@@ -52,7 +52,8 @@ class PlanTimerOut(BaseModel):
 class PlanLoopOut(BaseModel):
     paused: bool
     # Причина, по которой цикл не исполняет решения (`paused`, `killed`, `spending_blocked`,
-    # `pipeline_unhealthy`, `lock_lost`, `tg_offline`, `tg_unreachable`, `bulls_walk`), или null.
+    # `pipeline_unhealthy`, `lock_lost`, `tg_offline`, `tg_unreachable`, `manual_control`,
+    # `bulls_walk`), или null.
     ready: str | None
     # Планировщик принимает свои решения (иначе цикл исполняет только ручные запуски).
     auto: bool
@@ -67,6 +68,8 @@ class PlanLoopOut(BaseModel):
     # игры будит раньше. null — цикл не ждёт: исполняет, не готов или ещё не решал.
     wait_reason: str | None
     wake_at: datetime | None
+    # Ручное управление из админки до этого момента (UTC); null — его нет.
+    manual_control_until: datetime | None
 
 
 class PlanFocusOut(BaseModel):
@@ -202,6 +205,7 @@ def outlook_out(view: PlanView) -> OutlookOut:
             next_wake=_utc(loop.next_wake),
             wait_reason=loop.wait_reason,
             wake_at=_utc(loop.wake_at),
+            manual_control_until=_utc(loop.manual_control_until),
         ),
         focus=[PlanFocusOut(deed=deed, today=today) for deed, today in o.focus],
         hints=PlanHintsOut(

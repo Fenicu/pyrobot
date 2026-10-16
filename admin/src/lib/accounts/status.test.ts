@@ -13,6 +13,7 @@ function acc(patch: Partial<AccountOut> = {}): AccountOut {
 		blocked: false,
 		blocked_reason: null,
 		killed: false,
+		manual_control_until: null,
 		paused: false,
 		mode: 'live',
 		company: null,

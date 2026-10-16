@@ -93,6 +93,8 @@ class AccountOut(BaseModel):
     mode: Literal["dry_run", "live"]
     paused: bool
     killed: bool
+    # Ручное управление из админки до этого момента (только у запущенного движка); null — нет.
+    manual_control_until: IsoDatetime | None
     last_action_at: IsoDatetime | None
     unread: UnreadOut
     # Код компании (`piper`, `hooli`, `stark`, `umbrl`, `wayne`, `bmesa`) и тег команды из
@@ -147,9 +149,10 @@ def _out(c: Container, o: AccountOverview) -> AccountOut:
         mode, paused, killed = st.mode, st.paused, st.killed
         online = st.tg.state is TgState.ONLINE
         unreachable = st.tg_unreachable_since if online else None
+        control = st.manual_control_until
     else:
         mode, paused, killed = o.engine.mode, o.engine.paused, o.engine.killed
-        online, unreachable = False, None
+        online, unreachable, control = False, None, None
     return AccountOut.model_validate(
         {
             "id": info.id,
@@ -164,6 +167,7 @@ def _out(c: Container, o: AccountOverview) -> AccountOut:
             "mode": mode,
             "paused": paused,
             "killed": killed,
+            "manual_control_until": control,
             "last_action_at": o.last_action_at,
             "unread": UnreadOut(warn=o.unread_warn, error=o.unread_error),
             "company": o.company,

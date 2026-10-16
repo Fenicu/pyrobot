@@ -589,6 +589,21 @@ async def test_unreachable_telegram_stops_actions_until_probe_succeeds(
     assert runtime._probe_interval() == runtime.tg_probe_s
 
 
+async def test_manual_control_holds_planner_only(kurigram: Engines, clean_db: Database) -> None:
+    runtime = await _online_runtime(kurigram, clean_db)
+    facade, planner = runtime.facade, runtime.planner
+    assert facade is not None and planner is not None
+    assert runtime._planner_ready() is None
+    until = await facade.take_control(by="admin")
+    assert runtime._planner_ready() == "manual_control"
+    assert planner.loop_view().manual_control_until == until
+    # Сверка, реакции и ручные команды ручное управление не держит.
+    assert runtime._can_send() is None
+    await facade.release_control(by="admin")
+    assert runtime._planner_ready() is None
+    assert planner.loop_view().manual_control_until is None
+
+
 async def test_request_timeout_wakes_probe(kurigram: Engines, clean_db: Database) -> None:
     runtime = await _online_runtime(kurigram, clean_db)
     transport = runtime._kurigram

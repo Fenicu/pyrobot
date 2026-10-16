@@ -218,6 +218,18 @@
             ],
             "title": "Level"
           },
+          "manual_control_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Control Until"
+          },
           "mode": {
             "enum": [
               "dry_run",
@@ -284,6 +296,7 @@
           "mode",
           "paused",
           "killed",
+          "manual_control_until",
           "last_action_at",
           "unread",
           "company",
@@ -2462,6 +2475,18 @@
             "title": "Lease Ok",
             "type": "boolean"
           },
+          "manual_control_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Control Until"
+          },
           "mode": {
             "enum": [
               "dry_run",
@@ -2560,6 +2585,7 @@
           "host_reason",
           "mode",
           "paused",
+          "manual_control_until",
           "scenario",
           "next_wake",
           "killed",
@@ -3473,6 +3499,40 @@
           "until"
         ],
         "title": "LotteryState",
+        "type": "object"
+      },
+      "ManualControlIn": {
+        "properties": {
+          "on": {
+            "title": "On",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "on"
+        ],
+        "title": "ManualControlIn",
+        "type": "object"
+      },
+      "ManualControlOut": {
+        "properties": {
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "until"
+        ],
+        "title": "ManualControlOut",
         "type": "object"
       },
       "MeOut": {
@@ -5876,6 +5936,18 @@
             ],
             "title": "Current Params"
           },
+          "manual_control_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Control Until"
+          },
           "manual_queue": {
             "title": "Manual Queue",
             "type": "integer"
@@ -5940,7 +6012,8 @@
           "manual_queue",
           "next_wake",
           "wait_reason",
-          "wake_at"
+          "wake_at",
+          "manual_control_until"
         ],
         "title": "PlanLoopOut",
         "type": "object"
@@ -10471,6 +10544,115 @@
           }
         },
         "summary": "Engine Kill",
+        "tags": [
+          "engine"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/engine/manual-control": {
+      "post": {
+        "description": "Ручное управление на 30 минут: планировщик не начинает новых решений (идущий сценарий\nдоигрывается), ручные команды и запуски работают и каждая команда продлевает срок; по сроку\nуправление возвращается планировщику само. `on: false` — вернуть сразу.",
+        "operationId": "engine_manual_control_api_v1_accounts__account_id__engine_manual_control_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "account_id",
+            "required": true,
+            "schema": {
+              "title": "Account Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualControlIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualControlOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "account not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "engine not running"
+          }
+        },
+        "summary": "Engine Manual Control",
         "tags": [
           "engine"
         ]

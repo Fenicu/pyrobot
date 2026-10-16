@@ -57,6 +57,27 @@ async def test_engine_status_kill_unkill(with_facade: Container, api_client: Asy
     assert empty.status_code == 422
 
 
+async def test_manual_control_take_and_release(
+    with_facade: Container, api_client: AsyncClient
+) -> None:
+    csrf = await login(api_client)
+    h = {"X-CSRF-Token": csrf}
+    url = f"{A1}/engine/manual-control"
+    assert (await api_client.post(url, json={"on": True})).status_code == 403
+    assert (await api_client.post(url, headers=h, json={})).status_code == 422
+    took = await api_client.post(url, headers=h, json={"on": True})
+    assert took.status_code == 200
+    until = took.json()["until"]
+    f = engines(with_facade).engines[1].facade
+    assert until == f.control.until.isoformat()
+    st = (await api_client.get(f"{A1}/engine/status")).json()
+    assert st["manual_control_until"] == until and st["paused"] is False
+    released = await api_client.post(url, headers=h, json={"on": False})
+    assert (released.status_code, released.json()) == (200, {"until": None})
+    st = (await api_client.get(f"{A1}/engine/status")).json()
+    assert st["manual_control_until"] is None
+
+
 async def test_tg_login_flow(with_facade: Container, api_client: AsyncClient) -> None:
     csrf = await login(api_client)
     h = {"X-CSRF-Token": csrf}

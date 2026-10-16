@@ -101,6 +101,7 @@ async def test_outlook_reads_without_writing(planned: Planned, api_client: Async
         "next_wake": None,
         "wait_reason": None,
         "wake_at": None,
+        "manual_control_until": None,
     }
     assert {t["kind"] for t in body["wakeups"]} >= {"gorbushka_comeback", "sleep_window"}
     assert body["hints"]["sleep_hours"] == 7

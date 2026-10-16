@@ -27,6 +27,7 @@ const account = (id: number, name: string, over: Partial<AccountOut> = {}): Acco
 	mode: 'live',
 	paused: false,
 	killed: false,
+	manual_control_until: null,
 	last_action_at: null,
 	unread: { warn: 0, error: 0 },
 	company: null,

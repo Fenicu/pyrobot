@@ -1,7 +1,7 @@
 import asyncio
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -9,6 +9,7 @@ import pytest
 from app.engine.artifact import ArtifactConflict
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
+from app.engine.commands import CommandClass
 from app.engine.facade import (
     EngineFacade,
     GameChatWatch,
@@ -23,6 +24,7 @@ from app.engine.gateway.store import ActionStore
 from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus
 from app.engine.host.account import live_reread
 from app.engine.host.codes import CodeLimiter
+from app.engine.manual import ManualControl, send_request
 from app.engine.memory import MemoryActionStore, MemoryJournal
 from app.engine.notify import NotifierPort
 from app.engine.parsing import default_parser
@@ -46,10 +48,12 @@ from app.engine.state.model import (
     company_of,
     dump_state,
 )
+from app.engine.stream import EventStream
 from app.engine.tg_auth import TgAuthBackend, TgState
 from app.engine.transport.base import ChatUnavailable, FloodWait, Sender, TransportRejected
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from tests.engine.helpers import GAME, tg_auth, until
+from tests.engine.test_manual import AT, StepClock
 
 
 def build(
@@ -67,6 +71,8 @@ def build(
     transport: FakeTransport | None = None,
     history: GameChatWatch | None = None,
     bounds: Callable[[], EngineBounds] | None = None,
+    control: ManualControl | None = None,
+    stream: EventStream | None = None,
 ) -> EngineFacade:
     """Фасад на памяти; `snapshot` — снимок состояния, его подхватит `pipeline.load()`. Вход в
     Telegram сверяет свой чат с настройками `settings`."""
@@ -107,6 +113,8 @@ def build(
         transport=transport,
         history=lambda: history,
         bounds=bounds,
+        manual_control=control,
+        stream=stream,
     )
 
 
@@ -467,6 +475,38 @@ async def test_pause_resume_persist_and_audit() -> None:
     assert not f.status().paused
     assert [code for _, code, _ in rec.items] == ["engine_paused", "engine_resumed"]
     assert "alice" in rec.items[0][2]
+
+
+async def test_manual_control_take_extend_release() -> None:
+    rec, planner, clock, stream = _Recorder(), _Planner(), StepClock(), EventStream()
+    f = build(notifier=rec, planner=planner, control=ManualControl(clock), stream=stream)
+    assert f.status().manual_control_until is None
+    until = await f.take_control(by="alice")
+    assert until == AT + timedelta(minutes=30) == f.status().manual_control_until
+    assert planner.woken == 1
+    # Повторное взятие продлевает срок без второй записи аудита.
+    clock.at = AT + timedelta(minutes=5)
+    assert await f.take_control(by="alice") == AT + timedelta(minutes=35)
+    # Ручная команда продлевает управление.
+    clock.at = AT + timedelta(minutes=20)
+    req = send_request("😎Я", chat_id=GAME, cls=CommandClass.NAV, key=None, confirm=None)
+    await f.manual(req, wait_s=1.0)
+    assert f.status().manual_control_until == AT + timedelta(minutes=50)
+    await f.release_control(by="bob")
+    assert f.status().manual_control_until is None and planner.woken == 2
+    # Снятое управление ручная команда не возвращает, повторное снятие не пишет аудит.
+    await f.manual(req, wait_s=1.0)
+    assert f.status().manual_control_until is None
+    await f.release_control(by="bob")
+    assert [code for _, code, _ in rec.items] == ["manual_control_on", "manual_control_off"]
+    assert "alice" in rec.items[0][2] and "bob" in rec.items[1][2]
+    frames = [e.data for e in stream.history() if e.type == "manual_control"]
+    assert frames == [
+        {"until": (AT + timedelta(minutes=30)).isoformat()},
+        {"until": (AT + timedelta(minutes=35)).isoformat()},
+        {"until": (AT + timedelta(minutes=50)).isoformat()},
+        {"until": None},
+    ]
 
 
 class _Planner:

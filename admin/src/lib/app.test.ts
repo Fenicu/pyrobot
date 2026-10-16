@@ -17,6 +17,7 @@ const account = (id: number, status: AccountOut['status'] = 'enabled'): AccountO
 	mode: 'dry_run',
 	paused: false,
 	killed: false,
+	manual_control_until: null,
 	last_action_at: null,
 	unread: { warn: 0, error: 0 },
 	company: null,
