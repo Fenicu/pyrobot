@@ -76,6 +76,8 @@ log = logging.getLogger(__name__)
 LEGACY_SESSION_FILE = "pyrobot.session"
 REREAD_DRAIN_S = 10.0
 TG_PROBE_S = 60.0
+# Проба после неудачной и пока связи с Telegram нет: возврат связи виден за 15 с.
+TG_PROBE_FAST_S = 15.0
 PIPELINE_DRAIN_S = 10.0
 HISTORY_DRAIN_S = 60.0
 RECONCILE_POLL_S = 5.0
@@ -188,6 +190,9 @@ class AccountRuntime:
         self.settings.listeners.append(self._publish_settings)
         self.supervisor = Supervisor(self.notifier, on_crash_loop=self._crash_loop)
         self.tg_probe_s = TG_PROBE_S
+        self.tg_probe_fast_s = TG_PROBE_FAST_S
+        # Запрос к Telegram не дождался ответа: проба — не дожидаясь своего срока.
+        self._probe_soon = asyncio.Event()
         self.reconcile_poll_s = RECONCILE_POLL_S
         self.planner_poll_s = PLANNER_POLL_S
         self.pipeline: Pipeline | None = None
@@ -288,6 +293,7 @@ class AccountRuntime:
             self._kurigram.on_auth_lost = self.tg.mark_lost
             self._kurigram.on_overload = self.tg.mark_overload
             self._kurigram.on_resumed = self.tg.mark_resumed
+            self._kurigram.on_timeout = self._probe_soon.set
         settings = self.settings
         gateway = self.gateway
         reconciler = Reconciler(
@@ -389,6 +395,7 @@ class AccountRuntime:
             stream=self.stream,
             transport=transport,
             history=lambda: self.history,
+            unreachable_since=self._unreachable_since,
             artifacts=artifacts,
             gadgets=gadgets,
             bounds=bounds_fn,
@@ -426,6 +433,7 @@ class AccountRuntime:
             notifier=self.notifier,
             readers=readers,
             online=lambda: kurigram.online,
+            reachable=lambda: kurigram.reachability.since is None,
             swinfo=(chats.swinfo_chat_id, chats.swinfo_user_id),
         )
         kurigram.on_history_needed = self.history.request
@@ -528,7 +536,14 @@ class AccountRuntime:
             return "lock_lost"
         if self.tg is None or self.tg.status().state is not TgState.ONLINE:
             return "tg_offline"
+        if self._unreachable_since() is not None:
+            return "tg_unreachable"
         return None
+
+    def _unreachable_since(self) -> datetime | None:
+        """С какого момента Telegram не отвечает на пробы; None — связь есть."""
+        kurigram = self._kurigram
+        return kurigram.reachability.since if kurigram is not None else None
 
     def _planner_ready(self) -> str | None:
         engine = self.settings.current.engine
@@ -642,9 +657,16 @@ class AccountRuntime:
         if imported:
             log.info("telegram session imported from %s", path)
 
+    def _probe_interval(self) -> float:
+        kurigram = self._kurigram
+        suspect = kurigram is not None and kurigram.reachability.suspect
+        return self.tg_probe_fast_s if suspect else self.tg_probe_s
+
     async def _probe_tg(self) -> None:
         while True:
-            await asyncio.sleep(self.tg_probe_s)
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._probe_soon.wait(), self._probe_interval())
+            self._probe_soon.clear()
             kurigram, tg = self._kurigram, self.tg
             if kurigram is not None and tg is not None and tg.status().state is TgState.ONLINE:
                 await kurigram.probe()

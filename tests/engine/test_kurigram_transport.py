@@ -1,7 +1,8 @@
 import asyncio
+import logging
 import secrets
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace as NS
 from typing import Any
 
@@ -44,6 +45,8 @@ from app.engine.transport.kurigram import (
     RECEIVE_QUEUE_MAX,
     ChatFilter,
     CountingQueue,
+    Reachability,
+    outage_text,
 )
 from app.engine.types import IncomingMessage
 from tests.conftest import TEST_DB_URL
@@ -104,6 +107,111 @@ async def test_probe_other_error_only_logged() -> None:
     t.client.errors["GetState"] = OSError("network down")
     await t.probe()
     assert len(t.clients) == 1 and t.client.is_initialized and lost == []
+
+
+PROBE_LOG = "app.engine.transport.kurigram"
+
+
+def _probe_records(caplog: pytest.LogCaptureFixture) -> list[tuple[int, str]]:
+    return [(r.levelno, r.getMessage()) for r in caplog.records if r.name == PROBE_LOG]
+
+
+async def test_two_failed_probes_mark_unreachable_with_one_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    t = FakeKurigram()
+    await _online(t)
+    requests: list[str] = []
+    t.on_history_needed = requests.append
+    timeout = TimeoutError('Failed to invoke "updates.GetState" after 1 retries')
+    with caplog.at_level(logging.DEBUG, logger=PROBE_LOG):
+        t.client.errors["GetState"] = timeout
+        await t.probe()
+        # Одна неудача — ещё не потеря связи, но следующая проба — раньше обычного.
+        assert t.reachability.since is None and t.reachability.suspect
+        assert [lvl for lvl, _ in _probe_records(caplog)] == [logging.DEBUG]
+        for _ in range(3):
+            t.client.errors["GetState"] = timeout
+            await t.probe()
+        assert t.reachability.since is not None
+        warnings = [m for lvl, m in _probe_records(caplog) if lvl >= logging.WARNING]
+        assert len(warnings) == 1 and warnings[0].startswith("telegram unreachable since ")
+        assert all(r.exc_info is None for r in caplog.records)
+        caplog.clear()
+        await t.probe()
+    assert t.reachability.since is None and not t.reachability.suspect
+    [(level, text)] = [(lvl, m) for lvl, m in _probe_records(caplog) if lvl >= logging.INFO]
+    assert level == logging.INFO and text.startswith("telegram reachable again after ")
+    # Пропущенное за время без связи возвращает сверка истории.
+    assert requests == ["reachable"]
+
+
+async def test_probe_success_without_outage_logs_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    t = FakeKurigram()
+    await _online(t)
+    requests: list[str] = []
+    t.on_history_needed = requests.append
+    t.client.errors["GetState"] = TimeoutError("timed out")
+    with caplog.at_level(logging.DEBUG, logger=PROBE_LOG):
+        await t.probe()
+        await t.probe()
+    assert [lvl for lvl, _ in _probe_records(caplog)] == [logging.DEBUG]
+    assert not t.reachability.suspect and requests == []
+
+
+def test_reachability_since_first_failure_and_duration() -> None:
+    clock = [datetime(2026, 10, 16, 1, 10, 5, tzinfo=UTC)]
+    reach = Reachability(now=lambda: clock[0])
+    start = clock[0]
+    reach.failed(TimeoutError("timed out"))
+    clock[0] += timedelta(seconds=30)
+    reach.failed(TimeoutError("timed out"))
+    assert reach.since == start
+    clock[0] = start + timedelta(minutes=45, seconds=20)
+    assert reach.ok() == timedelta(minutes=45, seconds=20)
+    assert reach.ok() is None
+
+
+@pytest.mark.parametrize(
+    ("seconds", "text"),
+    [(20, "20s"), (45 * 60 + 20, "45m"), (3600 + 5 * 60, "1h05m"), (26 * 3600, "26h00m")],
+)
+def test_outage_duration_text(seconds: int, text: str) -> None:
+    assert outage_text(timedelta(seconds=seconds)) == text
+
+
+async def test_go_online_clears_unreachable() -> None:
+    t = FakeKurigram()
+    await _online(t)
+    for _ in range(2):
+        t.client.errors["GetState"] = TimeoutError("timed out")
+        await t.probe()
+    assert t.reachability.since is not None
+    await t.disconnect()
+    assert await t.connect()
+    await t.go_online()
+    assert t.reachability.since is None
+
+
+async def test_request_timeout_asks_for_probe() -> None:
+    # Тайм-аут настоящего запроса — повод проверить связь сейчас, а не через минуту.
+    t = FakeKurigram()
+    await _online(t)
+    asked: list[int] = []
+    t.on_timeout = lambda: asked.append(1)
+    t.client.errors["SendMessage"] = TimeoutError("timed out")
+    with pytest.raises(TimeoutError):
+        await t.send_text(GAME, "😎Я")
+    assert asked == [1]
+    from pyrogram import errors
+
+    # Отказ Telegram — не тайм-аут.
+    t.client.errors["ResolvePeer"] = errors.FloodWait(7)
+    with pytest.raises(FloodWait):
+        await t.send_text(GAME + 1, "😎Я")
+    assert asked == [1]
 
 
 @pytest.mark.parametrize("op", ["send", "click"])

@@ -15,6 +15,7 @@ from app.engine.host.codes import CodeLimiter
 from app.engine.lag import LoopLagMonitor
 from app.engine.tg_auth import TgState
 from app.engine.transport.fake import FakeTgBackend
+from app.engine.transport.kurigram import Reachability
 from app.main import Runtime
 from tests.engine.helpers import tg_auth, until
 
@@ -54,6 +55,7 @@ async def runtime() -> AsyncIterator[AccountRuntime]:
 class _Probe:
     def __init__(self) -> None:
         self.calls = 0
+        self.reachability = Reachability()
 
     async def probe(self) -> None:
         self.calls += 1

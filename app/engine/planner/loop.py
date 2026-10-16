@@ -119,7 +119,7 @@ class LoopView:
     """Что сейчас с исполнением: решение планировщика при паузе или неготовности — условное."""
 
     paused: bool
-    # Причина неготовности (`paused`, `killed`, `tg_offline`, …) или None.
+    # Причина неготовности (`paused`, `killed`, `tg_offline`, `tg_unreachable`, …) или None.
     ready: str | None
     # Планировщик принимает свои решения (иначе — только ручные запуски).
     auto: bool

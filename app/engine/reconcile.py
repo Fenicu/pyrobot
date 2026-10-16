@@ -172,6 +172,8 @@ class Reconciler:
             if self._gateway.spending_blocked != RECONCILE_REASON:
                 self._metro_since = self._metro_read_at = None
             if self._gateway.spending_blocked != RECONCILE_REASON or not self._ready():
+                # Неудачи, на которые пришлась неготовность (нет связи с Telegram), — не серия.
+                failures = 0
                 await self._pause(self._poll_s)
                 continue
             if await self._wait_metro():
@@ -179,7 +181,9 @@ class Reconciler:
                 continue
             obligations = await self.pending()
             refreshed = await self._refresh_all(obligations)
-            if refreshed is None:
+            if refreshed is None or (not refreshed and not self._ready()):
+                # Шлюз остановлен или движок перестал быть готов (пропала связь с Telegram)
+                # посреди сверки: неудачей это не считается, сверка повторится после возврата.
                 await self._pause(self._poll_s)
                 continue
             if refreshed:

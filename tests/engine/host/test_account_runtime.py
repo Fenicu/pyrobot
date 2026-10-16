@@ -542,3 +542,61 @@ async def test_unused_code_watch_for_server_app_only(kurigram: Engines) -> None:
     # Остановка движка снимает ожидание: отчёта нет.
     await runtime.stop()
     assert tg._watches == set() and server.items == []
+
+
+async def _online_runtime(kurigram: Engines, db: Database) -> AccountRuntime:
+    async with db.sessions() as session, session.begin():
+        sealed = BOX.seal(b"k" * 256, "auth_key", 1)
+        session.add(TgSession(account_id=1, dc_id=2, date=0, auth_key=sealed, user_id=EXPECTED))
+    await kurigram.deps.accounts.bind_telegram(1, EXPECTED)
+    runtime = await kurigram.start(1)
+    assert runtime.tg is not None and runtime.tg.status().state is TgState.ONLINE
+    return runtime
+
+
+async def test_unreachable_telegram_stops_actions_until_probe_succeeds(
+    kurigram: Engines, clean_db: Database
+) -> None:
+    from app.engine.gateway.types import ActionKind, ActionRequest, ActionStatus, Source
+
+    runtime = await _online_runtime(kurigram, clean_db)
+    transport = runtime._kurigram
+    facade, gateway = runtime.facade, runtime.gateway
+    assert transport is not None and facade is not None and gateway is not None
+    assert runtime._can_send() is None
+    assert runtime._probe_interval() == runtime.tg_probe_s
+    client = transport._client
+    client.errors["GetState"] = TimeoutError("timed out")
+    await transport.probe()
+    # Одна неудача: действия идут, следующая проба — раньше обычного.
+    assert runtime._can_send() is None
+    assert runtime._probe_interval() == runtime.tg_probe_fast_s < runtime.tg_probe_s
+    client.errors["GetState"] = TimeoutError("timed out")
+    await transport.probe()
+    assert runtime._can_send() == "tg_unreachable"
+    assert runtime._planner_ready() == "tg_unreachable"
+    assert runtime.history is not None and not runtime.history._ready()
+    since = transport.reachability.since
+    assert since is not None and facade.status().tg_unreachable_since == since
+    # Ручная команда — тот же отказ «не готов», что и без Telegram в сети.
+    manual = ActionRequest(kind=ActionKind.SEND, chat_id=GAME, text="😎Я", source=Source.MANUAL)
+    res = await gateway.submit(manual)
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "tg_unreachable")
+    assert not any(name == "SendMessage" for name, _ in client.invoked)
+    await transport.probe()
+    assert runtime._can_send() is None and facade.status().tg_unreachable_since is None
+    assert runtime.history._ready()
+    assert runtime._probe_interval() == runtime.tg_probe_s
+
+
+async def test_request_timeout_wakes_probe(kurigram: Engines, clean_db: Database) -> None:
+    runtime = await _online_runtime(kurigram, clean_db)
+    transport = runtime._kurigram
+    assert transport is not None
+    client = transport._client
+    probes = sum(1 for name, _ in client.invoked if name == "GetState")
+    client.errors["SendMessage"] = TimeoutError("timed out")
+    with pytest.raises(TimeoutError):
+        await transport.send_text(GAME, "😎Я")
+    # Проба — сразу, а не через `tg_probe_s` (60 с).
+    await until(lambda: sum(1 for name, _ in client.invoked if name == "GetState") == probes + 1)

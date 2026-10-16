@@ -211,6 +211,8 @@ class Rig:
         self.time = FakeTime()
         self.notifier = Recorder()
         self.online = True
+        self.reachable = True
+        kw.setdefault("reachable", lambda: self.reachable)
         self.sync = HistorySync(
             self.source,
             self.marks,  # type: ignore[arg-type]
@@ -370,6 +372,37 @@ async def test_failed_pass_keeps_mark_and_retries_with_backoff() -> None:
         await until(lambda: rig.marks.marks[(GAME, 0)] == 11)
         await _wait(rig, 300.0)
     assert _ids(rig.journal.delivered) == [11]
+
+
+HISTORY_LOG = "app.engine.transport.history"
+
+
+async def test_no_passes_while_telegram_unreachable(caplog: pytest.LogCaptureFixture) -> None:
+    # Связь пропала посреди прохода: его сбой не пишется в лог и не повторяется по backoff, а
+    # ни запросы, ни период проходов не начинают — до возврата связи (его проход транспорт
+    # запрашивает сам).
+    rig = Rig(marks={(GAME, 0): 10})
+    rig.source.post(GAME, 11)
+    gate = rig.source.gate = asyncio.Event()
+    rig.source.errors = [TimeoutError('Failed to invoke "messages.GetHistory" after 10 retries')]
+    with caplog.at_level("DEBUG", logger=HISTORY_LOG):
+        async with rig.running():
+            rig.sync.request("online")
+            await until(lambda: rig.source.reads == 1)
+            rig.reachable = False
+            gate.set()
+            await _wait(rig, 300.0)
+            rig.sync.request("gap")
+            await asyncio.sleep(0.01)
+            rig.time.advance(300.0)
+            await asyncio.sleep(0.01)
+            await _wait(rig, 300.0)
+            assert rig.source.reads == 1 and rig.marks.marks[(GAME, 0)] == 10
+            rig.reachable = True
+            rig.sync.request("reachable")
+            await until(lambda: rig.marks.marks[(GAME, 0)] == 11)
+    assert [r for r in caplog.records if r.name == HISTORY_LOG and r.levelno >= 30] == []
+    assert all(r.exc_info is None for r in caplog.records)
 
 
 async def test_failing_reader_does_not_stop_others() -> None:

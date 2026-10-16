@@ -81,6 +81,10 @@ def _no_watch() -> GameChatWatch | None:
     return None
 
 
+def _never() -> datetime | None:
+    return None
+
+
 class GameChatWatch(Protocol):
     """Членство аккаунта в общем чате игры по сверке истории (`HistorySync`)."""
 
@@ -109,6 +113,8 @@ class EngineStatus:
     lease_ok: bool
     # Аккаунт состоит в общем чате игры (по сверке истории); None — ещё не проверено.
     game_chat_member: bool | None = None
+    # Telegram не отвечает на пробы с этого момента; None — связь есть.
+    tg_unreachable_since: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +158,7 @@ class EngineFacade:
         monotonic: Callable[[], float] = time.monotonic,
         transport: Transport | None = None,
         history: Callable[[], GameChatWatch | None] = _no_watch,
+        unreachable_since: Callable[[], datetime | None] = _never,
         artifacts: ArtifactRuns | None = None,
         gadgets: GadgetRuns | None = None,
         bounds: Callable[[], EngineBounds] | None = None,
@@ -174,6 +181,7 @@ class EngineFacade:
         self._transport = transport
         # Сверка истории стартует после фасада (от выхода в онлайн) — поэтому функция.
         self._history = history
+        self._unreachable_since = unreachable_since
         self._bounds = bounds
         self._outlook: tuple[tuple[int, int, int], float, datetime, Outlook] | None = None
         # Автор сообщения-адресата мандаринов по (чат, id сообщения).
@@ -224,6 +232,7 @@ class EngineFacade:
             workers_ok=self._workers_ok(),
             lease_ok=self._lease_ok(),
             game_chat_member=self.game_chat_member(),
+            tg_unreachable_since=self._unreachable_since(),
         )
 
     def game_chat_member(self) -> bool | None:

@@ -273,8 +273,9 @@ async def test_repeated_wait_recorded_once(world: World) -> None:
     assert len(waits) == 1
 
 
-async def test_not_ready_does_not_decide(world: World) -> None:
-    rig = Rig(world, ready="paused")
+@pytest.mark.parametrize("reason", ["paused", "tg_unreachable"])
+async def test_not_ready_does_not_decide(world: World, reason: str) -> None:
+    rig = Rig(world, ready=reason)
     assert await rig.loop.step() == 5.0
     assert rig.store.decisions == [] and world.game.payloads() == []
 

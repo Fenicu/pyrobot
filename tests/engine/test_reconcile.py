@@ -350,6 +350,40 @@ async def test_not_ready_waits() -> None:
         await w.rig.stop()
 
 
+async def test_failure_from_lost_connection_is_not_counted() -> None:
+    # Связь с Telegram пропала посреди сверки: /compact ушёл, ответа нет, а к концу ожидания
+    # движок уже не готов (`tg_unreachable`). Это не неудача сверки — `reconcile_stuck` не
+    # приходит, а после возврата связи сверка снимает блок.
+    ready = True
+    w = World(ready=lambda: ready, answer=False, stuck_after=1)
+    respond = w._respond
+
+    async def lose_connection(rec: Sent) -> None:
+        nonlocal ready
+        if rec.payload == "/compact":
+            ready = False
+        await respond(rec)
+
+    w.rig.transport.responder = lose_connection
+    w.rig.start()
+    task = asyncio.create_task(w.reconciler.run())
+    try:
+        await _uncertain(w, "/harvest")
+        await until(lambda: "/compact" in w.sent())
+        await asyncio.sleep(0.3)
+        assert "reconcile_stuck" not in w.notes.codes
+        assert w.sent().count("/compact") == 1
+        w.answer = True
+        w.rig.transport.responder = respond
+        ready = True
+        await until(lambda: w.rig.gw.spending_blocked is None)
+        await until(lambda: w.notes.codes == ["reconciled_auto"])
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await w.rig.stop()
+
+
 METRO_MSG = 325707
 REVISIONS = itertools.count(1_791_142_461)
 

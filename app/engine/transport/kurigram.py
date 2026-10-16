@@ -61,6 +61,8 @@ OVERLOAD_LOW = 150
 RECEIVE_QUEUE_MAX = 2 * OVERLOAD_HIGH
 OVERLOAD_CHECK_S = 1.0
 OVERLOAD_RETRY_S = (5.0, 30.0, 60.0)
+# Неудачных проб подряд, после которых связи с Telegram нет: одна — ещё случайность.
+UNREACHABLE_AFTER = 2
 # Устройство сессии в списке сессий пользователя в Telegram — у клиента движка и у временного
 # клиента выхода одинаковое.
 _DEVICE: dict[str, Any] = {
@@ -73,6 +75,64 @@ _DEVICE: dict[str, Any] = {
 # reply_to_message мы не читаем, а кеш держал уже обработанные сообщения (сотни на клиента):
 # кеш сведён к минимуму (kurigram не принимает размер меньше 1), ответы не догружаются.
 _NO_MESSAGE_CACHE: dict[str, Any] = {"fetch_replies": False, "max_message_cache_size": 1}
+
+
+def outage_text(span: timedelta) -> str:
+    """Длительность без связи для лога: `20s`, `45m`, `1h05m`."""
+    total = max(0, int(span.total_seconds()))
+    hours, rest = divmod(total, 3600)
+    minutes, seconds = divmod(rest, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    return f"{minutes}m" if minutes else f"{seconds}s"
+
+
+class Reachability:
+    """Связь с Telegram по пробам: `after` неудачных проб подряд — связи нет с первой из них
+    (одно предупреждение в лог), первая удачная — связь вернулась (одна строка INFO)."""
+
+    def __init__(
+        self,
+        *,
+        after: int = UNREACHABLE_AFTER,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
+        self._after = after
+        self._now = now
+        self._failures = 0
+        self._first: datetime | None = None
+        # Связи нет с этого момента; None — связь есть.
+        self.since: datetime | None = None
+
+    @property
+    def suspect(self) -> bool:
+        """Последняя проба не удалась: следующая — раньше обычного."""
+        return self._failures > 0
+
+    def failed(self, exc: BaseException) -> None:
+        log.debug("telegram probe failed: %s: %s", type(exc).__name__, exc)
+        if self._failures == 0:
+            self._first = self._now()
+        self._failures += 1
+        if self.since is None and self._failures >= self._after:
+            self.since = self._first or self._now()
+            log.warning(
+                "telegram unreachable since %s (%d probes failed, last: %s: %s)",
+                self.since.isoformat(timespec="seconds"),
+                self._failures,
+                type(exc).__name__,
+                exc,
+            )
+
+    def ok(self) -> timedelta | None:
+        """Telegram ответил; связь вернулась — сколько её не было, иначе None."""
+        self._failures, self._first = 0, None
+        since, self.since = self.since, None
+        if since is None:
+            return None
+        span = self._now() - since
+        log.info("telegram reachable again after %s", outage_text(span))
+        return span
 
 
 def _aware(dt: datetime) -> datetime:
@@ -357,7 +417,12 @@ def _fenced[**P, T](
 
     @functools.wraps(method)
     async def fenced(self: KurigramTransport, /, *args: P.args, **kwargs: P.kwargs) -> T:
-        return await self._fence.call(lambda: method(self, *args, **kwargs))
+        try:
+            return await self._fence.call(lambda: method(self, *args, **kwargs))
+        except TimeoutError:
+            if self.on_timeout is not None:
+                self.on_timeout()
+            raise
 
     return fenced
 
@@ -493,6 +558,9 @@ class KurigramTransport:
         self.on_resumed: Callable[[], Awaitable[None]] | None = None
         # Проход сверки истории — с поводом; обработчик только ставит его в очередь.
         self.on_history_needed: Callable[[str], None] | None = None
+        # Запрос к Telegram не дождался ответа: повод проверить связь пробой сейчас.
+        self.on_timeout: Callable[[], None] | None = None
+        self.reachability = Reachability()
         # Клиент вошёл, прошёл проверку привязки и вышел в онлайн (`go_online`).
         self._online = False
         self._me: Any = None
@@ -934,6 +1002,7 @@ class KurigramTransport:
             pass
         await self._client.initialize()
         self._online = True
+        self.reachability.ok()
         self._history_needed("online")
 
     async def disconnect(self) -> None:
@@ -1003,9 +1072,13 @@ class KurigramTransport:
                 raw.functions.updates.GetState(), retries=1, sleep_threshold=0, retry_delay=0
             )
         except errors.Unauthorized:
+            self.reachability.ok()
             await self._lose_auth(client)
         except Exception as exc:
-            log.warning("telegram probe failed: %s", exc)
+            self.reachability.failed(exc)
+        else:
+            if self.reachability.ok() is not None:
+                self._history_needed("reachable")
 
     async def stop(self) -> None:
         self._online = False

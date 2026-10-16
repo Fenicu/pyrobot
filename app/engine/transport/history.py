@@ -77,11 +77,13 @@ def _key(msg: IncomingMessage) -> Key:
 class HistorySync:
     """Проходы сверки — задача аккаунта: по запросу (`request`: выход в онлайн, переподключение
     главной сессии, разрыв обновлений) и раз в `period_s` — от молчаливых пропусков. Запрос во
-    время прохода — ещё один проход сразу после него. Пока `online()` ложно, проходов нет.
-    Неудачный проход отметку не меняет и повторяется через `backoff`; запросы повтор не
-    торопят — сбой мог быть FloodWait. Недоступный чат (`ChatUnavailable`) проход неудачным не
-    делает: уведомление — на переход в недоступность, членство в общем чате игры — по чтению
-    `swinfo`."""
+    время прохода — ещё один проход сразу после него. Пока `online()` ложно или нет связи с
+    Telegram (`reachable()`), проходов нет: выход в онлайн и возврат связи запрашивают проход
+    сами. Неудачный проход отметку не меняет и повторяется через `backoff`; запросы повтор не
+    торопят — сбой мог быть FloodWait. Сбой прохода, на который пришлась потеря связи, не
+    пишется в лог и не повторяется по `backoff` — проход ждёт возврата связи. Недоступный чат
+    (`ChatUnavailable`) проход неудачным не делает: уведомление — на переход в недоступность,
+    членство в общем чате игры — по чтению `swinfo`."""
 
     def __init__(
         self,
@@ -94,6 +96,7 @@ class HistorySync:
         readers: set[Reader],
         online: Callable[[], bool],
         *,
+        reachable: Callable[[], bool] = lambda: True,
         limit: int = 1000,
         tail: int = 50,
         period_s: float = 300.0,
@@ -109,6 +112,7 @@ class HistorySync:
         self._notifier = notifier
         self._readers = readers
         self._online = online
+        self._reachable = reachable
         self._limit = limit
         self._tail = tail
         self._period = period_s
@@ -148,18 +152,25 @@ class HistorySync:
             await (self._idle() if retry is None else self._sleep(retry))
             # Запросы, пришедшие до этого места, покрывает начинающийся проход.
             self._wake.clear()
-            if not self._online():
-                # Выход в онлайн сам запросит проход.
+            if not self._ready():
+                # Выход в онлайн и возврат связи сами запросят проход.
                 failures, retry = 0, None
                 continue
             try:
                 await self.pass_once()
-            except Exception:
+            except Exception as exc:
+                if not self._ready():
+                    log.debug("history pass interrupted by lost connection: %r", exc)
+                    failures, retry = 0, None
+                    continue
                 retry = self._backoff[min(failures, len(self._backoff) - 1)]
                 failures += 1
                 log.warning("history pass failed, retry in %.0fs", retry, exc_info=True)
             else:
                 failures, retry = 0, None
+
+    def _ready(self) -> bool:
+        return self._online() and self._reachable()
 
     async def _idle(self) -> None:
         """До запроса или до периодического прохода."""
@@ -181,7 +192,7 @@ class HistorySync:
         меняется, а первый сбой пробрасывается после всех чтений — проход повторится по
         `backoff`. Недоступный чат (пир неизвестен, аккаунт не участник) — не сбой: повтор не
         поможет, пока аккаунт не вступит в чат. Сбой всего аккаунта (FloodWait, потеря аренды или
-        входа) обрывает проход сразу: следующие чтения упёрлись бы в него же."""
+        входа, связи с Telegram) обрывает проход сразу: следующие чтения упёрлись бы в него же."""
         failure: Exception | None = None
         for reader in sorted(self._readers):
             try:
@@ -192,6 +203,9 @@ class HistorySync:
                 log.warning("history reader %s: chat unavailable (%s)", reader, exc.reason)
                 await self._unavailable(reader, exc.reason)
             except Exception as exc:
+                if not self._ready():
+                    # Связи нет: остальные чтения упрутся в то же.
+                    raise
                 log.warning("history reader %s failed", reader, exc_info=True)
                 failure = failure or exc
             else:
