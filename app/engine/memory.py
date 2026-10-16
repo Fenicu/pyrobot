@@ -97,6 +97,7 @@ class MemoryActionRow:
     answer: str | None = None
     match_detail: str | None = None
     sent: bool = False
+    sent_msg_id: int | None = None
     reconciled: bool = False
     history: list[ActionStatus] = field(default_factory=list)
 
@@ -134,6 +135,7 @@ class MemoryActionStore:
         match_detail: str | None = None,
         sent: bool = False,
         cls: CommandClass | None = None,
+        sent_msg_id: int | None = None,
     ) -> None:
         row = self.rows[action_id]
         row.status = status
@@ -148,6 +150,8 @@ class MemoryActionStore:
         row.sent = row.sent or sent
         if cls is not None:
             row.cls = cls
+        if sent_msg_id is not None:
+            row.sent_msg_id = sent_msg_id
 
     async def get_by_key(self, key: str) -> StoredAction | None:
         action_id = self._keys.get(key)

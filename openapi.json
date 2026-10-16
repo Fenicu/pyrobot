@@ -3737,6 +3737,21 @@
             "title": "Revision",
             "type": "integer"
           },
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "planner",
+                  "manual"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
           "text": {
             "anyOf": [
               {

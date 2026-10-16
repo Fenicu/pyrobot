@@ -2841,6 +2841,8 @@ export interface components {
             recovered: boolean;
             /** Revision */
             revision: number;
+            /** Source */
+            source?: ("planner" | "manual") | null;
             /** Text */
             text: string | null;
             /**

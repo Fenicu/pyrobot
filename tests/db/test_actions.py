@@ -51,6 +51,17 @@ async def test_lifecycle_idempotency_and_duplicate(clean_db: Database) -> None:
     assert dup.value.existing.id == action_id
 
 
+async def test_update_records_sent_message_id(clean_db: Database) -> None:
+    store = DbActionStore(clean_db, account_id=1)
+    req = ActionRequest(kind=ActionKind.SEND, chat_id=1, text="😎Я")
+    action_id = await store.create(req, CommandClass.NAV, ActionStatus.INTENT)
+    await store.update(action_id, status=ActionStatus.SENT, sent=True, sent_msg_id=4242)
+    await store.update(action_id, status=ActionStatus.CONFIRMED, reason="sent")
+    async with clean_db.sessions() as session:
+        row = await session.get(ActionRow, action_id)
+    assert row is not None and row.sent_msg_id == 4242
+
+
 async def test_update_keeps_final_command_class(clean_db: Database) -> None:
     # Класс команды акций шлюз уточняет перед каждой попыткой: итог пишется с ним.
     store = DbActionStore(clean_db, account_id=1)

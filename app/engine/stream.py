@@ -18,6 +18,7 @@ from app.engine.gateway.store import ActionStore, Closed, Obligation, StoredActi
 from app.engine.gateway.types import ActionRequest, ActionStatus
 from app.engine.planner.store import DecisionRecord, PlannerStore
 from app.engine.planner.types import Decision
+from app.engine.types import IncomingMessage
 
 HISTORY = 300
 QUEUE_SIZE = 256
@@ -137,9 +138,17 @@ def _moment(value: datetime | None) -> str | None:
 class StreamFeed:
     """Подписчик шины: каждое сообщение журнала и изменившиеся поля состояния."""
 
-    def __init__(self, stream: EventStream, state: Callable[[], Mapping[str, Any]]) -> None:
+    def __init__(
+        self,
+        stream: EventStream,
+        state: Callable[[], Mapping[str, Any]],
+        *,
+        source: Callable[[IncomingMessage], str | None] | None = None,
+    ) -> None:
         self._stream = stream
         self._state = state
+        # Кто отправил своё сообщение (`ActionGateway.message_source`).
+        self._source = source
         self._version = 0
         self._last: dict[str, Any] = {}
 
@@ -160,6 +169,9 @@ class StreamFeed:
                 # Кнопки — как `markup` элемента /journal: по ним админка кликает
                 # (`/commands/click` с `chat_id`, `msg_id` и `revision` этой правки).
                 "markup": msg.markup_json(),
+                # Своё сообщение: planner — бот, manual — ручная команда из админки; null —
+                # входящее или отправлено не шлюзом (как `source` элемента /journal).
+                "source": self._source(msg) if self._source is not None else None,
             },
         )
         if delivery.state_version == self._version:
@@ -215,6 +227,7 @@ class PublishingActionStore:
         match_detail: str | None = None,
         sent: bool = False,
         cls: CommandClass | None = None,
+        sent_msg_id: int | None = None,
     ) -> None:
         await self.inner.update(
             action_id,
@@ -225,6 +238,7 @@ class PublishingActionStore:
             match_detail=match_detail,
             sent=sent,
             cls=cls,
+            sent_msg_id=sent_msg_id,
         )
         self.stream.publish("action", {"id": action_id, "status": status.value, "reason": reason})
 

@@ -97,6 +97,8 @@ class ActionStore(Protocol):
         sent: bool = False,
         # Класс команды на момент итога: у команд акций шлюз уточняет его перед каждой попыткой.
         cls: CommandClass | None = None,
+        # Id сообщения, которое отправка создала в чате (по нему журнал знает, кто его отправил).
+        sent_msg_id: int | None = None,
     ) -> None: ...
 
     async def get_by_key(self, key: str) -> StoredAction | None: ...

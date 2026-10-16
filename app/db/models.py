@@ -157,6 +157,8 @@ class ActionRow(Base):
         UniqueConstraint("account_id", "idempotency_key"),
         Index("ix_actions_account_created", "account_id", "created_at"),
         Index("ix_actions_scenario_run_id", "scenario_run_id"),
+        # Кто отправил исходящее сообщение журнала: действие по id отправленного сообщения.
+        Index("ix_actions_account_chat_sent", "account_id", "chat_id", "sent_msg_id"),
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"))
@@ -179,6 +181,9 @@ class ActionRow(Base):
     scenario_run_id: Mapped[int | None] = mapped_column(
         ForeignKey("scenario_runs.id", ondelete="SET NULL")
     )
+    # Id сообщения, которое отправка создала в чате (`send`, `inline`, `forward`); None — клик,
+    # не отправлено или Telegram id не вернул.
+    sent_msg_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class MetricRow(Base):

@@ -1728,6 +1728,22 @@ async def test_chat_message_id_from_short_sent_answer() -> None:
     assert await t.send_chat_message(TANGERINE, "🍊") == 6262
 
 
+async def test_send_text_returns_sent_message_id() -> None:
+    from pyrogram import raw
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.responses["SendMessage"] = raw.types.UpdateShortSentMessage(
+        id=7373, pts=1, pts_count=1, date=0
+    )
+    assert await t.send_text(GAME, "😎Я") == 7373
+    t.client.responses["SendMessage"] = _forwarded(7474)
+    assert await t.send_text(GAME, "😎Я") == 7474
+    # Id не нашёлся — сообщение всё равно ушло: 0, а не отказ.
+    t.client.responses["SendMessage"] = _foreign_updates()
+    assert await t.send_text(GAME, "😎Я") == 0
+
+
 def _foreign_updates(*updates: object) -> object:
     from pyrogram import raw
 

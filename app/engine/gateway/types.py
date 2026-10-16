@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum, StrEnum
+from typing import Literal
 
 from app.engine.bus import Delivery
 
@@ -13,6 +14,16 @@ class Source(IntEnum):
     MANUAL = 1
     SCENARIO = 2
     PLANNER = 3
+
+
+# Кто отправил своё сообщение: бот (шаги сценариев, в том числе ручных запусков, реакции,
+# сверка) или человек ручной командой из админки.
+MessageSource = Literal["planner", "manual"]
+
+
+def message_source(source: str, scenario_run_id: int | None) -> MessageSource:
+    """Отправитель по действию (`actions.source` и запуск сценария, шагом которого оно шло)."""
+    return "manual" if source == "manual" and scenario_run_id is None else "planner"
 
 
 class ActionKind(StrEnum):

@@ -1142,11 +1142,12 @@ class KurigramTransport:
         try:
             peer = await self._peer(client, chat_id)
             reply = raw.types.InputReplyToMessage(reply_to_msg_id=reply_to) if reply_to else None
-            await client.invoke(
+            random_id = client.rnd_id()
+            updates = await client.invoke(
                 raw.functions.messages.SendMessage(
                     peer=peer,
                     message=text,
-                    random_id=client.rnd_id(),
+                    random_id=random_id,
                     reply_to=reply,
                     no_webpage=True,
                 ),
@@ -1159,7 +1160,8 @@ class KurigramTransport:
         except errors.Unauthorized as exc:
             await self._lose_auth(client)
             raise TransportAuthLost(str(exc)) from exc
-        return 0
+        # Id не нашёлся — сообщение всё равно ушло: 0, а не отказ.
+        return _sent_id(updates, random_id)
 
     @_fenced
     async def send_saved(self, text: str) -> None:

@@ -87,6 +87,7 @@ class DbActionStore:
         match_detail: str | None = None,
         sent: bool = False,
         cls: CommandClass | None = None,
+        sent_msg_id: int | None = None,
     ) -> None:
         values: dict[str, object] = {"status": status.value}
         if reason:
@@ -99,6 +100,8 @@ class DbActionStore:
             values["match_detail"] = match_detail
         if cls is not None:
             values["command_class"] = cls.value
+        if sent_msg_id is not None:
+            values["sent_msg_id"] = sent_msg_id
         now = datetime.now(UTC)
         if sent:
             values["sent_at"] = now

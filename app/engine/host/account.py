@@ -385,7 +385,8 @@ class AccountRuntime:
         )
         bus.subscribe(self.bulls_walk.on_delivery, priority=25)
         bus.subscribe(self.planner.on_delivery, priority=90)
-        bus.subscribe(StreamFeed(self.stream, lambda: pipeline.state).on_delivery, priority=95)
+        feed = StreamFeed(self.stream, lambda: pipeline.state, source=gateway.message_source)
+        bus.subscribe(feed.on_delivery, priority=95)
         fence = self.fence
         server = self._deps.server
         bounds_fn = (lambda: server.current.engine_bounds) if server is not None else None

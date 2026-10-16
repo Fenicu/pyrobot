@@ -9,6 +9,7 @@ from app.api.errors import AUTH, not_found
 from app.api.scope import AccountScope, account_router, account_scope
 from app.db.models import ActionRow, DecisionRow, MessageRow, ScenarioRunRow
 from app.db.reads import FeedFilter, FeedKey, feed_types
+from app.engine.gateway.types import MessageSource
 
 router = account_router("journal")
 
@@ -27,6 +28,10 @@ class MessageItem(BaseModel):
     text: str | None
     markup: dict[str, Any] | None
     events: list[Any]
+    # Кто отправил своё сообщение: planner — бот (шаги сценариев, в том числе ручных запусков,
+    # реакции), manual — ручная команда из админки; null — входящее или отправлено не шлюзом
+    # (набрано в клиенте Telegram, до учёта отправленных id).
+    source: MessageSource | None = None
 
 
 class ActionItem(BaseModel):
@@ -138,7 +143,9 @@ def _feed_key(cursor: str) -> FeedKey:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid cursor") from exc
 
 
-def _item(row: Any, runs: dict[int, int]) -> MessageItem | ActionItem | DecisionItem:
+def _item(
+    row: Any, runs: dict[int, int], sources: dict[tuple[int, int], MessageSource]
+) -> MessageItem | ActionItem | DecisionItem:
     if isinstance(row, MessageRow):
         return MessageItem(
             id=row.id,
@@ -153,6 +160,7 @@ def _item(row: Any, runs: dict[int, int]) -> MessageItem | ActionItem | Decision
             text=row.text,
             markup=row.markup,
             events=row.events,
+            source=sources.get((row.chat_id, row.msg_id)) if row.outgoing else None,
         )
     if isinstance(row, ActionRow):
         return ActionItem(
@@ -210,8 +218,17 @@ async def journal(
     runs = await scope.reads.decision_runs(
         [i.row.id for i in page if isinstance(i.row, DecisionRow)]
     )
+    sources = await scope.reads.message_sources(
+        list(
+            {
+                (i.row.chat_id, i.row.msg_id)
+                for i in page
+                if isinstance(i.row, MessageRow) and i.row.outgoing
+            }
+        )
+    )
     return JournalPage(
-        items=[_item(i.row, runs) for i in page],
+        items=[_item(i.row, runs, sources) for i in page],
         next_cursor=_feed_cursor(page[-1].key) if len(items) > limit else None,
     )
 

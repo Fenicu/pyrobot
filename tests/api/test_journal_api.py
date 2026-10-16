@@ -36,6 +36,7 @@ async def _action(db: Database, at: datetime, **kw: object) -> int:
         reason="",
         scenario_run_id=kw.get("run"),
         idempotency_key=kw.get("key"),
+        sent_msg_id=kw.get("sent_msg_id"),
     )
     async with db.sessions() as s, s.begin():
         s.add(row)
@@ -123,6 +124,40 @@ async def test_forward_in_feed_has_message_and_chat_title(
     fwd, job = reversed((await _page(api_client))["items"])  # type: ignore[call-overload]
     assert (fwd["kind"], fwd["message_id"], fwd["chat_title"]) == ("forward", 3625831, "☣️ SU")
     assert (job["text"], job["message_id"], job["chat_title"]) == ("/job", None, None)
+
+
+async def test_outgoing_messages_marked_by_sender(
+    container: Container, api_client: AsyncClient, clean_db: Database
+) -> None:
+    # Исходящее, отправленное шлюзом, связано с действием по id отправленного сообщения:
+    # ручная команда — manual, шаг сценария (и ручного запуска) и реакция — planner, набранное в
+    # клиенте Telegram — null. У входящих отметки нет.
+    journal = DbJournal(clean_db, 1)
+    for msg_id, text in ((10, "😎Я"), (11, "/job"), (12, "/me"), (13, "🗺Карта"), (14, "привет")):
+        await journal.append(
+            make_msg(text, msg_id=msg_id, outgoing=True, received_at=_at(msg_id)), [], None, 0
+        )
+    await journal.append(make_msg("ответ", msg_id=10, received_at=_at(20)), [], None, 0)
+    planner = DbPlannerStore(clean_db, 1)
+    decision = await planner.record(_at(0), Wait(_at(100), "busy"))
+    run = await planner.run_started(decision, "deed:job", {}, _at(0))
+    await _action(clean_db, _at(9), source="manual", text="😎Я", sent_msg_id=10)
+    await _action(clean_db, _at(10), source="scenario", text="/job", run=run, sent_msg_id=11)
+    await _action(clean_db, _at(11), source="manual", text="/me", run=run, sent_msg_id=12)
+    await _action(clean_db, _at(12), source="urgent", text="🗺Карта", sent_msg_id=13)
+    # Тот же id сообщения в другом чате — не это сообщение.
+    await _action(clean_db, _at(13), source="manual", chat_id=-100, text="привет", sent_msg_id=14)
+    await login(api_client)
+    items = (await _page(api_client, types="message", chat_id=GAME))["items"]
+    got = [(i["msg_id"], i["outgoing"], i["source"]) for i in items]  # type: ignore[attr-defined]
+    assert got == [
+        (10, False, None),
+        (14, True, None),
+        (13, True, "planner"),
+        (12, True, "planner"),
+        (11, True, "planner"),
+        (10, True, "manual"),
+    ]
 
 
 async def test_feed_links_decision_and_steps_by_run(

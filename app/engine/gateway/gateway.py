@@ -35,8 +35,10 @@ from app.engine.gateway.types import (
     ActionResult,
     ActionStatus,
     Match,
+    MessageSource,
     Source,
     Verdict,
+    message_source,
 )
 from app.engine.parsing.bulls import INVITE_CODE
 from app.engine.settings import SettingsProvider
@@ -71,6 +73,8 @@ RECONCILE_REASON = "reconcile_required"
 MANUAL_PENDING_MAX = 20
 # Ключ ручного действия не записан: запрос проваливается, повтор тем же ключом безопасен.
 STORE_FAILED = "store_failed"
+# Отправленных сообщений, отправитель которых помнится для живой ленты.
+SENT_REMEMBERED = 256
 # Чтение источника пересылки: клиент Telegram сам повторяет запросы (до ~160 с) — шлюз столько
 # не ждёт, не прочитали — не пересылаем.
 SOURCE_READ_TIMEOUT_S = 10.0
@@ -256,6 +260,8 @@ class ActionGateway:
         # Проверенный чат команды (группа, аккаунт в ней состоит), версия настроек, при которой
         # проверен (любое сохранение, в том числе A → B → A, требует новой проверки), и название.
         self._group_ok: tuple[int, int, str | None] | None = None
+        # Отправитель недавних своих сообщений по (чат, id сообщения) — для живой ленты.
+        self._sent: dict[tuple[int, int], MessageSource] = {}
 
     @property
     def queue_size(self) -> int:
@@ -414,6 +420,30 @@ class ActionGateway:
     async def shutdown(self) -> None:
         self._closed = True
         await self.cancel_queued("shutdown")
+
+    def message_source(self, msg: IncomingMessage) -> MessageSource | None:
+        """Кто отправил своё сообщение: по id, который вернула отправка, а пока она в пути — по
+        тексту отправляемой команды в её чате. None — входящее или отправлено не шлюзом (набрано
+        в клиенте Telegram)."""
+        if not msg.outgoing:
+            return None
+        known = self._sent.get((msg.chat_id, msg.msg_id))
+        if known is not None:
+            return known
+        inflight = self._inflight
+        if inflight is None:
+            return None
+        req = inflight.req
+        if req.kind is ActionKind.SEND and req.chat_id == msg.chat_id and req.text == msg.text:
+            return message_source(req.source.name.lower(), req.scenario_run_id)
+        return None
+
+    def _remember_sent(self, req: ActionRequest, msg_id: int) -> None:
+        if len(self._sent) >= SENT_REMEMBERED:
+            self._sent.pop(next(iter(self._sent)))
+        self._sent[(req.chat_id, msg_id)] = message_source(
+            req.source.name.lower(), req.scenario_run_id
+        )
 
     async def on_delivery(self, delivery: Delivery) -> None:
         inflight = self._inflight
@@ -850,9 +880,10 @@ class ActionGateway:
             )
             self._inflight = inflight
             answer: str | None = None
+            sent_id = 0
             try:
                 try:
-                    answer = await self._transmit(p, eng.click_answer_timeout_s)
+                    answer, sent_id = await self._transmit(p, eng.click_answer_timeout_s)
                 except FloodWait as fw:
                     now = self._clock.monotonic()
                     self._paused_until = max(self._paused_until, now + fw.seconds)
@@ -873,7 +904,9 @@ class ActionGateway:
                     return await self._finish(
                         p, ActionStatus.OUTCOME_UNKNOWN, f"send_error:{type(exc).__name__}"
                     )
-                await self._mark_sent(p, attempts, answer)
+                if sent_id:
+                    self._remember_sent(req, sent_id)
+                await self._mark_sent(p, attempts, answer, sent_id or None)
                 if req.expect is None:
                     return await self._finish(p, ActionStatus.CONFIRMED, "sent", answer=answer)
                 timeout_s = (
@@ -909,7 +942,9 @@ class ActionGateway:
             )
             return await self._finish(p, status, outcome.detail, answer=answer, match=outcome)
 
-    async def _transmit(self, p: _Pending, click_timeout: float) -> str | None:
+    async def _transmit(self, p: _Pending, click_timeout: float) -> tuple[str | None, int]:
+        """Ответ попытки (тост клика, id копии пересылки или приглашения) и id сообщения, которое
+        она создала в чате (0 — нет или неизвестен)."""
         req = p.req
         if req.kind is ActionKind.FORWARD:
             await self._check_source(req)
@@ -922,7 +957,7 @@ class ActionGateway:
             sent = await self._transport.forward(
                 req.from_chat_id or 0, req.message_id or 0, req.chat_id
             )
-            return str(sent) if sent else None
+            return (str(sent) if sent else None), sent
         # Peer — заранее, а последняя проверка — после него: профиль, пришедший, пока peer
         # разрешался, меняет класс команды акций. От проверки до RPC ожиданий нет.
         try:
@@ -936,16 +971,16 @@ class ActionGateway:
         if blocked is not None:
             raise NotSent(*blocked)
         if req.kind is ActionKind.SEND:
-            await self._transport.send_text(req.chat_id, req.text or "", req.reply_to)
-            return None
+            return None, await self._transport.send_text(req.chat_id, req.text or "", req.reply_to)
         if req.kind is ActionKind.INLINE:
             # Ответ — id приглашения в чате (0 — Telegram его не вернул).
             game = self._settings.current.chats.game_chat_id
             sent = await self._transport.send_inline(game, req.chat_id, req.text or "")
-            return str(sent) if sent else None
-        return await self._transport.click(
+            return (str(sent) if sent else None), sent
+        toast = await self._transport.click(
             req.chat_id, req.message_id or 0, req.data or "", click_timeout
         )
+        return toast, 0
 
     async def _check_source(self, req: ActionRequest) -> None:
         """Перед каждой попыткой пересылки исходное сообщение перечитывается из Telegram: правленое
@@ -990,7 +1025,9 @@ class ActionGateway:
             await asyncio.sleep(wait)
         self._last_send = self._clock.monotonic()
 
-    async def _mark_sent(self, p: _Pending, attempts: int, answer: str | None) -> None:
+    async def _mark_sent(
+        self, p: _Pending, attempts: int, answer: str | None, sent_msg_id: int | None
+    ) -> None:
         action_id = p.action_id
         if action_id is None:
             return
@@ -1002,6 +1039,7 @@ class ActionGateway:
                 answer=answer,
                 sent=True,
                 cls=p.cls,
+                sent_msg_id=sent_msg_id,
             )
         except Exception:
             log.exception("sent status not persisted for %s", action_id)

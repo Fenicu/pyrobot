@@ -129,6 +129,27 @@ async def test_0021_user_ui_prefs() -> None:
     await asyncio.to_thread(command.upgrade, _cfg(), "head")
 
 
+async def test_0022_actions_sent_msg_id() -> None:
+    await asyncio.to_thread(command.upgrade, _cfg(), "0021")
+    await asyncio.to_thread(command.upgrade, _cfg(), "0022")
+    rows = await _exec(
+        "SELECT data_type, is_nullable FROM information_schema.columns "
+        "WHERE table_name = 'actions' AND column_name = 'sent_msg_id'"
+    )
+    assert rows == [("bigint", "YES")]
+    indexes = await _exec(
+        "SELECT indexname FROM pg_indexes WHERE indexname = 'ix_actions_account_chat_sent'"
+    )
+    assert indexes == [("ix_actions_account_chat_sent",)]
+    await asyncio.to_thread(command.downgrade, _cfg(), "0021")
+    rows = await _exec(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'actions' AND column_name = 'sent_msg_id'"
+    )
+    assert rows == []
+    await asyncio.to_thread(command.upgrade, _cfg(), "head")
+
+
 def _at(minute: int) -> datetime:
     return datetime(2026, 9, 27, 12, tzinfo=UTC) + timedelta(minutes=minute)
 

@@ -213,6 +213,7 @@ async def test_feed_message_carries_buttons_like_journal() -> None:
         "text",
         "events",
         "markup",
+        "source",
     ]
     assert (first["chat_id"], first["msg_id"], first["revision"]) == (GAME, 3626304, 1790535904)
     # Та же форма, что у элемента /journal (кадр с прода 27.09).
@@ -224,3 +225,17 @@ async def test_feed_message_carries_buttons_like_journal() -> None:
     }
     assert first["markup"] == msg.markup_json()
     assert second["markup"] is None
+
+
+async def test_feed_message_carries_sender_of_outgoing() -> None:
+    stream = EventStream(epoch="e1")
+    feed = StreamFeed(stream, lambda: {}, source=lambda m: "manual" if m.msg_id == 5 else None)
+    await feed.on_delivery(Delivery(make_msg("😎Я", msg_id=5, outgoing=True), (), 0, 1))
+    await feed.on_delivery(Delivery(make_msg("😎Я", msg_id=6, outgoing=True), (), 0, 2))
+    assert [e.data["source"] for e in stream.history()] == ["manual", None]
+    # Без источника отметки нет.
+    bare = EventStream(epoch="e2")
+    await StreamFeed(bare, lambda: {}).on_delivery(
+        Delivery(make_msg("x", outgoing=True), (), 0, 3)
+    )
+    assert bare.history()[0].data["source"] is None

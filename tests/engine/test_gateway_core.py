@@ -850,3 +850,35 @@ async def test_manual_key_not_stored_fails_request() -> None:
         planner = await r.gw.submit(send("/job", expect=expect_text("x")))
         assert (planner.status, planner.action_id) == (ActionStatus.SUPPRESSED, None)
         assert r.transport.sent == []
+
+
+async def test_sent_message_id_recorded_and_attributed(rig: Rig) -> None:
+    manual = await rig.gw.submit(send("😎Я", source=Source.MANUAL))
+    assert manual.action_id is not None
+    sent_id = rig.store.rows[manual.action_id].sent_msg_id
+    assert sent_id == 1001
+    assert rig.gw.message_source(make_msg("😎Я", msg_id=sent_id, outgoing=True)) == "manual"
+    # Входящее и чужое исходящее (набрано в клиенте Telegram) — без отметки.
+    assert rig.gw.message_source(make_msg("😎Я", msg_id=sent_id)) is None
+    assert rig.gw.message_source(make_msg("😎Я", msg_id=5, outgoing=True)) is None
+    # Шаг сценария, в том числе ручного запуска, — бот.
+    step = await rig.gw.submit(send("😎Я", source=Source.MANUAL, scenario_run_id=7))
+    assert step.action_id is not None
+    step_id = rig.store.rows[step.action_id].sent_msg_id
+    assert step_id is not None
+    assert rig.gw.message_source(make_msg("😎Я", msg_id=step_id, outgoing=True)) == "planner"
+
+
+async def test_outgoing_seen_while_send_in_flight_is_attributed(rig: Rig) -> None:
+    # Своё сообщение может дойти до конвейера раньше, чем Telegram вернул его id.
+    seen: list[str | None] = []
+    original = rig.transport.send_text
+
+    async def send_text(chat_id: int, text: str, reply_to: int | None = None) -> int:
+        seen.append(rig.gw.message_source(make_msg(text, msg_id=77, outgoing=True)))
+        seen.append(rig.gw.message_source(make_msg("другое", msg_id=78, outgoing=True)))
+        return await original(chat_id, text, reply_to)
+
+    rig.transport.send_text = send_text  # type: ignore[method-assign]
+    await rig.gw.submit(send("😎Я", source=Source.SCENARIO))
+    assert seen == ["planner", None]

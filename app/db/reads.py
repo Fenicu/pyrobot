@@ -5,7 +5,7 @@ from datetime import date, datetime
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import Date, Select, and_, case, cast, func, or_, select, update
+from sqlalchemy import Date, Select, and_, case, cast, func, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import distinct_on
 
 from app.db.accounts import engine_section
@@ -26,6 +26,7 @@ from app.db.models import (
 )
 from app.engine.daily import LedgerDays, LedgerEntry
 from app.engine.gametime import day_start, tasks_day
+from app.engine.gateway.types import MessageSource, message_source
 from app.engine.settings import EngineSection, Settings, settings_diff, stored_values
 
 log = logging.getLogger(__name__)
@@ -169,6 +170,31 @@ class DbReads:
                 .group_by(ScenarioRunRow.decision_id)
             )
             return {int(decision): int(run) for decision, run in rows if decision is not None}
+
+    async def message_sources(
+        self, keys: Sequence[tuple[int, int]]
+    ) -> dict[tuple[int, int], MessageSource]:
+        """Кто отправил свои сообщения (чат, id сообщения): по действию, которое их отправило
+        (`actions.sent_msg_id`), одним запросом на страницу ленты. Нет действия — нет в ответе."""
+        if not keys:
+            return {}
+        async with self._db.sessions() as session:
+            rows = await session.execute(
+                select(
+                    ActionRow.chat_id,
+                    ActionRow.sent_msg_id,
+                    ActionRow.source,
+                    ActionRow.scenario_run_id,
+                ).where(
+                    ActionRow.account_id == self._account_id,
+                    tuple_(ActionRow.chat_id, ActionRow.sent_msg_id).in_(list(keys)),
+                )
+            )
+            return {
+                (int(chat), int(msg)): message_source(source, run)
+                for chat, msg, source, run in rows
+                if msg is not None
+            }
 
     async def decision(self, decision_id: int) -> tuple[DecisionRow, list[ScenarioRunRow]] | None:
         async with self._db.sessions() as session:
