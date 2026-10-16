@@ -60,6 +60,18 @@ class ChatUnavailable(Exception):
         self.reason = reason
 
 
+def network_error(exc: BaseException) -> bool:
+    """Сбой связи с Telegram, а не отказ: тайм-аут запроса (kurigram после своих повторов
+    бросает `TimeoutError`), обрыв или отсутствие соединения (`ConnectionError`, `OSError`).
+    Такой сбой пишется в лог одной строкой, без трейсбека."""
+    return isinstance(exc, OSError)
+
+
+def brief(exc: BaseException) -> str:
+    """Сбой одной строкой для лога: тип и текст."""
+    return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+
+
 class Transport(Protocol):
     async def resolve(self, chat_id: int) -> None:
         """Разрешить peer чата заранее (с кешем): send_text и click после этого вызывают RPC без

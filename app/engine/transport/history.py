@@ -20,6 +20,8 @@ from app.engine.transport.base import (
     ChatUnavailable,
     FloodWait,
     TransportAuthLost,
+    brief,
+    network_error,
 )
 from app.engine.transport.kurigram import to_incoming
 from app.engine.types import IncomingMessage, MessageKind
@@ -165,7 +167,10 @@ class HistorySync:
                     continue
                 retry = self._backoff[min(failures, len(self._backoff) - 1)]
                 failures += 1
-                log.warning("history pass failed, retry in %.0fs", retry, exc_info=True)
+                if network_error(exc):
+                    log.warning("history pass failed (%s), retry in %.0fs", brief(exc), retry)
+                else:
+                    log.warning("history pass failed, retry in %.0fs", retry, exc_info=True)
             else:
                 failures, retry = 0, None
 
@@ -192,7 +197,8 @@ class HistorySync:
         меняется, а первый сбой пробрасывается после всех чтений — проход повторится по
         `backoff`. Недоступный чат (пир неизвестен, аккаунт не участник) — не сбой: повтор не
         поможет, пока аккаунт не вступит в чат. Сбой всего аккаунта (FloodWait, потеря аренды или
-        входа, связи с Telegram) обрывает проход сразу: следующие чтения упёрлись бы в него же."""
+        входа, связи с Telegram — в том числе тайм-аут чтения) обрывает проход сразу: следующие
+        чтения упёрлись бы в него же."""
         failure: Exception | None = None
         for reader in sorted(self._readers):
             try:
@@ -203,7 +209,7 @@ class HistorySync:
                 log.warning("history reader %s: chat unavailable (%s)", reader, exc.reason)
                 await self._unavailable(reader, exc.reason)
             except Exception as exc:
-                if not self._ready():
+                if not self._ready() or network_error(exc):
                     # Связи нет: остальные чтения упрутся в то же.
                     raise
                 log.warning("history reader %s failed", reader, exc_info=True)

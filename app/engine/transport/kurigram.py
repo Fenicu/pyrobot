@@ -32,6 +32,8 @@ from app.engine.transport.base import (
     Sender,
     TransportAuthLost,
     TransportRejected,
+    brief,
+    network_error,
 )
 from app.engine.types import Button, IncomingMessage, MessageKind
 
@@ -697,11 +699,14 @@ class KurigramTransport:
             await self._reset_client(client)
             await self._auth_lost()
             return True
-        except Exception:
+        except Exception as exc:
             if self._client is not client:
                 # Клиент сброшен выходом во время подключения.
                 return True
-            log.warning("telegram client not back online after overload", exc_info=True)
+            if network_error(exc):
+                log.warning("telegram client not back online after overload: %s", brief(exc))
+            else:
+                log.warning("telegram client not back online after overload", exc_info=True)
             await _force_close(client)
             return False
         log.info("telegram client back online after overload")

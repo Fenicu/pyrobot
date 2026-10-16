@@ -405,6 +405,40 @@ async def test_no_passes_while_telegram_unreachable(caplog: pytest.LogCaptureFix
     assert all(r.exc_info is None for r in caplog.records)
 
 
+async def test_network_failure_one_line_without_traceback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Тайм-аут чтения при живой (ещё) связи: проход обрывается на нём — остальные чтения упёрлись
+    # бы в то же, — в лог одна строка без трейсбека, повтор по backoff.
+    rig = Rig(readers=readers_for(CHATS), marks={(SMOOTHIE, 0): 3, (GAME, 0): 10})
+    rig.source.post(GAME, 11)
+    rig.source.broken[(SMOOTHIE, 0)] = TimeoutError(
+        'Failed to invoke "messages.GetHistory" after 10 retries'
+    )
+    with caplog.at_level("WARNING", logger=HISTORY_LOG):
+        async with rig.running():
+            rig.sync.request("online")
+            await _wait(rig, 30.0)
+    assert [call[1] for call in rig.source.calls] == [(SMOOTHIE, 0)]
+    [record] = [r for r in caplog.records if r.name == HISTORY_LOG]
+    assert record.exc_info is None
+    assert record.getMessage() == (
+        "history pass failed (TimeoutError: Failed to invoke"
+        ' "messages.GetHistory" after 10 retries), retry in 30s'
+    )
+
+
+async def test_unexpected_failure_keeps_traceback(caplog: pytest.LogCaptureFixture) -> None:
+    rig = Rig(marks={(GAME, 0): 10})
+    rig.source.broken[(GAME, 0)] = ValueError("broken")
+    with caplog.at_level("WARNING", logger=HISTORY_LOG):
+        async with rig.running():
+            rig.sync.request("online")
+            await _wait(rig, 30.0)
+    records = [r for r in caplog.records if r.name == HISTORY_LOG]
+    assert len(records) == 2 and all(r.exc_info is not None for r in records)
+
+
 async def test_failing_reader_does_not_stop_others() -> None:
     # Чтение swinfo сломано насовсем (пира пользователя нет в хранилище), а чтения идут по порядку
     # id чата: смузи, swinfo, игра — чат игры всё равно сверяется.

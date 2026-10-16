@@ -1342,7 +1342,7 @@ async def test_resume_refused_after_fence_deadline() -> None:
     await rig.t.abort()
 
 
-async def test_resume_retries_after_transient_failure() -> None:
+async def test_resume_retries_after_transient_failure(caplog: pytest.LogCaptureFixture) -> None:
     rig = OverloadRig()
     old = await rig.overload()
     rig.t.overload_retry_s = (0.2,)
@@ -1350,7 +1350,11 @@ async def test_resume_retries_after_transient_failure() -> None:
     # повтор — по паузе, со следующим новым клиентом на том же хранилище.
     rig.t.client_errors["GetState"] = OSError("network down")
     rig.pipeline.clear()
-    await until(lambda: len(rig.t.clients) == 2 and not rig.t.clients[1].is_connected)
+    with caplog.at_level(logging.WARNING, logger=PROBE_LOG):
+        await until(lambda: len(rig.t.clients) == 2 and not rig.t.clients[1].is_connected)
+    # Сбой связи — одна строка без трейсбека.
+    [failed_log] = [r for r in caplog.records if "not back online" in r.getMessage()]
+    assert failed_log.exc_info is None and "OSError: network down" in failed_log.getMessage()
     assert rig.tg.status().state is TgState.OVERLOAD and rig.history == ["online"]
     await until(lambda: rig.tg.status().state is TgState.ONLINE)
     failed, new = rig.t.clients[1:]

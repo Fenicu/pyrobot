@@ -59,7 +59,7 @@ from app.engine.stream import (
 from app.engine.supervisor import Supervisor
 from app.engine.team_forward import TeamForward
 from app.engine.tg_auth import TgAuthBackend, TgAuthManager, TgState
-from app.engine.transport.base import Transport
+from app.engine.transport.base import Transport, brief, network_error
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
 from app.engine.transport.history import HistorySync, readers_for
 from app.engine.transport.kurigram import ChatFilter, KurigramTransport, load_tg_app, session_peers
@@ -110,8 +110,11 @@ def live_reread(transport: Transport, pipeline: Pipeline) -> Reread:
     async def reread(chat_id: int, msg_id: int) -> IncomingMessage | None:
         try:
             msg = await transport.fetch(chat_id, msg_id)
-        except Exception:
-            log.exception("message %s/%s not reread", chat_id, msg_id)
+        except Exception as exc:
+            if network_error(exc):
+                log.warning("message %s/%s not reread: %s", chat_id, msg_id, brief(exc))
+            else:
+                log.exception("message %s/%s not reread", chat_id, msg_id)
             return None
         if msg is None:
             return None

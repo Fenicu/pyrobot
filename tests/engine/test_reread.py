@@ -36,6 +36,28 @@ async def test_reread_goes_through_pipeline_and_becomes_latest() -> None:
         await asyncio.gather(task, return_exceptions=True)
 
 
+@pytest.mark.parametrize(
+    ("error", "traceback"),
+    [
+        (TimeoutError('Failed to invoke "messages.GetMessages" after 10 retries'), False),
+        (ValueError("broken"), True),
+    ],
+)
+async def test_reread_failure_logged_with_traceback_only_if_unexpected(
+    error: Exception, traceback: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    pipeline = Pipeline(
+        journal=MemoryJournal(), parser=default_parser(), reducer=NullReducer(), bus=Bus()
+    )
+    transport = FakeTransport()
+    transport.fetch_fail_with = [error]
+    with caplog.at_level("WARNING", logger="app.engine.host.account"):
+        assert await live_reread(transport, pipeline)(GAME, 5) is None
+    [record] = caplog.records
+    assert (record.exc_info is not None) is traceback
+    assert f"{GAME}/5 not reread" in record.getMessage()
+
+
 @pytest.mark.db
 async def test_click_on_evicted_message_recalled_from_journal(clean_db: Database) -> None:
     from datetime import timedelta

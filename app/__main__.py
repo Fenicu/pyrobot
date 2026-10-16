@@ -7,7 +7,7 @@ from typing import Any
 import uvicorn
 
 from app.config import AppConfig
-from app.logctx import AccountLogFilter
+from app.logctx import AccountLogFilter, quiet_network_retries
 from app.main import create_application
 
 log = logging.getLogger(__name__)
@@ -87,6 +87,7 @@ def main() -> None:
     for handler in logging.getLogger().handlers:
         handler.addFilter(AccountLogFilter())
     logging.getLogger("pyrogram").setLevel(pyrogram_log_level(cfg.log_level))
+    quiet_network_retries()
     options = uvicorn_options(cfg)
     log.info("trusted proxies: %s", options["forwarded_allow_ips"])
     uvicorn.run(create_application(cfg), **options)

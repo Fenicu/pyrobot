@@ -11,7 +11,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 from app.engine.notify import NotifierPort
-from app.engine.transport.base import FloodWait, TransportAuthLost
+from app.engine.transport.base import FloodWait, TransportAuthLost, brief, network_error
 
 if TYPE_CHECKING:
     from app.engine.host.codes import CodeLimiter
@@ -241,8 +241,11 @@ class TgAuthManager:
                 auth_lost = True
                 self._user_id = None
                 self._set(TgState.UNAUTHORIZED, error="session_revoked")
-            except Exception:
-                log.exception("telegram boot failed")
+            except Exception as exc:
+                if network_error(exc):
+                    log.error("telegram boot failed: %s", brief(exc))
+                else:
+                    log.exception("telegram boot failed")
                 self._set(TgState.ERROR, error="connect_failed")
         if auth_lost and self._notifier is not None:
             await self._notifier.notify(
@@ -612,8 +615,11 @@ class TgAuthManager:
             return
         try:
             await self._backend.go_online()
-        except Exception:
-            log.exception("go_online failed")
+        except Exception as exc:
+            if network_error(exc):
+                log.error("go_online failed: %s", brief(exc))
+            else:
+                log.exception("go_online failed")
             self._set(TgState.ERROR, error="online_failed")
             return
         self._user_id = user_id

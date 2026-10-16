@@ -149,6 +149,33 @@ async def test_go_online_failure_reports_online_failed_without_raising() -> None
     assert st.state is TgState.ERROR and st.error == "online_failed"
 
 
+class _ConnectTimesOut(FakeTgBackend):
+    async def connect(self) -> bool:
+        raise TimeoutError("Request timed out")
+
+
+class _OnlineTimesOut(FakeTgBackend):
+    async def go_online(self) -> None:
+        raise TimeoutError('Failed to invoke "updates.GetState" after 10 retries')
+
+
+async def test_network_failures_of_boot_and_online_logged_without_traceback(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level("WARNING", logger="app.engine.tg_auth"):
+        st = await tg_auth(_ConnectTimesOut(), expected_user_id=EXPECTED).boot()
+        assert st.state is TgState.ERROR and st.error == "connect_failed"
+        backend = _OnlineTimesOut(authorized=True)
+        st = await tg_auth(backend, expected_user_id=EXPECTED).boot()
+        assert st.state is TgState.ERROR and st.error == "online_failed"
+    messages = [r.getMessage() for r in caplog.records]
+    assert messages == [
+        "telegram boot failed: TimeoutError: Request timed out",
+        'go_online failed: TimeoutError: Failed to invoke "updates.GetState" after 10 retries',
+    ]
+    assert all(r.exc_info is None for r in caplog.records)
+
+
 async def test_foreign_user_log_out_failure_still_reports_unexpected_user() -> None:
     backend = _RaisingLogOut(user_id=42)
     mgr = tg_auth(backend, expected_user_id=EXPECTED)
