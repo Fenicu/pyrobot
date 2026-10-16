@@ -82,6 +82,17 @@ describe('лента журнала', () => {
 		expect(f.items.filter((i) => keyOf(i) === 'decision:345')).toHaveLength(1);
 	});
 
+	it('живое своё сообщение — с отправителем', async () => {
+		const { f } = feed();
+		await f.reload();
+		const msg = { journal_id: 990, chat_id: 1, msg_id: 5, revision: 0, kind: 'new', date: '2026-10-17T10:00:00Z', outgoing: true, text: '/inv', events: [] };
+		f.onEvent(ev('message', { ...msg, source: 'planner' }));
+		f.onEvent(ev('message', { ...msg, journal_id: 991, msg_id: 6 }));
+		const source = (id: number) => f.items.find((i) => keyOf(i) === `message:${id}`);
+		expect(source(990)).toMatchObject({ source: 'planner' });
+		expect(source(991)).toMatchObject({ source: null });
+	});
+
 	it('фильтр и выключенный live', async () => {
 		const { f } = feed([page, page]);
 		await f.reload();

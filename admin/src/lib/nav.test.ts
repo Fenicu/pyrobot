@@ -160,6 +160,7 @@ describe('наборы разделов', () => {
 			'/a/3',
 			'/a/3/journal',
 			'/a/3/control',
+			'/a/3/game',
 			'/a/3/metro',
 			'/a/3/daily',
 			'/a/3/metrics',
@@ -171,6 +172,7 @@ describe('наборы разделов', () => {
 			'Главная',
 			'Журнал',
 			'Управление',
+			'Игра',
 			'Метро',
 			'Итоги',
 			'Метрики',
@@ -207,10 +209,10 @@ describe('наборы разделов', () => {
 		expect(hrefs(phoneMenu(null, 'user').common)).toEqual(['/password']);
 	});
 
-	it('вкладки телефона: Аккаунты, аккаунт, Журнал, Управление', () => {
+	it('вкладки телефона: Аккаунты, аккаунт, Журнал, Управление, Игра', () => {
 		const tabs = phoneTabs(3, 'Тест');
-		expect(hrefs(tabs)).toEqual(['/accounts', '/a/3', '/a/3/journal', '/a/3/control']);
-		expect(tabs.map((i) => i.label)).toEqual(['Аккаунты', 'Тест', 'Журнал', 'Управление']);
+		expect(hrefs(tabs)).toEqual(['/accounts', '/a/3', '/a/3/journal', '/a/3/control', '/a/3/game']);
+		expect(tabs.map((i) => i.label)).toEqual(['Аккаунты', 'Тест', 'Журнал', 'Управление', 'Игра']);
 		expect(hrefs(phoneTabs(null, null))).toEqual(['/accounts']);
 		expect(phoneTabs(3, null)[1]?.label).toBe('Главная');
 	});

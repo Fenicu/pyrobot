@@ -1,12 +1,9 @@
 <script lang="ts">
 	import type { AccountApi } from '$lib/api/account';
-	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
-	import type { components } from '$lib/api/schema';
 	import type { InlineButton, Markup, MessageItem } from '$lib/api/types';
-
-	type ClickIn = components['schemas']['ClickIn'];
-	import { commandResult, isStale, newKey, withConfirm, type Confirmer } from '$lib/commands';
+	import { clickButton, commandResult, isStale, type Confirmer } from '$lib/commands';
+	import { inlineRows } from '$lib/game/chat';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { clock } from '$lib/util/clock.svelte';
 	import { fmtMoment } from '$lib/util/format';
@@ -25,31 +22,15 @@
 	const now = $derived(clock.now);
 
 	const markup = $derived((item.markup ?? null) as Markup | null);
-	const rows = $derived.by(() => {
-		const out: InlineButton[][] = [];
-		for (const b of markup?.inline ?? []) (out[b[1]] ??= []).push(b);
-		return out.filter(Boolean).map((r) => r.sort((a, b) => a[2] - b[2]));
-	});
+	const rows = $derived(inlineRows(markup));
 
 	async function click(button: InlineButton) {
-		const [text, , , data] = button;
+		const data = button[3];
 		if (!data) return;
 		pending = data;
-		// Один ключ на нажатие: повтор после подтверждения — тот же ключ.
-		const body: ClickIn = {
-			chat_id: item.chat_id,
-			message_id: item.msg_id,
-			revision: item.revision,
-			callback_data: data,
-			idempotency_key: newKey('click')
-		};
 		try {
-			const out = await withConfirm<ClickIn>(
-				(b) => call(api.POST('/commands/click', { body: b })),
-				body,
-				`кнопка «${text}»`,
-				confirmer
-			);
+			// Один ключ на нажатие: повтор после подтверждения — тот же ключ.
+			const out = await clickButton(api, item, button, confirmer);
 			if (out) {
 				const r = commandResult(out);
 				toasts.show(r.text, r.kind);

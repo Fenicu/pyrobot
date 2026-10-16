@@ -13,6 +13,8 @@ export interface SseMessage {
 	events: unknown[];
 	/** Кнопки как у элемента /journal; у сервера до 0.4 поля нет — null. */
 	markup: Markup | null;
+	/** Своё сообщение: бот или ручная команда из админки; у сервера до 0.26 поля нет. */
+	source?: 'planner' | 'manual' | null;
 }
 export interface SseState {
 	version: number;

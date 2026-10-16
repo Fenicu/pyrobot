@@ -82,13 +82,13 @@ afterEach(() => {
 });
 
 describe('телефон: нижние вкладки', () => {
-	it('Аккаунты, открытый аккаунт, Журнал, Управление и кнопка «Меню»; активная отмечена', () => {
+	it('Аккаунты, открытый аккаунт, Журнал, Управление, Игра и кнопка «Меню»; активная отмечена', () => {
 		accounts.list = [account(1, { name: 'Iko', company: 'bmesa', team_tag: 'LA' }), account(2)];
 		open('/a/1/journal', { account: '1' });
 		const links = within(tabs()).getAllByRole('link');
-		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/accounts', '/a/1', '/a/1/journal', '/a/1/control']);
+		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/accounts', '/a/1', '/a/1/journal', '/a/1/control', '/a/1/game']);
 		// Вкладка аккаунта — его имя без значка компании и тега: место в панели узкое.
-		expect(links.map((a) => a.textContent?.trim())).toEqual(['Аккаунты', 'Iko', 'Журнал', 'Управл.']);
+		expect(links.map((a) => a.textContent?.trim())).toEqual(['Аккаунты', 'Iko', 'Журнал', 'Управл.', 'Игра']);
 		expect(links[2]).toHaveAttribute('aria-current', 'page');
 		expect(links[1]).not.toHaveAttribute('aria-current');
 		const menu = within(tabs()).getByRole('button', { name: 'Меню' });

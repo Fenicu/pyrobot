@@ -1,12 +1,8 @@
 <script lang="ts">
 	import type { AccountApi } from '$lib/api/account';
-	import { call } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
-	import type { components } from '$lib/api/schema';
 	import type { CommandOut } from '$lib/api/types';
-	import { commandResult, newKey, withConfirm, type Confirmer } from '$lib/commands';
-
-	type SendIn = components['schemas']['SendIn'];
+	import { commandResult, newKey, sendText, type Confirmer } from '$lib/commands';
 
 	interface Props {
 		api: AccountApi;
@@ -33,12 +29,7 @@
 		result = null;
 		pending = false;
 		try {
-			const out: CommandOut | null = await withConfirm<SendIn>(
-				(body) => call(api.POST('/commands/send', { body })),
-				{ text: command, idempotency_key: key },
-				command,
-				confirmer
-			);
+			const out: CommandOut | null = await sendText(api, command, key, confirmer);
 			if (out === null) {
 				result = { text: 'Отменено', kind: 'info' };
 			} else {

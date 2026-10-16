@@ -1,5 +1,8 @@
+import type { AccountApi } from '$lib/api/account';
+import { call } from '$lib/api/client';
 import { ApiFailure } from '$lib/api/errors';
-import type { CommandOut, ConfirmRequired } from '$lib/api/types';
+import type { components } from '$lib/api/schema';
+import type { CommandOut, ConfirmRequired, InlineButton } from '$lib/api/types';
 import { dialogs } from '$lib/stores/confirm.svelte';
 import { fmtTime } from '$lib/util/format';
 
@@ -49,6 +52,36 @@ export async function withConfirm<B extends { confirm_token?: string | null }>(
 	}
 }
 
+type SendIn = components['schemas']['SendIn'];
+type ClickIn = components['schemas']['ClickIn'];
+
+/** Текст в чат игры; повтор той же отправки — тот же `key`. */
+export function sendText(api: AccountApi, text: string, key: string, confirmer?: Confirmer): Promise<CommandOut | null> {
+	return withConfirm<SendIn>(
+		(body) => call(api.POST('/commands/send', { body })),
+		{ text, idempotency_key: key },
+		text,
+		confirmer
+	);
+}
+
+/** Нажатие кнопки сообщения той ревизии, которую видно на экране; ключ — один на нажатие. */
+export function clickButton(
+	api: AccountApi,
+	msg: { chat_id: number; msg_id: number; revision: number },
+	button: InlineButton,
+	confirmer?: Confirmer
+): Promise<CommandOut | null> {
+	const body: ClickIn = {
+		chat_id: msg.chat_id,
+		message_id: msg.msg_id,
+		revision: msg.revision,
+		callback_data: button[3] ?? '',
+		idempotency_key: newKey('click')
+	};
+	return withConfirm<ClickIn>((b) => call(api.POST('/commands/click', { body: b })), body, `кнопка «${button[0]}»`, confirmer);
+}
+
 const REASON: Record<string, string> = {
 	stale_revision: 'сообщение изменилось — обновите запись',
 	stale_button: 'кнопки уже нет — сообщение изменилось',
@@ -65,8 +98,16 @@ export function isStale(out: CommandOut): boolean {
 }
 
 /** Итог команды для всплывающего сообщения. */
+function reasonText(reason: string): string {
+	if (reason.startsWith('blocked:')) {
+		const block = reason.slice('blocked:'.length);
+		return block === 'reconcile_required' ? 'траты заблокированы до сверки' : `траты заблокированы: ${block}`;
+	}
+	return REASON[reason] ?? reason;
+}
+
 export function commandResult(out: CommandOut): { text: string; kind: 'ok' | 'warn' | 'error' | 'info' } {
-	const why = REASON[out.reason] ?? out.reason;
+	const why = reasonText(out.reason);
 	switch (out.status) {
 		case 'pending':
 			return { text: 'Команда ещё исполняется — итог появится в журнале', kind: 'info' };

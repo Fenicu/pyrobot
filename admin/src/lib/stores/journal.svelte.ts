@@ -62,7 +62,8 @@ export function liveItem(event: LiveEvent, receivedAt: string): JournalItem | nu
 				recovered: false,
 				text: d.text,
 				markup: d.markup as MessageItem['markup'],
-				events: d.events
+				events: d.events,
+				source: d.source ?? null
 			};
 			return item;
 		}

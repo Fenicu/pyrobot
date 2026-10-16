@@ -5,6 +5,7 @@ import ChartLine from '@lucide/svelte/icons/chart-line';
 import Gamepad2 from '@lucide/svelte/icons/gamepad-2';
 import House from '@lucide/svelte/icons/house';
 import KeyRound from '@lucide/svelte/icons/key-round';
+import MessageSquare from '@lucide/svelte/icons/message-square';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
 import Send from '@lucide/svelte/icons/send';
 import Settings from '@lucide/svelte/icons/settings';
@@ -45,6 +46,7 @@ export function railNav(id: number | null, role?: 'owner' | 'user' | null): { ac
 					['', 'Главная', House],
 					['/journal', 'Журнал', ScrollText],
 					['/control', 'Управление', Gamepad2],
+					['/game', 'Игра', MessageSquare],
 					['/metro', 'Метро', TrainFront],
 					['/daily', 'Итоги', CalendarDays],
 					['/metrics', 'Метрики', ChartLine],
@@ -63,7 +65,8 @@ export function phoneTabs(id: number | null, name: string | null): NavItem[] {
 		accounts,
 		{ href: accountHref(id, ''), label: name ?? 'Главная', icon: House },
 		{ href: accountHref(id, '/journal'), label: 'Журнал', icon: ScrollText },
-		{ href: accountHref(id, '/control'), label: 'Управление', short: 'Управл.', icon: Gamepad2 }
+		{ href: accountHref(id, '/control'), label: 'Управление', short: 'Управл.', icon: Gamepad2 },
+		{ href: accountHref(id, '/game'), label: 'Игра', icon: MessageSquare }
 	];
 }
 
