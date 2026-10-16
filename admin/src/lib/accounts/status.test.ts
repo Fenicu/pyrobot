@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { AccountOut } from '$lib/api/types';
-import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, needsAttention, tgOffline, tgUnreachable } from './status';
+import {
+	ACTIVITY_COLOR,
+	accountActivity,
+	accountDotLabel,
+	accountTone,
+	manualControlUntil,
+	needsAttention,
+	tgOffline,
+	tgUnreachable
+} from './status';
 
 const NOW = new Date('2026-10-09T12:00:00Z');
 
@@ -197,6 +206,16 @@ describe('tgUnreachable', () => {
 		expect(tgUnreachable(acc())).toBe(false);
 		expect(tgUnreachable(acc({ tg: { ...lost, online: false } }))).toBe(false);
 		expect(tgUnreachable(acc({ tg: lost, status: 'disabled' }))).toBe(false);
+	});
+});
+
+describe('manualControlUntil', () => {
+	it('срок ручного управления — пока он не прошёл и аккаунт включён', () => {
+		const until = '2026-10-09T12:20:00Z';
+		expect(manualControlUntil(acc({ manual_control_until: until }), NOW)).toBe(until);
+		expect(manualControlUntil(acc({ manual_control_until: '2026-10-09T11:59:00Z' }), NOW)).toBeNull();
+		expect(manualControlUntil(acc(), NOW)).toBeNull();
+		expect(manualControlUntil(acc({ manual_control_until: until, status: 'disabled' }), NOW)).toBeNull();
 	});
 });
 

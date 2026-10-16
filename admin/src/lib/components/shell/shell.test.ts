@@ -6,6 +6,7 @@ import { accounts, current, session } from '$lib/app.svelte';
 import type { AccountOut, EngineStatus } from '$lib/api/types';
 import { dialogs } from '$lib/stores/confirm.svelte';
 import { theme } from '$lib/stores/theme.svelte';
+import { fmtTime } from '$lib/util/format';
 import { fixture } from '$lib/test/fixtures';
 import { page } from '$lib/test/page.svelte';
 import Shell from '../Shell.svelte';
@@ -177,6 +178,16 @@ describe('колонка аккаунтов', () => {
 		expect(within(rows[0]!).queryByTitle('Нет связи с Telegram')).toBeNull();
 		expect(within(rows[1]!).getByTitle('Нет связи с Telegram')).toBeInTheDocument();
 		expect(within(rows[1]!).queryByTitle('Telegram не в сети')).toBeNull();
+	});
+
+	it('ручное управление — значок у имени со сроком', () => {
+		const until = new Date(Date.now() + 20 * 60_000).toISOString();
+		const past = new Date(Date.now() - 60_000).toISOString();
+		accounts.list = [account(1, { manual_control_until: past }), account(2, { manual_control_until: until })];
+		open('/a/1', { account: '1' });
+		const rows = within(column()).getAllByRole('listitem');
+		expect(within(rows[0]!).queryByTitle(/^Управление у тебя/)).toBeNull();
+		expect(within(rows[1]!).getByTitle(`Управление у тебя до ${fmtTime(until)}`)).toBeInTheDocument();
 	});
 
 	it('«+» открывает создание аккаунта, «управление» ведёт на /accounts', async () => {

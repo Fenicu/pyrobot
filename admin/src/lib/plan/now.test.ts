@@ -48,6 +48,9 @@ describe('«Сейчас»', () => {
 		});
 		expect(nowView(withLoop({ ready: 'tg_offline' }), NOW).blockers).toEqual(['⛔ Решения не исполняются: Telegram не в сети']);
 		expect(nowView(withLoop({ ready: 'tg_unreachable' }), NOW).blockers).toEqual(['⛔ Решения не исполняются: нет связи с Telegram']);
+		expect(nowView(withLoop({ ready: 'manual_control', manual_control_until: '2026-10-17T10:30:00Z' }), NOW).blockers).toEqual([
+			'⛔ Решения не исполняются: управление у тебя до 13:30'
+		]);
 		expect(nowView(withLoop({ current: 'deed:job' }), NOW).decision).toBe('после него — 🤑 билеты лотереи (все — max)');
 		expect(nowView(withLoop({ manual_queue: 2 }), NOW).blockers).toEqual(['🖐 Ручных запусков в очереди: 2']);
 	});

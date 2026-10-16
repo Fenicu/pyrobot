@@ -55,6 +55,16 @@ describe('кадры SSE с прода', () => {
 		});
 	});
 
+	it('ручное управление: срок или null', () => {
+		expect(decodeEvent('manual_control', '{"until": "2026-10-17T10:30:00+00:00"}', 'e:3')).toEqual({
+			type: 'manual_control',
+			id: 'e:3',
+			data: { until: '2026-10-17T10:30:00+00:00' }
+		});
+		expect(decodeEvent('manual_control', '{"until": null}')?.data).toEqual({ until: null });
+		expect(decodeEvent('manual_control', '{"until": 5}')).toBeNull();
+	});
+
 	it('reset', () => {
 		expect(decodeAll('sse_reset.txt')).toEqual([
 			{ type: 'reset', id: '1790538450815:2', data: { reason: 'new' } }

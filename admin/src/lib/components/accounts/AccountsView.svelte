@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
+	import Hand from '@lucide/svelte/icons/hand';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Power from '@lucide/svelte/icons/power';
@@ -11,7 +12,16 @@
 	import WifiOff from '@lucide/svelte/icons/wifi-off';
 	import { onMount } from 'svelte';
 	import { Reorder } from '$lib/accounts/reorder.svelte';
-	import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone, tgOffline, tgUnreachable, type Activity } from '$lib/accounts/status';
+	import {
+		ACTIVITY_COLOR,
+		accountActivity,
+		accountDotLabel,
+		accountTone,
+		manualControlUntil,
+		tgOffline,
+		tgUnreachable,
+		type Activity
+	} from '$lib/accounts/status';
 	import { call, type Api } from '$lib/api/client';
 	import { ApiFailure } from '$lib/api/errors';
 	import type { AccountOut } from '$lib/api/types';
@@ -179,6 +189,7 @@
 
 {#snippet summary(a: AccountOut, act: Activity)}
 	{@const tone = accountTone(a)}
+	{@const manual = manualControlUntil(a, now)}
 	<div class="flex items-center gap-2">
 		<StatusDot {tone} label={accountDotLabel(a)} />
 		<span id="{uid}-name-{a.id}" class="ext-text min-w-0 truncate font-medium">{accountTitle(a)}</span>
@@ -189,6 +200,11 @@
 		{:else if tgUnreachable(a)}
 			<span class="shrink-0 text-warn-fg" title="Нет связи с Telegram">
 				<WifiOff class="size-3.5" aria-hidden="true" /><span class="sr-only">Нет связи с Telegram</span>
+			</span>
+		{/if}
+		{#if manual}
+			<span class="shrink-0 text-accent" title="Управление у тебя до {fmtTime(manual)}">
+				<Hand class="size-3.5" aria-hidden="true" /><span class="sr-only">Управление у тебя до {fmtTime(manual)}</span>
 			</span>
 		{/if}
 		{#if a.level != null}<span class="shrink-0 text-fg-muted">ур. {a.level}</span>{/if}

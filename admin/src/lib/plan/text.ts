@@ -238,11 +238,14 @@ export const READY: Record<string, string> = {
 	lock_lost: 'потеряна аренда аккаунта',
 	tg_offline: 'Telegram не в сети',
 	tg_unreachable: 'нет связи с Telegram',
+	manual_control: 'управление у тебя',
 	bulls_walk: 'встреча с биржевиком на прогулке'
 };
 
-export function readyText(reason: string): string {
-	return READY[reason] ?? reason;
+/** `until` — срок ручного управления (`loop.manual_control_until`). */
+export function readyText(reason: string, until: string | null = null): string {
+	const text = READY[reason] ?? reason;
+	return reason === 'manual_control' && until ? `${text} до ${fmtTime(until)}` : text;
 }
 
 function tickets(value: number | 'max'): string {

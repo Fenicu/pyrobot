@@ -83,6 +83,18 @@ describe('перечитывание плана', () => {
 		store.stop();
 	});
 
+	it('кадр manual_control перечитывает план сразу — взятие и возврат управления', async () => {
+		const s = server();
+		const store = new PlanStore(s.api);
+		store.start();
+		await tick();
+		await s.answer();
+		store.onEvent({ type: 'manual_control', id: 'm', data: { until: '2026-09-27T17:00:00Z' } });
+		await tick();
+		expect(s.requests()).toBe(2);
+		store.stop();
+	});
+
 	it('кадр state: только значимые поля и не чаще раза в 5 с', async () => {
 		const s = server();
 		const store = new PlanStore(s.api);

@@ -72,3 +72,11 @@ export function tgOffline(a: AccountOut): boolean {
 export function tgUnreachable(a: AccountOut): boolean {
 	return a.tg.unreachable_since != null && !tgOffline(a) && a.status !== 'disabled' && a.status !== 'deleting';
 }
+
+/** Срок ручного управления из админки, пока он не прошёл по часам страницы; у выключенного и
+ * удаляемого — null (движок не запущен, управления нет). */
+export function manualControlUntil(a: AccountOut, now: Date): string | null {
+	const until = a.manual_control_until;
+	if (until == null || a.status === 'disabled' || a.status === 'deleting') return null;
+	return Date.parse(until) > now.getTime() ? until : null;
+}

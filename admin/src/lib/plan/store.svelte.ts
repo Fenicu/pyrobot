@@ -29,8 +29,9 @@ export function significant(changed: Record<string, unknown>): boolean {
 
 /** «План бота» (`GET /planner/outlook`): один запрос в полёте на вкладку (повтор во время запроса —
  * ещё один после него), отмена при уходе с главной. Перечитывание: при открытии, на кадр
- * `decision`, `scenario_run` и `settings` (пауза, продолжение, kill, смена режима, PATCH настроек —
- * решения на паузе не журналятся, без этого «Сейчас» до 60 с противоречило бы нажатой паузе), на
+ * `decision`, `scenario_run`, `manual_control` (взятие и возврат управления) и `settings` (пауза,
+ * продолжение, kill, смена режима, PATCH настроек — решения на паузе не журналятся, без этого
+ * «Сейчас» до 60 с противоречило бы нажатой паузе), на
  * кадр `state` с полями, которые читает планировщик, — не чаще раза в 5 с, раз в минуту; поля
  * готовности цикла (`readyChanged`) — с тем же троттлингом. `reset` — новое поколение: запрос в
  * полёте отменяется, его поздний ответ не применяется, план читается заново, а прежний план виден
@@ -118,7 +119,12 @@ export class PlanStore {
 			this.#cancel();
 			this.error = null;
 			void this.load();
-		} else if (event.type === 'decision' || event.type === 'scenario_run' || event.type === 'settings') {
+		} else if (
+			event.type === 'decision' ||
+			event.type === 'scenario_run' ||
+			event.type === 'settings' ||
+			event.type === 'manual_control'
+		) {
 			void this.load();
 		} else if (event.type === 'state' && significant(event.data.changed as Record<string, unknown>)) {
 			this.#stateChanged();

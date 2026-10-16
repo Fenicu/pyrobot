@@ -70,6 +70,10 @@ export interface SseSettings {
 	paused: boolean;
 	killed: boolean;
 }
+/** Ручное управление из админки: до какого момента; null — снято. По сроку кадра нет. */
+export interface SseManualControl {
+	until: string | null;
+}
 export type ResetReason = 'new' | 'unknown' | 'evicted' | 'epoch';
 
 export type LiveEvent =
@@ -81,6 +85,7 @@ export type LiveEvent =
 	| { type: 'notification'; id: string; data: SseNotification }
 	| { type: 'settings'; id: string; data: SseSettings }
 	| { type: 'metro_live'; id: string; data: MetroLive }
+	| { type: 'manual_control'; id: string; data: SseManualControl }
 	| { type: 'reset'; id: string; data: { reason: ResetReason } };
 
 export type LiveType = LiveEvent['type'];
@@ -93,6 +98,7 @@ export const LIVE_TYPES: readonly LiveType[] = [
 	'notification',
 	'settings',
 	'metro_live',
+	'manual_control',
 	'reset'
 ];
 const RESETS = new Set(['new', 'unknown', 'evicted', 'epoch']);
@@ -133,6 +139,8 @@ function valid(type: LiveType, d: Rec): boolean {
 				typeof d.found === 'object' &&
 				d.found !== null
 			);
+		case 'manual_control':
+			return strOrNull(d.until);
 		case 'reset':
 			return RESETS.has(String(d.reason));
 	}

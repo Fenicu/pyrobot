@@ -130,6 +130,7 @@ describe('словари плана', () => {
 				'bulls_walk',
 				'killed',
 				'lock_lost',
+				'manual_control',
 				'paused',
 				'pipeline_unhealthy',
 				'spending_blocked',
@@ -138,6 +139,8 @@ describe('словари плана', () => {
 			].sort()
 		);
 		expect(readyText('tg_unreachable')).toBe('нет связи с Telegram');
+		expect(readyText('manual_control', '2026-10-17T10:30:00Z')).toBe('управление у тебя до 13:30');
+		expect(readyText('manual_control')).toBe('управление у тебя');
 	});
 
 	it('строки таймеров: сон с местом, лотерея из настроек, цель битвы', () => {

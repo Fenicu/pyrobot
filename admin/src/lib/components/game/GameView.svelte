@@ -1,13 +1,17 @@
 <script lang="ts">
 	import ArrowDown from '@lucide/svelte/icons/arrow-down';
+	import Hand from '@lucide/svelte/icons/hand';
 	import { onMount, tick, untrack } from 'svelte';
 	import type { AccountApi } from '$lib/api/account';
 	import { ApiFailure, errorText } from '$lib/api/errors';
 	import type { CommandOut, EngineStatus, InlineButton } from '$lib/api/types';
 	import { clickButton, commandResult, newKey, sendText, type Confirmer } from '$lib/commands';
 	import { replyKeyboard, type ChatMessage } from '$lib/game/chat';
+	import type { ManualControl } from '$lib/game/control.svelte';
 	import type { GameChat } from '$lib/game/store.svelte';
 	import type { LiveEvent } from '$lib/live/sse';
+	import { scenarioText } from '$lib/plan/text';
+	import { fmtTime } from '$lib/util/format';
 	import Page from '../shell/Page.svelte';
 	import ChatBubble from './ChatBubble.svelte';
 	import Composer from './Composer.svelte';
@@ -15,12 +19,15 @@
 	interface Props {
 		api: AccountApi;
 		chat: GameChat;
-		/** Статус движка: не запущен — команды не уходят. */
+		control: ManualControl;
+		/** Статус движка: не запущен — команды не уходят; срок ручного управления и идущий сценарий. */
 		status: EngineStatus | null;
 		subscribe?: (handler: (e: LiveEvent) => void) => () => void;
 		confirmer?: Confirmer;
+		/** Управление взято или возвращено: перечитать статус движка и список аккаунтов. */
+		onchange?: () => void;
 	}
-	let { api, chat, status, subscribe, confirmer }: Props = $props();
+	let { api, chat, control, status, subscribe, confirmer, onchange }: Props = $props();
 
 	let log = $state<HTMLElement | null>(null);
 	let atBottom = $state(true);
@@ -41,10 +48,27 @@
 		info: 'text-fg-muted'
 	};
 
+	// Срок из опроса статуса — только когда он сменился: свежий кадр потока не перетирается тем же
+	// значением опроса.
+	const polledUntil = $derived(status?.manual_control_until ?? null);
+	$effect(() => control.sync(polledUntil));
+
 	onMount(() => {
 		void chat.start();
-		return subscribe?.((e) => chat.onEvent(e));
+		const off = subscribe?.((e) => {
+			chat.onEvent(e);
+			control.onEvent(e);
+		});
+		return () => {
+			off?.();
+			control.stop();
+		};
 	});
+
+	async function toggle(on: boolean) {
+		await (on ? control.take() : control.release());
+		onchange?.();
+	}
 
 	function toBottom() {
 		if (log) log.scrollTop = log.scrollHeight;
@@ -132,6 +156,30 @@
 		class="flex flex-col overflow-hidden bg-bg max-md:fixed max-md:inset-x-0 max-md:top-[42px] max-md:bottom-[calc(3.4rem+env(safe-area-inset-bottom))] max-md:z-20 md:h-[calc(100dvh-5.5rem)] md:min-h-96 md:rounded-card md:border md:border-line"
 		aria-label="Чат с игрой"
 	>
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-surface px-3 py-2 text-sm">
+			{#if control.until}
+				<Hand class="size-4 shrink-0 text-accent" aria-hidden="true" />
+				<span class="font-medium">Управление у тебя до {fmtTime(control.until)}</span>
+				{#if status?.scenario}
+					<span class="text-xs text-fg-muted">бот заканчивает: {scenarioText(status.scenario)}</span>
+				{/if}
+				<button type="button" class="btn ml-auto" disabled={control.busy} onclick={() => toggle(false)}>
+					Вернуть боту
+				</button>
+			{:else}
+				<span class="text-xs text-fg-muted">Играет бот</span>
+				<button
+					type="button"
+					class="btn btn-primary ml-auto"
+					disabled={control.busy || blocked !== ''}
+					title="Бот не начнёт новых действий 30 минут; каждая твоя команда продлевает срок"
+					onclick={() => toggle(true)}
+				>
+					<Hand class="size-4" aria-hidden="true" />Взять управление
+				</button>
+			{/if}
+			{#if control.error}<p class="ext-text w-full text-xs text-bad-fg" role="alert">{control.error}</p>{/if}
+		</div>
 		<div class="relative min-h-0 flex-1">
 			<div
 				bind:this={log}

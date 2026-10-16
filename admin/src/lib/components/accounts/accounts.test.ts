@@ -123,6 +123,13 @@ describe('экран аккаунтов', () => {
 		expect(within(card('alt')).getByTitle('Telegram не в сети')).toBeInTheDocument();
 		expect(within(card('lost')).getByTitle('Нет связи с Telegram')).toBeInTheDocument();
 		expect(within(card('lost')).getByRole('img')).toHaveAccessibleName('требует внимания');
+		expect(main.queryByTitle(/^Управление у тебя/)).toBeNull();
+	});
+
+	it('ручное управление — значок у имени со сроком', async () => {
+		const until = new Date(Date.now() + 20 * 60_000).toISOString();
+		await setup([account(1, 'main', { manual_control_until: until })]);
+		expect(within(card('main')).getByTitle(`Управление у тебя до ${fmtTime(until)}`)).toBeInTheDocument();
 	});
 
 	it('проблема — текст предупреждения или причины и красная рамка', async () => {

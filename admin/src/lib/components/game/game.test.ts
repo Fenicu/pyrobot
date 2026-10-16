@@ -6,6 +6,8 @@ import type { EngineStatus, MessageItem } from '$lib/api/types';
 import type { LiveEvent, SseMessage } from '$lib/live/sse';
 import { json, mockFetch, type Call } from '$lib/test/fetch';
 import { fixture } from '$lib/test/fixtures';
+import { fmtTime } from '$lib/util/format';
+import { ManualControl } from '$lib/game/control.svelte';
 import { GameChat } from '$lib/game/store.svelte';
 import GameView from './GameView.svelte';
 
@@ -93,9 +95,10 @@ function setup(
 		return () => listeners.delete(fn);
 	};
 	const status = opts.status === undefined ? engine() : opts.status;
-	render(GameView, { api, chat: new GameChat(api), subscribe, confirmer, status });
+	const onchange = vi.fn();
+	render(GameView, { api, chat: new GameChat(api), control: new ManualControl(api), subscribe, confirmer, status, onchange });
 	const emit = (e: LiveEvent) => listeners.forEach((fn) => fn(e));
-	return { fetch, confirmer, emit, user: userEvent.setup() };
+	return { fetch, confirmer, emit, onchange, user: userEvent.setup() };
 }
 
 const log = () => screen.getByRole('log', { name: 'Сообщения игры' });
@@ -276,5 +279,45 @@ describe('Игра: чат', () => {
 		await user.click(chip);
 		expect(el.scrollTop).toBe(2000);
 		expect(screen.queryByRole('button', { name: /новые/ })).toBeNull();
+	});
+});
+
+describe('Игра: ручное управление', () => {
+	const later = () => new Date(Date.now() + 30 * 60_000).toISOString();
+
+	it('взять — POST on:true и срок; вернуть — POST on:false; после каждого — статус заново', async () => {
+		const until = later();
+		const { fetch, onchange, user } = setup((c) =>
+			c.url.endsWith('/engine/manual-control') ? json({ until: JSON.parse(c.body).on ? until : null }) : undefined
+		);
+		await user.click(await screen.findByRole('button', { name: 'Взять управление' }));
+		expect(await screen.findByText(`Управление у тебя до ${fmtTime(until)}`)).toBeInTheDocument();
+		await user.click(screen.getByRole('button', { name: 'Вернуть боту' }));
+		expect(await screen.findByRole('button', { name: 'Взять управление' })).toBeInTheDocument();
+		expect(posts(fetch, '/engine/manual-control')).toEqual([{ on: true }, { on: false }]);
+		expect(onchange).toHaveBeenCalledTimes(2);
+	});
+
+	it('управление уже у тебя по статусу движка; бот доигрывает сценарий', async () => {
+		const until = later();
+		setup(undefined, { status: engine({ manual_control_until: until, scenario: 'sleep' }) });
+		expect(await screen.findByText(`Управление у тебя до ${fmtTime(until)}`)).toBeInTheDocument();
+		expect(screen.getByText('бот заканчивает: 🛌 сон')).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Вернуть боту' })).toBeInTheDocument();
+	});
+
+	it('кадр manual_control — продление и возврат без перезагрузки', async () => {
+		const until = later();
+		const { emit } = setup();
+		await screen.findByRole('button', { name: 'Взять управление' });
+		emit({ type: 'manual_control', id: 'e:5', data: { until } });
+		expect(await screen.findByText(`Управление у тебя до ${fmtTime(until)}`)).toBeInTheDocument();
+		emit({ type: 'manual_control', id: 'e:6', data: { until: null } });
+		expect(await screen.findByRole('button', { name: 'Взять управление' })).toBeInTheDocument();
+	});
+
+	it('движок не запущен — взять управление нельзя', async () => {
+		setup(undefined, { status: engine({ running: false }) });
+		expect(await screen.findByRole('button', { name: 'Взять управление' })).toBeDisabled();
 	});
 });

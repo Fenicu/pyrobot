@@ -2,6 +2,7 @@
 	import ChevronsLeft from '@lucide/svelte/icons/chevrons-left';
 	import ChevronsRight from '@lucide/svelte/icons/chevrons-right';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
+	import Hand from '@lucide/svelte/icons/hand';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Unplug from '@lucide/svelte/icons/unplug';
 	import WifiOff from '@lucide/svelte/icons/wifi-off';
@@ -11,6 +12,7 @@
 		accountActivity,
 		accountDotLabel,
 		accountTone,
+		manualControlUntil,
 		tgOffline,
 		tgUnreachable,
 		type Activity
@@ -19,7 +21,7 @@
 	import type { Api } from '$lib/api/client';
 	import type { AccountOut } from '$lib/api/types';
 	import { switchHref } from '$lib/nav';
-	import { fmtMoment } from '$lib/util/format';
+	import { fmtMoment, fmtTime } from '$lib/util/format';
 	import { accountTitle } from '$lib/util/game';
 	import CreateAccountForm from '../accounts/CreateAccountForm.svelte';
 	import Modal from '../Modal.svelte';
@@ -85,6 +87,7 @@
 {#snippet row(a: AccountOut)}
 	{@const tone = accountTone(a)}
 	{@const activity = accountActivity(a, now)}
+	{@const manual = manualControlUntil(a, now)}
 	{#if collapsed}
 		<StatusDot {tone} label={accountDotLabel(a)} />
 		<span class="text-xs font-semibold" aria-hidden="true">{initial(a)}</span>
@@ -99,6 +102,11 @@
 			{:else if tgUnreachable(a)}
 				<span class="shrink-0 text-warn-fg" title="Нет связи с Telegram">
 					<WifiOff class="size-3" aria-hidden="true" /><span class="sr-only">Нет связи с Telegram</span>
+				</span>
+			{/if}
+			{#if manual}
+				<span class="shrink-0 text-accent" title="Управление у тебя до {fmtTime(manual)}">
+					<Hand class="size-3" aria-hidden="true" /><span class="sr-only">Управление у тебя до {fmtTime(manual)}</span>
 				</span>
 			{/if}
 		</span>

@@ -37,7 +37,7 @@ function blockers(plan: Outlook): Blocker[] {
 	const out: Blocker[] = [];
 	if (loop.paused) out.push({ text: '⏸ Планировщик на паузе', when: 'когда пауза снимется' });
 	else if (loop.ready !== null) {
-		out.push({ text: `⛔ Решения не исполняются: ${readyText(loop.ready)}`, when: 'когда это пройдёт' });
+		out.push({ text: `⛔ Решения не исполняются: ${readyText(loop.ready, loop.manual_control_until)}`, when: 'когда это пройдёт' });
 	}
 	// На паузе ручной сценарий может идти (manual_while_paused): его видно и тогда.
 	if (loop.current !== null) out.push({ text: runningText(loop.current), when: 'после него' });
