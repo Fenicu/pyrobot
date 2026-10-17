@@ -117,7 +117,7 @@ describe('Управление', () => {
 		const input = screen.getByRole('textbox', { name: 'Команда' });
 		await user.type(input, '/givemoney');
 		await user.click(screen.getByRole('button', { name: 'Отправить' }));
-		expect(await screen.findByText('Команда запрещена: такие не отправляются никогда')).toBeInTheDocument();
+		expect(await screen.findByText('Команда запрещена для бота — возьмите управление на экране «Игра», чтобы отправить вручную')).toBeInTheDocument();
 		await user.clear(input);
 		await user.type(input, '/inv');
 		await user.click(screen.getByRole('button', { name: 'Отправить' }));

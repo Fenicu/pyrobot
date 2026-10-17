@@ -13,6 +13,15 @@ const out = (patch: Partial<CommandOut>): CommandOut => ({
 });
 
 describe('commandResult', () => {
+	it('запрещённая и донат-команда без ручного управления — подсказка взять управление', () => {
+		expect(commandResult(out({ reason: 'forbidden' })).text).toBe(
+			'Отклонено: команда запрещена для бота — возьмите управление на экране «Игра», чтобы отправить вручную'
+		);
+		expect(commandResult(out({ reason: 'donate' })).text).toBe(
+			'Отклонено: донат-команды бот не отправляет — возьмите управление на экране «Игра», чтобы отправить вручную'
+		);
+	});
+
 	it('отказ без связи с Telegram — по-русски', () => {
 		expect(commandResult(out({ reason: 'tg_unreachable' }))).toEqual({
 			text: 'Отклонено: нет связи с Telegram',

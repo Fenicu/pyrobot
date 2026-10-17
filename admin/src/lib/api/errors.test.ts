@@ -13,6 +13,12 @@ describe('normalizeError', () => {
 			status: 403,
 			code: 'donate'
 		});
+		expect(errorText(normalizeError(403, { detail: 'forbidden' }))).toBe(
+			'Команда запрещена для бота — возьмите управление на экране «Игра», чтобы отправить вручную'
+		);
+		expect(errorText(normalizeError(403, { detail: 'donate' }))).toBe(
+			'Донат-команды бот не отправляет — возьмите управление на экране «Игра», чтобы отправить вручную'
+		);
 		expect(normalizeError(503, { detail: 'engine not running' }).kind).toBe('engine_down');
 		expect(normalizeError(503, { detail: 'engine_starting' }).kind).toBe('engine_down');
 		expect(errorText(normalizeError(503, { detail: 'engine not running' }))).toBe('Движок недоступен');

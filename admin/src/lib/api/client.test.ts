@@ -70,7 +70,7 @@ describe('клиент API', () => {
 		).catch((e: unknown) => e);
 		expect(failure).toBeInstanceOf(ApiFailure);
 		expect((failure as ApiFailure).error).toEqual({ kind: 'forbidden', status: 403, code: 'forbidden' });
-		expect((failure as ApiFailure).message).toBe('Команда запрещена: такие не отправляются никогда');
+		expect((failure as ApiFailure).message).toBe('Команда запрещена для бота — возьмите управление на экране «Игра», чтобы отправить вручную');
 		expect(h.refreshCsrf).not.toHaveBeenCalled();
 		expect(fetch.calls).toHaveLength(1);
 	});
