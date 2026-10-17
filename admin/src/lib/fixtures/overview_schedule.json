@@ -1,0 +1,81 @@
+{
+  "now": "2026-10-17T09:00:00Z",
+  "until": "2026-10-17T21:00:00Z",
+  "shared": [
+    {
+      "kind": "battle",
+      "at": "2026-10-17T10:00:00Z",
+      "until": null,
+      "label": "13:00"
+    },
+    {
+      "kind": "factory",
+      "at": "2026-10-17T15:00:00Z",
+      "until": "2026-10-17T15:30:00Z",
+      "label": "18:00–18:30"
+    },
+    {
+      "kind": "lottery",
+      "at": "2026-10-17T16:17:00Z",
+      "until": "2026-10-17T18:07:00Z",
+      "label": "19:17–21:07"
+    },
+    {
+      "kind": "night",
+      "at": "2026-10-17T19:00:00Z",
+      "until": "2026-10-18T05:00:00Z",
+      "label": "22:00–08:00"
+    }
+  ],
+  "accounts": [
+    {
+      "id": 1,
+      "seen_at": "2026-10-17T08:55:00Z",
+      "stale": false,
+      "items": [
+        {
+          "kind": "busy",
+          "at": "2026-10-17T08:50:00Z",
+          "until": "2026-10-17T09:20:00Z",
+          "source": "state",
+          "detail": "harvest"
+        },
+        {
+          "kind": "fastfood_ready",
+          "at": "2026-10-17T08:30:00Z",
+          "until": null,
+          "source": "state",
+          "detail": null
+        },
+        {
+          "kind": "book_ready",
+          "at": "2026-10-17T10:00:00Z",
+          "until": null,
+          "source": "state",
+          "detail": null
+        },
+        {
+          "kind": "motivation",
+          "at": "2026-10-17T11:00:00Z",
+          "until": null,
+          "source": "planner",
+          "detail": null
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "seen_at": "2026-10-17T08:00:00Z",
+      "stale": true,
+      "items": [
+        {
+          "kind": "sleep",
+          "at": "2026-10-17T08:00:00Z",
+          "until": "2026-10-17T14:00:00Z",
+          "source": "state",
+          "detail": "sleep_bridge"
+        }
+      ]
+    }
+  ]
+}
