@@ -1,7 +1,6 @@
-<!-- Макет «Обзора» с вложенной страницей — как их собирает SvelteKit (для layout.test.ts). -->
+<!-- Макет «Обзора» с вложенным содержимым - как его собирает SvelteKit (для layout.test.ts). -->
 <script lang="ts">
 	import Layout from './+layout.svelte';
-	import Summary from './+page.svelte';
 </script>
 
-<Layout><Summary /></Layout>
+<Layout><p>Содержимое подраздела</p></Layout>

@@ -48,6 +48,6 @@ describe('макет «Обзора»', () => {
 
 	it('содержимое подраздела рисуется под полосой', () => {
 		open('/overview');
-		expect(screen.getByText('Скоро')).toBeInTheDocument();
+		expect(screen.getByText('Содержимое подраздела')).toBeInTheDocument();
 	});
 });
