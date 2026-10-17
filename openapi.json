@@ -6156,7 +6156,8 @@
               "trip_ready",
               "trip_result",
               "market_open",
-              "gear_guard"
+              "gear_guard",
+              "orders_unknown"
             ],
             "title": "Kind",
             "type": "string"

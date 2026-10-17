@@ -101,6 +101,13 @@ def target_act(decision: Decision) -> tuple[str, dict[str, Any]]:
     return scenario, {k: v for k, v in params.items() if k != "battle_at"}
 
 
+def target_of(decision: Decision) -> str | None:
+    """Цель, которую решение ставит сценарием `battle_target`; None - не ставит."""
+    if isinstance(decision, Act) and decision.scenario == "battle_target":
+        return str(decision.params["target"])
+    return None
+
+
 def verdicts(decision: Decision) -> dict[str, str]:
     return {c.scenario: c.verdict for c in decision.candidates}
 
@@ -255,17 +262,34 @@ def test_order_for_other_battle_does_not_apply() -> None:
     )
 
 
-def test_unknown_orders_wait_without_target() -> None:
+def test_unknown_orders_skip_target_but_other_work_goes_on() -> None:
+    st = hq_state(books=3)
+    decision = decide(st, HQ_CFG, NOON, battle_orders=None)
+    assert act(decision)[0] == "book"
+    assert verdicts(decision)["battle_target"] == "orders_unknown"
+    view = outlook(st, HQ_CFG, NOON, battle_orders=None)
+    retry = [w for w in view.wakeups if w.kind == "orders_unknown"]
+    assert [w.at for w in retry] == [NOON + timedelta(seconds=5)]
+
+
+def test_unknown_orders_without_other_work_wake_in_five_seconds() -> None:
     decision = decide(hq_state(), HQ_CFG, NOON, battle_orders=None)
     assert decision == Wait(NOON + timedelta(seconds=5), "orders_unknown", decision.candidates)
-    assert verdicts(decision) == {"battle_target": "orders_unknown"}
+    assert verdicts(decision)["battle_target"] == "orders_unknown"
 
 
-def test_unknown_orders_wait_ends_in_last_minute() -> None:
+def test_unknown_orders_send_no_target_even_when_settings_differ() -> None:
+    st = hq_state(battle_target="☂️Umbrella")
+    decision = decide(st, HQ_CFG, NOON, battle_orders=None)
+    assert target_of(decision) is None
+
+
+def test_unknown_orders_end_in_last_minute() -> None:
     now = HQ_BATTLE - timedelta(seconds=30)
     decision = decide(hq_state(now), HQ_CFG, now, battle_orders=None)
     assert not isinstance(decision, Act)
     assert decision.reason != "orders_unknown"
+    assert "battle_target" not in verdicts(decision)
 
 
 def test_unknown_orders_do_not_hide_stale_battle_refresh() -> None:

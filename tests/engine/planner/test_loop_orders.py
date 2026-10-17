@@ -4,7 +4,7 @@ from datetime import datetime
 from app.engine.battle_orders import BattleOrder
 from app.engine.planner.loop import ORDERS_TTL_S, PlannerLoop
 from app.engine.planner.store import MemoryPlannerStore
-from app.engine.planner.types import Act, Wait
+from app.engine.planner.types import Act
 from app.engine.settings import StaticSettings
 from app.engine.state.model import CharacterState
 from tests.engine.planner.test_decide import BASE, NOW, awake
@@ -113,7 +113,7 @@ async def test_read_started_before_orders_changed_is_discarded() -> None:
     rig.loop.orders_changed()
     source.gate.set()
     await pending
-    assert rig.acts == []
+    assert rig.targets() == []
     assert rig.loop._orders is None and rig.loop._orders_dirty
     source.gate = None
     await rig.loop.step()
@@ -142,10 +142,9 @@ async def test_failed_read_while_dirty_waits_and_does_not_send_cancelled_order()
     source.orders = ()
     source.fail = True
     rig.loop.orders_changed()
-    pause = await rig.loop.step()
+    await rig.loop.step()
     assert rig.targets() == ["🤖Hooli"]
-    assert pause is not None and pause <= 5.0
-    assert rig.loop._waiting is not None and rig.loop._waiting[0] == "orders_unknown"
+    assert rig.loop._orders_dirty
     # База вернулась: отмена прочитана, цель из настроек уже выставлена - действий нет.
     source.fail = False
     await rig.loop.step()
@@ -157,7 +156,7 @@ async def test_first_read_failure_without_cache_is_unknown() -> None:
     source.fail = True
     rig = Rig(source)
     await rig.loop.step()
-    assert rig.acts == []
+    assert rig.targets() == []
     source.fail = False
     await rig.loop.step()
     assert rig.targets() == ["🤖Hooli"]
@@ -199,5 +198,7 @@ async def test_plan_with_dirty_failed_read_is_unknown() -> None:
     source.fail = True
     rig.loop.orders_changed()
     view = await rig.loop.outlook()
-    assert isinstance(view.outlook.decision, Wait)
-    assert view.outlook.decision.reason == "orders_unknown"
+    verdicts = {c.scenario: c.verdict for c in view.outlook.considered}
+    assert verdicts["battle_target"] == "orders_unknown"
+    assert view.outlook.hints.battle_source == "default"
+    assert "orders_unknown" in {w.kind for w in view.outlook.wakeups}

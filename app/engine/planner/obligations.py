@@ -21,7 +21,7 @@ from app.engine.planner.base import (
     PlannerBase,
     battle_hour,
 )
-from app.engine.planner.types import Decision, Reserve, Wait
+from app.engine.planner.types import Decision, Reserve, Wakeup
 from app.engine.state.model import (
     BusyState,
     CharacterState,
@@ -36,7 +36,7 @@ HOTEL_RESERVE_AHEAD = timedelta(hours=3)
 # Сон ждёт конца записи на фабрику, только если после неё до дедлайна остаётся запас.
 AFTER_FACTORY_MARGIN = timedelta(minutes=15)
 TARGET_LAST_CALL = timedelta(minutes=1)
-# Приказы штаба неизвестны: цель не ставится, цикл спрашивает снова через столько.
+# Приказы штаба неизвестны: цель не ставится, проход повторяется через столько.
 ORDERS_RETRY = timedelta(seconds=5)
 STAMINA_AHEAD = timedelta(minutes=30)
 FULL_STAMINA = 100
@@ -130,8 +130,10 @@ class Obligations(PlannerBase):
         if battle is None or battle - self.now <= TARGET_LAST_CALL:
             return None
         if self.battle_orders is None:
+            # Цель не ставится, пока приказы неизвестны; остальные шаги идут своим чередом.
             self.reject("battle_target", {}, "orders_unknown")
-            return Wait(self.now + ORDERS_RETRY, "orders_unknown", tuple(self.candidates))
+            self.wakeups.append(Wakeup(self.now + ORDERS_RETRY, "orders_unknown"))
+            return None
         desired = self.target_for(battle)
         if self.target_ready(battle, desired):
             return None

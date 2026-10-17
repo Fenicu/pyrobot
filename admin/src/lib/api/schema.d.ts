@@ -3773,7 +3773,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "busy" | "cooldown" | "refresh" | "sleep_window" | "sleep_allowed" | "book_ready" | "card_ready" | "fastfood_ready" | "prizebox_ready" | "gorbushka_next" | "gorbushka_comeback" | "motivation" | "battle" | "daily_midnight" | "daily_reset" | "stocks_dump" | "factory_open" | "factory_report" | "tangerine_ready" | "tangerine_not_player" | "lottery_open" | "metro_kick" | "metro_ready" | "metro_probe" | "artifact_end" | "trip_ready" | "trip_result" | "market_open" | "gear_guard";
+            kind: "busy" | "cooldown" | "refresh" | "sleep_window" | "sleep_allowed" | "book_ready" | "card_ready" | "fastfood_ready" | "prizebox_ready" | "gorbushka_next" | "gorbushka_comeback" | "motivation" | "battle" | "daily_midnight" | "daily_reset" | "stocks_dump" | "factory_open" | "factory_report" | "tangerine_ready" | "tangerine_not_player" | "lottery_open" | "metro_kick" | "metro_ready" | "metro_probe" | "artifact_end" | "trip_ready" | "trip_result" | "market_open" | "gear_guard" | "orders_unknown";
         };
         /** PriceState */
         PriceState: {

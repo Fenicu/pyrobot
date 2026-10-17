@@ -38,7 +38,8 @@ export const WAKE: Record<WakeKind, WakeText> = {
 	trip_ready: { icon: '🚦', text: 'Можно ехать' },
 	trip_result: { icon: '🚦', text: 'Итог поездки' },
 	market_open: { icon: '📈', text: 'Откроется биржа' },
-	gear_guard: { icon: '🛡', text: 'Кончится окно-запрет' }
+	gear_guard: { icon: '🛡', text: 'Кончится окно-запрет' },
+	orders_unknown: { icon: '⚔', text: 'Приказы штаба не прочитаны: повтор' }
 };
 
 /** Сценарии и псевдо-сценарии кандидатов (`state`, `deeds` — обновление ради занятости и дел). */
@@ -133,6 +134,7 @@ export const VERDICT: Record<string, string> = {
 	no_details: 'нет ⚙️',
 	no_value: 'невыгодно',
 	battle_window: 'скоро битва',
+	orders_unknown: 'приказы штаба не прочитаны',
 	sleep_deadline: 'не успеть до сна',
 	factory_window: 'мешает записи на фабрику',
 	factory_battle: 'идёт битва за фабрику',
