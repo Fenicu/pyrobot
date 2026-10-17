@@ -482,17 +482,17 @@ async def test_pause_resume_persist_and_audit() -> None:
 async def test_set_paused_writes_once_and_reports_change() -> None:
     rec, planner = _Recorder(), _Planner()
     f = build(notifier=rec, planner=planner)
-    assert await f.set_paused(True, "alice") is True
+    assert await f.set_paused(True, "alice") is not None
     assert f.settings.current.engine.paused and f.settings.version == 1
     assert planner.woken == 1
     assert [code for _, code, _ in rec.items] == ["engine_paused"]
     assert "alice" in rec.items[0][2]
     # Повтор: ни записи, ни уведомления, ни пробуждения планировщика.
-    assert await f.set_paused(True, "alice") is False
+    assert await f.set_paused(True, "alice") is None
     assert f.settings.version == 1 and planner.woken == 1 and len(rec.items) == 1
-    assert await f.set_paused(False, "bob") is True
+    assert await f.set_paused(False, "bob") is not None
     assert [code for _, code, _ in rec.items] == ["engine_paused", "engine_resumed"]
-    assert await f.set_paused(False, "bob") is False
+    assert await f.set_paused(False, "bob") is None
     assert f.settings.version == 2
 
 
@@ -500,7 +500,7 @@ async def test_set_paused_concurrent_calls_change_once() -> None:
     rec = _Recorder()
     f = build(notifier=rec)
     results = await asyncio.gather(*(f.set_paused(True, "alice") for _ in range(4)))
-    assert sorted(results) == [False, False, False, True]
+    assert sum(r is not None for r in results) == 1
     assert f.settings.version == 1
     assert [code for _, code, _ in rec.items] == ["engine_paused"]
 
@@ -527,7 +527,7 @@ async def test_set_paused_retries_after_settings_conflict() -> None:
     rec, planner = _Recorder(), _Planner()
     settings = _ConflictOnce()
     f = build(settings=settings, notifier=rec, planner=planner)
-    assert await f.set_paused(True, "alice") is True
+    assert await f.set_paused(True, "alice") is not None
     assert settings.current.engine.paused and settings.version == 2
     assert planner.woken == 1 and len(rec.items) == 1
 
@@ -553,8 +553,33 @@ async def test_set_paused_conflict_to_target_state_is_unchanged() -> None:
 
     rec = _Recorder()
     f = build(settings=_PausedByOther(), notifier=rec)
-    assert await f.set_paused(True, "alice") is False
+    assert await f.set_paused(True, "alice") is None
     assert rec.items == []
+
+
+class _FailingNotifier:
+    async def notify(self, level: str, code: str, text: str) -> None:
+        raise RuntimeError("notifications down")
+
+
+class _AlwaysConflict(StaticSettings):
+    async def update(
+        self, change: SettingsChange, *, changed_by: str, expected_version: int | None = None
+    ) -> tuple[Settings, int]:
+        raise SettingsConflict("version moved")
+
+
+async def test_set_paused_keeps_pause_when_audit_fails() -> None:
+    f = build(notifier=_FailingNotifier())
+    update = await f.set_paused(True, "alice")
+    assert update is not None and update.audit_failed
+    assert f.settings.current.engine.paused and f.settings.version == 1
+
+
+async def test_set_paused_gives_up_with_settings_conflict_after_retries() -> None:
+    f = build(settings=_AlwaysConflict())
+    with pytest.raises(SettingsConflict):
+        await f.set_paused(True, "alice")
 
 
 async def test_manual_control_take_extend_release() -> None:

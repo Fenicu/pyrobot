@@ -48,6 +48,8 @@ class EngineBulkResultOut(BaseModel):
     reason: str | None = None
     # Почему движок не запущен здесь (только для skipped)
     host: str | None = None
+    # Сейчас только `audit_failed`: пауза записана, запись аудита упала
+    warnings: list[str] = []
 
 
 class EngineBulkOut(BaseModel):
@@ -65,8 +67,11 @@ async def _toggle(
         status: Literal["done", "unchanged", "skipped", "error"],
         reason: str | None = None,
         host: str | None = None,
+        warnings: list[str] | None = None,
     ) -> EngineBulkResultOut:
-        return EngineBulkResultOut(account_id=account_id, status=status, reason=reason, host=host)
+        return EngineBulkResultOut(
+            account_id=account_id, status=status, reason=reason, host=host, warnings=warnings or []
+        )
 
     if info is None:
         return row("error", "account_not_found")
@@ -77,15 +82,17 @@ async def _toggle(
     if facade is None:
         return row("skipped", "engine_not_running", c.engines.host_reason(account_id))
     try:
-        changed = await facade.set_paused(paused, by)
+        update = await facade.set_paused(paused, by)
     except (LockLostError, LeaseLost):
         return row("error", "lock_lost")
+    except SettingsConflict:
+        return row("error", "version_conflict")
     except Exception:
         log.exception("bulk pause failed for account %s", account_id)
         return row("error", "internal_error")
-    if changed:
-        return row("done")
-    return row("unchanged", "already_paused" if paused else "already_running")
+    if update is None:
+        return row("unchanged", "already_paused" if paused else "already_running")
+    return row("done", warnings=["audit_failed"] if update.audit_failed else None)
 
 
 @router.post("/engine", response_model=EngineBulkOut, responses=CSRF)
@@ -217,6 +224,8 @@ async def _patch_one(
                 version=version,
                 by=by,
                 tolerate_audit_failure=True,
+                # Аренда у другого хоста: здесь движок не появится, ждать незачем
+                wait_engine=c.engines.host_reason(info.id) != "locked_elsewhere",
             )
         except SettingsConflict:
             continue

@@ -2749,6 +2749,11 @@ export interface components {
              * @enum {string}
              */
             status: "done" | "unchanged" | "skipped" | "error";
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** EngineStatusOut */
         EngineStatusOut: {

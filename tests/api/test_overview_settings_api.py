@@ -283,6 +283,21 @@ async def test_held_lease_without_engine_is_engine_starting(api: Api) -> None:
     assert await db_rows(api, SettingsHistory) == before
 
 
+async def test_engine_elsewhere_is_engine_starting_without_waiting(api: Api) -> None:
+    a = await account(api.container, "a")
+    async with api.db.sessions() as s, s.begin():
+        await s.execute(
+            update(Account)
+            .where(Account.id == a)
+            .values(lease_holder="host-b", lease_expires_at=func.now() + timedelta(minutes=1))
+        )
+    api.engines.reasons[a] = "locked_elsewhere"
+    api.container.engine_wait_s = 10.0
+    rows = by_id(await post(api, [a], BANANA))
+    assert rows[a]["error"]["code"] == "engine_starting"
+    assert api.engines.waited == []
+
+
 async def test_lists_and_dicts_are_replaced_wholesale(api: Api) -> None:
     a = await account(api.container, "a")
     start = Settings.model_validate({"battle": {"overrides": {13: "🤖Hooli"}}})

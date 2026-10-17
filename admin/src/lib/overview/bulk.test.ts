@@ -21,6 +21,7 @@ const engine = (over: Partial<EngineBulkResult>): EngineBulkResult => ({
 	status: 'done',
 	reason: null,
 	host: null,
+	warnings: [],
 	...over
 });
 const settings = (over: Partial<SettingsBulkResult>): SettingsBulkResult => ({
@@ -114,6 +115,11 @@ describe('summarizeResults', () => {
 		expect(summarizeResults([engine({ status: 'skipped', reason: 'engine_not_running', host: null })]).rows[0]!.text).toBe(
 			'движок не запущен'
 		);
+	});
+	it('движок: пауза записана, аудит упал - готово с предупреждением', () => {
+		const out = summarizeResults([engine({ account_id: 1, warnings: ['audit_failed'] })]);
+		expect(out.applied).toBe(1);
+		expect(out.rows[0]!.text).toContain('журнал');
 	});
 	it('настройки: применено с перезапуском и предупреждением аудита', () => {
 		const out = summarizeResults([

@@ -192,12 +192,13 @@ async def apply_account_patch(
     version: int,
     by: str,
     tolerate_audit_failure: bool = False,
+    wait_engine: bool = True,
 ) -> SettingsUpdate:
     """Правка настроек аккаунта: с движком - через него, без движка - прямо в базу, если аренда
-    свободна; занята - ожидание регистрации движка до `engine_wait_s`, затем `EngineStarting`.
-    `version` - ожидаемая версия настроек. Ошибки правки (`SettingsConflict`, `SettingsPatchError`,
-    `ValidationError`, `SettingsOutOfBounds`, `ChatIsSelf`, `AccountDeleting`, `LeaseLost`)
-    не переводятся."""
+    свободна; занята - ожидание регистрации движка до `engine_wait_s`, затем `EngineStarting`
+    (`wait_engine=False` - без ожидания). `version` - ожидаемая версия настроек. Ошибки правки
+    (`SettingsConflict`, `SettingsPatchError`, `ValidationError`, `SettingsOutOfBounds`,
+    `ChatIsSelf`, `AccountDeleting`, `LeaseLost`) не переводятся."""
     f = scope.facade
     if f is None:
         try:
@@ -211,7 +212,11 @@ async def apply_account_patch(
                 tolerate_audit_failure=tolerate_audit_failure,
             )
         except LeaseHeld:
-            engine = await c.engines.wait_registered(scope.account.id, c.engine_wait_s)
+            engine = (
+                await c.engines.wait_registered(scope.account.id, c.engine_wait_s)
+                if wait_engine
+                else None
+            )
             f = engine.facade if engine is not None else None
         if f is None:
             raise EngineStarting

@@ -31,7 +31,7 @@ from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
 from app.db.settings_store import DbSettingsStore
 from app.engine.artifact import ArtifactRuns
-from app.engine.battle_orders import BattleOrder
+from app.engine.battle_orders import ORDERS_LOOKBACK, BattleOrder
 from app.engine.bulls_walk import BullsWalk
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
@@ -85,8 +85,6 @@ PIPELINE_DRAIN_S = 10.0
 HISTORY_DRAIN_S = 60.0
 RECONCILE_POLL_S = 5.0
 PLANNER_POLL_S = 5.0
-# Приказ на битву читается и после её начала: планировщик ещё несколько минут считает её ближайшей.
-ORDERS_LOOKBACK = timedelta(hours=2)
 
 
 def journal_history(journal: DbJournal) -> History:

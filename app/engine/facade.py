@@ -403,26 +403,37 @@ class EngineFacade:
         await self.settings.update(_paused_change(paused), changed_by=by)
         self._wake_planner()
 
-    async def set_paused(self, paused: bool, by: str) -> bool:
+    async def set_paused(self, paused: bool, by: str) -> SettingsUpdate | None:
         """Пауза или возобновление с проверкой и записью под ожидаемой версией: две одновременные
-        команды не дают двух версий и двух уведомлений. True - состояние изменилось."""
+        команды не дают двух версий и двух уведомлений. None - состояние уже такое; иначе - что
+        записано. Аудит пишется после сохранения: его сбой не отменяет паузу (`audit_failed`).
+        Конфликт версий после всех попыток - `SettingsConflict`."""
         change = _paused_change(paused)
         for attempt in range(_SET_PAUSED_ATTEMPTS):
             version = self.settings.version
-            if self.settings.current.engine.paused == paused:
-                return False
+            old = self.settings.current
+            if old.engine.paused == paused:
+                return None
             try:
-                await self.settings.update(change, changed_by=by, expected_version=version)
+                new, saved = await self.settings.update(
+                    change, changed_by=by, expected_version=version
+                )
             except SettingsConflict:
                 if attempt == _SET_PAUSED_ATTEMPTS - 1:
                     raise
                 continue
             self._wake_planner()
-            if paused:
-                await self._audit("engine_paused", f"planner paused by {by}")
-            else:
-                await self._audit("engine_resumed", f"planner resumed by {by}")
-            return True
+            audit_failed = False
+            try:
+                if paused:
+                    await self._audit("engine_paused", f"planner paused by {by}")
+                else:
+                    await self._audit("engine_resumed", f"planner resumed by {by}")
+            except Exception:
+                log.warning("pause audit failed after settings were saved", exc_info=True)
+                audit_failed = True
+            changed = settings_diff(old.model_dump(mode="json"), new.model_dump(mode="json"))
+            return SettingsUpdate(new, saved, changed, audit_failed)
         raise AssertionError("unreachable")
 
     async def take_control(self, *, by: str) -> datetime:

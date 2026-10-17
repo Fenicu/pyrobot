@@ -3,8 +3,10 @@ from typing import Any
 
 import pytest
 
+from app.api import routes_overview
 from app.engine.battle_orders import (
     BATTLE_HOURS,
+    ORDERS_LOOKBACK,
     BattleOrder,
     TargetChoice,
     choose_target,
@@ -14,6 +16,7 @@ from app.engine.battle_orders import (
     targets_own_company,
 )
 from app.engine.gametime import MSK
+from app.engine.host import account
 from app.engine.planner.decide import _Planner
 from app.engine.settings import BattleSection, Settings
 from app.engine.state.model import CharacterState, Obs, TargetSet
@@ -26,6 +29,12 @@ DEFENSE = "🛡Защита"
 
 def order(scope: str, target: str, at: datetime = BATTLE) -> BattleOrder:
     return BattleOrder(battle_at=at, scope=scope, target=target)
+
+
+def test_orders_lookback_is_one_constant_for_api_and_host() -> None:
+    assert routes_overview.ORDERS_LOOKBACK is ORDERS_LOOKBACK
+    assert account.ORDERS_LOOKBACK is ORDERS_LOOKBACK
+    assert ORDERS_LOOKBACK == timedelta(hours=2)
 
 
 def test_order_corp_beats_all() -> None:

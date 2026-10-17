@@ -27,7 +27,12 @@ from app.api.routes_daily import KindOut
 from app.api.routes_engine import IsoDatetime
 from app.db.accounts import AccountInfo
 from app.db.overview import FEED_TYPES, AccountInput, FeedCursor, FeedEvent
-from app.engine.battle_orders import BattleOrder, next_battles, targets_own_company
+from app.engine.battle_orders import (
+    ORDERS_LOOKBACK,
+    BattleOrder,
+    next_battles,
+    targets_own_company,
+)
 from app.engine.daily import (
     AccountTotals,
     KindSum,
@@ -43,8 +48,6 @@ from app.engine.settings import Target
 
 router = APIRouter(prefix="/api/v1/overview", tags=["overview"])
 
-# Приказ живёт до своей битвы; с запасом на разбор уже начавшейся.
-ORDERS_LOOKBACK = timedelta(hours=2)
 _TARGETS: tuple[str, ...] = get_args(Target)
 _COMPANY_NAMES = {code: name for name, code in COMPANIES.items()}
 BATTLE_TOO_CLOSE = "battle_too_close"

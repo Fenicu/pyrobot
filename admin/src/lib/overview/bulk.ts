@@ -145,9 +145,9 @@ function reasonText(code: string, extra: { host?: string | null; path?: string |
 
 function engineRow(r: EngineBulkResult): ResultRow {
 	const group: BulkGroup = r.status === 'done' ? 'applied' : r.status;
-	const text =
-		r.status === 'done' ? 'готово' : reasonText(r.reason ?? '', { host: r.host });
-	return { accountId: r.account_id, group, text };
+	if (r.status !== 'done') return { accountId: r.account_id, group, text: reasonText(r.reason ?? '', { host: r.host }) };
+	const note = r.warnings.includes('audit_failed') ? '; записано, но запись в журнал уведомлений не удалась' : '';
+	return { accountId: r.account_id, group, text: `готово${note}` };
 }
 
 function settingsRow(r: SettingsBulkResult): ResultRow {

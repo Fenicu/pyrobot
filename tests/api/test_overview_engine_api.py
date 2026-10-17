@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import pytest
@@ -9,7 +10,7 @@ from sqlalchemy import select
 from app.api.container import Container
 from app.db.models import User
 from app.engine.facade import EngineFacade, LockLostError
-from app.engine.settings import Settings, SettingsChange, StaticSettings
+from app.engine.settings import Settings, SettingsChange, SettingsConflict, StaticSettings
 from tests.api.conftest import Api, login, make_user
 from tests.engine.test_facade import build
 
@@ -35,6 +36,11 @@ class Broken(StaticSettings):
         self, change: SettingsChange, *, changed_by: str, expected_version: int | None = None
     ) -> tuple[Settings, int]:
         raise self._exc
+
+
+class DeadNotifier:
+    async def notify(self, level: str, code: str, text: str) -> None:
+        raise RuntimeError("notifications down")
 
 
 async def owner_id(c: Container, name: str = "admin") -> int:
@@ -86,7 +92,13 @@ async def test_pause_mixed_results(api: Api) -> None:
     assert resp.status_code == 200
     rows = {r["account_id"]: r for r in resp.json()["results"]}
     assert [r["account_id"] for r in resp.json()["results"]] == ids
-    assert rows[done] == {"account_id": done, "status": "done", "reason": None, "host": None}
+    assert rows[done] == {
+        "account_id": done,
+        "status": "done",
+        "reason": None,
+        "host": None,
+        "warnings": [],
+    }
     assert rows[same]["status"] == "unchanged" and rows[same]["reason"] == "already_paused"
     assert rows[away]["status"] == "skipped"
     assert (
@@ -98,6 +110,24 @@ async def test_pause_mixed_results(api: Api) -> None:
     assert rows[foreign]["status"] == "error" and rows[foreign]["reason"] == "account_not_found"
     assert [code for _, code, _ in rec.items] == ["engine_paused"]
     assert "admin" in rec.items[0][2]
+
+
+async def test_audit_failure_keeps_done_with_warning(api: Api) -> None:
+    a = await account(api.container, "a")
+    api.engines.put(build(notifier=DeadNotifier()), a)
+    row = (await post(api, "pause", [a])).json()["results"][0]
+    assert row["status"] == "done" and row["warnings"] == ["audit_failed"]
+
+
+async def test_settings_conflict_after_retries_is_version_conflict(
+    api: Api, caplog: pytest.LogCaptureFixture
+) -> None:
+    a = await account(api.container, "a")
+    api.engines.put(build(settings=Broken(SettingsConflict("moved"))), a)
+    resp = await post(api, "pause", [a])
+    row = resp.json()["results"][0]
+    assert row["status"] == "error" and row["reason"] == "version_conflict"
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
 
 
 async def test_resume_reports_already_running(api: Api) -> None:
