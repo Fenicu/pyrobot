@@ -5,6 +5,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.api.container import Container
+from app.api.cursor import encode_cursor
 from tests.api.conftest import Api, login, make_user
 from tests.api.test_overview_battle_api import NOW, Frozen, owner_of
 from tests.db.test_overview_feed import ledger, note
@@ -37,6 +38,9 @@ async def test_requires_session(api_client: AsyncClient) -> None:
     assert (await api_client.get(URL)).status_code == 401
 
 
+INT4_MAX, INT8_MAX = 2**31 - 1, 2**63 - 1
+
+
 @pytest.mark.parametrize(
     "params",
     [
@@ -44,16 +48,32 @@ async def test_requires_session(api_client: AsyncClient) -> None:
         {"limit": 101},
         {"types": "battle,nope"},
         {"account_ids": "1,x"},
+        {"account_ids": str(INT4_MAX + 1)},
+        {"account_ids": f"1,{2**40}"},
         {"after": "5"},
         {"after": "a:b"},
         {"after": "-1:2"},
+        {"after": f"{INT8_MAX + 1}:0"},
+        {"after": f"0:{INT8_MAX + 1}"},
         {"cursor": "garbage!"},
         {"cursor": "e1swXQ"},
+        {"cursor": encode_cursor([NOW.isoformat(), 0, INT8_MAX + 1])},
+        {"cursor": encode_cursor([NOW.isoformat(), 0, -1])},
+        {"cursor": encode_cursor([NOW.isoformat(), 0, float("inf")])},
+        {"cursor": encode_cursor(["0001-01-01T00:00:00+01:00", 0, 1])},
         {"cursor": "abc", "after": "1:1"},
     ],
 )
 async def test_bad_parameters_rejected(api: Api, params: dict[str, Any]) -> None:
     assert (await api.client.get(URL, params=params)).status_code == 422
+
+
+async def test_id_bounds_at_database_limits_are_accepted(api: Api) -> None:
+    row = await ledger(api.db, 1, ago(1))
+    body = await get(api, account_ids=f"1,{INT4_MAX}", after=f"{INT8_MAX}:{INT8_MAX}")
+    assert body["items"] == []
+    cursor = encode_cursor([ago(1).isoformat(), 0, INT8_MAX])
+    assert keys(await get(api, cursor=cursor)) == [f"l:{row}"]
 
 
 async def test_user_without_accounts_gets_empty_feed(api: Api) -> None:

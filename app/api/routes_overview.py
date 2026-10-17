@@ -549,6 +549,9 @@ async def overview_totals(
 
 FeedType = Literal["levelup", "battle", "factory", "metro", "lottery", "alert", "manual"]
 MAX_FEED_ACCOUNT_IDS = 200
+# Границы int4 (accounts.id) и int8 (id журнала и уведомлений): большее не пройдёт в БД.
+_INT4_MAX = 2**31 - 1
+_INT8_MAX = 2**63 - 1
 
 
 class FeedItemOut(BaseModel):
@@ -615,6 +618,8 @@ def _feed_accounts(raw: str | None) -> list[int] | None:
         ids = list(dict.fromkeys(int(p) for p in raw.split(",") if p.strip()))
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid account_ids") from exc
+    if any(i > _INT4_MAX for i in ids):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid account_ids")
     if len(ids) > MAX_FEED_ACCOUNT_IDS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "too many account_ids")
     return ids
@@ -623,16 +628,24 @@ def _feed_accounts(raw: str | None) -> list[int] | None:
 def _feed_cursor(raw: str) -> FeedCursor:
     at, rank, ident = decode_cursor(raw, 3)
     try:
-        return FeedCursor(datetime.fromisoformat(at), int(rank), int(ident))
-    except (TypeError, ValueError) as exc:
+        cursor = FeedCursor(datetime.fromisoformat(at), int(rank), int(ident))
+        # Год 1 с положительным поясом не переводится в UTC: OverflowError, а не 500 в драйвере БД
+        cursor.at.astimezone(UTC)
+    except (TypeError, ValueError, OverflowError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid cursor") from exc
+    if not 0 <= cursor.id <= _INT8_MAX:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid cursor")
+    return cursor
 
 
 def _feed_after(raw: str) -> tuple[int, int]:
     ledger, _, notes = raw.partition(":")
     if not (ledger.isascii() and ledger.isdigit() and notes.isascii() and notes.isdigit()):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid after")
-    return int(ledger), int(notes)
+    marks = int(ledger), int(notes)
+    if max(marks) > _INT8_MAX:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid after")
+    return marks
 
 
 @router.get(
