@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.engine.gametime import tasks_day
 from app.engine.gateway.types import Predicate
 from app.engine.market import dump_size, pick_stock
@@ -17,6 +19,7 @@ from app.engine.parsing.smoothie import (
 )
 from app.engine.parsing.stocks import StockBought, StockScreen
 from app.engine.parsing.tangerine import TangerineRefused
+from app.engine.planner.obligations import TARGET_LAST_CALL
 from app.engine.scenarios.context import (
     ScenarioContext,
     ScenarioStopped,
@@ -40,14 +43,24 @@ async def battle_target(
     ctx: ScenarioContext, state: CharacterState, params: Params
 ) -> ScenarioResult:
     target = str(params["target"])
+    # Решение планировщика несёт момент битвы: поставленная в очередь или повторённая цель после
+    # срока не уходит. Ручной запуск без `battle_at` срока не имеет.
+    raw = params.get("battle_at")
+    deadline = datetime.fromisoformat(str(raw)) - TARGET_LAST_CALL if raw else None
     async with ctx.lease("battle_target"):
         # Кнопки целей — из меню ⚔Битва, поэтому сначала открываем меню (nav), и без безопасной
         # точки между ними.
-        require(await ctx.send("⚔Битва", expect_events(BattleMenu)))
+        menu = await ctx.send("⚔Битва", expect_events(BattleMenu), deadline=deadline)
+        if menu.reason == "deadline":
+            return ScenarioResult("nothing", "battle_close")
+        require(menu)
         chosen = expect_events(
             BattleTargetSet, accept=lambda e: isinstance(e, BattleTargetSet) and e.target == target
         )
-        return finish(await ctx.send(target, chosen))
+        step = await ctx.send(target, chosen, deadline=deadline)
+        if step.reason == "deadline":
+            return ScenarioResult("nothing", "battle_close")
+        return finish(step)
 
 
 async def stocks_dump(

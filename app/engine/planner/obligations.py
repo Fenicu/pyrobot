@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import asdict
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
 from app.engine.battle_orders import TargetChoice, order_choice
@@ -135,7 +135,8 @@ class Obligations(PlannerBase):
         desired = self.target_for(battle)
         if self.target_ready(battle, desired):
             return None
-        return self.act("battle_target", {"target": desired}, "battle_target")
+        params = {"target": desired, "battle_at": battle.astimezone(UTC).isoformat()}
+        return self.act("battle_target", params, "battle_target")
 
     def target_choice(self, battle: datetime) -> TargetChoice:
         """Цель на битву: приказ штаба, затем своя на её час по Москве, затем общая."""

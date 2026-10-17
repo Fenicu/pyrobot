@@ -1,10 +1,13 @@
 import re
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import pytest
 
 from app.engine.gametime import tasks_day
+from app.engine.planner.obligations import TARGET_LAST_CALL
+from app.engine.scenarios.context import ScenarioContext
 from app.engine.scenarios.library import run_scenario
 from app.engine.scenarios.obligations import (
     battle_target,
@@ -49,6 +52,69 @@ async def test_battle_target_without_menu_stops(world: World) -> None:
         "timeout",
         ["⚔Битва"],
     )
+
+
+def spy_sends(monkeypatch: pytest.MonkeyPatch, *, past_from: int | None = None) -> list[Any]:
+    """Сроки, с которыми сценарий шлёт команды; `past_from` - с этой по счёту отправки срок
+    подменяется прошедшим."""
+    deadlines: list[Any] = []
+    original = ScenarioContext.send
+
+    async def send(self: ScenarioContext, text: str, expect: Any, **kw: Any) -> Any:
+        deadlines.append(kw.get("deadline"))
+        if past_from is not None and len(deadlines) > past_from:
+            kw["deadline"] = datetime.now(UTC) - timedelta(seconds=1)
+        return await original(self, text, expect, **kw)
+
+    monkeypatch.setattr(ScenarioContext, "send", send)
+    return deadlines
+
+
+async def test_battle_target_sends_with_deadline(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world.game.on_text("⚔Битва", ("screens", 3613862))
+    world.game.on_text("📯Pied Piper", ("battle", 3624402))
+    battle = datetime.now(UTC) + timedelta(hours=2)
+    deadlines = spy_sends(monkeypatch)
+    params = {"target": "📯Pied Piper", "battle_at": battle.isoformat()}
+    result = await run_scenario(battle_target, context(world), CharacterState(), params)
+    assert result.status == "done"
+    assert deadlines == [battle - TARGET_LAST_CALL] * 2
+
+
+async def test_battle_target_without_battle_at_has_no_deadline(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world.game.on_text("⚔Битва", ("screens", 3613862))
+    world.game.on_text("📯Pied Piper", ("battle", 3624402))
+    deadlines = spy_sends(monkeypatch)
+    params = {"target": "📯Pied Piper"}
+    result = await run_scenario(battle_target, context(world), CharacterState(), params)
+    assert result.status == "done"
+    assert deadlines == [None, None]
+
+
+async def test_battle_target_past_deadline_is_battle_close(world: World) -> None:
+    battle = datetime.now(UTC) + timedelta(seconds=30)
+    params = {"target": "📯Pied Piper", "battle_at": battle.isoformat()}
+    result = await run_scenario(battle_target, context(world), CharacterState(), params)
+    assert (result.status, result.reason) == ("nothing", "battle_close")
+    assert world.game.payloads() == []
+    assert world.gateway.lease is None
+
+
+async def test_battle_target_deadline_passes_between_menu_and_button(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world.game.on_text("⚔Битва", ("screens", 3613862))
+    battle = datetime.now(UTC) + timedelta(hours=2)
+    spy_sends(monkeypatch, past_from=1)
+    params = {"target": "📯Pied Piper", "battle_at": battle.isoformat()}
+    result = await run_scenario(battle_target, context(world), CharacterState(), params)
+    assert (result.status, result.reason) == ("nothing", "battle_close")
+    assert world.game.payloads() == ["⚔Битва"]
+    assert world.gateway.lease is None
 
 
 async def own_company(world: World, mark: str = "☣️") -> CharacterState:

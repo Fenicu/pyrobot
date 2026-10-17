@@ -95,6 +95,12 @@ def act(decision: Decision) -> tuple[str, dict[str, Any]]:
     return decision.scenario, decision.params
 
 
+def target_act(decision: Decision) -> tuple[str, dict[str, Any]]:
+    """Сценарий и параметры решения без момента битвы (его проверяет отдельный тест)."""
+    scenario, params = act(decision)
+    return scenario, {k: v for k, v in params.items() if k != "battle_at"}
+
+
 def verdicts(decision: Decision) -> dict[str, str]:
     return {c.scenario: c.verdict for c in decision.candidates}
 
@@ -106,14 +112,14 @@ NOON = msk(12)
 
 def test_target_set_when_profile_shows_none() -> None:
     decision = decide(state(NOON, battle_target=None), only(), NOON)
-    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
+    assert target_act(decision) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_target_override_for_battle_hour() -> None:
     battle = msk(13)
     cfg = only(battle={"overrides": {13: "🛡Защита"}})
     decision = decide(state(NOON, battle_at=battle, battle_target=None), cfg, NOON)
-    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
+    assert target_act(decision) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_invisible_defense_trusted_by_battle_it_was_set_for() -> None:
@@ -127,7 +133,7 @@ def test_invisible_defense_trusted_by_battle_it_was_set_for() -> None:
     assert act(decide(stale, cfg, NOON))[0] == "battle_target"
     changed = only(battle={"target": "📯Pied Piper"})
     decision = decide(ready, changed, NOON)
-    assert act(decision) == ("battle_target", {"target": "📯Pied Piper"})
+    assert target_act(decision) == ("battle_target", {"target": "📯Pied Piper"})
 
 
 def test_defense_shown_in_profile_is_ready() -> None:
@@ -136,12 +142,12 @@ def test_defense_shown_in_profile_is_ready() -> None:
     shown = state(NOON, battle_at=battle, battle_target="🛡Защита")
     assert "battle_target" not in verdicts(decide(shown, cfg, NOON))
     attack = state(NOON, battle_at=battle, battle_target="🤖Hooli")
-    assert act(decide(attack, cfg, NOON)) == ("battle_target", {"target": "🛡Защита"})
+    assert target_act(decide(attack, cfg, NOON)) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_profile_with_other_target_is_reset() -> None:
     decision = decide(state(NOON, battle_target="🤖Hooli"), only(), NOON)
-    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
+    assert target_act(decision) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_target_old_profile_does_not_count() -> None:
@@ -153,7 +159,7 @@ def test_target_old_profile_does_not_count() -> None:
 def test_target_set_while_sleeping() -> None:
     sleeping = BusyState(activity="sleep_hotel", until=NOON + timedelta(hours=3))
     decision = decide(state(NOON, busy=sleeping, battle_target=None), only(), NOON)
-    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
+    assert target_act(decision) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_no_target_in_last_minute() -> None:
@@ -188,7 +194,7 @@ def test_order_priority_matches_decision_and_hints(
     orders: list[BattleOrder], target: str, source: str
 ) -> None:
     st = hq_state()
-    assert act(decide(st, HQ_CFG, NOON, battle_orders=orders)) == (
+    assert target_act(decide(st, HQ_CFG, NOON, battle_orders=orders)) == (
         "battle_target",
         {"target": target},
     )
@@ -213,13 +219,13 @@ def test_order_resets_target_already_set_by_settings() -> None:
     assert isinstance(decide(shown, cfg, NOON), Wait)
     order = BattleOrder(HQ_BATTLE, "all", "☂️Umbrella")
     decision = decide(shown, cfg, NOON, battle_orders=[order])
-    assert act(decision) == ("battle_target", {"target": "☂️Umbrella"})
+    assert target_act(decision) == ("battle_target", {"target": "☂️Umbrella"})
 
 
 def test_target_returns_to_settings_when_order_is_gone() -> None:
     cfg = only(battle={"target": "🤖Hooli"})
     shown = hq_state(battle_target="☂️Umbrella")
-    assert act(decide(shown, cfg, NOON, battle_orders=())) == (
+    assert target_act(decide(shown, cfg, NOON, battle_orders=())) == (
         "battle_target",
         {"target": "🤖Hooli"},
     )
@@ -232,10 +238,18 @@ def test_order_silent_in_last_minute() -> None:
     assert not isinstance(decision, Act)
 
 
+def test_decision_carries_battle_moment() -> None:
+    decision = decide(hq_state(), HQ_CFG, NOON, battle_orders=[ALL_ORDER])
+    assert act(decision) == (
+        "battle_target",
+        {"target": "🤖Hooli", "battle_at": "2026-09-26T10:00:00+00:00"},
+    )
+
+
 def test_order_for_other_battle_does_not_apply() -> None:
     st = state(NOON, battle_at=msk(22), battle_target=None)
     other = BattleOrder(HQ_BATTLE, "all", "🤖Hooli")
-    assert act(decide(st, HQ_CFG, NOON, battle_orders=[other])) == (
+    assert target_act(decide(st, HQ_CFG, NOON, battle_orders=[other])) == (
         "battle_target",
         {"target": "📯Pied Piper"},
     )
@@ -263,7 +277,7 @@ def test_unknown_orders_do_not_hide_stale_battle_refresh() -> None:
 def test_all_order_on_own_company_is_defense() -> None:
     st = hq_state(company="hooli")
     decision = decide(st, HQ_CFG, NOON, battle_orders=[ALL_ORDER])
-    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
+    assert target_act(decision) == ("battle_target", {"target": "🛡Защита"})
     hints = outlook(st, HQ_CFG, NOON, battle_orders=[ALL_ORDER]).hints
     assert hints.battle_source == "order_all"
 
@@ -271,7 +285,7 @@ def test_all_order_on_own_company_is_defense() -> None:
 def test_all_order_with_unknown_company_stays_on_settings() -> None:
     st = hq_state(company=None)
     decision = decide(st, HQ_CFG, NOON, battle_orders=[ALL_ORDER])
-    assert act(decision) == ("battle_target", {"target": "⚡️Stark Ind."})
+    assert target_act(decision) == ("battle_target", {"target": "⚡️Stark Ind."})
 
 
 def test_orders_do_not_touch_settings() -> None:
@@ -303,7 +317,7 @@ def test_hourly_countdown_seen_early_in_the_hour() -> None:
     assert battle_hour(msk(13) + timedelta(seconds=1), shown) == msk(13)
     cfg = only(battle={"overrides": {10: "🛡Защита"}})
     holiday = state(seen, battle_at=seen + timedelta(hours=47), battle_target=None)
-    assert act(decide(holiday, cfg, seen)) == ("battle_target", {"target": "🛡Защита"})
+    assert target_act(decide(holiday, cfg, seen)) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_override_by_hour_of_rounded_down_countdown() -> None:
@@ -312,7 +326,7 @@ def test_override_by_hour_of_rounded_down_countdown() -> None:
     seen = datetime(2026, 9, 26, 12, 59, 6, tzinfo=MSK)
     cfg = only(battle={"overrides": {13: "🛡Защита"}})
     decision = decide(state(now, battle_at=seen, battle_target=None), cfg, now)
-    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
+    assert target_act(decision) == ("battle_target", {"target": "🛡Защита"})
 
 
 def test_holiday_target_matches_battle_of_other_precision() -> None:

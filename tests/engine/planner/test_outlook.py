@@ -181,7 +181,8 @@ def test_asleep_shows_timers_after_wake_without_their_acts() -> None:
 
 def test_asleep_sets_only_battle_target() -> None:
     view = view_of(awake(busy=SLEEP, battle_target="🤖Hooli", prizebox=True))
-    assert act(view.decision) == ("battle_target", {"target": "🛡Защита"})
+    scenario, params = act(view.decision)
+    assert (scenario, params["target"]) == ("battle_target", "🛡Защита")
     assert [(c.scenario, c.verdict) for c in view.considered] == [("battle_target", "chosen")]
     assert view.also_ready == ()
 

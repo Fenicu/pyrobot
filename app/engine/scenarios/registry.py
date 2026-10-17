@@ -129,6 +129,7 @@ def _specs() -> dict[str, ScenarioSpec]:
             "battle_target",
             obligations.battle_target,
             True,
+            # `battle_at` необязательный (ISO, UTC): срок отправки; ручной запуск идёт без него.
             required={"target": _one_of(get_args(Target))},
         ),
         ScenarioSpec(
