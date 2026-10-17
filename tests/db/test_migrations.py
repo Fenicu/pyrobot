@@ -150,6 +150,27 @@ async def test_0022_actions_sent_msg_id() -> None:
     await asyncio.to_thread(command.upgrade, _cfg(), "head")
 
 
+async def test_0023_battle_orders() -> None:
+    from alembic.script import ScriptDirectory
+
+    assert ScriptDirectory.from_config(_cfg()).get_current_head() == "0023"
+    await asyncio.to_thread(command.downgrade, _cfg(), "0022")
+    assert "battle_orders" not in await _tables()
+    await asyncio.to_thread(command.upgrade, _cfg(), "0023")
+    assert "battle_orders" in await _tables()
+    indexes = await _exec(
+        "SELECT indexname FROM pg_indexes WHERE indexname IN "
+        "('ix_ledger_account_at', 'ix_ledger_account_recorded') ORDER BY indexname"
+    )
+    assert indexes == [("ix_ledger_account_at",), ("ix_ledger_account_recorded",)]
+    await asyncio.to_thread(command.downgrade, _cfg(), "0022")
+    assert "battle_orders" not in await _tables()
+    assert await _exec(
+        "SELECT indexname FROM pg_indexes WHERE indexname LIKE 'ix_ledger_account_%'"
+    ) == [("ix_ledger_account_day",)]
+    await asyncio.to_thread(command.upgrade, _cfg(), "head")
+
+
 def _at(minute: int) -> datetime:
     return datetime(2026, 9, 27, 12, tzinfo=UTC) + timedelta(minutes=minute)
 

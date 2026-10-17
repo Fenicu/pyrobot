@@ -214,6 +214,9 @@ class LedgerRow(Base):
             name="uq_ledger_effect",
         ),
         Index("ix_ledger_account_day", "account_id", "day"),
+        # Лента обзора (порядок по времени события) и начало журнала аккаунта (`min(recorded_at)`).
+        Index("ix_ledger_account_at", "account_id", text("at DESC"), text("id DESC")),
+        Index("ix_ledger_account_recorded", "account_id", "recorded_at"),
         # Итог, который приходит разными сообщениями (отчёты фабрики и битвы), — один ряд.
         Index(
             "uq_ledger_outcome_key",
@@ -478,3 +481,24 @@ class UserUiPref(Base):
     key: Mapped[str] = mapped_column(String(32), primary_key=True)
     data: Mapped[dict[str, Any]]
     updated_at: Mapped[datetime] = _now_col()
+
+
+class BattleOrderRow(Base):
+    """Приказ штаба: цель на конкретную битву для всех аккаунтов учётки или одной корпорации."""
+
+    __tablename__ = "battle_orders"
+    __table_args__ = (
+        CheckConstraint(
+            "scope IN ('all', 'piper', 'hooli', 'stark', 'umbrl', 'wayne', 'bmesa')",
+            name="ck_battle_orders_scope",
+        ),
+    )
+
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    battle_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    scope: Mapped[str] = mapped_column(String(8), primary_key=True)
+    target: Mapped[str] = mapped_column(String(32))
+    created_by: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = _now_col()
