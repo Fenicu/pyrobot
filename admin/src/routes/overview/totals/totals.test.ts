@@ -74,6 +74,17 @@ describe('экран «Итоги»', () => {
 		expect(within(screen.getByRole('table', { name: 'По аккаунтам' })).getByRole('link', { name: 'Альфа' })).toBeInTheDocument();
 	});
 
+	it('пока список аккаунтов не пришёл, вместо «#id» - ожидание; имена появляются сразу', async () => {
+		page.url = new URL('/overview/totals', 'http://app.invalid');
+		h.body = week;
+		h.list = null;
+		render(Page);
+		await waitFor(() => expect(asked()).toEqual(['7']));
+		expect(await screen.findByRole('status')).toHaveTextContent(/^Загрузка…$/);
+		expect(screen.queryByRole('region', { name: 'Всего' })).toBeNull();
+		expect(screen.queryByText(/#\d/)).toBeNull();
+	});
+
 	it('?days=30 берётся из адреса; смена адреса перечитывает другой период', async () => {
 		show('/overview/totals?days=30', { ...week, days: 30 });
 		expect(await screen.findByRole('region', { name: 'Всего' })).toBeInTheDocument();
