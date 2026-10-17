@@ -259,7 +259,9 @@ class _Planner(DailyTasks):
     def hints(self, next_deed: NextDeed | None) -> PlanHints:
         battle = self.upcoming_battle()
         tickets = self.cfg.lottery.tickets
-        choice = self.target_choice(battle) if battle is not None else None
+        # Приказы неизвестны: цель не показывается ни по приказу, ни по настройкам.
+        known = battle is not None and self.battle_orders is not None
+        choice = self.target_choice(battle) if battle is not None and known else None
         return PlanHints(
             battle_target=choice.target if choice is not None else None,
             battle_source=choice.source if choice is not None else None,

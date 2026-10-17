@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 
 from app.engine.battle_orders import BattleOrder
-from app.engine.planner.loop import ORDERS_TTL_S, PlannerLoop
+from app.engine.planner.loop import ORDERS_RETRY_S, ORDERS_TTL_S, PlannerLoop
 from app.engine.planner.store import MemoryPlannerStore
 from app.engine.planner.types import Act
 from app.engine.settings import StaticSettings
@@ -158,8 +158,58 @@ async def test_first_read_failure_without_cache_is_unknown() -> None:
     await rig.loop.step()
     assert rig.targets() == []
     source.fail = False
+    rig.clock.mono += ORDERS_RETRY_S
     await rig.loop.step()
     assert rig.targets() == ["🤖Hooli"]
+
+
+async def test_persistent_read_failure_backs_off_without_dirty_cache() -> None:
+    source = Source(HOOLI)
+    rig = Rig(source)
+    await rig.loop.step()
+    rig.clock.mono += ORDERS_TTL_S + 1
+    source.fail = True
+    await rig.loop.step()
+    await rig.loop.step()
+    assert source.reads == 2
+    rig.clock.mono += ORDERS_RETRY_S
+    await rig.loop.step()
+    assert source.reads == 3
+    assert rig.targets() == ["🤖Hooli"] * 4
+
+
+async def test_first_read_failure_backs_off_too() -> None:
+    source = Source(HOOLI)
+    source.fail = True
+    rig = Rig(source)
+    await rig.loop.step()
+    await rig.loop.step()
+    assert source.reads == 1
+
+
+async def test_dirty_read_failure_is_retried_every_pass() -> None:
+    source = Source(HOOLI)
+    rig = Rig(source)
+    await rig.loop.step()
+    source.fail = True
+    rig.loop.orders_changed()
+    await rig.loop.step()
+    await rig.loop.step()
+    assert source.reads == 3
+
+
+async def test_orders_changed_clears_battle_target_backoff() -> None:
+    rig = Rig(Source())
+    loop = rig.loop
+    later = NOW.replace(hour=23)
+    loop._cooldowns["battle_target"] = later
+    loop._cooldowns["deed:job"] = later
+    loop._held["battle_target"] = later
+    loop._failures["battle_target"] = 3
+    loop._failed_at["battle_target"] = NOW
+    loop.orders_changed()
+    assert "battle_target" not in loop._cooldowns | loop._held | loop._failures | loop._failed_at
+    assert loop._cooldowns["deed:job"] == later
 
 
 async def test_orders_changed_wakes_loop_and_bumps_revision() -> None:
@@ -200,5 +250,6 @@ async def test_plan_with_dirty_failed_read_is_unknown() -> None:
     view = await rig.loop.outlook()
     verdicts = {c.scenario: c.verdict for c in view.outlook.considered}
     assert verdicts["battle_target"] == "orders_unknown"
-    assert view.outlook.hints.battle_source == "default"
+    assert view.outlook.hints.battle_target is None
+    assert view.outlook.hints.battle_source is None
     assert "orders_unknown" in {w.kind for w in view.outlook.wakeups}

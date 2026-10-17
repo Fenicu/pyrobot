@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.engine.gametime import tasks_day
 from app.engine.gateway.types import Predicate
@@ -39,14 +39,26 @@ from app.engine.state.model import CharacterState
 _DROPS = {fruit: n for n, fruit in enumerate(INGREDIENTS, start=1)}
 
 
+def _deadline(raw: object) -> datetime | None:
+    """Срок отправки по `battle_at`; нечитаемый момент - без срока (ручной запуск не падает)."""
+    if not raw:
+        return None
+    try:
+        battle = datetime.fromisoformat(str(raw))
+    except ValueError:
+        return None
+    if battle.tzinfo is None:
+        battle = battle.replace(tzinfo=UTC)
+    return battle - TARGET_LAST_CALL
+
+
 async def battle_target(
     ctx: ScenarioContext, state: CharacterState, params: Params
 ) -> ScenarioResult:
     target = str(params["target"])
     # Решение планировщика несёт момент битвы: поставленная в очередь или повторённая цель после
     # срока не уходит. Ручной запуск без `battle_at` срока не имеет.
-    raw = params.get("battle_at")
-    deadline = datetime.fromisoformat(str(raw)) - TARGET_LAST_CALL if raw else None
+    deadline = _deadline(params.get("battle_at"))
     async with ctx.lease("battle_target"):
         # Кнопки целей — из меню ⚔Битва, поэтому сначала открываем меню (nav), и без безопасной
         # точки между ними.

@@ -113,6 +113,17 @@ async def test_old_rows_pruned_on_replace(clean_db: Database) -> None:
     assert await _rows(clean_db) == {(uid, BATTLE, "all", HOOLI)}
 
 
+async def test_prune_leaves_other_owners_rows(clean_db: Database) -> None:
+    bob, eve = await _user(clean_db, "bob"), await _user(clean_db, "eve")
+    old = datetime.now(UTC) - timedelta(days=2)
+    async with clean_db.sessions() as session, session.begin():
+        session.add(
+            BattleOrderRow(owner_id=eve, battle_at=old, scope="all", target=HOOLI, created_by="x")
+        )
+    await BattleOrderRepo(clean_db).replace(bob, BATTLE, {"all": HOOLI}, "bob")
+    assert (eve, old, "all", HOOLI) in await _rows(clean_db)
+
+
 async def test_cascade_on_user_delete(clean_db: Database) -> None:
     uid = await _user(clean_db, "bob")
     await BattleOrderRepo(clean_db).replace(uid, BATTLE, {"all": HOOLI}, "bob")

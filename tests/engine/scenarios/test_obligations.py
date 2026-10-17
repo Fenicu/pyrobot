@@ -95,6 +95,32 @@ async def test_battle_target_without_battle_at_has_no_deadline(
     assert deadlines == [None, None]
 
 
+@pytest.mark.parametrize("junk", ["не время", "2026-13-45", ""])
+async def test_battle_target_invalid_battle_at_means_no_deadline(
+    world: World, monkeypatch: pytest.MonkeyPatch, junk: str
+) -> None:
+    world.game.on_text("⚔Битва", ("screens", 3613862))
+    world.game.on_text("📯Pied Piper", ("battle", 3624402))
+    deadlines = spy_sends(monkeypatch)
+    params = {"target": "📯Pied Piper", "battle_at": junk}
+    result = await run_scenario(battle_target, context(world), CharacterState(), params)
+    assert result.status == "done"
+    assert deadlines == [None, None]
+
+
+async def test_battle_target_naive_battle_at_is_utc(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    world.game.on_text("⚔Битва", ("screens", 3613862))
+    world.game.on_text("📯Pied Piper", ("battle", 3624402))
+    battle = datetime.now(UTC) + timedelta(hours=2)
+    deadlines = spy_sends(monkeypatch)
+    params = {"target": "📯Pied Piper", "battle_at": battle.replace(tzinfo=None).isoformat()}
+    result = await run_scenario(battle_target, context(world), CharacterState(), params)
+    assert result.status == "done"
+    assert deadlines == [battle - TARGET_LAST_CALL] * 2
+
+
 async def test_battle_target_past_deadline_is_battle_close(world: World) -> None:
     battle = datetime.now(UTC) + timedelta(seconds=30)
     params = {"target": "📯Pied Piper", "battle_at": battle.isoformat()}

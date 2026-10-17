@@ -42,6 +42,8 @@ from app.engine.state.model import SLOW_MAX_AGE, CharacterState, is_fresh
 log = logging.getLogger(__name__)
 # Приказы штаба читаются из базы не чаще раза в столько секунд, пока их не изменили.
 ORDERS_TTL_S = 30.0
+# После сбоя чтения (кэш не «изменён») база не спрашивается столько секунд.
+ORDERS_RETRY_S = 5.0
 # Серия неудач сценария: 5 мин, 10, 20… но не больше 2 ч.
 RETRY_AFTER = timedelta(minutes=5)
 MAX_RETRY = timedelta(hours=2)
@@ -230,6 +232,7 @@ class PlannerLoop:
         self._orders_read_at: float | None = None
         self._orders_gen = 0
         self._orders_dirty = False
+        self._orders_retry_at: float | None = None
         self._last_refresh: dict[str, datetime] = {}
         self._cooldowns: dict[str, datetime] = {}
         # Отложенные подавлением: снимаются при смене режима движка.
@@ -286,6 +289,10 @@ class PlannerLoop:
         """Приказы штаба записаны: кэш устарел, «План бота» не из кэша, цикл просыпается."""
         self._orders_gen += 1
         self._orders_dirty = True
+        self._orders_retry_at = None
+        # Отказ или сбой цели до приказа не должен держать новый приказ до конца битвы.
+        for book in (self._cooldowns, self._held, self._failures, self._failed_at, self._silent):
+            book.pop("battle_target", None)
         self.revision += 1
         self.wake()
 
@@ -307,18 +314,26 @@ class PlannerLoop:
             and at - read_at < ORDERS_TTL_S
         ):
             return self._orders
+        retry_at = self._orders_retry_at
+        if not self._orders_dirty and retry_at is not None and at < retry_at:
+            return self._orders
         gen = self._orders_gen
         try:
             read = await source.active(now)
         except Exception:
             log.exception("battle orders not loaded")
             # Подтверждённое изменение не прочитано - старый набор мог быть отменён.
-            return None if self._orders_dirty else self._orders
+            if self._orders_dirty:
+                return None
+            if publish:
+                self._orders_retry_at = at + ORDERS_RETRY_S
+            return self._orders
         if gen != self._orders_gen:
             return None
         if publish:
             self._orders, self._orders_read_at = read, at
             self._orders_dirty = False
+            self._orders_retry_at = None
         return read
 
     async def request(

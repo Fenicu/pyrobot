@@ -278,6 +278,11 @@ def test_unknown_orders_without_other_work_wake_in_five_seconds() -> None:
     assert verdicts(decision)["battle_target"] == "orders_unknown"
 
 
+def test_unknown_orders_give_no_target_hint() -> None:
+    hints = outlook(hq_state(), HQ_CFG, NOON, battle_orders=None).hints
+    assert (hints.battle_target, hints.battle_source) == (None, None)
+
+
 def test_unknown_orders_send_no_target_even_when_settings_differ() -> None:
     st = hq_state(battle_target="☂️Umbrella")
     decision = decide(st, HQ_CFG, NOON, battle_orders=None)
