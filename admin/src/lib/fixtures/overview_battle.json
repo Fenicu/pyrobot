@@ -1,0 +1,321 @@
+{
+  "now": "2026-10-17T09:18:00+00:00",
+  "source": "observed",
+  "targets": [
+    {
+      "name": "📯Pied Piper",
+      "code": "piper"
+    },
+    {
+      "name": "🤖Hooli",
+      "code": "hooli"
+    },
+    {
+      "name": "⚡️Stark Ind.",
+      "code": "stark"
+    },
+    {
+      "name": "☂️Umbrella",
+      "code": "umbrl"
+    },
+    {
+      "name": "🎩Wayne Ent.",
+      "code": "wayne"
+    },
+    {
+      "name": "☣️Black Mesa",
+      "code": "bmesa"
+    },
+    {
+      "name": "🛡Защита",
+      "code": null
+    }
+  ],
+  "companies": [
+    {
+      "code": "piper",
+      "name": "📯Pied Piper",
+      "accounts": 1
+    },
+    {
+      "code": "hooli",
+      "name": "🤖Hooli",
+      "accounts": 1
+    },
+    {
+      "code": "bmesa",
+      "name": "☣️Black Mesa",
+      "accounts": 2
+    }
+  ],
+  "battles": [
+    {
+      "battle_at": "2026-10-17T10:00:00+00:00",
+      "hour_msk": 13,
+      "in_s": 2520,
+      "editable": true,
+      "note": null,
+      "orders": {
+        "all": "🤖Hooli",
+        "corporations": {
+          "bmesa": "☂️Umbrella"
+        }
+      },
+      "accounts": [
+        {
+          "id": 1,
+          "name": "Iko",
+          "company": "bmesa",
+          "level": 54,
+          "skills": {
+            "practice": 54,
+            "theory": 40,
+            "cunning": 22,
+            "wisdom": 18
+          },
+          "desired": "☂️Umbrella",
+          "source": "order_corp",
+          "in_game": "☂️Umbrella",
+          "ready": true,
+          "applies": true,
+          "note": null,
+          "engine": "local"
+        },
+        {
+          "id": 2,
+          "name": "Fenicu",
+          "company": "bmesa",
+          "level": 71,
+          "skills": {
+            "practice": 71,
+            "theory": 66,
+            "cunning": 40,
+            "wisdom": 30
+          },
+          "desired": "☂️Umbrella",
+          "source": "order_corp",
+          "in_game": "🤖Hooli",
+          "ready": false,
+          "applies": true,
+          "note": null,
+          "engine": "local"
+        },
+        {
+          "id": 3,
+          "name": "Khalida",
+          "company": "hooli",
+          "level": 41,
+          "skills": {
+            "practice": 41,
+            "theory": 30,
+            "cunning": 12,
+            "wisdom": 9
+          },
+          "desired": "🛡Защита",
+          "source": "order_all",
+          "in_game": null,
+          "ready": null,
+          "applies": true,
+          "note": "own_company",
+          "engine": "local"
+        },
+        {
+          "id": 4,
+          "name": "Retro",
+          "company": "piper",
+          "level": null,
+          "skills": null,
+          "desired": "🤖Hooli",
+          "source": "order_all",
+          "in_game": null,
+          "ready": null,
+          "applies": false,
+          "note": "paused",
+          "engine": "local"
+        }
+      ],
+      "summary": [
+        {
+          "target": "🤖Hooli",
+          "count": 1,
+          "level_sum": 0,
+          "level_avg": null,
+          "unknown": 1,
+          "skills": {
+            "practice": 0,
+            "theory": 0,
+            "cunning": 0,
+            "wisdom": 0
+          },
+          "account_ids": [
+            4
+          ],
+          "ready": 0
+        },
+        {
+          "target": "☂️Umbrella",
+          "count": 2,
+          "level_sum": 125,
+          "level_avg": 62.5,
+          "unknown": 0,
+          "skills": {
+            "practice": 125,
+            "theory": 106,
+            "cunning": 62,
+            "wisdom": 48
+          },
+          "account_ids": [
+            1,
+            2
+          ],
+          "ready": 1
+        },
+        {
+          "target": "🛡Защита",
+          "count": 1,
+          "level_sum": 41,
+          "level_avg": 41.0,
+          "unknown": 0,
+          "skills": {
+            "practice": 41,
+            "theory": 30,
+            "cunning": 12,
+            "wisdom": 9
+          },
+          "account_ids": [
+            3
+          ],
+          "ready": 0
+        }
+      ]
+    },
+    {
+      "battle_at": "2026-10-17T19:00:00+00:00",
+      "hour_msk": 22,
+      "in_s": 34920,
+      "editable": true,
+      "note": null,
+      "orders": {
+        "all": null,
+        "corporations": {}
+      },
+      "accounts": [
+        {
+          "id": 1,
+          "name": "Iko",
+          "company": "bmesa",
+          "level": 54,
+          "skills": {
+            "practice": 54,
+            "theory": 40,
+            "cunning": 22,
+            "wisdom": 18
+          },
+          "desired": "📯Pied Piper",
+          "source": "default",
+          "in_game": null,
+          "ready": null,
+          "applies": true,
+          "note": null,
+          "engine": "local"
+        },
+        {
+          "id": 2,
+          "name": "Fenicu",
+          "company": "bmesa",
+          "level": 71,
+          "skills": {
+            "practice": 71,
+            "theory": 66,
+            "cunning": 40,
+            "wisdom": 30
+          },
+          "desired": "📯Pied Piper",
+          "source": "default",
+          "in_game": null,
+          "ready": null,
+          "applies": true,
+          "note": null,
+          "engine": "local"
+        },
+        {
+          "id": 3,
+          "name": "Khalida",
+          "company": "hooli",
+          "level": 41,
+          "skills": {
+            "practice": 41,
+            "theory": 30,
+            "cunning": 12,
+            "wisdom": 9
+          },
+          "desired": "📯Pied Piper",
+          "source": "default",
+          "in_game": null,
+          "ready": null,
+          "applies": true,
+          "note": null,
+          "engine": "local"
+        },
+        {
+          "id": 4,
+          "name": "Retro",
+          "company": "piper",
+          "level": null,
+          "skills": null,
+          "desired": "🛡Защита",
+          "source": "default",
+          "in_game": null,
+          "ready": null,
+          "applies": false,
+          "note": "paused",
+          "engine": "local"
+        }
+      ],
+      "summary": [
+        {
+          "target": "📯Pied Piper",
+          "count": 3,
+          "level_sum": 166,
+          "level_avg": 55.3,
+          "unknown": 0,
+          "skills": {
+            "practice": 166,
+            "theory": 136,
+            "cunning": 74,
+            "wisdom": 57
+          },
+          "account_ids": [
+            1,
+            2,
+            3
+          ],
+          "ready": 0
+        },
+        {
+          "target": "🛡Защита",
+          "count": 1,
+          "level_sum": 0,
+          "level_avg": null,
+          "unknown": 1,
+          "skills": {
+            "practice": 0,
+            "theory": 0,
+            "cunning": 0,
+            "wisdom": 0
+          },
+          "account_ids": [
+            4
+          ],
+          "ready": 0
+        }
+      ]
+    }
+  ],
+  "skipped": [
+    {
+      "account_id": 5,
+      "reason": "disabled"
+    }
+  ]
+}
