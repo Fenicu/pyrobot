@@ -16,6 +16,7 @@ LEVEL_KEY = "level"
 # Траты и потери — отдельной строкой; порядок — для показа.
 LOSS_ORDER = (
     "robbery",
+    "rob_fight_lost",
     "deed_start",
     "trip_start",
     "hotel",
@@ -45,6 +46,7 @@ INCOME_ORDER = (
     "levelup",
     "sleep",
     "robbery_fight",
+    "rob",
     "tangerine_gift",
     "exchange",
     "shark",

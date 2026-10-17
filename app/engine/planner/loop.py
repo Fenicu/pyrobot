@@ -895,6 +895,8 @@ class PlannerLoop:
             # Запуск относится к дню своего начала: вчерашний сегодняшний счётчик не меняет.
             if is_deed and today is not None and tasks_day(started) == today[0]:
                 today[1][name] = today[1].get(name, 0) + 1
+            if name == "deed:rob":
+                self._cooldowns[key] = finished + timedelta(hours=1)
             if name == "team_pick" and act.reason.endswith(UNKNOWN_FIRE):
                 await self._notifier.notify("warn", "team_pick_unknown", _blind_team_pick(act))
             return
@@ -917,6 +919,12 @@ class PlannerLoop:
             self._cooldowns[key] = finished + hold
         elif result.status == "refused" and (name, result.reason) in REFUSED_HOLD:
             self._cooldowns[key] = finished + REFUSED_HOLD[(name, result.reason)]
+        elif result.status == "refused" and (name, result.reason) == ("deed:rob", "rob_cooldown"):
+            state = self._state()
+            ready = state.rob_ready_at.value if state and state.rob_ready_at else None
+            self._cooldowns[key] = (
+                ready if ready is not None and ready > finished else finished + RETRY_AFTER
+            )
         elif result.status == "refused" and result.reason in LONG_REFUSALS:
             self._cooldowns[key] = day_start(tasks_day(started) + timedelta(days=1))
         else:

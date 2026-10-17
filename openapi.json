@@ -7904,6 +7904,16 @@
               }
             ]
           },
+          "rob_ready_at": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observed_datetime_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "schema_version": {
             "title": "Schema Version",
             "type": "integer"

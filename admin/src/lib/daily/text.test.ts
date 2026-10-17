@@ -25,6 +25,8 @@ describe('словари итогов дня', () => {
 	it('виды журнала прихода — по-русски со значком; незнакомый — как есть', () => {
 		expect(kindText('book')).toBe('📒 книги');
 		expect(kindText('robbery')).toBe('🥷 ограбление');
+		expect(kindText('rob')).toBe('🔫 грабёж');
+		expect(kindText('rob_fight_lost')).toBe('🔫 поражение в грабеже');
 		expect(kindText('new_kind')).toBe('new_kind');
 		for (const day of daily.days) {
 			for (const k of [...day.income, ...day.losses]) expect(k.kind in KIND, k.kind).toBe(true);

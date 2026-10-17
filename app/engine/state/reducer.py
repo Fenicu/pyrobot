@@ -17,6 +17,7 @@ from app.engine.parsing.activities import (
     DeedsMenu,
     MotivationFull,
     PricesScreen,
+    RobberyFightOutcome,
     StartupLevelUp,
     StartupScreen,
     WorkshopScreen,
@@ -214,6 +215,7 @@ _REFUSAL_TIMERS = {
     "prizebox_locked": "prizebox_ready_at",
     "fastfood_cooldown": "fastfood_ready_at",
     "metro_cooldown": "metro_ready_at",
+    "rob_cooldown": "rob_ready_at",
 }
 
 
@@ -239,12 +241,18 @@ class _Patch:
     """Изменения состояния от одного сообщения: `origin` — создание, `at` — правка."""
 
     def __init__(
-        self, state: CharacterState, at: datetime, origin: datetime, msg_id: int = 0
+        self,
+        state: CharacterState,
+        at: datetime,
+        origin: datetime,
+        msg_id: int = 0,
+        events: Sequence[Event] = (),
     ) -> None:
         self.state = state
         self.at = at
         self.origin = min(origin, at)
         self.msg_id = msg_id
+        self.events = tuple(events)
         self.updates: dict[str, Any] = {}
         # Применённые итоги (ключ → создание сообщения) и горизонт их хранения.
         self.applied: dict[str, datetime] = dict(state.applied)
@@ -495,6 +503,8 @@ def _started(p: _Patch, e: ActivityStarted) -> None:
     if e.activity == "startup":
         # Заход тратит 2–3🔩, а сообщение о старте их не называет: сырьё под сомнением.
         p.doubt("raw")
+    if e.activity == "rob":
+        p.snap("rob_ready_at", p.at + timedelta(hours=1), src="derived")
 
 
 @_on(ActivityFinished)
@@ -512,8 +522,12 @@ def _finished(p: _Patch, e: ActivityFinished) -> None:
                     update={"progress": s.progress + e.rewards.startup_progress}
                 ),
             )
-    if e.activity == "rob" and e.rewards.money < 0:
-        p.effect("robbery", amounts(e.rewards))
+    if e.activity == "rob":
+        lost = any(isinstance(x, RobberyFightOutcome) and not x.won for x in p.events)
+        if lost:
+            p.effect("rob_fight_lost", amounts(e.rewards), e.rewards.items, empty=True)
+        else:
+            p.effect("rob", amounts(e.rewards), e.rewards.items)
     else:
         p.effect("deed", amounts(e.rewards), e.rewards.items)
 
@@ -1676,7 +1690,7 @@ class StateReducer:
         """Новое состояние и эффекты для журнала прихода: эффект есть ровно у применённого
         итога (ключ `applied`, прирост счётчика лотереи, доказанная покупка билета Горбушки)."""
         current = self._load(state)
-        patch = _Patch(current, msg.date, msg.origin, msg.msg_id)
+        patch = _Patch(current, msg.date, msg.origin, msg.msg_id, events)
         applied, horizon = patch.applied, patch.horizon
         for event in events:
             handler = _HANDLERS.get(type(event))

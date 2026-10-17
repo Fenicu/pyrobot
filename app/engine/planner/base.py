@@ -253,6 +253,10 @@ class PlannerBase:
             return "uncertified"
         key = key or scenario
         until = self.cooldowns.get(key)
+        if scenario == "deed:rob":
+            ready = self.timer("rob_ready_at")
+            if ready is not None:
+                until = max(until, ready) if until is not None else ready
         if until is not None and until > self.now:
             self.wake(until, "cooldown", key)
             return "cooldown"
@@ -262,7 +266,12 @@ class PlannerBase:
         """`gate` отказал бы — без его таймера: для вердикта, а не для решения."""
         if self.certified is not None and scenario not in self.certified:
             return True
-        until = self.cooldowns.get(key or scenario)
+        key = key or scenario
+        until = self.cooldowns.get(key)
+        if scenario == "deed:rob":
+            ready = self.timer("rob_ready_at")
+            if ready is not None:
+                until = max(until, ready) if until is not None else ready
         return until is not None and until > self.now
 
     def _no_team_seen(self) -> timedelta | None:

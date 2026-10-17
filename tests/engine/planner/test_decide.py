@@ -680,6 +680,15 @@ def test_cooldown_skips_scenario() -> None:
     assert verdicts(decision)["deed:job"] == "cooldown"
 
 
+def test_rob_ready_at_cooldown_gates_rob() -> None:
+    settings = BASE.model_copy(
+        update={"strategy": BASE.strategy.model_copy(update={"focus": ["rob"], "deeds": ("rob",)})}
+    )
+    state = awake().model_copy(update={"rob_ready_at": Obs(value=m(45), at=NOW, src="derived")})
+    decision = decide(state, settings, NOW)
+    assert verdicts(decision)["deed:rob"] == "cooldown"
+
+
 def test_deed_prices_from_screen() -> None:
     state = awake().model_copy(
         update={"prices": {"job": obs(PriceState(motivation=3, minutes=2))}}

@@ -63,6 +63,33 @@ def test_deed_start_and_finish_with_items() -> None:
     )
 
 
+def test_rob_effects() -> None:
+    assert effects_of("activities", 3639299) == (Effect("rob", {"exp": 104}),)
+    assert effects_of("activities", 1629800) == (Effect("rob", {"money": 227, "exp": 72}),)
+    assert effects_of("activities", 2568751) == (Effect("rob", {"money": 16, "exp": 118}),)
+    assert effects_of("activities", 1890777) == (
+        Effect("rob_fight_lost", {"money": -10, "exp": 68}),
+    )
+
+
+def test_rob_fight_lost_when_money_zero() -> None:
+    reducer = StateReducer()
+    state = feed(reducer, {}, "profile", PROFILE, 0)
+    # Поражение в драке при $0 на руках: строки 💵Деньги нет, потерян 0, но это всё равно поражение
+    loss_no_money = replace(
+        fixture_at("activities", 1890777, 1),
+        text=(
+            "☂️💎[FS]\xa0Мурз (58) проснулся и между вами произошла схватка\n"
+            "Ты проиграл в схватке и потерял 50% 💵\n\n"
+            "Ты получил:\n"
+            "💡Опыт: +68\n"
+            "🔋Осталось выносливости: 0%"
+        ),
+    )
+    _, effects = reduce(reducer, state, loss_no_money)
+    assert effects == (Effect("rob_fight_lost", {"exp": 68}),)
+
+
 def test_one_offs() -> None:
     assert effects_of("items", 3516678) == (Effect("card", {"money": 597}),)
     assert effects_of("items", 3517262) == (Effect("prizebox", {"money": 300}),)

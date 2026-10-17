@@ -270,7 +270,7 @@ DEFAULT_PRICES = {
     "eat": PriceState(money=5, minutes=5),
     "walk": PriceState(motivation=1, minutes=5),
     "confa": PriceState(motivation=3, money=7, minutes=10),
-    "rob": PriceState(motivation=1, minutes=4),
+    "rob": PriceState(motivation=1, minutes=8),
     # «Пилить»: 🔥 и ⏰ (🔩 в PriceState не хранится).
     "startup": PriceState(motivation=2, minutes=8),
 }
@@ -347,6 +347,7 @@ class CharacterState(_Frozen):
     tangerine_ready_at: Obs[datetime] | None = None
     tangerine_not_player: Obs[str] | None = None
     metro_ready_at: Obs[datetime] | None = None
+    rob_ready_at: Obs[datetime] | None = None
     # Идущий забег метро (None — вышел); момент — последний экран забега.
     metro_message: Obs[MetroRunRef | None] | None = None
     lottery: Obs[LotteryState] | None = None
@@ -427,6 +428,7 @@ TIMERS = frozenset(
         "tangerine_ready_at",
         "tangerine_not_player",
         "metro_ready_at",
+        "rob_ready_at",
         "metro_message",
         "lottery",
         "artifact_collect",

@@ -41,10 +41,9 @@ describe('Управление', () => {
 		setup();
 		const list = await screen.findByRole('list', { name: 'Каталог сценариев' });
 		await within(list).findByText('lottery_buy');
-		// Пометка — только у исключения: проверенные на настоящих экранах идут без значка.
+		// Все сценарии в каталоге сертифицированы — пометок «серт.» и «симуляция» нет.
 		expect(within(list).queryByText('серт.')).toBeNull();
-		expect(within(list).getAllByText('симуляция')).toHaveLength(1);
-		expect(within(list).getByText('симуляция').closest('button')).toHaveTextContent('deed:rob');
+		expect(within(list).queryByText('симуляция')).toBeNull();
 		await user.type(screen.getByRole('searchbox', { name: 'Поиск сценария' }), 'deed:');
 		const shown = within(list).getAllByRole('button').map((b) => b.textContent);
 		expect(shown.every((t) => t?.includes('deed:'))).toBe(true);

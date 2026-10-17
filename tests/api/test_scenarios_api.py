@@ -138,7 +138,15 @@ async def test_run_without_required_params_is_422(world: World, api_client: Asyn
     assert code == 202
 
 
-async def test_uncertified_run_is_simulated(world: World, api_client: AsyncClient) -> None:
+async def test_uncertified_run_is_simulated(
+    world: World, api_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace
+
+    from app.engine.scenarios import registry
+
+    spec = registry.SCENARIOS["deed:rob"]
+    monkeypatch.setitem(registry.SCENARIOS, "deed:rob", replace(spec, certified=False))
     h = {"X-CSRF-Token": await login(api_client)}
     code, body = await _run(api_client, h, "deed:rob", "u1")
     assert code == 202
@@ -155,7 +163,7 @@ async def test_uncertified_run_is_simulated(world: World, api_client: AsyncClien
 async def test_scenario_catalog(container: Container, api_client: AsyncClient) -> None:
     await login(api_client)
     items = {i["name"]: i for i in (await api_client.get("/api/v1/scenarios")).json()}
-    assert items["container_medium"]["certified"] and not items["deed:rob"]["certified"]
+    assert items["container_medium"]["certified"] and items["deed:rob"]["certified"]
     assert items["deed:job"]["params"] == {"activity": "job"}
     assert items["deed:job"]["required"] == {}
     assert items["sleep"]["required"] == {"hours": {"type": "int", "min": 7, "max": 12}}

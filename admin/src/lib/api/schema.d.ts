@@ -4429,6 +4429,7 @@ export interface components {
             prizebox?: components["schemas"]["Observed_bool_"] | null;
             prizebox_ready_at?: components["schemas"]["Observed_Union_datetime__NoneType__"] | null;
             raw?: components["schemas"]["Observed_int_"] | null;
+            rob_ready_at?: components["schemas"]["Observed_datetime_"] | null;
             /** Schema Version */
             schema_version?: number;
             skills?: components["schemas"]["Observed_Skills_"] | null;

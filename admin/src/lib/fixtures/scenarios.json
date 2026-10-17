@@ -274,7 +274,7 @@
  },
  {
   "name": "deed:rob",
-  "certified": false,
+  "certified": true,
   "params": {
    "activity": "rob"
   },

@@ -118,6 +118,7 @@ class PublicState(BaseModel):
     tangerine_ready_at: Observed[datetime] | None = None
     tangerine_not_player: Observed[str] | None = None
     metro_ready_at: Observed[datetime] | None = None
+    rob_ready_at: Observed[datetime] | None = None
     metro_message: Observed[MetroRunRefOut | None] | None = None
     lottery: Observed[LotteryState] | None = None
     artifacts: Observed[dict[str, int]] | None = None

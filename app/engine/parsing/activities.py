@@ -117,9 +117,7 @@ _REQ_KEYS = {
     "🔵": "blue",
     "⏰": "minutes",
 }
-_DEEDS_COMPACT = re.compile(
-    r"^(?P<emo>💻|🚶|🔫)\w+ — (?P<mot>\d+)🔥, (?P<min>\d+) ⏰(?:[ /].*?)?$", re.M
-)
+_DEEDS_COMPACT = re.compile(r"^(?P<emo>💻|🚶|🔫)\w+ — (?P<mot>\d+)🔥, (?P<min>\d+) ⏰$", re.M)
 _DEEDS_FULL = re.compile(r"^(?P<emo>💻|🚶|🔫)\w+ - .*?\nТребования: (?P<req>[^\n]+)$", re.M | re.S)
 _ROB_FOUND = re.compile(
     r"\AТы нашёл спящего в безмятежности под мостом стартапера (?P<victim>.+?) \((?P<level>\d+)\) "

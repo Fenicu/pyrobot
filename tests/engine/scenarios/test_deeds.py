@@ -29,6 +29,7 @@ STARTS = {
     "eat": ("/eat", 3516647),
     "walk": ("/walk", 3625686),
     "confa": ("/confa", 3437620),
+    "rob": ("🔫Грабить", 3639298),
 }
 
 
@@ -40,6 +41,7 @@ STARTS = {
     "deed:eat",
     "deed:walk",
     "deed:confa",
+    "deed:rob",
 )
 @pytest.mark.parametrize("activity", sorted(STARTS))
 async def test_deed_started(world: World, activity: str) -> None:
@@ -363,3 +365,61 @@ async def test_refresh_profile_of_character_with_full_profile(world: World) -> N
     result = await run_scenario(refresh, context(world), CharacterState(), {"source": "profile"})
     assert (result.status, world.game.payloads()) == ("done", ["/compact"])
     assert world.state.money is not None
+
+
+@certifies("deed:rob")
+async def test_rob_deed_not_found(world: World) -> None:
+    world.game.on_text("🔫Грабить", ("activities", 3639298))
+    result = await run_scenario(deed, context(world), CharacterState(), {"activity": "rob"})
+    assert (result.status, world.game.payloads()) == ("done", ["🔫Грабить"])
+    assert world.state.busy is not None and world.state.busy.value is not None
+    assert world.state.rob_ready_at is not None
+    await world.feed("activities", 3639299)
+    assert world.state.busy is not None and world.state.busy.value is None
+    stat = world.state.activity_stats.get("rob")
+    assert stat is not None and stat.count == 1
+
+
+@certifies("deed:rob")
+async def test_rob_deed_robbed_success(world: World) -> None:
+    world.game.on_text("🔫Грабить", ("activities", 3639298))
+    result = await run_scenario(deed, context(world), CharacterState(), {"activity": "rob"})
+    assert (result.status, world.game.payloads()) == ("done", ["🔫Грабить"])
+    await world.feed("activities", 1629799)
+    await world.feed("activities", 1629800)
+    assert world.state.busy is not None and world.state.busy.value is None
+    stat = world.state.activity_stats.get("rob")
+    assert stat is not None and stat.count == 1
+
+
+@certifies("deed:rob")
+async def test_rob_deed_fight_win(world: World) -> None:
+    world.game.on_text("🔫Грабить", ("activities", 3639298))
+    result = await run_scenario(deed, context(world), CharacterState(), {"activity": "rob"})
+    assert (result.status, world.game.payloads()) == ("done", ["🔫Грабить"])
+    await world.feed("activities", 1629799)
+    await world.feed("activities", 2568751)
+    assert world.state.busy is not None and world.state.busy.value is None
+    stat = world.state.activity_stats.get("rob")
+    assert stat is not None and stat.count == 1
+
+
+@certifies("deed:rob")
+async def test_rob_deed_fight_loss(world: World) -> None:
+    world.game.on_text("🔫Грабить", ("activities", 3639298))
+    result = await run_scenario(deed, context(world), CharacterState(), {"activity": "rob"})
+    assert (result.status, world.game.payloads()) == ("done", ["🔫Грабить"])
+    await world.feed("activities", 1629799)
+    await world.feed("activities", 1890777)
+    assert world.state.busy is not None and world.state.busy.value is None
+    stat = world.state.activity_stats.get("rob")
+    assert stat is not None and stat.count == 1
+
+
+@certifies("deed:rob")
+async def test_rob_deed_cooldown_refusal(world: World) -> None:
+    world.game.on_text("🔫Грабить", ("refusals", 3639300))
+    result = await run_scenario(deed, context(world), CharacterState(), {"activity": "rob"})
+    assert (result.status, result.reason) == ("refused", "rob_cooldown")
+    assert world.game.payloads() == ["🔫Грабить"]
+    assert world.state.rob_ready_at is not None and world.state.rob_ready_at.value is not None

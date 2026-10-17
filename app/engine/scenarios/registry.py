@@ -114,7 +114,7 @@ class ScenarioSpec:
 
 
 _CERTIFIED_DEEDS = frozenset(
-    {"harvest", "job", "learn", "dconv", "eat", "walk", "confa", "startup"}
+    {"harvest", "job", "learn", "dconv", "eat", "walk", "confa", "rob", "startup"}
 )
 
 

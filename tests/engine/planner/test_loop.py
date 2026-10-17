@@ -539,6 +539,25 @@ async def test_left_metro_refusal_holds_metro_for_an_hour(world: World) -> None:
     assert isinstance(over, Act) and over.scenario == "metro"
 
 
+async def test_rob_done_cooldown_holds_for_an_hour(world: World) -> None:
+    rig = Rig(world)
+    at = moment()
+    rob = Act("deed:rob", {}, "best")
+    await rig.loop._after(rob, ScenarioResult("done", "activity_finished"), at, at)
+    assert rig.loop._cooldowns.get("deed:rob") == at + timedelta(hours=1)
+
+
+async def test_rob_cooldown_refusal_holds_rob(world: World) -> None:
+    rig = Rig(world)
+    await world.feed("refusals", 3639300)
+    ready = world.state.rob_ready_at
+    assert ready is not None and ready.value is not None
+    at = ready.at
+    rob = Act("deed:rob", {}, "best")
+    await rig.loop._after(rob, ScenarioResult("refused", "rob_cooldown"), at, at)
+    assert rig.loop._cooldowns.get("deed:rob") == ready.value
+
+
 async def test_permanent_refusal_does_not_spread_to_other_deeds(world: World) -> None:
     rig = Rig(world)
     at = msk_at(28, 20, 5)
@@ -1274,7 +1293,15 @@ async def test_manual_run_uses_manual_source(world: World) -> None:
         await rig.loop.request("nope", {}, key="m2", by="admin")
 
 
-async def test_manual_uncertified_is_simulated_and_not_held(world: World) -> None:
+async def test_manual_uncertified_is_simulated_and_not_held(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace
+
+    from app.engine.scenarios import registry
+
+    spec = registry.SCENARIOS["deed:rob"]
+    monkeypatch.setitem(registry.SCENARIOS, "deed:rob", replace(spec, certified=False))
     rig = Rig(world)
     run_id, _ = await rig.loop.request("deed:rob", {}, key="u1", by="admin")
     await rig.loop.run_manual()
