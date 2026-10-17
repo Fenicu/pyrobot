@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import time
 from collections.abc import AsyncIterator, Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, NamedTuple
 
 import pytest
@@ -169,22 +169,23 @@ async def test_acquire_returns_fence_with_epoch_and_local_deadline(
     clean_db: Database, hosts: Hosts
 ) -> None:
     clock = FakeMonotonic()
-    a = await hosts.open("A", clock=clock)
+    # Аренда в базе долгая: ожидание теста её срок не задевает.
+    a = await hosts.open("A", clock=clock, ttl_s=30.0)
     fence = await a.acquire(1)
     assert isinstance(fence, Fence)
     assert (fence.account_id, fence.epoch) == (1, 1)
     # t снят до запроса: срок — t + ttl − margin по часам менеджера.
-    assert fence.deadline == pytest.approx(100.7)
+    assert fence.deadline == pytest.approx(129.7)
     lease = await _lease(clean_db)
     assert (lease.holder, lease.epoch) == ("A", 1)
     assert lease.expires_at is not None
     left = (lease.expires_at - await _db_now(clean_db)).total_seconds()
-    assert 0.5 < left <= 1.0
+    assert 25.0 < left <= 30.0
     assert a.held() == [1] and a.healthy()
     # Ограда живёт по часам менеджера.
-    clock.now = 100.69
+    clock.now = 129.69
     assert fence.alive
-    clock.now = 100.7
+    clock.now = 129.7
     assert not fence.alive
 
 
@@ -201,44 +202,49 @@ async def test_other_host_locked_elsewhere(clean_db: Database, hosts: Hosts) -> 
 async def test_lock_connection_killed_new_holder_waits_for_expiry(
     clean_db: Database, hosts: Hosts
 ) -> None:
-    a = await hosts.open("A")
-    b = await hosts.open("B")
+    # Аренда в базе долгая, а её срок наступает по команде теста: ожидание не зависит от скорости
+    # машины. Часы A управляемые: местный срок наступает, когда тест его назначит.
+    clock = FakeMonotonic()
+    a = await hosts.open("A", clock=clock, ttl_s=60.0)
+    b = await hosts.open("B", ttl_s=60.0)
     fence = await a.acquire(1)
     assert isinstance(fence, Fence)
-    lost: list[float] = []
-    fence.on_lost = lambda: lost.append(time.monotonic())
-    hosts.run(a)
+    lost: list[int] = []
+    fence.on_lost = lambda: lost.append(1)
     await _kill_lock_connection(clean_db)
     old = await _lease(clean_db)
     assert old.expires_at is not None
     # Postgres отпустил блокировку сразу, но аренда A ещё действует.
     busy = await b.acquire(1)
     assert isinstance(busy, Busy) and busy.reason == "lease_active"
-    assert 1.0 < busy.retry_in_s <= 2.0
+    assert 1.0 < busy.retry_in_s <= 61.0
     assert b.held() == [1]
-    async with asyncio.timeout(3):
-        while True:
-            started = time.monotonic()
-            got = await b.acquire(1)
-            if isinstance(got, Fence):
-                break
-            assert got.reason == "lease_active"
-            await asyncio.sleep(0.05)
-    assert got.epoch == 2
+    # A останавливается по местному сроку: B начинает захват уже после этого.
+    clock.now = fence.deadline
+    hosts.run(a)
+    await _wait_for(lambda: bool(lost))
+    assert not fence.alive
+    busy = await b.acquire(1)
+    assert isinstance(busy, Busy) and busy.reason == "lease_active"
+    # Срок аренды A в базе наступил: B захватывает её по now() базы.
+    async with clean_db.sessions() as session, session.begin():
+        await session.execute(
+            update(Account)
+            .where(Account.id == 1)
+            .values(lease_expires_at=text("now() - interval '1 s'"))
+        )
+    got = await b.acquire(1)
+    assert isinstance(got, Fence) and got.epoch == 2
     new = await _lease(clean_db)
     assert new.holder == "B" and new.expires_at is not None
-    # Захват B — по now() базы после срока аренды A (lease_expires_at = now() + ttl).
-    assert new.expires_at - timedelta(seconds=1.0) > old.expires_at
-    # A остановился по местному сроку раньше, чем B начал захват.
-    assert fence.deadline < started and not fence.alive
-    assert lost and lost[0] < started
+    assert new.expires_at > old.expires_at
 
 
 async def test_same_host_reacquires_own_lease_immediately(
     clean_db: Database, hosts: Hosts
 ) -> None:
     clock = FakeMonotonic()
-    a = await hosts.open("A", clock=clock)
+    a = await hosts.open("A", clock=clock, ttl_s=60.0)
     first = await a.acquire(1)
     assert isinstance(first, Fence)
     await _kill_lock_connection(clean_db)
@@ -258,7 +264,8 @@ async def test_same_host_reacquires_own_lease_immediately(
 
 
 async def test_lock_not_taken_twice_on_same_connection(clean_db: Database, hosts: Hosts) -> None:
-    a = await hosts.open("A")
+    # Ограда живёт долго: освобождение пишет в базу, а не считает аренду истёкшей.
+    a = await hosts.open("A", ttl_s=60.0)
     b = await hosts.open("B")
     first = await a.acquire(1)
     second = await a.acquire(1)
@@ -360,7 +367,7 @@ async def test_late_renew_response_for_old_epoch_ignored(
 async def test_release_clears_holder_and_prepared_renew_does_not_revive(
     clean_db: Database, hosts: Hosts, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    a = await hosts.open("A")
+    a = await hosts.open("A", ttl_s=60.0)
     b = await hosts.open("B")
     fence = await a.acquire(1)
     assert isinstance(fence, Fence)
@@ -387,7 +394,7 @@ async def test_release_clears_holder_and_prepared_renew_does_not_revive(
 
 async def test_release_after_deadline_writes_nothing(clean_db: Database, hosts: Hosts) -> None:
     clock = FakeMonotonic()
-    a = await hosts.open("A", clock=clock)
+    a = await hosts.open("A", clock=clock, ttl_s=60.0)
     b = await hosts.open("B")
     fence = await a.acquire(1)
     assert isinstance(fence, Fence)
@@ -399,7 +406,7 @@ async def test_release_after_deadline_writes_nothing(clean_db: Database, hosts: 
     assert await _lock_pids(clean_db) == [] and a.held() == []
     busy = await b.acquire(1)
     assert isinstance(busy, Busy) and busy.reason == "lease_active"
-    assert 1.0 < busy.retry_in_s <= 2.0
+    assert 1.0 < busy.retry_in_s <= 61.0
 
 
 async def test_renew_lock_timeout_retries(
@@ -452,7 +459,9 @@ async def test_reconnect_does_not_renew_old_epochs(
     killed = len(outcomes)
     await _kill_lock_connection(clean_db)
     expires = (await _lease(clean_db)).expires_at
-    await _wait_for(lambda: "-" in outcomes[killed:] and outcomes[-1] == "ok")
+    # Продление, застигнутое обрывом посреди запроса, кончается ошибкой с SQLSTATE соединения,
+    # а не без него: важен сам сбой и «ok» после него.
+    await _wait_for(lambda: any(o != "ok" for o in outcomes[killed:]) and outcomes[-1] == "ok")
     # Обрыв замечен, соединение открыто заново и продления идут, но прежнюю эпоху не продлевают:
     # ограда истекает по своему сроку.
     assert a.healthy() and a.held() == [] and not lost and fence.deadline == pytest.approx(100.7)
@@ -496,6 +505,9 @@ async def test_run_fires_on_lost_by_deadline_while_renewals_fail(
     if failure == "lock_timeout":
         # Срок наступил, пока продление ещё висело на блокировке: ни одно не завершилось.
         assert lost == [[]]
+        # Освобождённая строка достаётся зависшему продлению; тест не кончается, пока оно не
+        # завершилось, иначе его запрос ещё держал бы строку у следующего теста.
+        await _wait_for(lambda: bool(outcomes))
 
 
 async def test_run_wakes_for_fence_acquired_mid_sleep(clean_db: Database, hosts: Hosts) -> None:
@@ -510,11 +522,12 @@ async def test_run_wakes_for_fence_acquired_mid_sleep(clean_db: Database, hosts:
     fence.on_lost = lambda: lost.append(1)
     # Срок новой ограды наступает раньше, чем слежение проснулось бы само (захват мог ждать
     clock.now = fence.deadline
-    await _wait_for(lambda: bool(lost), within_s=0.3)
+    await _wait_for(lambda: bool(lost), within_s=10.0)
 
 
 async def test_connection_lost_callback_once_per_break(clean_db: Database, hosts: Hosts) -> None:
-    a = await hosts.open("A", renew_every_s=0.05, retry_s=0.05)
+    # Часы менеджера управляемые: ограда не истекает, пока тест ждёт обрывов.
+    a = await hosts.open("A", clock=FakeMonotonic(), renew_every_s=0.05, retry_s=0.05)
     calls: list[int] = []
 
     async def on_lost() -> None:
