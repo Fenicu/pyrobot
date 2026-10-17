@@ -1,4 +1,5 @@
 import type { ScheduleItem, SharedScheduleItem } from '$lib/api/types';
+import { artifactLabel } from '$lib/artifact/text';
 import { deedText, WAKE } from '$lib/plan/text';
 
 export interface MarkPosition {
@@ -224,7 +225,7 @@ export function itemText(item: SchedulableItem): {
 		return { icon: '🛌', text: `Сон${place}` };
 	}
 	if (item.kind === 'artifact_end') {
-		return { icon: '👾', text: item.detail ? `Артефакт: ${item.detail}` : 'Сбор артефакта' };
+		return { icon: '👾', text: item.detail ? `Артефакт: ${artifactLabel(item.detail)}` : 'Сбор артефакта' };
 	}
 	if (item.kind === 'lottery_close') {
 		return { icon: '🤑', text: item.detail ? `Лотерея: тираж ${item.detail}` : 'Лотерея' };

@@ -12,6 +12,7 @@
 	import { readyText } from '$lib/plan/text';
 	import {
 		artifactText,
+		artifactTitle,
 		metroText,
 		nextActionText,
 		skillsText,
@@ -156,7 +157,7 @@
 						{/if}
 					</td>
 					<td class="px-2.5 py-2"><BattleCell {row} /></td>
-					<td class="px-2.5 py-2 whitespace-nowrap {stale ? 'opacity-55' : ''}" title={x?.artifact?.artifact}>{artifactText(x, now)}</td>
+					<td class="px-2.5 py-2 whitespace-nowrap {stale ? 'opacity-55' : ''}" title={artifactTitle(x)}>{artifactText(x, now)}</td>
 					<td class="px-2.5 py-2 whitespace-nowrap {stale ? 'opacity-55' : ''}">{metroText(row, now)}</td>
 					<td class="px-2.5 py-2 whitespace-nowrap">
 						{#if a.unread.error > 0}<span class="pill pill-bad" title="Ошибки">{a.unread.error}</span>{/if}

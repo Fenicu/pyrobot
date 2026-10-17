@@ -1,5 +1,6 @@
 /** Сводка по аккаунтам: объединение с `GET /accounts`, сортировка, итоги, подписи. */
 import type { AccountOut, OverviewAccount, OverviewBattle, OverviewNextAction, WakeKind } from '$lib/api/types';
+import { artifactLabel } from '$lib/artifact/text';
 import { noteText } from '$lib/overview/battle';
 import { readyText, scenarioText, WAKE } from '$lib/plan/text';
 import { fmtMoment } from '$lib/util/format';
@@ -206,6 +207,12 @@ export function artifactText(extra: OverviewAccount | null, now: Date): string {
 	const ends = extra?.artifact?.ends_at;
 	if (!ends) return '—';
 	return Date.parse(ends) <= now.getTime() ? 'завершён' : `до ${fmtMoment(ends, now)}`;
+}
+
+/** Название собираемого артефакта для подсказки; сбора нет - undefined. */
+export function artifactTitle(extra: OverviewAccount | null): string | undefined {
+	const key = extra?.artifact?.artifact;
+	return key ? artifactLabel(key) : undefined;
 }
 
 const SKILLS = ['practice', 'theory', 'cunning', 'wisdom'] as const;

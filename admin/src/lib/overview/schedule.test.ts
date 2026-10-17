@@ -220,5 +220,9 @@ describe('подписи и иконки элементов (itemText)', () => {
 			icon: '👾',
 			text: 'Артефакт: Катана'
 		});
+		expect(itemText({ kind: 'artifact_end', at: '', until: null, source: 'state', detail: 'light' })).toEqual({
+			icon: '👾',
+			text: 'Артефакт: 🔦 Фонарь Sw-ет'
+		});
 	});
 });

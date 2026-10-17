@@ -4,6 +4,7 @@ import { fixture } from '$lib/test/fixtures';
 import { accountOut } from '$lib/test/overview';
 import {
 	artifactText,
+	artifactTitle,
 	battleMismatch,
 	loadSort,
 	mergeRows,
@@ -236,5 +237,10 @@ describe('метро и артефакт', () => {
 		expect(artifactText(e2, now)).toBe('—');
 		expect(artifactText(e1, new Date('2026-10-20T00:00:00Z'))).toBe('завершён');
 		expect(artifactText(null, now)).toBe('—');
+	});
+	it('артефакт: название вместо кода во всплывающей подсказке', () => {
+		expect(artifactTitle(e1)).toBe('🔦 Фонарь Sw-ет');
+		expect(artifactTitle(e2)).toBeUndefined();
+		expect(artifactTitle(null)).toBeUndefined();
 	});
 });
