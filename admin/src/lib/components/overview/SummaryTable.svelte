@@ -9,6 +9,7 @@
 		tgUnreachable
 	} from '$lib/accounts/status';
 	import { accountHref } from '$lib/nav';
+	import type { Selection } from '$lib/overview/bulk';
 	import { readyText } from '$lib/plan/text';
 	import {
 		artifactText,
@@ -32,8 +33,16 @@
 		now: Date;
 		sort: SortState;
 		onsort: (key: SortKey) => void;
+		/** Нет - колонки с флажками нет. */
+		selection?: Selection;
 	}
-	let { rows, now, sort, onsort }: Props = $props();
+	let { rows, now, sort, onsort, selection }: Props = $props();
+
+	const pickable = $derived(rows.filter((r) => r.account.status !== 'deleting'));
+	const allPicked = $derived(
+		selection !== undefined && pickable.length > 0 && pickable.every((r) => selection.selected.has(r.account.id))
+	);
+	const somePicked = $derived(selection !== undefined && pickable.some((r) => selection.selected.has(r.account.id)));
 
 	const totals = $derived(totalsRow(rows));
 
@@ -76,6 +85,17 @@
 		<caption class="sr-only">Сводка по аккаунтам</caption>
 		<thead>
 			<tr class="border-b border-line text-left text-xs text-fg-muted">
+				{#if selection}
+					<th scope="col" class="w-8 px-2.5 py-2" data-no-row-click>
+						<input
+							type="checkbox"
+							aria-label="Выбрать все"
+							checked={allPicked}
+							indeterminate={somePicked && !allPicked}
+							onchange={(e) => selection.toggleAll((e.currentTarget as HTMLInputElement).checked)}
+						/>
+					</th>
+				{/if}
 				{#each COLUMNS as col (col.label)}
 					<th
 						scope="col"
@@ -112,6 +132,17 @@
 					data-stale={stale}
 					onclick={(e) => open(e, row)}
 				>
+					{#if selection}
+						<td class="px-2.5 py-2" data-no-row-click>
+							<input
+								type="checkbox"
+								aria-label="Выбрать {accountTitle(a)}"
+								disabled={deleting}
+								checked={selection.selected.has(a.id)}
+								onchange={() => selection.toggle(a.id)}
+							/>
+						</td>
+					{/if}
 					<td class="px-2.5 py-2">
 						<div class="flex items-center gap-2">
 							<StatusDot tone={accountTone(a)} label={accountDotLabel(a)} />
@@ -169,7 +200,7 @@
 		</tbody>
 		<tfoot>
 			<tr class="border-t border-line font-medium">
-				<th scope="row" class="px-2.5 py-2 text-left" colspan="3">Всего</th>
+				<th scope="row" class="px-2.5 py-2 text-left" colspan={selection ? 4 : 3}>Всего</th>
 				<td class="px-2.5 py-2 text-right tabular-nums">{fmtNum(totals.money)}</td>
 				<td colspan="2"></td>
 				<td class="px-2.5 py-2 text-right tabular-nums">{fmtNum(totals.knowledge)}</td>

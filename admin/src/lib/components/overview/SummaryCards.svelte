@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { ACTIVITY_COLOR, accountActivity, accountDotLabel, accountTone } from '$lib/accounts/status';
 	import { accountHref } from '$lib/nav';
+	import type { Selection } from '$lib/overview/bulk';
 	import { readyText } from '$lib/plan/text';
 	import {
 		artifactText,
@@ -19,8 +20,15 @@
 	interface Props {
 		rows: OverviewRow[];
 		now: Date;
+		/** Нет - флажков нет. */
+		selection?: Selection;
 	}
-	let { rows, now }: Props = $props();
+	let { rows, now, selection }: Props = $props();
+
+	const pickable = $derived(rows.filter((r) => r.account.status !== 'deleting'));
+	const allPicked = $derived(
+		selection !== undefined && pickable.length > 0 && pickable.every((r) => selection.selected.has(r.account.id))
+	);
 
 	const uid = $props.id();
 	let opened = $state<Set<number>>(new Set());
@@ -32,6 +40,12 @@
 	}
 </script>
 
+{#if selection}
+	<label class="mb-2 flex items-center gap-2 text-sm">
+		<input type="checkbox" checked={allPicked} onchange={(e) => selection.toggleAll((e.currentTarget as HTMLInputElement).checked)} />
+		Выбрать все
+	</label>
+{/if}
 <ul class="space-y-2.5" aria-label="Аккаунты">
 	{#each rows as row (row.account.id)}
 		{@const a = row.account}
@@ -44,6 +58,15 @@
 		{@const next = x?.next_action ? nextActionText(x.next_action) : null}
 		<li class="rounded-card border border-line bg-surface p-3 text-sm {deleting ? 'text-fg-faint' : ''}">
 			<div class="flex items-center gap-2">
+				{#if selection}
+					<input
+						type="checkbox"
+						aria-label="Выбрать {accountTitle(a)}"
+						disabled={deleting}
+						checked={selection.selected.has(a.id)}
+						onchange={() => selection.toggle(a.id)}
+					/>
+				{/if}
 				<StatusDot tone={accountTone(a)} label={accountDotLabel(a)} />
 				{#if deleting}
 					<span class="ext-text min-w-0 flex-1 font-medium">{accountTitle(a)}</span>
