@@ -1508,6 +1508,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview Accounts
+         * @description Сводка по аккаунтам учётки: числа снимка, действие бота и цель на ближайшую битву.
+         *     Базовые поля аккаунта (статус, пауза, непрочитанные) - в `GET /accounts`.
+         */
+        get: operations["overview_accounts_api_v1_overview_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/overview/battle": {
         parameters: {
             query?: never;
@@ -3271,6 +3292,22 @@ export interface components {
             /** Stocks */
             stocks: number;
         };
+        /** NextActionOut */
+        NextActionOut: {
+            /** Blocked By */
+            blocked_by: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "act" | "wait";
+            /** Reason */
+            reason: string;
+            /** Scenario */
+            scenario: string | null;
+            /** Until */
+            until: string | null;
+        };
         /** NotWokenOut */
         NotWokenOut: {
             /** Account Id */
@@ -3751,6 +3788,84 @@ export interface components {
             reserves: components["schemas"]["PlanReserveOut"][];
             /** Wakeups */
             wakeups: components["schemas"]["PlanTimerOut"][];
+        };
+        /** OverviewAccountOut */
+        OverviewAccountOut: {
+            artifact: components["schemas"]["OverviewArtifactOut"] | null;
+            battle: components["schemas"]["OverviewBattleOut"] | null;
+            /** Details */
+            details: number | null;
+            /**
+             * Engine
+             * @enum {string}
+             */
+            engine: "local" | "elsewhere" | "stopped";
+            /** Exp */
+            exp: number | null;
+            /** Exp Next */
+            exp_next: number | null;
+            /** Id */
+            id: number;
+            /** Knowledge */
+            knowledge: number | null;
+            metro: components["schemas"]["OverviewMetroOut"] | null;
+            /** Money */
+            money: number | null;
+            /** Motivation */
+            motivation: number | null;
+            /** Motivation Max */
+            motivation_max: number | null;
+            next_action: components["schemas"]["NextActionOut"] | null;
+            /** Raw */
+            raw: number | null;
+            /** Seen At */
+            seen_at: string | null;
+            skills: components["schemas"]["SkillsOut"] | null;
+            /** Stale */
+            stale: boolean;
+            /** Stamina */
+            stamina: number | null;
+        };
+        /** OverviewArtifactOut */
+        OverviewArtifactOut: {
+            /** Artifact */
+            artifact: string;
+            /**
+             * Ends At
+             * Format: date-time
+             */
+            ends_at: string;
+        };
+        /** OverviewBattleOut */
+        OverviewBattleOut: {
+            /** Applies */
+            applies: boolean;
+            /**
+             * Battle At
+             * Format: date-time
+             */
+            battle_at: string;
+            /** Desired */
+            desired: string;
+            /** In Game */
+            in_game: string | null;
+            /** Note */
+            note: string | null;
+            /** Ready */
+            ready: boolean | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "order_corp" | "order_all" | "override" | "default";
+        };
+        /** OverviewMetroOut */
+        OverviewMetroOut: {
+            /**
+             * Ready At
+             * Format: date-time
+             */
+            ready_at: string;
         };
         /** OwnAccountOut */
         OwnAccountOut: {
@@ -10602,6 +10717,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_accounts_api_v1_overview_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewAccountOut"][];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

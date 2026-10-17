@@ -17,15 +17,17 @@ from app.api.overview_battle import (
     BattleView,
     Source,
     account_battle_view,
+    engine_kind,
     fetch_plans,
+    knows_battle,
 )
+from app.api.overview_rows import OverviewAccountOut, SkillsOut, account_row, skills_of
 from app.api.routes_engine import IsoDatetime
 from app.db.accounts import AccountInfo
 from app.db.overview import AccountInput
 from app.engine.battle_orders import BattleOrder, next_battles, targets_own_company
 from app.engine.gametime import to_msk
 from app.engine.parsing.common import COMPANIES
-from app.engine.planner.base import battle_hour
 from app.engine.planner.obligations import TARGET_LAST_CALL
 from app.engine.settings import Target
 
@@ -37,13 +39,6 @@ _TARGETS: tuple[str, ...] = get_args(Target)
 _COMPANY_NAMES = {code: name for name, code in COMPANIES.items()}
 BATTLE_TOO_CLOSE = "battle_too_close"
 BATTLE_NOT_OFFERED = "battle_not_offered"
-
-
-class SkillsOut(BaseModel):
-    practice: int
-    theory: int
-    cunning: int
-    wisdom: int
 
 
 class HqTargetOut(BaseModel):
@@ -155,11 +150,6 @@ def _skipped_reason(info: AccountInfo) -> str | None:
     return None if info.status == "enabled" else info.status
 
 
-def _skills(inp: AccountInput) -> SkillsOut | None:
-    seen = inp.state.skills if inp.state is not None else None
-    return SkillsOut(**seen.value.model_dump()) if seen is not None else None
-
-
 def _summary(rows: list[BattleAccountOut]) -> list[BattleSummaryOut]:
     managed: dict[str | None, list[BattleAccountOut]] = {}
     for t in _TARGETS:
@@ -234,20 +224,14 @@ def _battle_out(
                 name=inp.info.name,
                 company=company.value if company is not None else None,
                 level=level.value if level is not None else None,
-                skills=_skills(inp),
+                skills=skills_of(inp),
                 desired=view.desired,
                 source=view.source,
                 in_game=view.in_game,
                 ready=view.ready,
                 applies=view.applies,
                 note=view.note,
-                engine=(
-                    "local"
-                    if runtime is not None
-                    else "elsewhere"
-                    if reason == "locked_elsewhere"
-                    else "stopped"
-                ),
+                engine=engine_kind(runtime, reason),
             )
         )
     left = battle - now
@@ -265,10 +249,7 @@ def _battle_out(
 
 
 def _observed(inputs: Sequence[AccountInput], now: datetime) -> bool:
-    return any(
-        s.battle_at is not None and battle_hour(s.battle_at.value, s.battle_at.at) > now
-        for s in _states(inputs)
-    )
+    return any(knows_battle(i.state, now) for i in inputs)
 
 
 async def _hq(
@@ -391,3 +372,30 @@ async def put_battle_orders(
             if i in listed and i not in woken
         ],
     )
+
+
+@router.get("/accounts", response_model=list[OverviewAccountOut], responses=AUTH)
+async def overview_accounts(
+    ctx: Annotated[SessionContext, Depends(current_session)],
+    c: Annotated[Container, Depends(container)],
+) -> list[OverviewAccountOut]:
+    """Сводка по аккаунтам учётки: числа снимка, действие бота и цель на ближайшую битву.
+    Базовые поля аккаунта (статус, пауза, непрочитанные) - в `GET /accounts`."""
+    now = c.clock.now()
+    inputs = await c.overview.account_inputs(ctx.user_id)
+    first, _ = next_battles(_states(inputs), now)
+    orders = await c.battle_orders.active(ctx.user_id, now - ORDERS_LOOKBACK)
+    runtimes = {i.info.id: c.engines.get(i.info.id) for i in inputs}
+    plans = await fetch_plans(runtimes)
+    return [
+        account_row(
+            inp=i,
+            orders=orders,
+            battle=first if knows_battle(i.state, now) else None,
+            runtime=runtimes[i.info.id],
+            host_reason=c.engines.host_reason(i.info.id),
+            plan=plans[i.info.id],
+            now=now,
+        )
+        for i in inputs
+    ]

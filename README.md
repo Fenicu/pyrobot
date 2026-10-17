@@ -4966,6 +4966,31 @@ skipped}`:
 U+FE0F), `unknown_company`, `target_is_own_company` (`loc: body.corporations.<код>`; защита для
 своей корпорации допустима). Движки будятся только после записи.
 
+### Сводка по аккаунтам (обзор)
+
+`GET /api/v1/overview/accounts` (сессия) → `list[OverviewAccountOut]`, по строке на аккаунт учётки
+(кроме удаляемых, в порядке `id`; нет аккаунтов — `[]`). Базовые поля (статус, режим, пауза,
+непрочитанные, компания, уровень, занятость) клиент берёт из `GET /api/v1/accounts` и соединяет по
+`id`; здесь только то, чего там нет:
+
+- `seen_at` — новейшее из наблюдений уровня и денег, `stale` — оно старше
+  `engine.state_stale_after_min` настроек аккаунта (клиент приглушает числа); нет снимка или у него
+  другая версия схемы — `seen_at: null`, `stale: false`, все числа `null`;
+- `exp`, `exp_next`, `money`, `stamina`, `motivation`, `motivation_max`, `knowledge`, `details`,
+  `raw`, `skills {practice, theory, cunning, wisdom}` — значения наблюдений снимка, ненаблюдавшееся —
+  `null`; `artifact {artifact, ends_at}` — идущий сбор артефакта (`null` — сбора нет),
+  `metro {ready_at}` — когда метро снова доступно (идущий забег виден в `in_metro` из `/accounts`);
+- `engine` — `local` (запущен в этом процессе), `elsewhere` (аренда у другого хоста), `stopped`;
+- `next_action` — только при `engine: local`: `{kind: act|wait, scenario, reason, until,
+  blocked_by}` из «Плана бота» (`blocked_by` — код неготовности цикла: `paused`, `killed`,
+  `manual_control`, …; пока он есть, решения не исполняются). «План бота» запрашивается у всех
+  движков параллельно, до 2 с на каждый; недоступный, медленный и упавший дают `null`, остальных
+  это не задерживает;
+- `battle` — цель на ближайшую битву: `{battle_at, desired, source, in_game, ready, applies, note}`
+  с теми же полями и кодами `note`, что у аккаунта в `GET /overview/battle`, вычисленная той же
+  функцией выбора цели, что и в планировщике. `null`, если сам аккаунт ещё не наблюдал
+  предстоящую битву (нет свежего `battle_at`); работает и без запущенного движка.
+
 ### Управление настройками
 
 `GET /api/v1/accounts/{id}/settings` (сессия) отдаёт `{version, values, defaults, schema}`: текущие настройки,

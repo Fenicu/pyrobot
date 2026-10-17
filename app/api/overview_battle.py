@@ -43,6 +43,20 @@ class BattleView:
     note: str | None
 
 
+def engine_kind(
+    runtime: AccountRuntime | None, host_reason: str | None
+) -> Literal["local", "elsewhere", "stopped"]:
+    if runtime is not None:
+        return "local"
+    return "elsewhere" if host_reason == "locked_elsewhere" else "stopped"
+
+
+def knows_battle(state: CharacterState | None, now: datetime) -> bool:
+    """Аккаунт наблюдал предстоящую битву."""
+    seen = state.battle_at if state is not None else None
+    return seen is not None and battle_hour(seen.value, seen.at) > now
+
+
 async def fetch_plans(
     runtimes: Mapping[int, AccountRuntime | None],
 ) -> dict[int, PlanView | None]:

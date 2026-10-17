@@ -4954,6 +4954,65 @@
         "title": "MoneyOut",
         "type": "object"
       },
+      "NextActionOut": {
+        "properties": {
+          "blocked_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked By"
+          },
+          "kind": {
+            "enum": [
+              "act",
+              "wait"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "scenario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "kind",
+          "scenario",
+          "reason",
+          "until",
+          "blocked_by"
+        ],
+        "title": "NextActionOut",
+        "type": "object"
+      },
       "NotWokenOut": {
         "properties": {
           "account_id": {
@@ -6023,6 +6082,314 @@
           "basis"
         ],
         "title": "OutlookOut",
+        "type": "object"
+      },
+      "OverviewAccountOut": {
+        "properties": {
+          "artifact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewArtifactOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "battle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewBattleOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "details": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "engine": {
+            "enum": [
+              "local",
+              "elsewhere",
+              "stopped"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "exp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exp"
+          },
+          "exp_next": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exp Next"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "knowledge": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge"
+          },
+          "metro": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewMetroOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "money": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Money"
+          },
+          "motivation": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivation"
+          },
+          "motivation_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivation Max"
+          },
+          "next_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NextActionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen At"
+          },
+          "skills": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkillsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stamina": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stamina"
+          }
+        },
+        "required": [
+          "id",
+          "seen_at",
+          "stale",
+          "exp",
+          "exp_next",
+          "money",
+          "stamina",
+          "motivation",
+          "motivation_max",
+          "knowledge",
+          "details",
+          "raw",
+          "skills",
+          "artifact",
+          "metro",
+          "engine",
+          "next_action",
+          "battle"
+        ],
+        "title": "OverviewAccountOut",
+        "type": "object"
+      },
+      "OverviewArtifactOut": {
+        "properties": {
+          "artifact": {
+            "title": "Artifact",
+            "type": "string"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact",
+          "ends_at"
+        ],
+        "title": "OverviewArtifactOut",
+        "type": "object"
+      },
+      "OverviewBattleOut": {
+        "properties": {
+          "applies": {
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "battle_at": {
+            "format": "date-time",
+            "title": "Battle At",
+            "type": "string"
+          },
+          "desired": {
+            "title": "Desired",
+            "type": "string"
+          },
+          "in_game": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Game"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready"
+          },
+          "source": {
+            "enum": [
+              "order_corp",
+              "order_all",
+              "override",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "battle_at",
+          "desired",
+          "source",
+          "in_game",
+          "ready",
+          "applies",
+          "note"
+        ],
+        "title": "OverviewBattleOut",
+        "type": "object"
+      },
+      "OverviewMetroOut": {
+        "properties": {
+          "ready_at": {
+            "format": "date-time",
+            "title": "Ready At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ready_at"
+        ],
+        "title": "OverviewMetroOut",
         "type": "object"
       },
       "OwnAccountOut": {
@@ -17903,6 +18270,42 @@
         "summary": "Put Home Layout",
         "tags": [
           "ui"
+        ]
+      }
+    },
+    "/api/v1/overview/accounts": {
+      "get": {
+        "description": "Сводка по аккаунтам учётки: числа снимка, действие бота и цель на ближайшую битву.\nБазовые поля аккаунта (статус, пауза, непрочитанные) - в `GET /accounts`.",
+        "operationId": "overview_accounts_api_v1_overview_accounts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OverviewAccountOut"
+                  },
+                  "title": "Response Overview Accounts Api V1 Overview Accounts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          }
+        },
+        "summary": "Overview Accounts",
+        "tags": [
+          "overview"
         ]
       }
     },
