@@ -16,7 +16,7 @@ const subnav = () => screen.getByRole('navigation', { name: 'Подраздел�
 afterEach(cleanup);
 
 describe('макет «Обзора»', () => {
-	it('пять подразделов - реальные ссылки, ссылка на аккаунты рядом', () => {
+	it('шесть подразделов - реальные ссылки, ссылка на аккаунты рядом', () => {
 		open('/overview');
 		expect(screen.getByRole('heading', { level: 1, name: 'Обзор' })).toBeInTheDocument();
 		const links = within(subnav()).getAllByRole('link');
@@ -25,7 +25,8 @@ describe('макет «Обзора»', () => {
 			['Итоги', '/overview/totals'],
 			['Лента', '/overview/feed'],
 			['Расписание', '/overview/schedule'],
-			['Штаб битвы', '/overview/battle']
+			['Штаб битвы', '/overview/battle'],
+			['Поиск', '/overview/search']
 		]);
 		expect(screen.getByRole('link', { name: 'Аккаунты' })).toHaveAttribute('href', '/accounts');
 	});
@@ -44,6 +45,9 @@ describe('макет «Обзора»', () => {
 		cleanup();
 		open('/overview/totals');
 		expect(active()).toEqual(['Итоги']);
+		cleanup();
+		open('/overview/search');
+		expect(active()).toEqual(['Поиск']);
 	});
 
 	it('содержимое подраздела рисуется под полосой', () => {

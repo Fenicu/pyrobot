@@ -10,7 +10,8 @@
 		{ href: '/overview/totals', label: 'Итоги' },
 		{ href: '/overview/feed', label: 'Лента' },
 		{ href: '/overview/schedule', label: 'Расписание' },
-		{ href: '/overview/battle', label: 'Штаб битвы' }
+		{ href: '/overview/battle', label: 'Штаб битвы' },
+		{ href: '/overview/search', label: 'Поиск' }
 	];
 	const path = $derived(page.url.pathname);
 	// «Сводка» - сама /overview: остальные подразделы лежат под тем же префиксом.
