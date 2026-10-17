@@ -3048,6 +3048,165 @@
         "title": "ErrorOut",
         "type": "object"
       },
+      "FeedItemOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "amounts": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amounts"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "items": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "type": {
+            "enum": [
+              "levelup",
+              "battle",
+              "factory",
+              "metro",
+              "lottery",
+              "alert",
+              "manual"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "at",
+          "account_id",
+          "type",
+          "kind",
+          "level",
+          "text",
+          "amounts",
+          "items"
+        ],
+        "title": "FeedItemOut",
+        "type": "object"
+      },
+      "FeedOut": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "watermark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedWatermarkOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "watermark",
+          "has_more"
+        ],
+        "title": "FeedOut",
+        "type": "object"
+      },
+      "FeedWatermarkOut": {
+        "properties": {
+          "ledger": {
+            "title": "Ledger",
+            "type": "integer"
+          },
+          "notifications": {
+            "title": "Notifications",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ledger",
+          "notifications"
+        ],
+        "title": "FeedWatermarkOut",
+        "type": "object"
+      },
       "FoodStockState": {
         "properties": {
           "count": {
@@ -18643,6 +18802,134 @@
           }
         },
         "summary": "Put Battle Orders",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/v1/overview/feed": {
+      "get": {
+        "description": "Единая лента событий аккаунтов учётки: записи журнала прихода (уровень, битва, фабрика,\nметро, лотерея) и уведомления (предупреждения и ошибки, вмешательства оператора).\n\nСтраница - от новых к старым по времени события, дальше по `next_cursor`. Свежее первой\nстраницы - по знаку приёма `watermark`: `after=<знак>` отдаёт записи, пришедшие позже (по id,\nа не по времени события), порциями до `limit`, пока `has_more`. Только читает: `read`\nуведомлений не меняется.",
+        "operationId": "overview_feed_api_v1_overview_feed_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "курсор следующей страницы",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "курсор следующей страницы",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "id аккаунтов через запятую",
+            "in": "query",
+            "name": "account_ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "id аккаунтов через запятую",
+              "title": "Account Ids"
+            }
+          },
+          {
+            "description": "levelup,battle,factory,metro,lottery,alert,manual",
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "levelup,battle,factory,metro,lottery,alert,manual",
+              "title": "Types"
+            }
+          },
+          {
+            "description": "знак приёма <id журнала>:<id уведомлений>",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "знак приёма <id журнала>:<id уведомлений>",
+              "title": "After"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorOut"
+                }
+              }
+            },
+            "description": "invalid parameters"
+          }
+        },
+        "summary": "Overview Feed",
         "tags": [
           "overview"
         ]

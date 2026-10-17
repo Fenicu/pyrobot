@@ -1570,6 +1570,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview Feed
+         * @description Единая лента событий аккаунтов учётки: записи журнала прихода (уровень, битва, фабрика,
+         *     метро, лотерея) и уведомления (предупреждения и ошибки, вмешательства оператора).
+         *
+         *     Страница - от новых к старым по времени события, дальше по `next_cursor`. Свежее первой
+         *     страницы - по знаку приёма `watermark`: `after=<знак>` отдаёт записи, пришедшие позже (по id,
+         *     а не по времени события), порциями до `limit`, пока `has_more`. Только читает: `read`
+         *     уведомлений не меняется.
+         */
+        get: operations["overview_feed_api_v1_overview_feed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/overview/totals": {
         parameters: {
             query?: never;
@@ -2674,6 +2700,54 @@ export interface components {
         ErrorOut: {
             /** Detail */
             detail: string;
+        };
+        /** FeedItemOut */
+        FeedItemOut: {
+            /** Account Id */
+            account_id: number;
+            /** Amounts */
+            amounts: {
+                [key: string]: number;
+            } | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Items */
+            items: {
+                [key: string]: number;
+            } | null;
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Level */
+            level: string | null;
+            /** Text */
+            text: string | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "levelup" | "battle" | "factory" | "metro" | "lottery" | "alert" | "manual";
+        };
+        /** FeedOut */
+        FeedOut: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["FeedItemOut"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+            watermark: components["schemas"]["FeedWatermarkOut"] | null;
+        };
+        /** FeedWatermarkOut */
+        FeedWatermarkOut: {
+            /** Ledger */
+            ledger: number;
+            /** Notifications */
+            notifications: number;
         };
         /** FoodStockState */
         FoodStockState: {
@@ -10935,6 +11009,54 @@ export interface operations {
                 };
             };
             /** @description battle_not_offered */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorOut"];
+                };
+            };
+        };
+    };
+    overview_feed_api_v1_overview_feed_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description курсор следующей страницы */
+                cursor?: string | null;
+                /** @description id аккаунтов через запятую */
+                account_ids?: string | null;
+                /** @description levelup,battle,factory,metro,lottery,alert,manual */
+                types?: string | null;
+                /** @description знак приёма <id журнала>:<id уведомлений> */
+                after?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description invalid parameters */
             422: {
                 headers: {
                     [name: string]: unknown;

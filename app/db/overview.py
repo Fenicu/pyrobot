@@ -12,6 +12,15 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, array
 from app.db.accounts import AccountInfo, _info
 from app.db.base import Database
 from app.db.models import Account, SettingsRow, StateSnapshot
+from app.db.overview_feed import (
+    FEED_TYPES,
+    MANUAL_CODES,
+    FeedCursor,
+    FeedEvent,
+    FeedPageData,
+    feed_after,
+    feed_page,
+)
 from app.engine.daily import BALANCE_KEYS, LEVEL_KEY, LedgerDays
 from app.engine.gametime import day_start, tasks_day
 from app.engine.settings import Settings
@@ -242,3 +251,45 @@ class OverviewReads:
                 for account, started in since
                 for s in [out[account]]
             ]
+
+    async def feed_page(
+        self,
+        owner_id: int,
+        ids: Sequence[int] | None,
+        types: Sequence[str],
+        *,
+        limit: int,
+        cursor: FeedCursor | None,
+        ledger_floor: date,
+    ) -> FeedPageData:
+        """Страница ленты событий аккаунтов учётки (`ids` None - все), от новых к старым."""
+        return await feed_page(
+            self._db, owner_id, ids, types, limit=limit, cursor=cursor, ledger_floor=ledger_floor
+        )
+
+    async def feed_after(
+        self,
+        owner_id: int,
+        ids: Sequence[int] | None,
+        types: Sequence[str],
+        *,
+        after: tuple[int, int],
+        limit: int,
+        ledger_floor: date,
+    ) -> FeedPageData:
+        """Записи ленты, пришедшие после знака приёма `after` (id журнала, id уведомлений)."""
+        return await feed_after(
+            self._db, owner_id, ids, types, after=after, limit=limit, ledger_floor=ledger_floor
+        )
+
+
+__all__ = [
+    "FEED_TYPES",
+    "MANUAL_CODES",
+    "AccountInput",
+    "FeedCursor",
+    "FeedEvent",
+    "FeedPageData",
+    "OverviewReads",
+    "TotalsSource",
+]

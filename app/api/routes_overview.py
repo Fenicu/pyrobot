@@ -4,12 +4,13 @@
 from collections import Counter
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated, Any, Literal, get_args
+from typing import Annotated, Any, Literal, cast, get_args
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import AfterValidator, BaseModel, Field
 
 from app.api.container import Container
+from app.api.cursor import decode_cursor, encode_cursor
 from app.api.deps import SessionContext, container, current_session, require_csrf
 from app.api.errors import AUTH, CSRF, ValidationErrorOut, error
 from app.api.overview_battle import (
@@ -25,7 +26,7 @@ from app.api.overview_rows import OverviewAccountOut, SkillsOut, account_row, sk
 from app.api.routes_daily import KindOut
 from app.api.routes_engine import IsoDatetime
 from app.db.accounts import AccountInfo
-from app.db.overview import AccountInput
+from app.db.overview import FEED_TYPES, AccountInput, FeedCursor, FeedEvent
 from app.engine.battle_orders import BattleOrder, next_battles, targets_own_company
 from app.engine.daily import (
     AccountTotals,
@@ -543,4 +544,149 @@ async def overview_totals(
         metrics_floor=floor,
         total=_block(merge_totals([part for _, part in rows])),
         accounts=[out for out, _ in rows],
+    )
+
+
+FeedType = Literal["levelup", "battle", "factory", "metro", "lottery", "alert", "manual"]
+MAX_FEED_ACCOUNT_IDS = 200
+
+
+class FeedItemOut(BaseModel):
+    # `l:<id>` - запись журнала прихода, `n:<id>` - уведомление: по ключу клиент убирает повторы.
+    key: str
+    # Время события: у журнала - исхода (отчёт о битве датирован битвой), у уведомления - создания.
+    at: IsoDatetime
+    account_id: int
+    type: FeedType
+    # Вид журнала прихода или код уведомления.
+    kind: str
+    # Только у уведомления.
+    level: str | None
+    text: str | None
+    # Только у записи журнала; текст собирает клиент из вида и сумм.
+    amounts: dict[str, int] | None
+    items: dict[str, int] | None
+
+
+class FeedWatermarkOut(BaseModel):
+    ledger: int
+    notifications: int
+
+
+class FeedOut(BaseModel):
+    items: list[FeedItemOut]
+    # Курсор следующей (более старой) страницы; null - дальше ничего нет и при `after`.
+    next_cursor: str | None
+    # Знак приёма: у первой страницы и у ответа на `after`; у страницы по курсору null (клиент
+    # держит знак первой страницы).
+    watermark: FeedWatermarkOut | None
+    # Есть ещё записи: старее страницы (по курсору) или новее знака (при `after`).
+    has_more: bool
+
+
+def _feed_item(e: FeedEvent) -> FeedItemOut:
+    return FeedItemOut(
+        key=e.key,
+        at=e.at,
+        account_id=e.account_id,
+        type=cast(FeedType, e.type),
+        kind=e.kind,
+        level=e.level,
+        text=e.text,
+        amounts=e.amounts,
+        items=e.items,
+    )
+
+
+def _feed_types(raw: str | None) -> list[str]:
+    if not raw or not raw.strip():
+        return list(FEED_TYPES)
+    wanted = [t.strip() for t in raw.split(",") if t.strip()]
+    unknown = [t for t in wanted if t not in FEED_TYPES]
+    if unknown or not wanted:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"unknown types: {unknown}")
+    return [t for t in FEED_TYPES if t in wanted]
+
+
+def _feed_accounts(raw: str | None) -> list[int] | None:
+    if raw is None or not raw.strip():
+        return None
+    try:
+        ids = list(dict.fromkeys(int(p) for p in raw.split(",") if p.strip()))
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid account_ids") from exc
+    if len(ids) > MAX_FEED_ACCOUNT_IDS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "too many account_ids")
+    return ids
+
+
+def _feed_cursor(raw: str) -> FeedCursor:
+    at, rank, ident = decode_cursor(raw, 3)
+    try:
+        return FeedCursor(datetime.fromisoformat(at), int(rank), int(ident))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid cursor") from exc
+
+
+def _feed_after(raw: str) -> tuple[int, int]:
+    ledger, _, notes = raw.partition(":")
+    if not (ledger.isascii() and ledger.isdigit() and notes.isascii() and notes.isdigit()):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid after")
+    return int(ledger), int(notes)
+
+
+@router.get(
+    "/feed",
+    response_model=FeedOut,
+    responses={**AUTH, 422: {"model": ValidationErrorOut, "description": "invalid parameters"}},
+)
+async def overview_feed(
+    ctx: Annotated[SessionContext, Depends(current_session)],
+    c: Annotated[Container, Depends(container)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: Annotated[str | None, Query(description="курсор следующей страницы")] = None,
+    account_ids: Annotated[str | None, Query(description="id аккаунтов через запятую")] = None,
+    types: Annotated[str | None, Query(description=",".join(FEED_TYPES))] = None,
+    after: Annotated[
+        str | None, Query(description="знак приёма <id журнала>:<id уведомлений>")
+    ] = None,
+) -> FeedOut:
+    """Единая лента событий аккаунтов учётки: записи журнала прихода (уровень, битва, фабрика,
+    метро, лотерея) и уведомления (предупреждения и ошибки, вмешательства оператора).
+
+    Страница - от новых к старым по времени события, дальше по `next_cursor`. Свежее первой
+    страницы - по знаку приёма `watermark`: `after=<знак>` отдаёт записи, пришедшие позже (по id,
+    а не по времени события), порциями до `limit`, пока `has_more`. Только читает: `read`
+    уведомлений не меняется."""
+    if cursor is not None and after is not None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "cursor and after are exclusive"
+        )
+    kinds = _feed_types(types)
+    ids = _feed_accounts(account_ids)
+    now = c.clock.now()
+    floor = tasks_day(now) - timedelta(days=c.server_settings.current.retention.ledger_days - 1)
+    if after is not None:
+        got = await c.overview.feed_after(
+            ctx.user_id, ids, kinds, after=_feed_after(after), limit=limit, ledger_floor=floor
+        )
+        next_cursor = None
+    else:
+        got = await c.overview.feed_page(
+            ctx.user_id,
+            ids,
+            kinds,
+            limit=limit,
+            cursor=_feed_cursor(cursor) if cursor else None,
+            ledger_floor=floor,
+        )
+        last = got.events[-1] if got.has_more and got.events else None
+        next_cursor = encode_cursor([last.at.isoformat(), last.rank, last.id]) if last else None
+    return FeedOut(
+        items=[_feed_item(e) for e in got.events],
+        next_cursor=next_cursor,
+        watermark=FeedWatermarkOut(ledger=got.watermark[0], notifications=got.watermark[1])
+        if got.watermark is not None
+        else None,
+        has_more=got.has_more,
     )
