@@ -1638,6 +1638,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview Search
+         * @description Поиск по сообщениям чата игры аккаунтов учётки. `where=db` - журнал сообщений (хранится
+         *     около 90 суток), без учёта регистра; `where=telegram` - поиск Telegram в чате игры каждого
+         *     аккаунта через его запущенный здесь движок: чтение, в игру ничего не уходит. Чужие,
+         *     удаляемые и несуществующие id молча отбрасываются. Недоступный или упавший аккаунт не
+         *     ломает ответ: его статус и причина - в `accounts`.
+         */
+        get: operations["overview_search_api_v1_overview_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/overview/settings": {
         parameters: {
             query?: never;
@@ -4601,6 +4625,58 @@ export interface components {
              * Format: date-time
              */
             until: string;
+        };
+        /** SearchAccountOut */
+        SearchAccountOut: {
+            /** Account Id */
+            account_id: number;
+            /** Count */
+            count: number;
+            /** Name */
+            name: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "unavailable" | "error";
+        };
+        /** SearchHitOut */
+        SearchHitOut: {
+            /** Account Id */
+            account_id: number;
+            /** Chat Id */
+            chat_id: number;
+            /**
+             * Date
+             * Format: date-time
+             */
+            date: string;
+            /** Markup */
+            markup: {
+                [key: string]: unknown;
+            } | null;
+            /** Msg Id */
+            msg_id: number;
+            /** Outgoing */
+            outgoing: boolean;
+            /** Text */
+            text: string | null;
+        };
+        /** SearchOut */
+        SearchOut: {
+            /** Accounts */
+            accounts: components["schemas"]["SearchAccountOut"][];
+            /** Hits */
+            hits: components["schemas"]["SearchHitOut"][];
+            /** Q */
+            q: string;
+            /**
+             * Where
+             * @enum {string}
+             */
+            where: "db" | "telegram";
         };
         /** SendIn */
         SendIn: {
@@ -11371,6 +11447,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_search_api_v1_overview_search_get: {
+        parameters: {
+            query: {
+                /** @description подстрока, 2..100 символов */
+                q: string;
+                /** @description db - наша база, telegram - поиск Telegram */
+                where?: "db" | "telegram";
+                /** @description id аккаунтов через запятую */
+                account_ids?: string | null;
+                /** @description на аккаунт */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description invalid parameters */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorOut"];
                 };
             };
         };

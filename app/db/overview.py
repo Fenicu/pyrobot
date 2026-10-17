@@ -21,6 +21,7 @@ from app.db.overview_feed import (
     feed_after,
     feed_page,
 )
+from app.db.overview_search import SearchHit, SearchTarget, search_messages, search_targets
 from app.engine.daily import BALANCE_KEYS, LEVEL_KEY, LedgerDays
 from app.engine.gametime import day_start, tasks_day
 from app.engine.settings import Settings
@@ -282,6 +283,16 @@ class OverviewReads:
             self._db, owner_id, ids, types, after=after, limit=limit, ledger_floor=ledger_floor
         )
 
+    async def search_targets(self, owner_id: int, ids: Sequence[int] | None) -> list[SearchTarget]:
+        """Аккаунты учётки (`ids` None - все) с чатом игры для поиска по сообщениям."""
+        return await search_targets(self._db, owner_id, ids)
+
+    async def search_messages(
+        self, targets: Sequence[SearchTarget], q: str, limit: int
+    ) -> list[SearchHit]:
+        """Поиск `q` в сообщениях чатов игры `targets` (журнал `messages`), от новых к старым."""
+        return await search_messages(self._db, targets, q, limit)
+
 
 __all__ = [
     "FEED_TYPES",
@@ -291,5 +302,7 @@ __all__ = [
     "FeedEvent",
     "FeedPageData",
     "OverviewReads",
+    "SearchHit",
+    "SearchTarget",
     "TotalsSource",
 ]

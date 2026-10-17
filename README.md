@@ -5167,6 +5167,31 @@ U+FE0F), `unknown_company`, `target_is_own_company` (`loc: body.corporations.<к
 - `shared[]` — общие события `{kind, at, until, label}`: битвы `battle` (по наблюдениям или по умолчанию 13:00 и 22:00 МСК), фабрика `factory` (18:00–18:30 МСК), лотерея `lottery` (19:17–21:07 МСК) и ночь `night` (22:00–08:00 МСК следующего дня);
 - `accounts[]` — аккаунты учётки `{id, seen_at, stale, items[]}`: `seen_at` — время последнего наблюдения уровня или денег, `stale` — флаг устаревания по `engine.state_stale_after_min`; `items[]` — отрезки занятости (`busy`, `sleep` с делом в `detail`) и метки (`sleep_deadline`, `sleep_allowed`, `book_ready`, `card_ready`, `fastfood_ready`, `prizebox_ready`, `tangerine_ready`, `metro_ready`, `artifact_end`, `lottery_close`), а для запущенных локально движков — также таймеры планировщика (`source: "planner"`). Прошедшие метки возвращаются как есть, события за пределами окна отсекаются.
 
+### Поиск по сообщениям игры (обзор)
+
+`GET /api/v1/overview/search?q=…&where=db|telegram&account_ids=1,2&limit=50` (сессия) →
+`SearchOut {q, where, accounts, hits}`. Ищет подстроку в чате игры (`chats.game_chat_id`)
+аккаунтов учётки; чужие, удаляемые и несуществующие id молча отбрасываются. Только читает: в игру
+ничего не уходит, шлюз команд не задействован.
+
+- `q` — обязателен, обрезается по краям, 2..100 символов (иначе 422); `limit` — на аккаунт, 1..200
+  (по умолчанию 50); `account_ids` — id через запятую (по умолчанию все аккаунты учётки);
+- `where=db` (по умолчанию) — журнал `messages` (около 90 суток), `ILIKE` без учёта регистра, `%`,
+  `_` и `\` в запросе ищутся буквально. Сообщение хранится по строке на ревизию: в выдачу идёт
+  только последняя ревизия, и только если совпала именно она; лимит на аккаунт задан оконной
+  функцией в одном запросе;
+- `where=telegram` — поиск Telegram в чате игры каждого аккаунта через его запущенный в этом
+  процессе движок (тот же клиент kurigram, второй не открывается): `KurigramTransport.search_chat`
+  под оградой аренды, `EngineFacade.search_game_chat`. Аккаунты опрашиваются параллельно, не более
+  трёх сразу, на каждый 15 секунд; flood wait не ждётся, а отдаётся как `flood_wait`;
+- `accounts[]` — `{account_id, name, status, reason, count}`: `ok`; `unavailable` — движок не
+  запущен здесь (`engine_not_running`, `locked_elsewhere`), Telegram не в сети (`tg_offline`) или
+  не отвечает (`tg_unreachable`); `error` — `timeout`, `flood_wait`, `chat_unavailable` (аккаунт
+  не читает чат игры), `internal_error`. Сбой одного аккаунта остальных не ломает;
+- `hits[]` — `{account_id, chat_id, msg_id, date, outgoing, text, markup}` от новых к старым по
+  всем аккаунтам; `markup` как в журнале сообщений (`{"inline": …}`, `{"reply": …}` или `null`).
+  В лог пишется одна строка на запрос (логин, `where`, длина запроса, аккаунты), текстов в ней нет.
+
 ### Массовая пауза и возобновление (обзор)
 
 `POST /api/v1/overview/engine` (сессия, CSRF) с телом `{action: "pause"|"resume", account_ids:

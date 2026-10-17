@@ -8638,6 +8638,148 @@
         "title": "ScheduleOut",
         "type": "object"
       },
+      "SearchAccountOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "unavailable",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "name",
+          "status",
+          "reason",
+          "count"
+        ],
+        "title": "SearchAccountOut",
+        "type": "object"
+      },
+      "SearchHitOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "chat_id": {
+            "title": "Chat Id",
+            "type": "integer"
+          },
+          "date": {
+            "format": "date-time",
+            "title": "Date",
+            "type": "string"
+          },
+          "markup": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markup"
+          },
+          "msg_id": {
+            "title": "Msg Id",
+            "type": "integer"
+          },
+          "outgoing": {
+            "title": "Outgoing",
+            "type": "boolean"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "required": [
+          "account_id",
+          "chat_id",
+          "msg_id",
+          "date",
+          "outgoing",
+          "text",
+          "markup"
+        ],
+        "title": "SearchHitOut",
+        "type": "object"
+      },
+      "SearchOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/SearchAccountOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHitOut"
+            },
+            "title": "Hits",
+            "type": "array"
+          },
+          "q": {
+            "title": "Q",
+            "type": "string"
+          },
+          "where": {
+            "enum": [
+              "db",
+              "telegram"
+            ],
+            "title": "Where",
+            "type": "string"
+          }
+        },
+        "required": [
+          "q",
+          "where",
+          "accounts",
+          "hits"
+        ],
+        "title": "SearchOut",
+        "type": "object"
+      },
       "SendIn": {
         "properties": {
           "confirm_token": {
@@ -19498,6 +19640,109 @@
           }
         },
         "summary": "Schedule",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/v1/overview/search": {
+      "get": {
+        "description": "Поиск по сообщениям чата игры аккаунтов учётки. `where=db` - журнал сообщений (хранится\nоколо 90 суток), без учёта регистра; `where=telegram` - поиск Telegram в чате игры каждого\nаккаунта через его запущенный здесь движок: чтение, в игру ничего не уходит. Чужие,\nудаляемые и несуществующие id молча отбрасываются. Недоступный или упавший аккаунт не\nломает ответ: его статус и причина - в `accounts`.",
+        "operationId": "overview_search_api_v1_overview_search_get",
+        "parameters": [
+          {
+            "description": "подстрока, 2..100 символов",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "подстрока, 2..100 символов",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "db - наша база, telegram - поиск Telegram",
+            "in": "query",
+            "name": "where",
+            "required": false,
+            "schema": {
+              "default": "db",
+              "description": "db - наша база, telegram - поиск Telegram",
+              "enum": [
+                "db",
+                "telegram"
+              ],
+              "title": "Where",
+              "type": "string"
+            }
+          },
+          {
+            "description": "id аккаунтов через запятую",
+            "in": "query",
+            "name": "account_ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "id аккаунтов через запятую",
+              "title": "Account Ids"
+            }
+          },
+          {
+            "description": "на аккаунт",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "на аккаунт",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorOut"
+                }
+              }
+            },
+            "description": "invalid parameters"
+          }
+        },
+        "summary": "Overview Search",
         "tags": [
           "overview"
         ]
