@@ -113,6 +113,11 @@ class Transport(Protocol):
         пользователь. Чат не читается — `ChatUnavailable`."""
         ...
 
+    async def search_chat(self, chat_id: int, query: str, limit: int) -> list[IncomingMessage]:
+        """Поиск Telegram по тексту сообщений чата, от новых к старым, не больше `limit`; чтение,
+        в чат ничего не уходит."""
+        ...
+
     async def send_saved(self, text: str) -> None:
         """Отправка сообщения в «Избранное» (Saved Messages) текущего аккаунта."""
         ...

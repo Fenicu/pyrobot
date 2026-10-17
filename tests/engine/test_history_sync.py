@@ -733,7 +733,15 @@ class Telegram:
         self.queries: list[Any] = []
         self.fail: Exception | None = None
 
-    def post(self, chat_id: int, msg_id: int, *, sender: int, invite: bool = False) -> None:
+    def post(
+        self,
+        chat_id: int,
+        msg_id: int,
+        *,
+        sender: int,
+        invite: bool = False,
+        text: str | None = None,
+    ) -> None:
         from pyrogram import raw
 
         markup = None
@@ -750,7 +758,7 @@ class Telegram:
                 peer_id=_peer(chat_id),
                 from_id=raw.types.PeerUser(user_id=sender),
                 date=int(datetime.now(UTC).timestamp()),
-                message=f"m{msg_id}",
+                message=text if text is not None else f"m{msg_id}",
                 reply_markup=markup,
                 restriction_reason=[],
                 entities=[],
@@ -784,6 +792,7 @@ class Telegram:
             if (not query.offset_id or m.id < query.offset_id)
             and m.id > query.min_id
             and (sender is None or m.from_id.user_id == sender)
+            and (not getattr(query, "q", "") or query.q.lower() in m.message.lower())
         ][: query.limit]
         users = {m.from_id.user_id for m in found} | ({chat_id} if chat_id > 0 else set())
         return raw.types.messages.Messages(

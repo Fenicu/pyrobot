@@ -52,7 +52,7 @@ from app.engine.types import IncomingMessage
 from tests.conftest import TEST_DB_URL
 from tests.engine.helpers import GAME, tg_auth, until
 from tests.engine.kurigram_fakes import EXPECTED, FakeClient, FakeKurigram, long_fence, rpc_error
-from tests.engine.test_history_sync import FakeSource, MemoryMarks
+from tests.engine.test_history_sync import FakeSource, MemoryMarks, Telegram, kurigram
 
 TEAM = -1001149209877
 SWINFO = -1001109615116
@@ -799,6 +799,84 @@ async def test_message_sender_unauthorized_resets_client() -> None:
     assert lost == [1]
 
 
+async def test_search_chat_matches_query_newest_first() -> None:
+    tg = Telegram()
+    for msg_id, text in (
+        (1, "Бой начался"),
+        (2, "ничего"),
+        (3, "бой окончен"),
+        (4, "Бой в 22:00"),
+    ):
+        tg.post(GAME, msg_id, sender=GAME, text=text)
+    async with kurigram(tg) as t:
+        found = await t.search_chat(GAME, "бой", 10)
+    assert [(m.chat_id, m.msg_id, m.text) for m in found] == [
+        (GAME, 4, "Бой в 22:00"),
+        (GAME, 3, "бой окончен"),
+        (GAME, 1, "Бой начался"),
+    ]
+    assert tg.queries[0].q == "бой"
+
+
+async def test_search_chat_pages_until_limit() -> None:
+    tg = Telegram()
+    for msg_id in range(1, 251):
+        tg.post(GAME, msg_id, sender=GAME, text=f"бой {msg_id}")
+    async with kurigram(tg) as t:
+        found = await t.search_chat(GAME, "бой", 150)
+    assert [m.msg_id for m in found] == list(range(250, 100, -1))
+    assert [(q.offset_id, q.limit) for q in tg.queries] == [(0, 100), (151, 50)]
+
+
+async def test_search_chat_short_page_is_last() -> None:
+    tg = Telegram()
+    for msg_id in range(1, 4):
+        tg.post(GAME, msg_id, sender=GAME, text="бой")
+    async with kurigram(tg) as t:
+        found = await t.search_chat(GAME, "бой", 200)
+    assert len(found) == 3 and len(tg.queries) == 1
+
+
+async def test_search_chat_keeps_inline_markup() -> None:
+    tg = Telegram()
+    tg.post(GAME, 5, sender=GAME, invite=True, text="бой: зови друзей")
+    async with kurigram(tg) as t:
+        (found,) = await t.search_chat(GAME, "бой", 10)
+    markup = found.markup_json()
+    assert markup is not None and markup["inline"]
+
+
+async def test_search_chat_fails_fast_on_flood_wait() -> None:
+    from pyrogram import errors
+
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors["Search"] = errors.FloodWait(7)
+    with pytest.raises(FloodWait) as caught:
+        await t.search_chat(GAME, "бой", 5)
+    assert caught.value.seconds == 7
+    (_, kw) = t.client.invoked[-1]
+    assert kw == {"retries": 1, "sleep_threshold": 0, "retry_delay": 0}
+
+
+async def test_search_chat_unavailable_chat() -> None:
+    t = FakeKurigram()
+    await _online(t)
+    t.client.errors["Search"] = rpc_error("ChannelPrivate")
+    with pytest.raises(ChatUnavailable):
+        await t.search_chat(GAME, "бой", 5)
+
+
+async def test_search_chat_unauthorized_resets_client() -> None:
+    t = FakeKurigram()
+    lost = await _online(t)
+    t.client.errors["Search"] = rpc_error("AuthKeyUnregistered")
+    with pytest.raises(TransportAuthLost):
+        await t.search_chat(GAME, "бой", 5)
+    _assert_reset(t)
+    assert lost == [1]
+
+
 def _forwarded(new_id: int) -> object:
     from pyrogram import raw
 
@@ -1125,6 +1203,7 @@ def _telegram_calls(t: FakeKurigram) -> list[Callable[[], Awaitable[Any]]]:
         lambda: t.check_group(TEAM),
         lambda: t.fetch(GAME, 7),
         lambda: t.message_sender(TANGERINE, 7),
+        lambda: t.search_chat(GAME, "бой", 5),
         lambda: t.send_inline(GAME, TEAM, "join_fight_GXnJJ0QNK2K"),
     ]
 

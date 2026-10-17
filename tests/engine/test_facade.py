@@ -17,6 +17,7 @@ from app.engine.facade import (
     TangerinePartner,
     TangerinePost,
     TgNotOnline,
+    TgUnreachable,
 )
 from app.engine.gadgets import GadgetConflict
 from app.engine.gateway.gateway import ActionGateway
@@ -52,7 +53,7 @@ from app.engine.stream import EventStream
 from app.engine.tg_auth import TgAuthBackend, TgState
 from app.engine.transport.base import ChatUnavailable, FloodWait, Sender, TransportRejected
 from app.engine.transport.fake import FakeTgBackend, FakeTransport
-from tests.engine.helpers import GAME, tg_auth, until
+from tests.engine.helpers import GAME, make_msg, tg_auth, until
 from tests.engine.test_manual import AT, StepClock
 
 
@@ -73,6 +74,7 @@ def build(
     bounds: Callable[[], EngineBounds] | None = None,
     control: ManualControl | None = None,
     stream: EventStream | None = None,
+    unreachable_since: Callable[[], datetime | None] = lambda: None,
 ) -> EngineFacade:
     """Фасад на памяти; `snapshot` — снимок состояния, его подхватит `pipeline.load()`. Вход в
     Telegram сверяет свой чат с настройками `settings`."""
@@ -117,6 +119,7 @@ def build(
         bounds=bounds,
         manual_control=control,
         stream=stream,
+        unreachable_since=unreachable_since,
     )
 
 
@@ -180,6 +183,36 @@ async def test_join_game_chat_needs_online_telegram() -> None:
     with pytest.raises(TgNotOnline):
         await f.join_game_chat()
     assert transport.joins == []
+
+
+async def test_search_game_chat_asks_transport_about_settings_chat() -> None:
+    transport = FakeTransport()
+    settings = StaticSettings(Settings.model_validate({"chats": {"game_chat_id": 4242}}))
+    f = build(transport=transport, settings=settings)
+    await f.tg.boot()
+    transport.found[4242] = [make_msg("Бой начался", chat_id=4242, msg_id=5)]
+    found = await f.search_game_chat("бой", 7)
+    assert [m.msg_id for m in found] == [5]
+    assert transport.searches == [(4242, "бой", 7)]
+    assert transport.sent == []
+
+
+async def test_search_game_chat_needs_online_telegram() -> None:
+    transport = FakeTransport()
+    f = build(authorized=False, transport=transport)
+    await f.tg.boot()
+    with pytest.raises(TgNotOnline):
+        await f.search_game_chat("бой", 7)
+    assert transport.searches == []
+
+
+async def test_search_game_chat_refused_while_telegram_unreachable() -> None:
+    transport = FakeTransport()
+    f = build(transport=transport, unreachable_since=lambda: datetime(2026, 10, 17, tzinfo=UTC))
+    await f.tg.boot()
+    with pytest.raises(TgUnreachable):
+        await f.search_game_chat("бой", 7)
+    assert transport.searches == []
 
 
 async def test_tangerine_post_joins_by_username_then_sends() -> None:

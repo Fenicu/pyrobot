@@ -1487,23 +1487,54 @@ class KurigramTransport:
         page = await self._history(reader, limit=count, offset_id=upto + 1)
         return [m for m in page if m.id <= upto and not getattr(m, "empty", False)]
 
+    @_fenced
+    async def search_chat(self, chat_id: int, query: str, limit: int) -> list[IncomingMessage]:
+        """Поиск Telegram по тексту сообщений чата, от новых к старым, не больше `limit`: чтение
+        без отправки в игру. Каждая страница — один запрос без повторов и ожидания flood wait
+        (`FloodWait` сразу наружу)."""
+        found: list[Any] = []
+        offset_id = 0
+        while len(found) < limit:
+            size = min(HISTORY_PAGE, limit - len(found))
+            page = await self._history(
+                (chat_id, 0), limit=size, offset_id=offset_id, query=query, fast=True
+            )
+            found.extend(page)
+            if len(page) < size:
+                break
+            offset_id = min(m.id for m in page)
+        now = datetime.now(UTC)
+        return [
+            to_incoming(m, kind="edit" if m.edit_date else "new", received_at=now)
+            for m in found
+            if not getattr(m, "empty", False)
+        ]
+
     async def _history(
-        self, reader: Reader, *, limit: int, offset_id: int = 0, min_id: int = 0
+        self,
+        reader: Reader,
+        *,
+        limit: int,
+        offset_id: int = 0,
+        min_id: int = 0,
+        query: str = "",
+        fast: bool = False,
     ) -> list[Any]:
         """Страница истории чтения, от новых к старым: `messages.getHistory` всего чата или
-        `messages.search` сообщений одного отправителя (`from_id`); `offset_id` и `min_id` —
-        границы, сами не входящие."""
+        `messages.search` сообщений одного отправителя (`from_id`) либо по тексту (`query`);
+        `offset_id` и `min_id` — границы, сами не входящие. `fast` — без повторов и ожидания
+        flood wait."""
         from pyrogram import errors, raw, utils
 
         client = self._client
         chat_id, from_id = reader
         try:
             peer = await self._peer(client, chat_id)
-            query: Any
-            if from_id:
-                query = raw.functions.messages.Search(
+            request: Any
+            if from_id or query:
+                request = raw.functions.messages.Search(
                     peer=peer,
-                    q="",
+                    q=query,
                     filter=raw.types.InputMessagesFilterEmpty(),
                     min_date=0,
                     max_date=0,
@@ -1513,10 +1544,10 @@ class KurigramTransport:
                     max_id=0,
                     min_id=min_id,
                     hash=0,
-                    from_id=await self._peer(client, from_id),
+                    from_id=await self._peer(client, from_id) if from_id else None,
                 )
             else:
-                query = raw.functions.messages.GetHistory(
+                request = raw.functions.messages.GetHistory(
                     peer=peer,
                     offset_id=offset_id,
                     offset_date=0,
@@ -1526,7 +1557,8 @@ class KurigramTransport:
                     min_id=min_id,
                     hash=0,
                 )
-            answer = await client.invoke(query)
+            extra = {"retries": 1, "sleep_threshold": 0, "retry_delay": 0} if fast else {}
+            answer = await client.invoke(request, **extra)
             return list(await utils.parse_messages(client, answer, replies=0))
         except errors.FloodWait as exc:
             raise FloodWait(float(exc.seconds or 0)) from exc

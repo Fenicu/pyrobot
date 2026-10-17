@@ -70,6 +70,12 @@ class FakeTransport:
         self.sender_fail_with: list[BaseException] = []
         # Выполняется посреди запроса автора: что меняется, пока ответ Telegram в пути.
         self.on_sender: Callable[[], Awaitable[None]] | None = None
+        # Поиск по чату (`search_chat`): найденное по чатам, запросы, ошибки очередных запросов и
+        # что выполняется посреди запроса.
+        self.found: dict[int, list[IncomingMessage]] = {}
+        self.searches: list[tuple[int, str, int]] = []
+        self.search_fail_with: list[BaseException] = []
+        self.on_search: Callable[[], Awaitable[None]] | None = None
         self._next_id = 1000
         self._tasks: set[asyncio.Future[None]] = set()
 
@@ -125,6 +131,16 @@ class FakeTransport:
         if self.sender_fail_with:
             raise self.sender_fail_with.pop(0)
         return self.senders.get((chat_id, message_id))
+
+    async def search_chat(self, chat_id: int, query: str, limit: int) -> list[IncomingMessage]:
+        self.searches.append((chat_id, query, limit))
+        if self.on_search is not None:
+            await self.on_search()
+        if self.search_fail_with:
+            raise self.search_fail_with.pop(0)
+        needle = query.lower()
+        hits = [m for m in self.found.get(chat_id, []) if needle in (m.text or "").lower()]
+        return sorted(hits, key=lambda m: m.date, reverse=True)[:limit]
 
     async def check_group(self, chat_id: int) -> GroupInfo:
         self.group_checks.append(chat_id)

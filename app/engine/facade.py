@@ -46,6 +46,7 @@ from app.engine.transport.base import (
     Transport,
     TransportRejected,
 )
+from app.engine.types import IncomingMessage
 
 if TYPE_CHECKING:
     from app.engine.planner.loop import PlannerLoop
@@ -77,6 +78,10 @@ class PlannerUnavailable(Exception):
 
 class TgNotOnline(Exception):
     pass
+
+
+class TgUnreachable(Exception):
+    """Telegram не отвечает на пробы: запрос в него заведомо не пройдёт."""
 
 
 class ScenarioNotManual(Exception):
@@ -274,6 +279,16 @@ class EngineFacade:
         if status != "request_sent" and watch is not None:
             watch.game_chat_joined()
         return status
+
+    async def search_game_chat(self, query: str, limit: int) -> list[IncomingMessage]:
+        """Поиск Telegram по тексту сообщений чата игры аккаунта, от новых к старым. Чтение: мимо
+        шлюза команд, в игру ничего не уходит."""
+        if self._transport is None or self.tg.status().state is not TgState.ONLINE:
+            raise TgNotOnline
+        if self._unreachable_since() is not None:
+            raise TgUnreachable
+        chat_id = self.settings.current.chats.game_chat_id
+        return await self._transport.search_chat(chat_id, query, limit)
 
     async def send_saved(self, text: str) -> None:
         """Отправка сообщения в «Избранное» (Saved Messages) текущего аккаунта."""
