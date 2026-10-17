@@ -1,0 +1,125 @@
+{
+ "items": [
+  {
+   "key": "n:9120",
+   "at": "2026-10-17T08:58:12+00:00",
+   "account_id": 2,
+   "type": "alert",
+   "kind": "scenario_failed",
+   "level": "error",
+   "text": "scenario deed:learn failed: gateway refused the command",
+   "amounts": null,
+   "items": null
+  },
+  {
+   "key": "l:48211",
+   "at": "2026-10-17T08:50:00+00:00",
+   "account_id": 1,
+   "type": "battle",
+   "kind": "battle",
+   "level": null,
+   "text": null,
+   "amounts": {
+    "money": 1400,
+    "exp": 800
+   },
+   "items": {}
+  },
+  {
+   "key": "n:9118",
+   "at": "2026-10-17T08:41:05+00:00",
+   "account_id": 1,
+   "type": "manual",
+   "kind": "engine_paused",
+   "level": "info",
+   "text": "planner paused by admin",
+   "amounts": null,
+   "items": null
+  },
+  {
+   "key": "l:48205",
+   "at": "2026-10-17T08:30:10+00:00",
+   "account_id": 3,
+   "type": "levelup",
+   "kind": "levelup",
+   "level": null,
+   "text": null,
+   "amounts": {},
+   "items": {}
+  },
+  {
+   "key": "l:48199",
+   "at": "2026-10-17T08:12:44+00:00",
+   "account_id": 2,
+   "type": "factory",
+   "kind": "factory",
+   "level": null,
+   "text": null,
+   "amounts": {
+    "money": 620,
+    "details": 25,
+    "raw": 18
+   },
+   "items": {
+    "Конденсатор": 1
+   }
+  },
+  {
+   "key": "n:9101",
+   "at": "2026-10-17T07:59:30+00:00",
+   "account_id": 3,
+   "type": "alert",
+   "kind": "tg_slow",
+   "level": "warn",
+   "text": "telegram answers slowly: 4.2 s",
+   "amounts": null,
+   "items": null
+  },
+  {
+   "key": "l:48180",
+   "at": "2026-10-17T07:20:00+00:00",
+   "account_id": 1,
+   "type": "metro",
+   "kind": "metro",
+   "level": null,
+   "text": null,
+   "amounts": {
+    "money": -80
+   },
+   "items": {}
+  },
+  {
+   "key": "l:48170",
+   "at": "2026-10-17T06:45:31+00:00",
+   "account_id": 2,
+   "type": "lottery",
+   "kind": "lottery_win",
+   "level": null,
+   "text": null,
+   "amounts": {
+    "money": 2500
+   },
+   "items": {}
+  },
+  {
+   "key": "l:48160",
+   "at": "2026-10-16T19:00:00+00:00",
+   "account_id": 1,
+   "type": "battle",
+   "kind": "battle",
+   "level": null,
+   "text": null,
+   "amounts": {
+    "money": 900,
+    "exp": 500
+   },
+   "items": {}
+  }
+ ],
+ "next_cursor": "WyIyMDI2LTEwLTE2VDE5OjAwOjAwKzAwOjAwIiwwLDQ4MTYwXQ",
+ "watermark": {
+  "ledger": 48211,
+  "notifications": 9120
+ },
+ "has_more": true
+}
