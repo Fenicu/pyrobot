@@ -1,6 +1,6 @@
-from collections.abc import Awaitable, Callable
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, ValidationError
@@ -24,7 +24,7 @@ from app.api.scope import AccountScope, account_router, account_scope
 from app.db.accounts import AccountDeleting
 from app.db.notifications import DbNotifier
 from app.db.settings_store import LeaseHeld, direct_update
-from app.engine.facade import EngineFacade, SettingsUpdate
+from app.engine.facade import SettingsUpdate
 from app.engine.settings import (
     Settings,
     SettingsConflict,
@@ -104,78 +104,93 @@ async def get_settings(
     )
 
 
-async def _checked(
-    update: Awaitable[SettingsUpdate], version: Callable[[], Awaitable[int]]
-) -> SettingsPatchOut:
-    try:
-        upd = await update
-    except SettingsConflict as exc:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, {"code": "version_conflict", "version": await version()}
-        ) from exc
-    except SettingsPatchError as exc:
+async def _current_version(c: Container, scope: AccountScope) -> int:
+    """Версия настроек сейчас: у запущенного движка - его, иначе из базы."""
+    runtime = c.engines.get(scope.account.id)
+    if runtime is not None and runtime.facade is not None:
+        return runtime.facade.settings.version
+    return (await scope.reads.settings())[1]
+
+
+class EngineStarting(Exception):
+    """Аренда аккаунта занята, а её держатель (движок) ещё не зарегистрирован."""
+
+
+def _http_error(exc: Exception) -> HTTPException | None:
+    """Ошибки правки настроек, которые одиночная ручка отдаёт как 422."""
+    if isinstance(exc, SettingsPatchError):
         loc = ["body", "confirm_live"] if exc.code == "live_requires_confirm" else None
         loc = loc or ["body", "changes", *exc.path.split(".")]
-        raise _unprocessable([{"loc": loc, "msg": exc.code, "type": exc.code}]) from exc
-    except ValidationError as exc:
-        raise _unprocessable(
+        return _unprocessable([{"loc": loc, "msg": exc.code, "type": exc.code}])
+    if isinstance(exc, ValidationError):
+        return _unprocessable(
             [
                 {"loc": ["body", "changes", *e["loc"]], "msg": e["msg"], "type": e["type"]}
                 for e in exc.errors(include_url=False)
             ]
-        ) from exc
-    return SettingsPatchOut(
-        version=upd.version,
-        values=upd.settings.model_dump(mode="json"),
-        changed=upd.changed,
-        restart_required=restart_required(upd.changed),
-    )
-
-
-async def _via_engine(f: EngineFacade, body: SettingsPatchIn, by: str) -> SettingsPatchOut:
-    async def version() -> int:
-        return f.settings.version
-
-    return await _checked(
-        f.patch_settings(
-            body.changes, version=body.version, by=by, confirm_live=body.confirm_live
-        ),
-        version,
-    )
+        )
+    return None
 
 
 async def _direct(
-    c: Container, scope: AccountScope, body: SettingsPatchIn, by: str
-) -> SettingsPatchOut:
-    """Правка без движка — прямо в базу; применится при следующем старте движка. Аренда
-    занята — `LeaseHeld`: правку делает её держатель."""
+    c: Container,
+    scope: AccountScope,
+    changes: Mapping[str, Any],
+    *,
+    confirm_live: bool,
+    version: int,
+    by: str,
+) -> SettingsUpdate:
+    """Правка без движка - прямо в базу; применится при следующем старте движка. Аренда
+    занята - `LeaseHeld`: правку делает её держатель."""
     account_id = scope.account.id
+    patch = SettingsPatch(
+        changes,
+        confirm_live=confirm_live,
+        bounds=c.server_settings.current.engine_bounds,
+    )
+    new, saved = await direct_update(
+        c.db, account_id, patch, changed_by=by, expected_version=version
+    )
+    # «До» - JSON и тех сохранённых настроек, что сборка не принимает (поверх умолчаний).
+    old = patch.before
+    assert old is not None
+    old_mode = old["engine"]["mode"]
+    if old_mode != new.engine.mode:
+        # Как у правки через движок: смена режима остаётся в уведомлениях.
+        await DbNotifier(c.db, account_id).notify(
+            "info", "engine_mode", f"mode {old_mode} -> {new.engine.mode} by {by}"
+        )
+    changed = settings_diff(old, new.model_dump(mode="json"))
+    return SettingsUpdate(new, saved, changed)
 
-    async def update() -> SettingsUpdate:
-        patch = SettingsPatch(
-            body.changes,
-            confirm_live=body.confirm_live,
-            bounds=c.server_settings.current.engine_bounds,
-        )
-        new, saved = await direct_update(
-            c.db, account_id, patch, changed_by=by, expected_version=body.version
-        )
-        # «До» — JSON и тех сохранённых настроек, что сборка не принимает (поверх умолчаний).
-        old = patch.before
-        assert old is not None
-        old_mode = old["engine"]["mode"]
-        if old_mode != new.engine.mode:
-            # Как у правки через движок: смена режима остаётся в уведомлениях.
-            await DbNotifier(c.db, account_id).notify(
-                "info", "engine_mode", f"mode {old_mode} -> {new.engine.mode} by {by}"
+
+async def apply_account_patch(
+    c: Container,
+    scope: AccountScope,
+    changes: Mapping[str, Any],
+    *,
+    confirm_live: bool,
+    version: int,
+    by: str,
+) -> SettingsUpdate:
+    """Правка настроек аккаунта: с движком - через него, без движка - прямо в базу, если аренда
+    свободна; занята - ожидание регистрации движка до `engine_wait_s`, затем `EngineStarting`.
+    `version` - ожидаемая версия настроек. Ошибки правки (`SettingsConflict`, `SettingsPatchError`,
+    `ValidationError`, `SettingsOutOfBounds`, `ChatIsSelf`, `AccountDeleting`, `LeaseLost`)
+    не переводятся."""
+    f = scope.facade
+    if f is None:
+        try:
+            return await _direct(
+                c, scope, changes, confirm_live=confirm_live, version=version, by=by
             )
-        changed = settings_diff(old, new.model_dump(mode="json"))
-        return SettingsUpdate(new, saved, changed)
-
-    async def version() -> int:
-        return (await scope.reads.settings())[1]
-
-    return await _checked(update(), version)
+        except LeaseHeld:
+            engine = await c.engines.wait_registered(scope.account.id, c.engine_wait_s)
+            f = engine.facade if engine is not None else None
+        if f is None:
+            raise EngineStarting
+    return await f.patch_settings(changes, version=version, by=by, confirm_live=confirm_live)
 
 
 @router.patch(
@@ -209,23 +224,37 @@ async def patch_settings(
     Telegram, — 422 `chat_is_self` с этими полями."""
     if scope.account.status == "deleting":
         raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING)
-    f = scope.facade
-    if f is None:
-        try:
-            return await _direct(c, scope, body, ctx.login)
-        except AccountDeleting as exc:
-            # Пометка удаления пришла после чтения аккаунта.
-            raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING) from exc
-        except LeaseHeld:
-            engine = await c.engines.wait_registered(scope.account.id, c.engine_wait_s)
-            f = engine.facade if engine is not None else None
-        if f is None:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-                ENGINE_STARTING,
-                headers={"Retry-After": str(ENGINE_STARTING_RETRY_S)},
-            )
-    return await _via_engine(f, body, ctx.login)
+    try:
+        upd = await apply_account_patch(
+            c,
+            scope,
+            body.changes,
+            confirm_live=body.confirm_live,
+            version=body.version,
+            by=ctx.login,
+        )
+    except AccountDeleting as exc:
+        # Пометка удаления пришла после чтения аккаунта.
+        raise HTTPException(status.HTTP_409_CONFLICT, ACCOUNT_DELETING) from exc
+    except EngineStarting as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            ENGINE_STARTING,
+            headers={"Retry-After": str(ENGINE_STARTING_RETRY_S)},
+        ) from exc
+    except SettingsConflict as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {"code": "version_conflict", "version": await _current_version(c, scope)},
+        ) from exc
+    except (SettingsPatchError, ValidationError) as exc:
+        raise cast(HTTPException, _http_error(exc)) from exc
+    return SettingsPatchOut(
+        version=upd.version,
+        values=upd.settings.model_dump(mode="json"),
+        changed=upd.changed,
+        restart_required=restart_required(upd.changed),
+    )
 
 
 @router.get("/settings/history", response_model=SettingsHistoryOut, responses=AUTH)
