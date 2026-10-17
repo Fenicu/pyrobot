@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from app.engine.artifact import artifact_deeds, collecting
+from app.engine.battle_orders import BattleOrder
 from app.engine.gametime import to_msk
 from app.engine.planner.types import Act, Candidate, Decision, Reserve, Wait, WakeKind, Wakeup
 from app.engine.settings import Settings
@@ -156,6 +157,7 @@ class PlannerBase:
         metro_durations: Sequence[float] = (),
         done_today: Mapping[str, int] | None = None,
         metro_probes: Sequence[str] = (),
+        battle_orders: Sequence[BattleOrder] | None = (),
     ) -> None:
         self.s = state
         self.cfg = settings
@@ -168,6 +170,8 @@ class PlannerBase:
         self.done_today: Mapping[str, int] = done_today or {}
         # Проверки выхода из метро (`/main`, `/compact`), сделанные после итога забега.
         self.metro_probes: Sequence[str] = metro_probes
+        # Приказы штаба; None - неизвестны (чтение не удалось, пока набор менялся).
+        self.battle_orders = battle_orders
         # Итог забега показан, выход не подтверждён: персонаж, возможно, ещё в метро и игра молчит
         # на команды — шлём только проверки выхода.
         self.exit_unconfirmed = exit_unconfirmed(state, now)

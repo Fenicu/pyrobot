@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from app.engine.artifact import locked_levels
+from app.engine.battle_orders import BattleOrder
 from app.engine.gametime import to_msk
 from app.engine.parsing.gifts import TANGERINE_GIFT_PRICE
 from app.engine.parsing.trips import TRIP_SPAN
@@ -75,6 +76,7 @@ class PlanHints:
     сейчас (None — неизвестно или ни одно не доступно)."""
 
     battle_target: str | None
+    battle_source: Literal["order_corp", "order_all", "override", "default"] | None
     lottery_tickets: dict[str, int | Literal["max"]]
     sleep_hours: int
     sleep_place: Literal["hotel", "bridge"] | None
@@ -257,8 +259,10 @@ class _Planner(DailyTasks):
     def hints(self, next_deed: NextDeed | None) -> PlanHints:
         battle = self.upcoming_battle()
         tickets = self.cfg.lottery.tickets
+        choice = self.target_choice(battle) if battle is not None else None
         return PlanHints(
-            battle_target=self.target_for(battle) if battle is not None else None,
+            battle_target=choice.target if choice is not None else None,
+            battle_source=choice.source if choice is not None else None,
             lottery_tickets={c: getattr(tickets, c) for c in LOTTERY_CURRENCIES},
             sleep_hours=self.cfg.sleep.duration_h,
             sleep_place=self.sleep_place(),
@@ -875,6 +879,7 @@ def decide(
     metro_durations: Sequence[float] = (),
     done_today: Mapping[str, int] | None = None,
     metro_probes: Sequence[str] = (),
+    battle_orders: Sequence[BattleOrder] | None = (),
 ) -> Decision:
     """Следующий шаг: сценарий или ожидание. `certified=None` — без ограничения (dry_run).
 
@@ -894,6 +899,7 @@ def decide(
         metro_durations,
         done_today,
         metro_probes,
+        battle_orders,
     )
     return planner.decide()
 
@@ -940,6 +946,7 @@ def outlook(
     metro_durations: Sequence[float] = (),
     done_today: Mapping[str, int] | None = None,
     metro_probes: Sequence[str] = (),
+    battle_orders: Sequence[BattleOrder] | None = (),
 ) -> Outlook:
     """«План бота» на тех же входах, что `decide`: его решение и то, что за ним. В цикле не
     используется."""
@@ -956,6 +963,7 @@ def outlook(
             metro_durations,
             done_today,
             metro_probes,
+            battle_orders,
         )
 
     return planner().outlook(planner)

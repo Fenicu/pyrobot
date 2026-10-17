@@ -98,6 +98,9 @@ class PlanHintsOut(BaseModel):
     # Цель ближайшей битвы по настройкам (своя на её час или общая); null — время следующей битвы
     # неизвестно или устарело.
     battle_target: str | None
+    # Откуда цель: приказ штаба (корпорации или «всем»), цель на час битвы или общая; null - как у
+    # battle_target.
+    battle_source: Literal["order_corp", "order_all", "override", "default"] | None
     # Билеты за тираж по настройкам: число или `max` по валютам.
     lottery_tickets: dict[str, int | Literal["max"]]
     sleep_hours: int
@@ -210,6 +213,7 @@ def outlook_out(view: PlanView) -> OutlookOut:
         focus=[PlanFocusOut(deed=deed, today=today) for deed, today in o.focus],
         hints=PlanHintsOut(
             battle_target=o.hints.battle_target,
+            battle_source=o.hints.battle_source,
             lottery_tickets=o.hints.lottery_tickets,
             sleep_hours=o.hints.sleep_hours,
             sleep_place=o.hints.sleep_place,

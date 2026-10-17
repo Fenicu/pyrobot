@@ -148,6 +148,7 @@
  ],
  "hints": {
   "battle_target": "📯Pied Piper",
+  "battle_source": "default",
   "lottery_tickets": {
    "money": "max",
    "knowledge": "max",

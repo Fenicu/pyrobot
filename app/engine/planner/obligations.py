@@ -6,6 +6,7 @@ from dataclasses import asdict
 from datetime import date, datetime, time, timedelta
 from typing import Any, Literal
 
+from app.engine.battle_orders import TargetChoice, order_choice
 from app.engine.gametime import MSK, day_start, tasks_day, to_msk
 from app.engine.market import pick_stock
 from app.engine.metro.budget import GAME_KICK
@@ -20,7 +21,7 @@ from app.engine.planner.base import (
     PlannerBase,
     battle_hour,
 )
-from app.engine.planner.types import Decision, Reserve
+from app.engine.planner.types import Decision, Reserve, Wait
 from app.engine.state.model import (
     BusyState,
     CharacterState,
@@ -35,6 +36,8 @@ HOTEL_RESERVE_AHEAD = timedelta(hours=3)
 # Сон ждёт конца записи на фабрику, только если после неё до дедлайна остаётся запас.
 AFTER_FACTORY_MARGIN = timedelta(minutes=15)
 TARGET_LAST_CALL = timedelta(minutes=1)
+# Приказы штаба неизвестны: цель не ставится, цикл спрашивает снова через столько.
+ORDERS_RETRY = timedelta(seconds=5)
 STAMINA_AHEAD = timedelta(minutes=30)
 FULL_STAMINA = 100
 FASTFOOD_BEFORE = timedelta(minutes=2)
@@ -126,14 +129,26 @@ class Obligations(PlannerBase):
         battle = self.upcoming_battle()
         if battle is None or battle - self.now <= TARGET_LAST_CALL:
             return None
+        if self.battle_orders is None:
+            self.reject("battle_target", {}, "orders_unknown")
+            return Wait(self.now + ORDERS_RETRY, "orders_unknown", tuple(self.candidates))
         desired = self.target_for(battle)
         if self.target_ready(battle, desired):
             return None
         return self.act("battle_target", {"target": desired}, "battle_target")
 
+    def target_choice(self, battle: datetime) -> TargetChoice:
+        """Цель на битву: приказ штаба, затем своя на её час по Москве, затем общая."""
+        ordered = order_choice(self.battle_orders or (), self.value("company"), battle)
+        if ordered is not None:
+            return ordered
+        hour = to_msk(battle).hour
+        if hour in self.cfg.battle.overrides:
+            return TargetChoice(self.cfg.battle.overrides[hour], "override")
+        return TargetChoice(self.cfg.battle.target, "default")
+
     def target_for(self, battle: datetime) -> str:
-        """Цель на битву: своя на её час по Москве или общая."""
-        return self.cfg.battle.overrides.get(to_msk(battle).hour, self.cfg.battle.target)
+        return self.target_choice(battle).target
 
     def target_ready(self, battle: datetime, desired: str) -> bool:
         seen, known = self.s.battle_target, self.s.battle_at

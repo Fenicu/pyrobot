@@ -3694,6 +3694,8 @@ export interface components {
         };
         /** PlanHintsOut */
         PlanHintsOut: {
+            /** Battle Source */
+            battle_source: ("order_corp" | "order_all" | "override" | "default") | null;
             /** Battle Target */
             battle_target: string | null;
             /** Lottery Tickets */

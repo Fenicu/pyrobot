@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from app.engine.battle_orders import BattleOrder
 from app.engine.gametime import MSK
 from app.engine.planner.base import READY_SLACK, TIMER_MARGIN, battle_hour
 from app.engine.planner.decide import decide, outlook
@@ -160,6 +161,123 @@ def test_no_target_in_last_minute() -> None:
     soon = state(now, battle_at=msk(13), battle_target=None)
     decision = decide(soon, only(), now)
     assert "battle_target" not in verdicts(decision)
+
+
+# --- приказы штаба
+
+HQ_BATTLE = msk(13)
+HQ_CFG = only(battle={"target": "📯Pied Piper", "overrides": {13: "⚡️Stark Ind."}})
+CORP_ORDER = BattleOrder(HQ_BATTLE, "bmesa", "☂️Umbrella")
+ALL_ORDER = BattleOrder(HQ_BATTLE, "all", "🤖Hooli")
+
+
+def hq_state(now: datetime = NOON, **over: Any) -> CharacterState:
+    return state(now, battle_at=HQ_BATTLE, **{"battle_target": None, **over})
+
+
+@pytest.mark.parametrize(
+    ("orders", "target", "source"),
+    [
+        ([ALL_ORDER, CORP_ORDER], "☂️Umbrella", "order_corp"),
+        ([ALL_ORDER], "🤖Hooli", "order_all"),
+        ([BattleOrder(HQ_BATTLE, "piper", "🤖Hooli")], "⚡️Stark Ind.", "override"),
+        ([], "⚡️Stark Ind.", "override"),
+    ],
+)
+def test_order_priority_matches_decision_and_hints(
+    orders: list[BattleOrder], target: str, source: str
+) -> None:
+    st = hq_state()
+    assert act(decide(st, HQ_CFG, NOON, battle_orders=orders)) == (
+        "battle_target",
+        {"target": target},
+    )
+    hints = outlook(st, HQ_CFG, NOON, battle_orders=orders).hints
+    assert (hints.battle_target, hints.battle_source) == (target, source)
+
+
+def test_default_source_without_override() -> None:
+    cfg = only(battle={"target": "📯Pied Piper"})
+    hints = outlook(hq_state(), cfg, NOON, battle_orders=()).hints
+    assert (hints.battle_target, hints.battle_source) == ("📯Pied Piper", "default")
+
+
+def test_no_battle_no_source() -> None:
+    past = state(NOON, battle_at=Obs(value=msk(10), at=msk(9)))
+    assert outlook(past, HQ_CFG, NOON).hints.battle_source is None
+
+
+def test_order_resets_target_already_set_by_settings() -> None:
+    cfg = only(battle={"target": "🤖Hooli"})
+    shown = hq_state(battle_target="🤖Hooli")
+    assert isinstance(decide(shown, cfg, NOON), Wait)
+    order = BattleOrder(HQ_BATTLE, "all", "☂️Umbrella")
+    decision = decide(shown, cfg, NOON, battle_orders=[order])
+    assert act(decision) == ("battle_target", {"target": "☂️Umbrella"})
+
+
+def test_target_returns_to_settings_when_order_is_gone() -> None:
+    cfg = only(battle={"target": "🤖Hooli"})
+    shown = hq_state(battle_target="☂️Umbrella")
+    assert act(decide(shown, cfg, NOON, battle_orders=())) == (
+        "battle_target",
+        {"target": "🤖Hooli"},
+    )
+
+
+def test_order_silent_in_last_minute() -> None:
+    now = HQ_BATTLE - timedelta(seconds=30)
+    decision = decide(hq_state(now), HQ_CFG, now, battle_orders=[ALL_ORDER])
+    assert "battle_target" not in verdicts(decision)
+    assert not isinstance(decision, Act)
+
+
+def test_order_for_other_battle_does_not_apply() -> None:
+    st = state(NOON, battle_at=msk(22), battle_target=None)
+    other = BattleOrder(HQ_BATTLE, "all", "🤖Hooli")
+    assert act(decide(st, HQ_CFG, NOON, battle_orders=[other])) == (
+        "battle_target",
+        {"target": "📯Pied Piper"},
+    )
+
+
+def test_unknown_orders_wait_without_target() -> None:
+    decision = decide(hq_state(), HQ_CFG, NOON, battle_orders=None)
+    assert decision == Wait(NOON + timedelta(seconds=5), "orders_unknown", decision.candidates)
+    assert verdicts(decision) == {"battle_target": "orders_unknown"}
+
+
+def test_unknown_orders_wait_ends_in_last_minute() -> None:
+    now = HQ_BATTLE - timedelta(seconds=30)
+    decision = decide(hq_state(now), HQ_CFG, now, battle_orders=None)
+    assert not isinstance(decision, Act)
+    assert decision.reason != "orders_unknown"
+
+
+def test_unknown_orders_do_not_hide_stale_battle_refresh() -> None:
+    stale = state(NOON, battle_at=Obs(value=msk(10), at=msk(9)))
+    decision = decide(stale, HQ_CFG, NOON, battle_orders=None)
+    assert verdicts(decision)["battle_target"] == "stale:battle_at"
+
+
+def test_all_order_on_own_company_is_defense() -> None:
+    st = hq_state(company="hooli")
+    decision = decide(st, HQ_CFG, NOON, battle_orders=[ALL_ORDER])
+    assert act(decision) == ("battle_target", {"target": "🛡Защита"})
+    hints = outlook(st, HQ_CFG, NOON, battle_orders=[ALL_ORDER]).hints
+    assert hints.battle_source == "order_all"
+
+
+def test_all_order_with_unknown_company_stays_on_settings() -> None:
+    st = hq_state(company=None)
+    decision = decide(st, HQ_CFG, NOON, battle_orders=[ALL_ORDER])
+    assert act(decision) == ("battle_target", {"target": "⚡️Stark Ind."})
+
+
+def test_orders_do_not_touch_settings() -> None:
+    before = HQ_CFG.model_dump()
+    decide(hq_state(), HQ_CFG, NOON, battle_orders=[ALL_ORDER, CORP_ORDER])
+    assert HQ_CFG.model_dump() == before
 
 
 @pytest.mark.parametrize(

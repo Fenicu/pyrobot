@@ -25,6 +25,7 @@ def outlook_matches_decide(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[Dec
             p.metro_durations,
             p.done_today,
             p.metro_probes,
+            p.battle_orders,
         )
 
     def decide(self: _Planner) -> Decision:

@@ -5856,6 +5856,23 @@
       },
       "PlanHintsOut": {
         "properties": {
+          "battle_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "order_corp",
+                  "order_all",
+                  "override",
+                  "default"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Battle Source"
+          },
           "battle_target": {
             "anyOf": [
               {
@@ -5914,6 +5931,7 @@
         },
         "required": [
           "battle_target",
+          "battle_source",
           "lottery_tickets",
           "sleep_hours",
           "sleep_place",
