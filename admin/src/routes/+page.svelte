@@ -1,17 +1,13 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { accounts } from '$lib/app.svelte';
-	import AccountsPending from '$lib/components/AccountsPending.svelte';
-	import { homeHref, lastAccount } from '$lib/nav';
+	import { homeHref } from '$lib/nav';
 
-	// «/» — последний открытый аккаунт, если он ещё есть, иначе первый, а без аккаунтов — их список.
+	// «/» — «Обзор»: без аккаунтов он сам покажет ссылку на их список.
 	$effect(() => {
-		if (accounts.list !== null) void goto(homeHref(accounts.list, lastAccount()), { replaceState: true });
+		void goto(homeHref(), { replaceState: true });
 	});
 </script>
 
 <svelte:head><title>pyrobot</title></svelte:head>
 
-<div class="p-3.5">
-	<AccountsPending error={accounts.list === null ? accounts.error : null} onretry={() => void accounts.load()} />
-</div>
+<p class="p-6 text-sm text-fg-muted" role="status">Загрузка…</p>

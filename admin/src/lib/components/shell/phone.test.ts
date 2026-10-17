@@ -82,29 +82,35 @@ afterEach(() => {
 });
 
 describe('телефон: нижние вкладки', () => {
-	it('Аккаунты, открытый аккаунт, Журнал, Управление, Игра и кнопка «Меню»; активная отмечена', () => {
+	it('Обзор, открытый аккаунт, Журнал, Управление, Игра и кнопка «Меню»; активная отмечена', () => {
 		accounts.list = [account(1, { name: 'Iko', company: 'bmesa', team_tag: 'LA' }), account(2)];
 		open('/a/1/journal', { account: '1' });
 		const links = within(tabs()).getAllByRole('link');
-		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/accounts', '/a/1', '/a/1/journal', '/a/1/control', '/a/1/game']);
+		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/overview', '/a/1', '/a/1/journal', '/a/1/control', '/a/1/game']);
 		// Вкладка аккаунта — его имя без значка компании и тега: место в панели узкое.
-		expect(links.map((a) => a.textContent?.trim())).toEqual(['Аккаунты', 'Iko', 'Журнал', 'Управл.', 'Игра']);
+		expect(links.map((a) => a.textContent?.trim())).toEqual(['Обзор', 'Iko', 'Журнал', 'Управл.', 'Игра']);
 		expect(links[2]).toHaveAttribute('aria-current', 'page');
 		expect(links[1]).not.toHaveAttribute('aria-current');
 		const menu = within(tabs()).getByRole('button', { name: 'Меню' });
 		expect(menu).toHaveAttribute('aria-expanded', 'false');
 	});
 
-	it('без аккаунтов — только «Аккаунты» и «Меню»', () => {
+	it('на вложенных путях «Обзора» его вкладка активна', () => {
+		accounts.list = [account(1)];
+		open('/overview/battle');
+		expect(within(tabs()).getByRole('link', { name: 'Обзор' })).toHaveAttribute('aria-current', 'page');
+	});
+
+	it('без аккаунтов — только «Обзор» и «Меню»', () => {
 		accounts.list = [];
-		open('/accounts');
+		open('/overview');
 		const links = within(tabs()).getAllByRole('link');
-		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/accounts']);
+		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/overview']);
 		expect(links[0]).toHaveAttribute('aria-current', 'page');
 		expect(within(tabs()).getByRole('button', { name: 'Меню' })).toBeInTheDocument();
 	});
 
-	it('у «Аккаунтов» — число аккаунтов, требующих внимания', () => {
+	it('у «Обзора» — число аккаунтов, требующих внимания', () => {
 		accounts.list = [
 			account(1),
 			account(2, { paused: true }),
@@ -113,15 +119,15 @@ describe('телефон: нижние вкладки', () => {
 			account(5, { tg: { user_id: 5, online: false, unreachable_since: null } })
 		];
 		open('/a/1', { account: '1' });
-		const link = within(tabs()).getByRole('link', { name: /^Аккаунты/ });
+		const link = within(tabs()).getByRole('link', { name: /^Обзор/ });
 		expect(link).toHaveTextContent('3');
 		expect(link).toHaveAccessibleDescription('требуют внимания: 3');
 		cleanup();
 
 		accounts.list = [account(1), account(2, { status: 'disabled' })];
 		open('/a/1', { account: '1' });
-		const quiet = within(tabs()).getByRole('link', { name: 'Аккаунты' });
-		expect(quiet).toHaveTextContent(/^Аккаунты$/);
+		const quiet = within(tabs()).getByRole('link', { name: 'Обзор' });
+		expect(quiet).toHaveTextContent(/^Обзор$/);
 		expect(quiet).not.toHaveAccessibleDescription();
 	});
 
@@ -165,6 +171,8 @@ describe('телефон: меню', () => {
 		let common = within(menu).getByRole('list', { name: 'Общее' });
 		expect(within(common).queryByRole('link', { name: 'Сервер' })).toBeNull();
 		expect(within(common).getByRole('link', { name: 'Пароль и коды' })).toHaveAttribute('href', '/password');
+		// Вкладка «Аккаунты» стала «Обзором»: список аккаунтов — из меню.
+		expect(within(common).getByRole('link', { name: 'Аккаунты' })).toHaveAttribute('href', '/accounts');
 
 		theme.set('dark');
 		await user.click(within(common).getByRole('button', { name: 'Тема: тёмная' }));
@@ -189,6 +197,13 @@ describe('телефон: меню', () => {
 		expect(menu).toHaveAccessibleName('Меню');
 		expect(within(menu).queryByRole('list', { name: 'Разделы аккаунта' })).toBeNull();
 		expect(within(menu).getByRole('list', { name: 'Общее' })).toBeInTheDocument();
+	});
+
+	it('на /accounts подсвечено «Меню»', () => {
+		accounts.list = [account(1)];
+		open('/accounts');
+		expect(within(tabs()).getByRole('button', { name: 'Меню' })).toHaveClass('text-accent');
+		expect(within(tabs()).getByRole('link', { name: 'Обзор' })).not.toHaveAttribute('aria-current');
 	});
 
 	it('переход по плитке закрывает меню', async () => {

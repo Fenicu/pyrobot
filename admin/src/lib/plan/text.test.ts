@@ -152,6 +152,15 @@ describe('словари плана', () => {
 		expect(timerLine(later, stale).detail).toBe('по последним данным о деньгах');
 		const dump = plan.wakeups.find((t) => t.kind === 'stocks_dump')!;
 		expect(timerLine(dump, plan).detail).toBe('цель 📯Pied Piper');
+		// Цель по приказу штаба подписана; по настройкам - без подписи.
+		for (const battle_source of ['order_corp', 'order_all'] as const) {
+			const ordered = { ...plan, hints: { ...plan.hints, battle_source } };
+			expect(timerLine(dump, ordered).detail).toBe('цель 📯Pied Piper (по приказу штаба)');
+		}
+		for (const battle_source of ['override', 'default', null] as const) {
+			const own = { ...plan, hints: { ...plan.hints, battle_source } };
+			expect(timerLine(dump, own).detail).toBe('цель 📯Pied Piper');
+		}
 		expect(lotteryTickets(plan)).toBe('все — max');
 		const custom = { ...plan, hints: { ...plan.hints, lottery_tickets: { money: 4, knowledge: 'max' as const } } };
 		expect(lotteryTickets(custom)).toBe('💵 4, 📚 max');

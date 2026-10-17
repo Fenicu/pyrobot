@@ -47,6 +47,7 @@
 	aria-label="Полоса разделов"
 >
 	<span class="{ICON} font-bold text-fg" title="pyrobot" aria-hidden="true">p</span>
+	{@render link(nav.overview)}
 	{#each nav.account as item (item.href)}{@render link(item)}{/each}
 	<span class="flex-1"></span>
 	{#each nav.common as item (item.href)}{@render link(item)}{/each}

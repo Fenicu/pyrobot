@@ -220,6 +220,23 @@ describe('колонка аккаунтов', () => {
 });
 
 describe('полоса разделов', () => {
+	it('«Обзор» первый, виден и без аккаунтов; активен на вложенных путях', () => {
+		accounts.list = [];
+		open('/overview/battle');
+		const first = within(rail()).getAllByRole('link')[0]!;
+		expect(first).toHaveAccessibleName('Обзор');
+		expect(first).toHaveAttribute('href', '/overview');
+		expect(first).toHaveAttribute('aria-current', 'page');
+		cleanup();
+
+		accounts.list = [account(1)];
+		open('/a/1', { account: '1' });
+		const links = within(rail()).getAllByRole('link');
+		expect(links[0]).toHaveAccessibleName('Обзор');
+		expect(links[0]).not.toHaveAttribute('aria-current');
+		expect(links[1]).toHaveAccessibleName('Главная');
+	});
+
 	it('иконки разделов аккаунта с подписью, активный отмечен', () => {
 		accounts.list = [account(1)];
 		open('/a/1/settings', { account: '1' });

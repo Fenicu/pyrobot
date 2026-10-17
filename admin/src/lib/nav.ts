@@ -5,6 +5,7 @@ import ChartLine from '@lucide/svelte/icons/chart-line';
 import Gamepad2 from '@lucide/svelte/icons/gamepad-2';
 import House from '@lucide/svelte/icons/house';
 import KeyRound from '@lucide/svelte/icons/key-round';
+import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 import MessageSquare from '@lucide/svelte/icons/message-square';
 import ScrollText from '@lucide/svelte/icons/scroll-text';
 import Send from '@lucide/svelte/icons/send';
@@ -37,8 +38,14 @@ function commonItems(role?: 'owner' | 'user' | null): NavItem[] {
 	return [...server, { href: '/password', label: 'Пароль и коды', icon: KeyRound }];
 }
 
-/** Левая полоса ПК: разделы аккаунта (если он есть) и общие. */
-export function railNav(id: number | null, role?: 'owner' | 'user' | null): { account: NavItem[]; common: NavItem[] } {
+/** «Обзор» всех аккаунтов учётки: вне аккаунта, первый в полосе и во вкладках. */
+const OVERVIEW: NavItem = { href: '/overview', label: 'Обзор', icon: LayoutDashboard };
+
+/** Левая полоса ПК: «Обзор», разделы аккаунта (если он есть) и общие. */
+export function railNav(
+	id: number | null,
+	role?: 'owner' | 'user' | null
+): { overview: NavItem; account: NavItem[]; common: NavItem[] } {
 	const account =
 		id === null
 			? []
@@ -54,15 +61,14 @@ export function railNav(id: number | null, role?: 'owner' | 'user' | null): { ac
 					['/notifications', 'Уведомления', Bell, 'unread'],
 					['/telegram', 'Telegram', Send]
 				]);
-	return { account, common: commonItems(role) };
+	return { overview: OVERVIEW, account, common: commonItems(role) };
 }
 
 /** Нижние вкладки телефона; «Меню» — кнопка рядом, не пункт. */
 export function phoneTabs(id: number | null, name: string | null): NavItem[] {
-	const accounts: NavItem = { href: '/accounts', label: 'Аккаунты', icon: Users };
-	if (id === null) return [accounts];
+	if (id === null) return [OVERVIEW];
 	return [
-		accounts,
+		OVERVIEW,
 		{ href: accountHref(id, ''), label: name ?? 'Главная', icon: House },
 		{ href: accountHref(id, '/journal'), label: 'Журнал', icon: ScrollText },
 		{ href: accountHref(id, '/control'), label: 'Управление', short: 'Управл.', icon: Gamepad2 },
@@ -83,7 +89,8 @@ export function phoneMenu(id: number | null, role?: 'owner' | 'user' | null): { 
 					['/notifications', 'Уведомления', Bell, 'unread'],
 					['/telegram', 'Telegram', Send]
 				]);
-	return { account, common: commonItems(role) };
+	// Вкладка «Аккаунты» уступила место «Обзору»: список аккаунтов открывается отсюда.
+	return { account, common: [{ href: '/accounts', label: 'Аккаунты', icon: Users }, ...commonItems(role)] };
 }
 
 const ACCOUNT_ROOT = /^\/a\/\d+$/;
@@ -137,10 +144,9 @@ export function pickAccount(list: readonly { id: number }[], last: number | null
 	return list.find((a) => a.id === last)?.id ?? list[0]?.id ?? null;
 }
 
-/** Куда ведёт `/`: аккаунт по умолчанию, а без аккаунтов — их список. */
-export function homeHref(list: readonly { id: number }[], last: number | null): string {
-	const id = pickAccount(list, last);
-	return id === null ? '/accounts' : accountHref(id, '');
+/** Куда ведёт `/`: в «Обзор»; без аккаунтов он сам покажет ссылку на их список. */
+export function homeHref(): string {
+	return '/overview';
 }
 
 // Экраны до аккаунтов: старые ссылки и закладки.

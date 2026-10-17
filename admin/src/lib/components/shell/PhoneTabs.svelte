@@ -3,12 +3,12 @@
 	import { isActive, phoneTabs } from '$lib/nav';
 
 	interface Props {
-		/** Аккаунт меню; null — только «Аккаунты» и «Меню». */
+		/** Аккаунт меню; null — только «Обзор» и «Меню». */
 		account: number | null;
 		/** Подпись вкладки аккаунта. */
 		name: string | null;
 		path: string;
-		/** Аккаунты, требующие внимания, — счётчик у «Аккаунтов». */
+		/** Аккаунты, требующие внимания, — счётчик у «Обзора». */
 		attention: number;
 		/** Непрочитанные warn и error открытого аккаунта — точка у «Меню» (там «Уведомления»). */
 		unread: number;
@@ -31,7 +31,7 @@
 >
 	{#each tabs as item (item.href)}
 		{@const active = isActive(path, item.href)}
-		{@const badge = item.href === '/accounts' ? attention : 0}
+		{@const badge = item.href === '/overview' ? attention : 0}
 		<a
 			href={item.href}
 			class="{TAB} {active ? 'text-accent' : 'text-fg-muted'}"

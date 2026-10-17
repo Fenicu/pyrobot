@@ -285,6 +285,12 @@ export interface TimerLine {
 	detail: string;
 }
 
+/** Цель на битву выбрана приказом штаба, а не настройками аккаунта. */
+function byOrder(plan: Outlook): string {
+	const source = plan.hints.battle_source;
+	return source === 'order_corp' || source === 'order_all' ? ' (по приказу штаба)' : '';
+}
+
 /** Строка «Дальше по времени». */
 export function timerLine(t: PlanTimer, plan: Outlook): TimerLine {
 	const base = WAKE[t.kind];
@@ -314,7 +320,7 @@ export function timerLine(t: PlanTimer, plan: Outlook): TimerLine {
 		case 'battle':
 		case 'stocks_dump':
 		case 'metro_kick':
-			detail = plan.hints.battle_target ? `цель ${plan.hints.battle_target}` : '';
+			detail = plan.hints.battle_target ? `цель ${plan.hints.battle_target}${byOrder(plan)}` : '';
 			break;
 	}
 	return { icon: base.icon, text, detail };
