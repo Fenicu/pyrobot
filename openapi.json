@@ -2891,6 +2891,100 @@
         "title": "DecisionOut",
         "type": "object"
       },
+      "EngineBulkIn": {
+        "properties": {
+          "account_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Ids"
+          },
+          "action": {
+            "enum": [
+              "pause",
+              "resume"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "EngineBulkIn",
+        "type": "object"
+      },
+      "EngineBulkOut": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/EngineBulkResultOut"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "EngineBulkOut",
+        "type": "object"
+      },
+      "EngineBulkResultOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "done",
+              "unchanged",
+              "skipped",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "status"
+        ],
+        "title": "EngineBulkResultOut",
+        "type": "object"
+      },
       "EngineStatusOut": {
         "properties": {
           "game_chat_member": {
@@ -18970,6 +19064,86 @@
           }
         },
         "summary": "Put Battle Orders",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/v1/overview/engine": {
+      "post": {
+        "description": "Пауза или возобновление нескольких аккаунтов. Остановленный здесь движок пропускается\n(`skipped`): флаг в базу не пишется, у чужого хоста запись затёрлась бы его настройками.\nЧужой и несуществующий аккаунт неразличимы.",
+        "operationId": "overview_engine_api_v1_overview_engine_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EngineBulkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineBulkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Overview Engine",
         "tags": [
           "overview"
         ]

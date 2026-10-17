@@ -149,6 +149,17 @@ class SettingsUpdate:
     changed: dict[str, list[Any]]
 
 
+_SET_PAUSED_ATTEMPTS = 3
+
+
+def _paused_change(paused: bool) -> Callable[[Settings], Settings]:
+    def change(s: Settings) -> Settings:
+        engine = s.engine.model_copy(update={"paused": paused})
+        return s.model_copy(update={"engine": engine})
+
+    return change
+
+
 class EngineFacade:
     def __init__(
         self,
@@ -387,12 +398,30 @@ class EngineFacade:
         await self._audit("engine_resumed", f"planner resumed by {by}")
 
     async def _set_paused(self, paused: bool, by: str) -> None:
-        def change(s: Settings) -> Settings:
-            engine = s.engine.model_copy(update={"paused": paused})
-            return s.model_copy(update={"engine": engine})
-
-        await self.settings.update(change, changed_by=by)
+        await self.settings.update(_paused_change(paused), changed_by=by)
         self._wake_planner()
+
+    async def set_paused(self, paused: bool, by: str) -> bool:
+        """Пауза или возобновление с проверкой и записью под ожидаемой версией: две одновременные
+        команды не дают двух версий и двух уведомлений. True - состояние изменилось."""
+        change = _paused_change(paused)
+        for attempt in range(_SET_PAUSED_ATTEMPTS):
+            version = self.settings.version
+            if self.settings.current.engine.paused == paused:
+                return False
+            try:
+                await self.settings.update(change, changed_by=by, expected_version=version)
+            except SettingsConflict:
+                if attempt == _SET_PAUSED_ATTEMPTS - 1:
+                    raise
+                continue
+            self._wake_planner()
+            if paused:
+                await self._audit("engine_paused", f"planner paused by {by}")
+            else:
+                await self._audit("engine_resumed", f"planner resumed by {by}")
+            return True
+        raise AssertionError("unreachable")
 
     async def take_control(self, *, by: str) -> datetime:
         """Ручное управление на 30 минут: планировщик не начинает новых решений, идущий

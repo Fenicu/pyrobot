@@ -479,6 +479,84 @@ async def test_pause_resume_persist_and_audit() -> None:
     assert "alice" in rec.items[0][2]
 
 
+async def test_set_paused_writes_once_and_reports_change() -> None:
+    rec, planner = _Recorder(), _Planner()
+    f = build(notifier=rec, planner=planner)
+    assert await f.set_paused(True, "alice") is True
+    assert f.settings.current.engine.paused and f.settings.version == 1
+    assert planner.woken == 1
+    assert [code for _, code, _ in rec.items] == ["engine_paused"]
+    assert "alice" in rec.items[0][2]
+    # Повтор: ни записи, ни уведомления, ни пробуждения планировщика.
+    assert await f.set_paused(True, "alice") is False
+    assert f.settings.version == 1 and planner.woken == 1 and len(rec.items) == 1
+    assert await f.set_paused(False, "bob") is True
+    assert [code for _, code, _ in rec.items] == ["engine_paused", "engine_resumed"]
+    assert await f.set_paused(False, "bob") is False
+    assert f.settings.version == 2
+
+
+async def test_set_paused_concurrent_calls_change_once() -> None:
+    rec = _Recorder()
+    f = build(notifier=rec)
+    results = await asyncio.gather(*(f.set_paused(True, "alice") for _ in range(4)))
+    assert sorted(results) == [False, False, False, True]
+    assert f.settings.version == 1
+    assert [code for _, code, _ in rec.items] == ["engine_paused"]
+
+
+class _ConflictOnce(StaticSettings):
+    """Версию двигает «чужая» запись между чтением и записью фасада."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.raced = False
+
+    async def update(
+        self, change: SettingsChange, *, changed_by: str, expected_version: int | None = None
+    ) -> tuple[Settings, int]:
+        if not self.raced:
+            self.raced = True
+            await super().update(lambda s: s, changed_by="engine")
+        return await super().update(
+            change, changed_by=changed_by, expected_version=expected_version
+        )
+
+
+async def test_set_paused_retries_after_settings_conflict() -> None:
+    rec, planner = _Recorder(), _Planner()
+    settings = _ConflictOnce()
+    f = build(settings=settings, notifier=rec, planner=planner)
+    assert await f.set_paused(True, "alice") is True
+    assert settings.current.engine.paused and settings.version == 2
+    assert planner.woken == 1 and len(rec.items) == 1
+
+
+async def test_set_paused_conflict_to_target_state_is_unchanged() -> None:
+    class _PausedByOther(StaticSettings):
+        raced = False
+
+        async def update(
+            self, change: SettingsChange, *, changed_by: str, expected_version: int | None = None
+        ) -> tuple[Settings, int]:
+            if not self.raced:
+                self.raced = True
+                await super().update(
+                    lambda s: s.model_copy(
+                        update={"engine": s.engine.model_copy(update={"paused": True})}
+                    ),
+                    changed_by="other",
+                )
+            return await super().update(
+                change, changed_by=changed_by, expected_version=expected_version
+            )
+
+    rec = _Recorder()
+    f = build(settings=_PausedByOther(), notifier=rec)
+    assert await f.set_paused(True, "alice") is False
+    assert rec.items == []
+
+
 async def test_manual_control_take_extend_release() -> None:
     rec, planner, clock, stream = _Recorder(), _Planner(), StepClock(), EventStream()
     f = build(notifier=rec, planner=planner, control=ManualControl(clock), stream=stream)

@@ -5141,6 +5141,25 @@ U+FE0F), `unknown_company`, `target_is_own_company` (`loc: body.corporations.<к
 - `shared[]` — общие события `{kind, at, until, label}`: битвы `battle` (по наблюдениям или по умолчанию 13:00 и 22:00 МСК), фабрика `factory` (18:00–18:30 МСК), лотерея `lottery` (19:17–21:07 МСК) и ночь `night` (22:00–08:00 МСК следующего дня);
 - `accounts[]` — аккаунты учётки `{id, seen_at, stale, items[]}`: `seen_at` — время последнего наблюдения уровня или денег, `stale` — флаг устаревания по `engine.state_stale_after_min`; `items[]` — отрезки занятости (`busy`, `sleep` с делом в `detail`) и метки (`sleep_deadline`, `sleep_allowed`, `book_ready`, `card_ready`, `fastfood_ready`, `prizebox_ready`, `tangerine_ready`, `metro_ready`, `artifact_end`, `lottery_close`), а для запущенных локально движков — также таймеры планировщика (`source: "planner"`). Прошедшие метки возвращаются как есть, события за пределами окна отсекаются.
 
+### Массовая пауза и возобновление (обзор)
+
+`POST /api/v1/overview/engine` (сессия, CSRF) с телом `{action: "pause"|"resume", account_ids:
+[int, …] | null}` → `{results: [{account_id, status, reason, host}]}`. `null` — все аккаунты учётки в
+статусе `enabled`; не больше 50 id (больше — 422), повторы убираются, порядок запроса сохраняется.
+Нет аккаунтов — `results: []`. Ответ 200, если тело прошло проверку; аккаунты обрабатываются по
+одному, сбой одного остальных не останавливает.
+
+- `done` — состояние изменено (запись версии настроек, уведомление `engine_paused` /
+  `engine_resumed` с логином, пробуждение планировщика);
+- `unchanged` (`already_paused` / `already_running`) — уже в нужном состоянии: версии настроек и
+  уведомления нет. Проверка и запись идут через `EngineFacade.set_paused` под ожидаемой версией
+  (до 3 попыток при конфликте), поэтому два одновременных запроса дают одну версию и одно уведомление;
+- `skipped` (`engine_not_running`, `host` — `locked_elsewhere` / `lease_active` / `null`) — движок не
+  запущен в этом процессе. Флаг в базу не пишется: у остановленного аккаунта нечего ставить на
+  паузу, а у чужого хоста запись затёрлась бы его настройками;
+- `error` — `account_not_found` (чужой и несуществующий неразличимы), `account_deleting`,
+  `lock_lost`, `internal_error` (в логе с id аккаунта).
+
 ### Управление настройками
 
 `GET /api/v1/accounts/{id}/settings` (сессия) отдаёт `{version, values, defaults, schema}`: текущие настройки,

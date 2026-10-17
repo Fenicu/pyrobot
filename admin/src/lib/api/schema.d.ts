@@ -1570,6 +1570,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview/engine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Overview Engine
+         * @description Пауза или возобновление нескольких аккаунтов. Остановленный здесь движок пропускается
+         *     (`skipped`): флаг в базу не пишется, у чужого хоста запись затёрлась бы его настройками.
+         *     Чужой и несуществующий аккаунт неразличимы.
+         */
+        post: operations["overview_engine_api_v1_overview_engine_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/overview/feed": {
         parameters: {
             query?: never;
@@ -2675,6 +2697,35 @@ export interface components {
             scenario: string | null;
             /** Until */
             until: string | null;
+        };
+        /** EngineBulkIn */
+        EngineBulkIn: {
+            /** Account Ids */
+            account_ids?: number[] | null;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "pause" | "resume";
+        };
+        /** EngineBulkOut */
+        EngineBulkOut: {
+            /** Results */
+            results: components["schemas"]["EngineBulkResultOut"][];
+        };
+        /** EngineBulkResultOut */
+        EngineBulkResultOut: {
+            /** Account Id */
+            account_id: number;
+            /** Host */
+            host?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "done" | "unchanged" | "skipped" | "error";
         };
         /** EngineStatusOut */
         EngineStatusOut: {
@@ -11099,6 +11150,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorOut"];
+                };
+            };
+        };
+    };
+    overview_engine_api_v1_overview_engine_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EngineBulkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineBulkOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
