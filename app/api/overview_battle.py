@@ -11,16 +11,14 @@ from app.db.overview import AccountInput
 from app.engine.battle_orders import (
     BattleOrder,
     TargetChoice,
-    order_choice,
+    choose_target,
     target_is_set,
 )
 from app.engine.facade import PlannerUnavailable
-from app.engine.gametime import to_msk
 from app.engine.host.account import AccountRuntime
 from app.engine.planner.base import battle_hour
 from app.engine.planner.loop import PlanView
 from app.engine.planner.obligations import TARGET_LAST_CALL
-from app.engine.settings import BattleSection
 from app.engine.state.model import CharacterState
 
 log = logging.getLogger(__name__)
@@ -43,19 +41,6 @@ class BattleView:
     ready: bool | None
     applies: bool
     note: str | None
-
-
-def desired_choice(
-    cfg: BattleSection, orders: Sequence[BattleOrder], own: str | None, battle: datetime
-) -> TargetChoice:
-    """Как `Obligations.target_choice`: приказ, затем цель на час битвы, затем общая."""
-    ordered = order_choice(orders, own, battle)
-    if ordered is not None:
-        return ordered
-    hour = to_msk(battle).hour
-    if hour in cfg.overrides:
-        return TargetChoice(cfg.overrides[hour], "override")
-    return TargetChoice(cfg.target, "default")
 
 
 async def fetch_plans(
@@ -93,7 +78,7 @@ def account_battle_view(
 ) -> BattleView:
     state = inp.state
     own = _company(state)
-    choice = desired_choice(inp.settings.battle, orders, own, battle)
+    choice = choose_target(orders, own, battle, inp.settings.battle)
     in_game: str | None = None
     ready: bool | None = None
     if first and state is not None:

@@ -7,6 +7,7 @@ from app.engine.battle_orders import (
     BATTLE_HOURS,
     BattleOrder,
     TargetChoice,
+    choose_target,
     next_battles,
     order_choice,
     target_is_set,
@@ -14,7 +15,7 @@ from app.engine.battle_orders import (
 )
 from app.engine.gametime import MSK
 from app.engine.planner.decide import _Planner
-from app.engine.settings import Settings
+from app.engine.settings import BattleSection, Settings
 from app.engine.state.model import CharacterState, Obs, TargetSet
 from tests.engine.planner.test_obligations import msk, state
 
@@ -77,6 +78,46 @@ def test_order_for_other_battle_ignored() -> None:
 
 def test_no_orders() -> None:
     assert order_choice([], "bmesa", BATTLE) is None
+
+
+# --- choose_target
+
+
+def test_choose_target_order_then_override_then_default() -> None:
+    cfg = BattleSection(target=PIPER, overrides={13: UMBRELLA})
+    orders = [order("all", HOOLI)]
+    assert choose_target(orders, "bmesa", BATTLE, cfg) == TargetChoice(HOOLI, "order_all")
+    assert choose_target([], "bmesa", BATTLE, cfg) == TargetChoice(UMBRELLA, "override")
+    assert choose_target([], "bmesa", msk(22), cfg) == TargetChoice(PIPER, "default")
+
+
+def test_choose_target_without_company_ignores_orders() -> None:
+    cfg = BattleSection(target=PIPER)
+    got = choose_target([order("all", HOOLI)], None, BATTLE, cfg)
+    assert got == TargetChoice(PIPER, "default")
+
+
+@pytest.mark.parametrize("own", [None, "bmesa", "piper"])
+@pytest.mark.parametrize("hour", [13, 22])
+@pytest.mark.parametrize(
+    "orders",
+    [
+        [],
+        [order("all", HOOLI)],
+        [order("all", HOOLI), order("bmesa", UMBRELLA)],
+        [order("bmesa", DEFENSE)],
+        [order("all", HOOLI, msk(22))],
+    ],
+)
+def test_planner_and_choose_target_agree(
+    own: str | None, hour: int, orders: list[BattleOrder]
+) -> None:
+    cfg = Settings.model_validate({"battle": {"target": PIPER, "overrides": {22: UMBRELLA}}})
+    over: dict[str, Any] = {"company": Obs(value=own, at=NOW)}
+    st = state(NOW, **over)
+    battle = msk(hour)
+    planner = _Planner(st, cfg, NOW, None, {}, {}, {}, battle_orders=orders)
+    assert planner.target_choice(battle) == choose_target(orders, own, battle, cfg.battle)
 
 
 # --- target_is_set

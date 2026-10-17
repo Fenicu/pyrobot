@@ -6,7 +6,7 @@ from dataclasses import asdict
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
-from app.engine.battle_orders import TargetChoice, order_choice
+from app.engine.battle_orders import TargetChoice, choose_target
 from app.engine.gametime import MSK, day_start, tasks_day, to_msk
 from app.engine.market import pick_stock
 from app.engine.metro.budget import GAME_KICK
@@ -141,14 +141,9 @@ class Obligations(PlannerBase):
         return self.act("battle_target", params, "battle_target")
 
     def target_choice(self, battle: datetime) -> TargetChoice:
-        """Цель на битву: приказ штаба, затем своя на её час по Москве, затем общая."""
-        ordered = order_choice(self.battle_orders or (), self.value("company"), battle)
-        if ordered is not None:
-            return ordered
-        hour = to_msk(battle).hour
-        if hour in self.cfg.battle.overrides:
-            return TargetChoice(self.cfg.battle.overrides[hour], "override")
-        return TargetChoice(self.cfg.battle.target, "default")
+        return choose_target(
+            self.battle_orders or (), self.value("company"), battle, self.cfg.battle
+        )
 
     def target_for(self, battle: datetime) -> str:
         return self.target_choice(battle).target

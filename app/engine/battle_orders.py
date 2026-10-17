@@ -3,12 +3,15 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal, NamedTuple, Protocol
+from typing import TYPE_CHECKING, Literal, NamedTuple, Protocol
 
 from app.engine.gametime import MSK, to_msk
 from app.engine.parsing.battle import DEFENSE
 from app.engine.parsing.common import COMPANIES
 from app.engine.state.model import CharacterState
+
+if TYPE_CHECKING:
+    from app.engine.settings import BattleSection
 
 # Часы битв по Москве, когда наблюдений нет (игра перешла на них 16.08.2026).
 BATTLE_HOURS: tuple[int, ...] = (13, 22)
@@ -50,6 +53,19 @@ def order_choice(
         if o.scope == "all":
             return TargetChoice(_safe(o.target, own), "order_all")
     return None
+
+
+def choose_target(
+    orders: Sequence[BattleOrder], own: str | None, battle: datetime, cfg: BattleSection
+) -> TargetChoice:
+    """Цель на битву: приказ штаба, затем своя на её час по Москве, затем общая."""
+    ordered = order_choice(orders, own, battle)
+    if ordered is not None:
+        return ordered
+    hour = to_msk(battle).hour
+    if hour in cfg.overrides:
+        return TargetChoice(cfg.overrides[hour], "override")
+    return TargetChoice(cfg.target, "default")
 
 
 def _safe(target: str, own: str) -> str:
