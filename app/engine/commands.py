@@ -368,28 +368,39 @@ CALLBACK_RULES: tuple[Rule, ...] = (
 )
 
 
+# Запрещённое боту, но обычная игра для человека: при ручном управлении уходит без подтверждения.
+# Крафт в мастерской (`fit_<id>`, `fit_create_all`).
+_ROUTINE_TEXT: tuple[re.Pattern[str], ...] = ()
+_ROUTINE_CALLBACK: tuple[re.Pattern[str], ...] = (re.compile(r"fit_"),)
+
+
 def _match(value: str, rules: tuple[Rule, ...]) -> CommandClass | None:
     """Класс первого подошедшего правила; None — правила нет, команда боту незнакома."""
     return next((rule.cls for rule in rules if rule.pattern.match(value)), None)
 
 
-def _by_hand(cls: CommandClass | None) -> CommandClass:
-    """Команда человека при взятом ручном управлении: незнакомая и донат уходят сразу, явно
-    запрещённая — только с подтверждением."""
+def _by_hand(cls: CommandClass | None, routine: bool) -> CommandClass:
+    """Команда человека при взятом ручном управлении: незнакомая, донат и обычная игра уходят
+    сразу, остальная явно запрещённая — только с подтверждением."""
     if cls is None or cls is CommandClass.DONATE:
         return CommandClass.ACTION
     if cls is CommandClass.FORBIDDEN:
-        return CommandClass.RISKY
+        return CommandClass.ACTION if routine else CommandClass.RISKY
     return cls
 
 
-def _classify(value: str, rules: tuple[Rule, ...], manual_control: bool) -> CommandClass:
+def _classify(
+    value: str,
+    rules: tuple[Rule, ...],
+    routine: tuple[re.Pattern[str], ...],
+    manual_control: bool,
+) -> CommandClass:
     value = value.strip()
     if not value:
         return CommandClass.FORBIDDEN
     cls = _match(value, rules)
     if manual_control:
-        return _by_hand(cls)
+        return _by_hand(cls, any(p.match(value) for p in routine))
     return CommandClass.FORBIDDEN if cls is None else cls
 
 
@@ -405,7 +416,7 @@ def classify_text(
     `manual_control` — ручная команда админки при взятом ручном управлении аккаунтом."""
     if (m := _STOCK_TEXT.match(text.strip())) is not None:
         return _stock(m, own_company)
-    return _classify(text, TEXT_RULES, manual_control)
+    return _classify(text, TEXT_RULES, _ROUTINE_TEXT, manual_control)
 
 
 def classify_callback(
@@ -413,7 +424,7 @@ def classify_callback(
 ) -> CommandClass:
     if (m := _STOCK_CALLBACK.match(data.strip())) is not None:
         return _stock(m, own_company)
-    return _classify(data, CALLBACK_RULES, manual_control)
+    return _classify(data, CALLBACK_RULES, _ROUTINE_CALLBACK, manual_control)
 
 
 # Какой механике принадлежит команда. Не вручную шлюз пропускает её, только если механика

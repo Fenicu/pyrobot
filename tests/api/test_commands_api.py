@@ -384,7 +384,8 @@ async def test_manual_click_after_restart_rereads_message(
     assert (GAME, 52) in transport.fetches
 
 
-# Кнопки мастерской из прода (`fit_*` — явно запрещены) и незнакомая боту кнопка.
+# Кнопки мастерской из прода (`fit_*` — боту запрещены), незнакомая боту кнопка, запрещённая
+# «Продать всё» и донат.
 CRAFT = (
     Button("✂️Создать ножницы", 0, 0, data="fit_106"),
     Button("📟Создать декодер", 1, 0, data="fit_116"),
@@ -445,7 +446,24 @@ async def test_unknown_click_needs_manual_control(
     assert [s.payload for s in transport.sent] == ["workshop_new_7", "/workshop"]
 
 
-@pytest.mark.parametrize("data", ["fit_create_all", "fit_106", "sell_all"])
+async def test_craft_click_under_manual_control_passes_without_confirm(
+    container: Container,
+    api_client: AsyncClient,
+    clean_db: Database,
+    running: list[asyncio.Task[None]],
+) -> None:
+    f, transport = await _workshop(container, clean_db, running)
+    h = {"X-CSRF-Token": await login(api_client)}
+    code, body = await _click(api_client, h, "fit_create_all", "c1")
+    assert (code, body) == (403, {"detail": "forbidden"})
+    await f.take_control(by="t")
+    for data, key in (("fit_106", "c2"), ("fit_create_all", "c3")):
+        code, body = await _click(api_client, h, data, key)
+        assert code == 200 and body["status"] == "confirmed"
+    assert [s.payload for s in transport.sent] == ["fit_106", "fit_create_all"]
+
+
+@pytest.mark.parametrize("data", ["sell_all"])
 async def test_forbidden_click_under_manual_control_needs_confirm(
     container: Container,
     api_client: AsyncClient,

@@ -749,6 +749,7 @@ def _craft(rig: Rig, data: str, **kw: Any) -> ActionRequest:
         Button("✂️Создать ножницы", 0, 0, data="fit_106"),
         Button("Создать все", 1, 0, data="fit_create_all"),
         Button("Новое", 2, 0, data="craft_new_7"),
+        Button("Продать всё", 3, 0, data="sell_all"),
     )
     rig.latest[(GAME, 88)] = make_msg("Мастерская", msg_id=88, buttons=buttons)
     return ActionRequest(
@@ -797,12 +798,20 @@ async def test_bot_keeps_allowlist_under_manual_control(rig: Rig, kw: dict[str, 
 async def test_forbidden_manual_command_under_control_needs_confirm(rig: Rig) -> None:
     rig.control = True
     rig.reply_with("Создано")
-    res = await rig.gw.submit(_craft(rig, "fit_create_all", source=Source.MANUAL))
+    res = await rig.gw.submit(_craft(rig, "sell_all", source=Source.MANUAL))
     assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
-    ok = await rig.gw.submit(
-        _craft(rig, "fit_create_all", source=Source.MANUAL, risky_confirmed=True)
-    )
+    ok = await rig.gw.submit(_craft(rig, "sell_all", source=Source.MANUAL, risky_confirmed=True))
     assert ok.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["sell_all"]
+
+
+async def test_craft_by_hand_under_control_passes_without_confirm(rig: Rig) -> None:
+    rig.reply_with("Создано")
+    res = await rig.gw.submit(_craft(rig, "fit_106", source=Source.MANUAL))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "forbidden")
+    rig.control = True
+    res = await rig.gw.submit(_craft(rig, "fit_create_all", source=Source.MANUAL))
+    assert res.status is ActionStatus.CONFIRMED
     assert [s.payload for s in rig.transport.sent] == ["fit_create_all"]
 
 

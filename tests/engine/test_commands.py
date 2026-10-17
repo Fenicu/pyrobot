@@ -499,9 +499,13 @@ def test_text_under_manual_control(text: str, plain: CommandClass, by_hand: Comm
     ("data", "plain", "by_hand"),
     [
         ("craft_new_thing_7", F, A),
-        ("fit_106", F, R),
-        ("fit_create_all", F, R),
+        # Крафт в мастерской: боту запрещён, человеку при управлении — обычная игра.
+        ("fit_106", F, A),
+        ("fit_116", F, A),
+        ("fit_create_all", F, A),
         ("sell_all", F, R),
+        ("take_up_1", F, R),
+        ("pet_select_accept_1", F, R),
         ("subprof_select_coder", F, R),
         ("subprof_select_decline", N, N),
         ("maze_buf_coins_strong", D, A),
