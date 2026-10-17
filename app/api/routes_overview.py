@@ -3,11 +3,11 @@
 
 from collections import Counter
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal, get_args
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import AfterValidator, BaseModel, Field
 
 from app.api.container import Container
 from app.api.deps import SessionContext, container, current_session, require_csrf
@@ -22,11 +22,20 @@ from app.api.overview_battle import (
     knows_battle,
 )
 from app.api.overview_rows import OverviewAccountOut, SkillsOut, account_row, skills_of
+from app.api.routes_daily import KindOut
 from app.api.routes_engine import IsoDatetime
 from app.db.accounts import AccountInfo
 from app.db.overview import AccountInput
 from app.engine.battle_orders import BattleOrder, next_battles, targets_own_company
-from app.engine.gametime import to_msk
+from app.engine.daily import (
+    AccountTotals,
+    KindSum,
+    Totals,
+    account_totals,
+    merge_totals,
+    summarize,
+)
+from app.engine.gametime import day_start, tasks_day, to_msk
 from app.engine.parsing.common import COMPANIES
 from app.engine.planner.obligations import TARGET_LAST_CALL
 from app.engine.settings import Target
@@ -399,3 +408,139 @@ async def overview_accounts(
         )
         for i in inputs
     ]
+
+
+PERIODS = (1, 7, 30)
+
+
+def _period(days: int) -> int:
+    if days not in PERIODS:
+        raise ValueError("days must be 1, 7 or 30")
+    return days
+
+
+# Числовой Literal в query не принимает строку "7", поэтому проверка - после разбора числа.
+Period = Annotated[int, AfterValidator(_period)]
+
+
+class TotalDeltaOut(BaseModel):
+    # Сумма изменений по аккаунтам, у которых оно известно; null - не известно ни у одного.
+    delta: int | None
+    # Известно у всех аккаунтов (`accounts` из них вошли в сумму; клиент пишет «по 5 из 7»).
+    covered: bool
+    accounts: int
+
+
+class TotalsBlockOut(BaseModel):
+    # Изменение за период по money, exp, knowledge, details, raw, glory.
+    balance: dict[str, TotalDeltaOut]
+    # Повышения уровня; null - окно длиннее хранения метрик.
+    levels: int | None
+    # 🏆 за задания (вид `task` журнала), а не личная слава `glory`.
+    trophies: int
+    items: dict[str, int]
+    income: list[KindOut]
+    losses: list[KindOut]
+
+
+class TotalsDayOut(BaseModel):
+    day: date
+    # Сегодня или день до запуска журнала прихода: разовое неизвестно, столбец штрихуется.
+    partial: bool
+    # Столбцы совпадают с «Итогами дня» аккаунта; null - нет данных.
+    balance: dict[str, int | None]
+
+
+class TotalsAccountOut(BaseModel):
+    id: int
+    ledger_since: date | None
+    totals: TotalsBlockOut
+    # Сегодня первым.
+    days: list[TotalsDayOut]
+
+
+class TotalsOut(BaseModel):
+    now: IsoDatetime
+    days: int
+    first: date
+    today: date
+    # Метрики раньше этого момента не хранятся: окно, начавшееся раньше, не покрыто.
+    metrics_floor: IsoDatetime
+    total: TotalsBlockOut
+    accounts: list[TotalsAccountOut]
+
+
+def _kinds(sums: tuple[KindSum, ...]) -> list[KindOut]:
+    return [KindOut(kind=s.kind, count=s.count, amounts=s.amounts) for s in sums]
+
+
+def _block(t: Totals) -> TotalsBlockOut:
+    return TotalsBlockOut(
+        balance={
+            k: TotalDeltaOut(delta=d.delta, covered=d.covered, accounts=d.accounts)
+            for k, d in t.balance.items()
+        },
+        levels=t.levels,
+        trophies=t.trophies,
+        items=t.items,
+        income=_kinds(t.income),
+        losses=_kinds(t.losses),
+    )
+
+
+@router.get("/totals", response_model=TotalsOut, responses=AUTH)
+async def overview_totals(
+    ctx: Annotated[SessionContext, Depends(current_session)],
+    c: Annotated[Container, Depends(container)],
+    days: Annotated[Period, Query(json_schema_extra={"enum": list(PERIODS)})],
+) -> TotalsOut:
+    """Итоги периода по всем аккаунтам учётки: целые сутки МСК, сегодня на текущий момент.
+    Баланс - последнее значение метрики в окне минус последнее до окна; суммы журнала прихода и
+    столбцы суток считаются как в «Итогах дня»."""
+    now = c.clock.now()
+    today = tasks_day(now)
+    first = today - timedelta(days=days - 1)
+    floor = now - timedelta(days=c.server_settings.current.retention.metrics_days)
+    ids = [a.id for a in await c.accounts.owned(ctx.user_id)]
+    sources = await c.overview.totals(ctx.user_id, ids, first, now, floor)
+    covered = day_start(first) >= floor
+    rows: list[tuple[TotalsAccountOut, AccountTotals]] = []
+    for src in sources:
+        summary = summarize(
+            today=today,
+            days=days,
+            last=src.last,
+            level_before=None,
+            ledger=src.ledger,
+            ledger_since=src.ledger_since,
+        )
+        part = account_totals(
+            summary, last=src.last, first=first, before=src.before, window_covered=covered
+        )
+        rows.append(
+            (
+                TotalsAccountOut(
+                    id=src.account_id,
+                    ledger_since=src.ledger_since,
+                    totals=_block(merge_totals([part])),
+                    days=[
+                        TotalsDayOut(
+                            day=d.day,
+                            partial=d.partial,
+                            balance={k: b.delta for k, b in d.balance.items()},
+                        )
+                        for d in summary
+                    ],
+                ),
+                part,
+            )
+        )
+    return TotalsOut(
+        now=now,
+        days=days,
+        first=first,
+        today=today,
+        metrics_floor=floor,
+        total=_block(merge_totals([part for _, part in rows])),
+        accounts=[out for out, _ in rows],
+    )

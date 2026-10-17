@@ -4,12 +4,21 @@ from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
 from app.engine.daily import (
+    BALANCE_KEYS,
+    LOSS_ORDER,
+    NOT_CRAFT,
+    AccountTotals,
     Balance,
+    Delta,
     KindSum,
     LedgerDays,
     LedgerEntry,
     Level,
+    TotalDelta,
+    account_totals,
     last_by_day,
+    merge_totals,
+    period_balance,
     summarize,
 )
 from app.engine.gametime import MSK
@@ -191,3 +200,191 @@ def test_days_today_first_and_partial() -> None:
     assert [d.partial for d in out] == [True, False, True, True]
     empty = summarize(**one(days=2, ledger_since=None))  # type: ignore[arg-type]
     assert [d.partial for d in empty] == [True, True]
+
+
+# --- итоги периода по нескольким аккаунтам ---
+
+
+def test_period_balance_last_in_window_minus_last_before() -> None:
+    got = period_balance(
+        {"money": 150.0, "exp": 7.0}, {"money": 100.0, "exp": 10.0}, window_covered=True
+    )
+    assert got["money"] == Delta(50, True)
+    assert got["exp"] == Delta(-3, True)
+
+
+def test_period_balance_missing_point_is_not_zero() -> None:
+    got = period_balance(
+        {"money": 5.0, "exp": None, "raw": 1.0}, {"money": None, "exp": 3.0}, window_covered=True
+    )
+    # Нет точки до окна, нет точки в окне, ключа нет совсем — везде «нет данных», не ноль.
+    assert got["money"] == got["exp"] == got["raw"] == Delta(None, False)
+    assert set(got) == set(BALANCE_KEYS)
+
+
+def test_period_balance_window_not_covered_hides_everything() -> None:
+    got = period_balance({"money": 150.0}, {"money": 100.0}, window_covered=False)
+    assert all(d == Delta(None, False) for d in got.values())
+
+
+def _part(money: Delta, **kw: object) -> AccountTotals:
+    balance = {k: Delta(None, False) for k in BALANCE_KEYS} | {"money": money}
+    defaults: dict[str, object] = {
+        "levels": 0,
+        "trophies": 0,
+        "items": {},
+        "income": (),
+        "losses": (),
+    }
+    return AccountTotals(balance, **{**defaults, **kw})  # type: ignore[arg-type]
+
+
+def test_merge_totals_counts_only_covered_accounts() -> None:
+    parts = [_part(Delta(100, True)), _part(Delta(None, False)), _part(Delta(-30, True))]
+    total = merge_totals(parts)
+    assert total.balance["money"] == TotalDelta(70, False, 2)
+    # Все пять остальных ключей не покрыты ни у кого: ни нуля, ни числа.
+    assert total.balance["exp"] == TotalDelta(None, False, 0)
+
+
+def test_merge_totals_all_covered_and_none_accounts() -> None:
+    both = merge_totals([_part(Delta(1, True)), _part(Delta(2, True))])
+    assert both.balance["money"] == TotalDelta(3, True, 2)
+    nobody = merge_totals([])
+    assert nobody.balance["money"] == TotalDelta(None, False, 0)
+    assert (nobody.levels, nobody.trophies, nobody.items, nobody.income, nobody.losses) == (
+        0,
+        0,
+        {},
+        (),
+        (),
+    )
+
+
+def test_merge_totals_sums_ledger_parts_and_levels() -> None:
+    a = _part(
+        Delta(1, True),
+        levels=2,
+        trophies=90,
+        items={"Нитки": 1},
+        income=(KindSum("battle", 2, {"money": 100}),),
+        losses=(KindSum("hotel", 1, {"money": -10}),),
+    )
+    b = _part(
+        Delta(1, True),
+        levels=1,
+        trophies=10,
+        items={"Нитки": 2, "Флюс": 1},
+        income=(KindSum("book", 1, {"exp": 5}), KindSum("battle", 1, {"money": 50, "exp": 3})),
+        losses=(KindSum("hotel", 2, {"money": -20}), KindSum("robbery", 1, {"money": -5})),
+    )
+    total = merge_totals([a, b])
+    assert (total.levels, total.trophies, total.items) == (3, 100, {"Нитки": 3, "Флюс": 1})
+    assert total.income == (
+        KindSum("book", 1, {"exp": 5}),
+        KindSum("battle", 3, {"money": 150, "exp": 3}),
+    )
+    assert total.losses == (
+        KindSum("robbery", 1, {"money": -5}),
+        KindSum("hotel", 3, {"money": -30}),
+    )
+
+
+def test_merge_totals_levels_unknown_only_when_nobody_knows() -> None:
+    assert merge_totals([_part(Delta(1, True), levels=None)]).levels is None
+    assert (
+        merge_totals([_part(Delta(1, True), levels=None), _part(Delta(1, True), levels=2)]).levels
+        == 2
+    )
+
+
+def _window(**kw: object) -> dict[str, object]:
+    defaults: dict[str, object] = {
+        "last": {},
+        "first": date(2026, 9, 26),
+        "before": {},
+        "window_covered": True,
+    }
+    return {**defaults, **kw}
+
+
+def test_account_totals_balance_levels_and_ledger_from_days() -> None:
+    last = {
+        "money": {date(2026, 9, 25): 10.0, date(2026, 9, 26): 40.0, date(2026, 9, 28): 70.0},
+        "level": {date(2026, 9, 27): 8.0},
+    }
+    ledger = [
+        LedgerEntry(date(2026, 9, 26), "battle", {"money": 5}, {}),
+        LedgerEntry(date(2026, 9, 28), "battle", {"money": 7, "trophies": 1}, {"Флюс": 1}),
+        LedgerEntry(date(2026, 9, 28), "hotel", {"money": -3}, {}),
+    ]
+    days = summarize(**one(days=3, last=last, ledger=ledger))  # type: ignore[arg-type]
+    got = account_totals(days, **_window(last=last, before={"money": 4.0, "level": 5.0}))  # type: ignore[arg-type]
+    assert got.balance["money"] == Delta(66, True)
+    assert got.balance["exp"] == Delta(None, False)
+    assert got.levels == 3
+    assert got.trophies == 1
+    assert got.items == {"Флюс": 1}
+    assert got.income == (KindSum("battle", 2, {"money": 12, "trophies": 1}),)
+    assert got.losses == (KindSum("hotel", 1, {"money": -3}),)
+
+
+def test_account_totals_level_without_change_or_baseline_is_zero() -> None:
+    days = summarize(**one(days=1))  # type: ignore[arg-type]
+    quiet = account_totals(days, **_window(last={}, before={"level": 5.0}))  # type: ignore[arg-type]
+    assert quiet.levels == 0
+    first_seen = account_totals(
+        days,
+        **_window(last={"level": {TODAY: 5.0}}),  # type: ignore[arg-type]
+    )
+    assert first_seen.levels == 0
+
+
+def test_account_totals_not_covered_window_hides_balance_and_levels_only() -> None:
+    ledger = [LedgerEntry(TODAY, "battle", {"money": 7}, {})]
+    days = summarize(**one(days=1, ledger=ledger))  # type: ignore[arg-type]
+    got = account_totals(
+        days,
+        **_window(  # type: ignore[arg-type]
+            first=TODAY, last={"money": {TODAY: 9.0}}, before={"money": 1.0}, window_covered=False
+        ),
+    )
+    assert got.balance["money"] == Delta(None, False)
+    assert got.levels is None
+    assert got.income == (KindSum("battle", 1, {"money": 7}),)
+
+
+def _group(entries: list[LedgerEntry]) -> LedgerDays:
+    """Журнал так, как его отдаёт свёртка в SQL: по (день, вид) с числом и суммами."""
+    folded = LedgerDays()
+    groups: dict[tuple[date, str], list[LedgerEntry]] = {}
+    for e in entries:
+        groups.setdefault((e.day, e.kind), []).append(e)
+    for (day, kind), rows in groups.items():
+        amounts: dict[str, int] = {}
+        items: dict[str, int] = {}
+        for r in rows:
+            for k, v in r.amounts.items():
+                amounts[k] = amounts.get(k, 0) + v
+            for k, v in r.items.items():
+                items[k] = items.get(k, 0) + v
+        folded.add_group(day, kind, len(rows), amounts, items)
+    return folded
+
+
+def test_add_group_matches_add_for_every_kind() -> None:
+    kinds = sorted({*NOT_CRAFT, "deed", *LOSS_ORDER, "battle", "book", "task", "mystery"})
+    entries: list[LedgerEntry] = []
+    for i, kind in enumerate(kinds):
+        for day in (TODAY, TODAY - timedelta(days=1)):
+            for n in range(3):
+                entries.append(
+                    LedgerEntry(
+                        day,
+                        kind,
+                        {"money": -(i + n), "trophies": n} if n else {},
+                        {"Флюс": n + 1, f"item{i}": 1} if n != 1 else {},
+                    )
+                )
+    assert _group(entries) == LedgerDays.of(entries)
+    assert {k for e in entries for k in (e.kind,)} >= {"deed", "hotel", "gadget_buy"}

@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
@@ -169,20 +169,32 @@ class LedgerDays:
         return out
 
     def add(self, e: LedgerEntry) -> None:
-        day = self.days.get(e.day)
-        if day is None:
-            day = self.days[e.day] = _DayLedger()
-        day.trophies += e.amounts.get("trophies", 0)
-        if e.kind not in NOT_CRAFT:
-            _add(day.items, e.items)
-        if e.kind == DEED:
+        self.add_group(e.day, e.kind, 1, e.amounts, e.items)
+
+    def add_group(
+        self,
+        day: date,
+        kind: str,
+        count: int,
+        amounts: Mapping[str, int],
+        items: Mapping[str, int],
+    ) -> None:
+        """`count` записей одного вида за сутки, уже сложенных: так их отдаёт свёртка в SQL.
+        Правила те же, что у `add` (тот и вызывает эту функцию с одной записью)."""
+        got = self.days.get(day)
+        if got is None:
+            got = self.days[day] = _DayLedger()
+        got.trophies += amounts.get("trophies", 0)
+        if kind not in NOT_CRAFT:
+            _add(got.items, items)
+        if kind == DEED:
             return
-        group = day.losses if e.kind in LOSS_ORDER else day.income
-        kind = group.get(e.kind)
-        if kind is None:
-            kind = group[e.kind] = _KindLedger()
-        kind.count += 1
-        _add(kind.amounts, e.amounts)
+        group = got.losses if kind in LOSS_ORDER else got.income
+        slot = group.get(kind)
+        if slot is None:
+            slot = group[kind] = _KindLedger()
+        slot.count += count
+        _add(slot.amounts, amounts)
 
 
 def _sums(grouped: Mapping[str, _KindLedger], order: tuple[str, ...]) -> tuple[KindSum, ...]:
@@ -224,3 +236,139 @@ def summarize(
             )
         )
     return out
+
+
+@dataclass(frozen=True, slots=True)
+class Delta:
+    """Изменение значения за период; `None` и `covered=False` - нет данных (ложного нуля нет)."""
+
+    value: int | None
+    covered: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TotalDelta:
+    """Сумма изменений по аккаунтам, у которых оно известно: `accounts` из них вошли в сумму,
+    `covered` - вошли все."""
+
+    delta: int | None
+    covered: bool
+    accounts: int
+
+
+@dataclass(frozen=True, slots=True)
+class AccountTotals:
+    """Итог периода по одному аккаунту; `levels=None` - окно длиннее хранения метрик."""
+
+    balance: dict[str, Delta]
+    levels: int | None
+    trophies: int
+    items: dict[str, int]
+    income: tuple[KindSum, ...]
+    losses: tuple[KindSum, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Totals:
+    balance: dict[str, TotalDelta]
+    levels: int | None
+    trophies: int
+    items: dict[str, int]
+    income: tuple[KindSum, ...]
+    losses: tuple[KindSum, ...]
+
+
+def period_balance(
+    window_last: Mapping[str, float | None],
+    before_last: Mapping[str, float | None],
+    *,
+    window_covered: bool,
+) -> dict[str, Delta]:
+    """Изменение за период: последнее значение в окне минус последнее до окна, любого возраста.
+    Нет любой из точек (метрика пишется только при изменении) или окно длиннее хранения метрик
+    (опорная точка могла быть стёрта) - `Delta(None, False)`."""
+    out: dict[str, Delta] = {}
+    for key in BALANCE_KEYS:
+        end, begin = window_last.get(key), before_last.get(key)
+        known = window_covered and end is not None and begin is not None
+        out[key] = Delta(round(end - begin), True) if known else Delta(None, False)  # type: ignore[operator]
+    return out
+
+
+def _window_end(values: Mapping[date, float] | None, first: date) -> float | None:
+    inside = [d for d in values or {} if d >= first]
+    return values[max(inside)] if values and inside else None
+
+
+def account_totals(
+    days: Sequence[DaySummary],
+    *,
+    last: Mapping[str, Mapping[date, float]],
+    first: date,
+    before: Mapping[str, float],
+    window_covered: bool,
+) -> AccountTotals:
+    """Итог периода аккаунта: баланс и повышения уровня - по значениям метрик, остальное -
+    сумма суток `days` (те же столбцы, что в «Итогах дня»). `last` - последнее значение ключа в
+    каждые сутки, `before` - последнее значение ключа до начала окна `first`."""
+    end = {k: _window_end(last.get(k), first) for k in (*BALANCE_KEYS, LEVEL_KEY)}
+    level_end, level_before = end[LEVEL_KEY], before.get(LEVEL_KEY)
+    levels = (
+        int(level_end) - int(level_before)
+        if level_end is not None and level_before is not None
+        else 0
+    )
+    items: dict[str, int] = {}
+    income: dict[str, _KindLedger] = {}
+    losses: dict[str, _KindLedger] = {}
+    for day in days:
+        _add(items, day.items)
+        for src, dst in ((day.income, income), (day.losses, losses)):
+            for kind in src:
+                _fold_kind(dst, kind)
+    return AccountTotals(
+        balance=period_balance(end, before, window_covered=window_covered),
+        levels=levels if window_covered else None,
+        trophies=sum(d.trophies for d in days),
+        items=items,
+        income=_sums(income, INCOME_ORDER),
+        losses=_sums(losses, LOSS_ORDER),
+    )
+
+
+def _fold_kind(into: dict[str, _KindLedger], kind: KindSum) -> None:
+    slot = into.get(kind.kind)
+    if slot is None:
+        slot = into[kind.kind] = _KindLedger()
+    slot.count += kind.count
+    _add(slot.amounts, kind.amounts)
+
+
+def merge_totals(parts: Sequence[AccountTotals]) -> Totals:
+    """Сумма итогов аккаунтов. Баланс берётся только у тех, у кого он известен; `accounts` -
+    сколько их вошло (клиент пишет «по 5 из 7»). Если не вошёл никто - `None`, а не ноль."""
+    balance: dict[str, TotalDelta] = {}
+    for key in BALANCE_KEYS:
+        known = [p.balance[key].value for p in parts if p.balance[key].covered]
+        got = [v for v in known if v is not None]
+        balance[key] = TotalDelta(
+            sum(got) if got else None, bool(got) and len(got) == len(parts), len(got)
+        )
+    levels = [p.levels for p in parts if p.levels is not None]
+    items: dict[str, int] = {}
+    income: dict[str, _KindLedger] = {}
+    losses: dict[str, _KindLedger] = {}
+    for part in parts:
+        _add(items, part.items)
+        for kind in part.income:
+            _fold_kind(income, kind)
+        for kind in part.losses:
+            _fold_kind(losses, kind)
+    return Totals(
+        balance=balance,
+        levels=None if parts and not levels else sum(levels),
+        trophies=sum(p.trophies for p in parts),
+        items=items,
+        income=_sums(income, INCOME_ORDER),
+        losses=_sums(losses, LOSS_ORDER),
+    )

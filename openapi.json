@@ -9232,6 +9232,214 @@
         "title": "TgStatusOut",
         "type": "object"
       },
+      "TotalDeltaOut": {
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "covered": {
+            "title": "Covered",
+            "type": "boolean"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          }
+        },
+        "required": [
+          "delta",
+          "covered",
+          "accounts"
+        ],
+        "title": "TotalDeltaOut",
+        "type": "object"
+      },
+      "TotalsAccountOut": {
+        "properties": {
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/TotalsDayOut"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ledger_since": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Since"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TotalsBlockOut"
+          }
+        },
+        "required": [
+          "id",
+          "ledger_since",
+          "totals",
+          "days"
+        ],
+        "title": "TotalsAccountOut",
+        "type": "object"
+      },
+      "TotalsBlockOut": {
+        "properties": {
+          "balance": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TotalDeltaOut"
+            },
+            "title": "Balance",
+            "type": "object"
+          },
+          "income": {
+            "items": {
+              "$ref": "#/components/schemas/KindOut"
+            },
+            "title": "Income",
+            "type": "array"
+          },
+          "items": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Items",
+            "type": "object"
+          },
+          "levels": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Levels"
+          },
+          "losses": {
+            "items": {
+              "$ref": "#/components/schemas/KindOut"
+            },
+            "title": "Losses",
+            "type": "array"
+          },
+          "trophies": {
+            "title": "Trophies",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "balance",
+          "levels",
+          "trophies",
+          "items",
+          "income",
+          "losses"
+        ],
+        "title": "TotalsBlockOut",
+        "type": "object"
+      },
+      "TotalsDayOut": {
+        "properties": {
+          "balance": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Balance",
+            "type": "object"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "partial": {
+            "title": "Partial",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "day",
+          "partial",
+          "balance"
+        ],
+        "title": "TotalsDayOut",
+        "type": "object"
+      },
+      "TotalsOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/TotalsAccountOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "first": {
+            "format": "date",
+            "title": "First",
+            "type": "string"
+          },
+          "metrics_floor": {
+            "format": "date-time",
+            "title": "Metrics Floor",
+            "type": "string"
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "today": {
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          },
+          "total": {
+            "$ref": "#/components/schemas/TotalsBlockOut"
+          }
+        },
+        "required": [
+          "now",
+          "days",
+          "first",
+          "today",
+          "metrics_floor",
+          "total",
+          "accounts"
+        ],
+        "title": "TotalsOut",
+        "type": "object"
+      },
       "TripRef": {
         "description": "Последняя начатая поездка: вид (None — незнакомый текст старта), старт, пришёл ли итог и\nего сообщение (правка того же сообщения — тот же итог).",
         "properties": {
@@ -18435,6 +18643,64 @@
           }
         },
         "summary": "Put Battle Orders",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/v1/overview/totals": {
+      "get": {
+        "description": "Итоги периода по всем аккаунтам учётки: целые сутки МСК, сегодня на текущий момент.\nБаланс - последнее значение метрики в окне минус последнее до окна; суммы журнала прихода и\nстолбцы суток считаются как в «Итогах дня».",
+        "operationId": "overview_totals_api_v1_overview_totals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": true,
+            "schema": {
+              "enum": [
+                1,
+                7,
+                30
+              ],
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotalsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Overview Totals",
         "tags": [
           "overview"
         ]

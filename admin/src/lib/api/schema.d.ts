@@ -1570,6 +1570,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview/totals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview Totals
+         * @description Итоги периода по всем аккаунтам учётки: целые сутки МСК, сегодня на текущий момент.
+         *     Баланс - последнее значение метрики в окне минус последнее до окна; суммы журнала прихода и
+         *     столбцы суток считаются как в «Итогах дня».
+         */
+        get: operations["overview_totals_api_v1_overview_totals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scenarios": {
         parameters: {
             query?: never;
@@ -4713,6 +4735,86 @@ export interface components {
             state: components["schemas"]["TgState"];
             /** User Id */
             user_id: number | null;
+        };
+        /** TotalDeltaOut */
+        TotalDeltaOut: {
+            /** Accounts */
+            accounts: number;
+            /** Covered */
+            covered: boolean;
+            /** Delta */
+            delta: number | null;
+        };
+        /** TotalsAccountOut */
+        TotalsAccountOut: {
+            /** Days */
+            days: components["schemas"]["TotalsDayOut"][];
+            /** Id */
+            id: number;
+            /** Ledger Since */
+            ledger_since: string | null;
+            totals: components["schemas"]["TotalsBlockOut"];
+        };
+        /** TotalsBlockOut */
+        TotalsBlockOut: {
+            /** Balance */
+            balance: {
+                [key: string]: components["schemas"]["TotalDeltaOut"];
+            };
+            /** Income */
+            income: components["schemas"]["KindOut"][];
+            /** Items */
+            items: {
+                [key: string]: number;
+            };
+            /** Levels */
+            levels: number | null;
+            /** Losses */
+            losses: components["schemas"]["KindOut"][];
+            /** Trophies */
+            trophies: number;
+        };
+        /** TotalsDayOut */
+        TotalsDayOut: {
+            /** Balance */
+            balance: {
+                [key: string]: number | null;
+            };
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Partial */
+            partial: boolean;
+        };
+        /** TotalsOut */
+        TotalsOut: {
+            /** Accounts */
+            accounts: components["schemas"]["TotalsAccountOut"][];
+            /** Days */
+            days: number;
+            /**
+             * First
+             * Format: date
+             */
+            first: string;
+            /**
+             * Metrics Floor
+             * Format: date-time
+             */
+            metrics_floor: string;
+            /**
+             * Now
+             * Format: date-time
+             */
+            now: string;
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            total: components["schemas"]["TotalsBlockOut"];
         };
         /**
          * TripRef
@@ -10839,6 +10941,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorOut"];
+                };
+            };
+        };
+    };
+    overview_totals_api_v1_overview_totals_get: {
+        parameters: {
+            query: {
+                days: 1 | 7 | 30;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotalsOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
