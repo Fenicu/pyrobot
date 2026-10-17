@@ -406,20 +406,32 @@ async def test_renew_lock_timeout_retries(
     clean_db: Database, hosts: Hosts, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Плановое продление — раз в 10 с: до срока ограды его проводит только повтор через retry_s.
-    a = await hosts.open("A", renew_every_s=10.0)
+    # Часы менеджера управляемые: срок ограды не зависит от скорости теста и нагрузки на машину,
+    # каждая попытка продления сдвигает их на 10 мс.
+    clock = FakeMonotonic()
+    a = await hosts.open("A", clock=clock, renew_every_s=10.0)
     fence = await a.acquire(1)
     assert isinstance(fence, Fence)
-    deadline = fence.deadline
+    assert fence.deadline == pytest.approx(100.7)
     before = await _lease(clean_db)
     assert before.expires_at is not None
     outcomes = _record(a, monkeypatch)
+    renew = a._renew
+
+    async def ticking(conn: Any, pairs: list[tuple[int, int]]) -> Any:
+        clock.now += 0.01
+        return await renew(conn, pairs)
+
+    monkeypatch.setattr(a, "_renew", ticking)
     async with _guarded(clean_db, fence):
         hosts.run(a)
         await _wait_for(lambda: len(outcomes) >= 2)
         # lock_not_available: продление упёрлось в lock_timeout и повторяется.
         assert set(outcomes) == {"55P03"}
     await _wait_for(lambda: "ok" in outcomes)
-    assert fence.alive and fence.deadline > deadline
+    # Успешной попытке принадлежит ограда, снятая по часам этой попытки.
+    assert fence.alive
+    assert fence.deadline == pytest.approx(100.7 + 0.01 * len(outcomes))
     after = await _lease(clean_db)
     assert after.expires_at is not None and after.expires_at > before.expires_at
 
@@ -427,52 +439,63 @@ async def test_renew_lock_timeout_retries(
 async def test_reconnect_does_not_renew_old_epochs(
     clean_db: Database, hosts: Hosts, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    a = await hosts.open("A")
+    # Часы менеджера управляемые: ограда не истекает, пока тест ждёт обрыва и переподключения.
+    clock = FakeMonotonic()
+    a = await hosts.open("A", clock=clock)
     fence = await a.acquire(1)
     assert isinstance(fence, Fence)
-    lost: list[float] = []
-    fence.on_lost = lambda: lost.append(time.monotonic())
+    lost: list[int] = []
+    fence.on_lost = lambda: lost.append(1)
     outcomes = _record(a, monkeypatch)
     hosts.run(a)
     await _wait_for(lambda: "ok" in outcomes)
     killed = len(outcomes)
     await _kill_lock_connection(clean_db)
     expires = (await _lease(clean_db)).expires_at
-    await _wait_for(lambda: bool(lost))
+    await _wait_for(lambda: "-" in outcomes[killed:] and outcomes[-1] == "ok")
     # Обрыв замечен, соединение открыто заново и продления идут, но прежнюю эпоху не продлевают:
-    # ограда истекла по своему сроку.
-    after_kill = outcomes[killed:]
-    assert "-" in after_kill and "ok" in after_kill[after_kill.index("-") :]
-    assert a.healthy() and a.held() == []
+    # ограда истекает по своему сроку.
+    assert a.healthy() and a.held() == [] and not lost and fence.deadline == pytest.approx(100.7)
+    clock.now = fence.deadline
+    await _wait_for(lambda: bool(lost))
     assert (await _lease(clean_db)).expires_at == expires
-    assert not fence.alive and fence.deadline <= lost[0]
+    assert not fence.alive
     # Аккаунт захватывается заново на новом соединении: своя аренда — сразу, и она продлевается.
     again = await a.acquire(1)
     assert isinstance(again, Fence) and again.epoch == 2 and a.held() == [1]
     deadline = again.deadline
+    clock.now += 0.1
     await _wait_for(lambda: again.deadline > deadline)
 
 
 @pytest.mark.parametrize("failure", ["lock_timeout", "connection_killed"])
 async def test_run_fires_on_lost_by_deadline_while_renewals_fail(
-    clean_db: Database, hosts: Hosts, failure: str
+    clean_db: Database, hosts: Hosts, monkeypatch: pytest.MonkeyPatch, failure: str
 ) -> None:
-    # lock_timeout дольше жизни ограды: продление висит, а срок наступает.
-    a = await hosts.open("A", lock_timeout_s=1.0)
+    # lock_timeout намного дольше жизни ограды: продление висит, а срок наступает. Часы
+    # менеджера стоят, пока готовится сбой, — скорость теста срок не двигает.
+    clock = FakeMonotonic()
+    a = await hosts.open("A", clock=clock, lock_timeout_s=5.0)
     fence = await a.acquire(1)
     assert isinstance(fence, Fence)
-    lost: list[float] = []
-    fence.on_lost = lambda: lost.append(time.monotonic())
+    lost: list[list[str]] = []
+    outcomes = _record(a, monkeypatch)
+    fence.on_lost = lambda: lost.append(list(outcomes))
     async with contextlib.AsyncExitStack() as stack:
         if failure == "lock_timeout":
             await stack.enter_async_context(_guarded(clean_db, fence))
         else:
             await _kill_lock_connection(clean_db)
         hosts.run(a)
-        # Ограду никто не вызывает: о её сроке сообщает run().
-        await _wait_for(lambda: bool(lost), within_s=2.0)
-    assert fence.deadline <= lost[0] < fence.deadline + 0.2
+        # Слежение засыпает до срока ограды; ограду никто не вызывает, о сроке сообщает run().
+        await asyncio.sleep(0.05)
+        assert not lost
+        clock.now = fence.deadline
+        await _wait_for(lambda: bool(lost), within_s=10.0)
     assert not fence.alive
+    if failure == "lock_timeout":
+        # Срок наступил, пока продление ещё висело на блокировке: ни одно не завершилось.
+        assert lost == [[]]
 
 
 async def test_run_wakes_for_fence_acquired_mid_sleep(clean_db: Database, hosts: Hosts) -> None:
