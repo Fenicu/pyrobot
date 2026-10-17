@@ -1,0 +1,519 @@
+{
+ "now": "2026-10-17T09:00:00+00:00",
+ "days": 7,
+ "first": "2026-10-11",
+ "today": "2026-10-17",
+ "metrics_floor": "2025-10-17T09:00:00+00:00",
+ "total": {
+  "balance": {
+   "money": {
+    "delta": 91212,
+    "covered": false,
+    "accounts": 2
+   },
+   "exp": {
+    "delta": 73900,
+    "covered": false,
+    "accounts": 2
+   },
+   "knowledge": {
+    "delta": 75,
+    "covered": false,
+    "accounts": 1
+   },
+   "details": {
+    "delta": 87,
+    "covered": false,
+    "accounts": 2
+   },
+   "raw": {
+    "delta": 12,
+    "covered": false,
+    "accounts": 2
+   },
+   "glory": {
+    "delta": 55,
+    "covered": false,
+    "accounts": 1
+   }
+  },
+  "levels": 4,
+  "trophies": 270,
+  "items": {
+   "Нитки": 4,
+   "Флюс": 5
+  },
+  "income": [
+   {
+    "kind": "task",
+    "count": 3,
+    "amounts": {
+     "money": 420,
+     "exp": 1800,
+     "trophies": 270
+    }
+   },
+   {
+    "kind": "battle",
+    "count": 6,
+    "amounts": {
+     "money": 7800,
+     "exp": 3600
+    }
+   }
+  ],
+  "losses": [
+   {
+    "kind": "robbery",
+    "count": 1,
+    "amounts": {
+     "money": -340
+    }
+   },
+   {
+    "kind": "hotel",
+    "count": 2,
+    "amounts": {
+     "money": -840
+    }
+   }
+  ]
+ },
+ "accounts": [
+  {
+   "id": 1,
+   "ledger_since": "2026-10-14",
+   "totals": {
+    "balance": {
+     "money": {
+      "delta": 60312,
+      "covered": true,
+      "accounts": 1
+     },
+     "exp": {
+      "delta": 52200,
+      "covered": true,
+      "accounts": 1
+     },
+     "knowledge": {
+      "delta": 75,
+      "covered": true,
+      "accounts": 1
+     },
+     "details": {
+      "delta": 64,
+      "covered": true,
+      "accounts": 1
+     },
+     "raw": {
+      "delta": 10,
+      "covered": true,
+      "accounts": 1
+     },
+     "glory": {
+      "delta": 55,
+      "covered": true,
+      "accounts": 1
+     }
+    },
+    "levels": 3,
+    "trophies": 270,
+    "items": {
+     "Нитки": 4,
+     "Флюс": 2
+    },
+    "income": [
+     {
+      "kind": "task",
+      "count": 3,
+      "amounts": {
+       "money": 420,
+       "exp": 1800,
+       "trophies": 270
+      }
+     },
+     {
+      "kind": "battle",
+      "count": 4,
+      "amounts": {
+       "money": 5200,
+       "exp": 2400
+      }
+     }
+    ],
+    "losses": [
+     {
+      "kind": "hotel",
+      "count": 2,
+      "amounts": {
+       "money": -840
+      }
+     }
+    ]
+   },
+   "days": [
+    {
+     "day": "2026-10-17",
+     "partial": true,
+     "balance": {
+      "money": 4812,
+      "exp": 9100,
+      "knowledge": null,
+      "details": 12,
+      "raw": -3,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-16",
+     "partial": false,
+     "balance": {
+      "money": 21400,
+      "exp": 15200,
+      "knowledge": 40,
+      "details": 30,
+      "raw": 8,
+      "glory": 55
+     }
+    },
+    {
+     "day": "2026-10-15",
+     "partial": false,
+     "balance": {
+      "money": 18200,
+      "exp": 14100,
+      "knowledge": 35,
+      "details": 22,
+      "raw": 5,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-14",
+     "partial": true,
+     "balance": {
+      "money": 15900,
+      "exp": 13800,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-13",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-12",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-11",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "ledger_since": "2026-10-14",
+   "totals": {
+    "balance": {
+     "money": {
+      "delta": 30900,
+      "covered": true,
+      "accounts": 1
+     },
+     "exp": {
+      "delta": 21700,
+      "covered": true,
+      "accounts": 1
+     },
+     "knowledge": {
+      "delta": null,
+      "covered": false,
+      "accounts": 0
+     },
+     "details": {
+      "delta": 23,
+      "covered": true,
+      "accounts": 1
+     },
+     "raw": {
+      "delta": 2,
+      "covered": true,
+      "accounts": 1
+     },
+     "glory": {
+      "delta": null,
+      "covered": false,
+      "accounts": 0
+     }
+    },
+    "levels": 1,
+    "trophies": 0,
+    "items": {
+     "Флюс": 3
+    },
+    "income": [
+     {
+      "kind": "battle",
+      "count": 2,
+      "amounts": {
+       "money": 2600,
+       "exp": 1200
+      }
+     }
+    ],
+    "losses": [
+     {
+      "kind": "robbery",
+      "count": 1,
+      "amounts": {
+       "money": -340
+      }
+     }
+    ]
+   },
+   "days": [
+    {
+     "day": "2026-10-17",
+     "partial": true,
+     "balance": {
+      "money": 2100,
+      "exp": 4000,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-16",
+     "partial": false,
+     "balance": {
+      "money": 12000,
+      "exp": 9000,
+      "knowledge": null,
+      "details": 14,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-15",
+     "partial": false,
+     "balance": {
+      "money": 9800,
+      "exp": 8700,
+      "knowledge": null,
+      "details": 9,
+      "raw": 2,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-14",
+     "partial": true,
+     "balance": {
+      "money": 7000,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-13",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-12",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-11",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "ledger_since": null,
+   "totals": {
+    "balance": {
+     "money": {
+      "delta": null,
+      "covered": false,
+      "accounts": 0
+     },
+     "exp": {
+      "delta": null,
+      "covered": false,
+      "accounts": 0
+     },
+     "knowledge": {
+      "delta": null,
+      "covered": false,
+      "accounts": 0
+     },
+     "details": {
+      "delta": null,
+      "covered": false,
+      "accounts": 0
+     },
+     "raw": {
+      "delta": null,
+      "covered": false,
+      "accounts": 0
+     },
+     "glory": {
+      "delta": null,
+      "covered": false,
+      "accounts": 0
+     }
+    },
+    "levels": 0,
+    "trophies": 0,
+    "items": {},
+    "income": [],
+    "losses": []
+   },
+   "days": [
+    {
+     "day": "2026-10-17",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-16",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-15",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-14",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-13",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-12",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    },
+    {
+     "day": "2026-10-11",
+     "partial": true,
+     "balance": {
+      "money": null,
+      "exp": null,
+      "knowledge": null,
+      "details": null,
+      "raw": null,
+      "glory": null
+     }
+    }
+   ]
+  }
+ ]
+}
