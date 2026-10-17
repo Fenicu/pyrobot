@@ -82,6 +82,7 @@ def build(
     journal.snapshot = (snapshot or {}, 0)
     pipeline = Pipeline(journal=journal, parser=default_parser(), reducer=NullReducer(), bus=bus)
     transport = transport or FakeTransport()
+    control = control or ManualControl(SystemClock())
     gateway = ActionGateway(
         transport=transport,
         store=store or MemoryActionStore(),
@@ -92,6 +93,7 @@ def build(
         state_version=lambda: pipeline.version,
         own_company=lambda: company_of(pipeline.state),
         reread=live_reread(transport, pipeline),
+        manual_control=lambda: control.until is not None,
     )
     bus.subscribe(gateway.on_delivery, priority=0)
     current = settings

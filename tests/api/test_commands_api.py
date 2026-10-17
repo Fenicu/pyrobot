@@ -382,3 +382,117 @@ async def test_manual_click_after_restart_rereads_message(
     stale_rev = await click(52, "cancel_inline", 19, "c3")
     assert (stale_rev["status"], stale_rev["reason"]) == ("rejected", "stale_revision")
     assert (GAME, 52) in transport.fetches
+
+
+# Кнопки мастерской из прода (`fit_*` — явно запрещены) и незнакомая боту кнопка.
+CRAFT = (
+    Button("✂️Создать ножницы", 0, 0, data="fit_106"),
+    Button("📟Создать декодер", 1, 0, data="fit_116"),
+    Button("Создать все", 2, 0, data="fit_create_all"),
+    Button("Новое", 3, 0, data="workshop_new_7"),
+    Button("Продать всё", 4, 0, data="sell_all"),
+    Button("Баф за 🌐", 5, 0, data="maze_buf_coins_strong"),
+)
+
+
+async def _click(
+    client: AsyncClient, h: dict[str, str], data: str, key: str, **kw: object
+) -> tuple[int, dict[str, object]]:
+    body = {
+        "chat_id": GAME,
+        "message_id": 60,
+        "revision": 0,
+        "callback_data": data,
+        "idempotency_key": key,
+        **kw,
+    }
+    r = await client.post("/api/v1/accounts/1/commands/click", headers=h, json=body)
+    return r.status_code, r.json()
+
+
+async def _workshop(
+    container: Container, db: Database, tasks: list[asyncio.Task[None]]
+) -> tuple[EngineFacade, FakeTransport]:
+    f, transport = await _start(container, db, LIVE, tasks)
+    await f.pipeline.process(make_msg("Мастерская", msg_id=60, buttons=CRAFT))
+    ids = iter(range(900, 1000))
+
+    async def responder(rec: Sent) -> None:
+        await f.pipeline.process(make_msg("Создано", msg_id=next(ids)))
+
+    transport.responder = responder  # type: ignore[assignment]
+    return f, transport
+
+
+async def test_unknown_click_needs_manual_control(
+    container: Container,
+    api_client: AsyncClient,
+    clean_db: Database,
+    running: list[asyncio.Task[None]],
+) -> None:
+    f, transport = await _workshop(container, clean_db, running)
+    h = {"X-CSRF-Token": await login(api_client)}
+    code, body = await _click(api_client, h, "workshop_new_7", "u1")
+    assert (code, body) == (403, {"detail": "forbidden"})
+    code, body = await _send(api_client, h, "/workshop", "u2")
+    assert (code, body) == (403, {"detail": "forbidden"})
+    assert transport.sent == []
+    await f.take_control(by="t")
+    code, body = await _click(api_client, h, "workshop_new_7", "u3")
+    assert code == 200 and body["status"] == "confirmed"
+    code, body = await _send(api_client, h, "/workshop", "u4")
+    assert code == 200 and body["status"] == "confirmed"
+    assert [s.payload for s in transport.sent] == ["workshop_new_7", "/workshop"]
+
+
+@pytest.mark.parametrize("data", ["fit_create_all", "fit_106", "sell_all"])
+async def test_forbidden_click_under_manual_control_needs_confirm(
+    container: Container,
+    api_client: AsyncClient,
+    clean_db: Database,
+    running: list[asyncio.Task[None]],
+    data: str,
+) -> None:
+    f, transport = await _workshop(container, clean_db, running)
+    h = {"X-CSRF-Token": await login(api_client)}
+    code, body = await _click(api_client, h, data, "f1")
+    assert (code, body) == (403, {"detail": "forbidden"})
+    await f.take_control(by="t")
+    code, body = await _click(api_client, h, data, "f2")
+    detail = body["detail"]
+    assert code == 409 and isinstance(detail, dict)
+    assert (detail["reason"], detail["command_class"]) == ("missing", "risky")
+    assert transport.sent == []
+    code, body = await _click(api_client, h, data, "f2", confirm_token=detail["confirm_token"])
+    assert code == 200 and body["status"] == "confirmed"
+    assert [s.payload for s in transport.sent] == [data]
+
+
+async def test_donate_under_manual_control_passes_without_confirm(
+    container: Container,
+    api_client: AsyncClient,
+    clean_db: Database,
+    running: list[asyncio.Task[None]],
+) -> None:
+    f, transport = await _workshop(container, clean_db, running)
+    h = {"X-CSRF-Token": await login(api_client)}
+    await f.take_control(by="t")
+    code, body = await _click(api_client, h, "maze_buf_coins_strong", "d1")
+    assert code == 200 and body["status"] == "confirmed"
+    code, body = await _send(api_client, h, "/finish", "d2")
+    assert code == 200 and body["status"] == "confirmed"
+    assert [s.payload for s in transport.sent] == ["maze_buf_coins_strong", "/finish"]
+
+
+async def test_blank_text_rejected_under_manual_control(
+    container: Container,
+    api_client: AsyncClient,
+    clean_db: Database,
+    running: list[asyncio.Task[None]],
+) -> None:
+    f, transport = await _start(container, clean_db, LIVE, running)
+    h = {"X-CSRF-Token": await login(api_client)}
+    await f.take_control(by="t")
+    code, body = await _send(api_client, h, "   ", "b1")
+    assert (code, body) == (403, {"detail": "forbidden"})
+    assert transport.sent == []

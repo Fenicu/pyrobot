@@ -742,3 +742,99 @@ async def test_main_uncertain_does_not_block_spending(rig: Rig) -> None:
     res = await rig.gw.submit(_main("metro", expect=Expectation(lambda d: None, 0.05)))
     assert res.status is ActionStatus.OUTCOME_UNKNOWN
     assert rig.gw.spending_blocked is None
+
+
+def _craft(rig: Rig, data: str, **kw: Any) -> ActionRequest:
+    buttons = (
+        Button("✂️Создать ножницы", 0, 0, data="fit_106"),
+        Button("Создать все", 1, 0, data="fit_create_all"),
+        Button("Новое", 2, 0, data="craft_new_7"),
+    )
+    rig.latest[(GAME, 88)] = make_msg("Мастерская", msg_id=88, buttons=buttons)
+    return ActionRequest(
+        kind=ActionKind.CLICK,
+        chat_id=GAME,
+        message_id=88,
+        data=data,
+        expect=expect_text("Создано"),
+        **kw,
+    )
+
+
+async def test_unknown_manual_command_passes_only_under_control(rig: Rig) -> None:
+    rig.reply_with("Создано")
+    res = await rig.gw.submit(_craft(rig, "craft_new_7", source=Source.MANUAL))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "forbidden")
+    rig.control = True
+    res = await rig.gw.submit(_craft(rig, "craft_new_7", source=Source.MANUAL))
+    assert res.status is ActionStatus.CONFIRMED
+    text = await rig.gw.submit(send("/craft_new", source=Source.MANUAL, expect=expect_text("Со")))
+    assert text.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["craft_new_7", "/craft_new"]
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"source": Source.PLANNER},
+        {"source": Source.SCENARIO, "scenario": "deeds"},
+        {"source": Source.URGENT},
+        # Шаг ручного запуска сценария — тоже бот, а не человек.
+        {"source": Source.MANUAL, "scenario_run_id": 5},
+    ],
+)
+async def test_bot_keeps_allowlist_under_manual_control(rig: Rig, kw: dict[str, Any]) -> None:
+    rig.control = True
+    rig.reply_with("Создано")
+    for data in ("craft_new_7", "fit_create_all"):
+        res = await rig.gw.submit(_craft(rig, data, risky_confirmed=True, **kw))
+        assert (res.status, res.reason) == (ActionStatus.REJECTED, "forbidden")
+    res = await rig.gw.submit(send("/finish", expect=expect_text("x"), **kw))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "donate")
+    assert rig.transport.sent == []
+
+
+async def test_forbidden_manual_command_under_control_needs_confirm(rig: Rig) -> None:
+    rig.control = True
+    rig.reply_with("Создано")
+    res = await rig.gw.submit(_craft(rig, "fit_create_all", source=Source.MANUAL))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "risky_requires_confirm")
+    ok = await rig.gw.submit(
+        _craft(rig, "fit_create_all", source=Source.MANUAL, risky_confirmed=True)
+    )
+    assert ok.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["fit_create_all"]
+
+
+async def test_donate_manual_command_under_control_passes(rig: Rig) -> None:
+    rig.control = True
+    rig.reply_with("Куплено")
+    res = await rig.gw.submit(send("/finish", source=Source.MANUAL, expect=expect_text("Куп")))
+    assert res.status is ActionStatus.CONFIRMED
+    assert [s.payload for s in rig.transport.sent] == ["/finish"]
+
+
+async def test_empty_manual_command_rejected_under_control(rig: Rig) -> None:
+    rig.control = True
+    res = await rig.gw.submit(send("  ", source=Source.MANUAL, expect=expect_text("x")))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "forbidden")
+
+
+async def test_control_released_while_queued_rejects_unknown(rig: Rig) -> None:
+    # Пока команда ждала очереди, управление сняли: перед отправкой — снова по белому списку.
+    rig.control = True
+    lease = await rig.gw.acquire_lease("other")
+    pending = asyncio.create_task(rig.gw.submit(_craft(rig, "craft_new_7", source=Source.MANUAL)))
+    await asyncio.sleep(0.02)
+    rig.control = False
+    await rig.gw.release_lease(lease)
+    res = await pending
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, "forbidden")
+    assert rig.transport.sent == []
+
+
+async def test_spending_block_holds_unknown_manual_command(rig: Rig) -> None:
+    rig.control = True
+    rig.gw.block_spending(RECONCILE_REASON)
+    res = await rig.gw.submit(_craft(rig, "craft_new_7", source=Source.MANUAL))
+    assert (res.status, res.reason) == (ActionStatus.REJECTED, f"blocked:{RECONCILE_REASON}")

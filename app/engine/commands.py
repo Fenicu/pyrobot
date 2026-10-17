@@ -368,14 +368,29 @@ CALLBACK_RULES: tuple[Rule, ...] = (
 )
 
 
-def _classify(value: str, rules: tuple[Rule, ...]) -> CommandClass:
+def _match(value: str, rules: tuple[Rule, ...]) -> CommandClass | None:
+    """Класс первого подошедшего правила; None — правила нет, команда боту незнакома."""
+    return next((rule.cls for rule in rules if rule.pattern.match(value)), None)
+
+
+def _by_hand(cls: CommandClass | None) -> CommandClass:
+    """Команда человека при взятом ручном управлении: незнакомая и донат уходят сразу, явно
+    запрещённая — только с подтверждением."""
+    if cls is None or cls is CommandClass.DONATE:
+        return CommandClass.ACTION
+    if cls is CommandClass.FORBIDDEN:
+        return CommandClass.RISKY
+    return cls
+
+
+def _classify(value: str, rules: tuple[Rule, ...], manual_control: bool) -> CommandClass:
     value = value.strip()
     if not value:
         return CommandClass.FORBIDDEN
-    for rule in rules:
-        if rule.pattern.match(value):
-            return rule.cls
-    return CommandClass.FORBIDDEN
+    cls = _match(value, rules)
+    if manual_control:
+        return _by_hand(cls)
+    return CommandClass.FORBIDDEN if cls is None else cls
 
 
 def _stock(match: re.Match[str], own_company: str | None) -> CommandClass:
@@ -383,17 +398,22 @@ def _stock(match: re.Match[str], own_company: str | None) -> CommandClass:
     return CommandClass.RISKY if own else CommandClass.ACTION
 
 
-def classify_text(text: str, own_company: str | None = None) -> CommandClass:
-    """Класс команды; `own_company` — код своей компании (из профиля) для команд акций."""
+def classify_text(
+    text: str, own_company: str | None = None, *, manual_control: bool = False
+) -> CommandClass:
+    """Класс команды; `own_company` — код своей компании (из профиля) для команд акций,
+    `manual_control` — ручная команда админки при взятом ручном управлении аккаунтом."""
     if (m := _STOCK_TEXT.match(text.strip())) is not None:
         return _stock(m, own_company)
-    return _classify(text, TEXT_RULES)
+    return _classify(text, TEXT_RULES, manual_control)
 
 
-def classify_callback(data: str, own_company: str | None = None) -> CommandClass:
+def classify_callback(
+    data: str, own_company: str | None = None, *, manual_control: bool = False
+) -> CommandClass:
     if (m := _STOCK_CALLBACK.match(data.strip())) is not None:
         return _stock(m, own_company)
-    return _classify(data, CALLBACK_RULES)
+    return _classify(data, CALLBACK_RULES, manual_control)
 
 
 # Какой механике принадлежит команда. Не вручную шлюз пропускает её, только если механика

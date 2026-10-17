@@ -59,6 +59,8 @@ CanSend = Callable[[], str | None]
 StateVersion = Callable[[], int]
 # Своя компания из профиля (код, как в /buys_<код>_N); None — пока неизвестна.
 OwnCompany = Callable[[], str | None]
+# Ручное управление аккаунтом взято человеком в админке.
+ManualControlled = Callable[[], bool]
 Blocked = tuple[ActionStatus, str]
 UncertainHook = Callable[[ActionRequest, int | None], None]
 DATE_SKEW = timedelta(seconds=2)
@@ -136,18 +138,27 @@ def _company_unknown() -> str | None:
     return None
 
 
+def _no_manual_control() -> bool:
+    return False
+
+
 def _keyed_manual(req: ActionRequest) -> bool:
     return req.source is Source.MANUAL and req.idempotency_key is not None
 
 
-def command_class(req: ActionRequest, own_company: str | None = None) -> CommandClass:
+def command_class(
+    req: ActionRequest, own_company: str | None = None, manual_control: bool = False
+) -> CommandClass:
+    """Класс действия. `manual_control` — управление аккаунтом у человека: тогда ручная команда
+    админки (не шаг сценария) классифицируется по правилам ручного управления."""
     if req.kind is ActionKind.FORWARD:
         return CommandClass.FORWARD
     if req.kind is ActionKind.INLINE:
         return CommandClass.INLINE
+    by_hand = manual_control and _admin_command(req)
     if req.kind is ActionKind.SEND:
-        return classify_text(req.text or "", own_company)
-    return classify_callback(req.data or "", own_company)
+        return classify_text(req.text or "", own_company, manual_control=by_hand)
+    return classify_callback(req.data or "", own_company, manual_control=by_hand)
 
 
 def _answer_chat(req: ActionRequest) -> int:
@@ -231,9 +242,11 @@ class ActionGateway:
         own_company: OwnCompany = _company_unknown,
         reread: Reread | None = None,
         recall: Reread | None = None,
+        manual_control: ManualControlled = _no_manual_control,
     ) -> None:
         self._transport = transport
         self._own_company = own_company
+        self._manual_control = manual_control
         self._can_send = can_send
         self._state_version = state_version
         self._store = store
@@ -306,7 +319,7 @@ class ActionGateway:
                 return await asyncio.shield(shared)
         await self._reread_unknown(req)
         eng = self._settings.current.engine
-        cls = command_class(req, self._own_company())
+        cls = self._class(req)
         pending = _Pending(
             req=req,
             cls=cls,
@@ -343,6 +356,9 @@ class ActionGateway:
             if req.idempotency_key is None:
                 await self._withdraw(pending)
             raise
+
+    def _class(self, req: ActionRequest) -> CommandClass:
+        return command_class(req, self._own_company(), self._manual_control())
 
     def _manual_full(self) -> bool:
         return sum(_admin_command(p.req) for p in self._queue) >= MANUAL_PENDING_MAX
@@ -701,9 +717,10 @@ class ActionGateway:
 
     def _check(self, p: _Pending) -> Blocked | None:
         def full_check() -> Blocked | None:
-            # Класс команд акций зависит от своей компании, а профиль мог прийти, пока команда
-            # ждала очереди или повтора: перед каждой отправкой — по текущему состоянию.
-            p.cls = command_class(p.req, self._own_company())
+            # Класс команд акций зависит от своей компании, а ручной команды — от ручного
+            # управления; профиль мог прийти, а управление кончиться, пока команда ждала очереди
+            # или повтора: перед каждой отправкой — по текущему состоянию.
+            p.cls = self._class(p.req)
             blocked = self._static_checks(p.req, p.cls)
             if blocked is not None:
                 return blocked

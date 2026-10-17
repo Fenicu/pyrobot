@@ -115,7 +115,7 @@ class ScenarioInfo(BaseModel):
 _RESPONSES: Responses = {
     202: {"model": CommandOut, "description": "Not finished yet; repeat with the same key"},
     **CSRF,
-    # forbidden/donate не уходят никогда; csrf — перечитать /auth/me и повторить.
+    # forbidden/donate без ручного управления не уходят; csrf — перечитать /auth/me и повторить.
     403: error(CSRF_MISMATCH, "forbidden", "donate"),
     409: {"model": ConfirmRequiredOut, "description": "risky command needs confirm_token"},
     422: {"description": "invalid body or idempotency_key reused with other parameters"},
@@ -180,6 +180,12 @@ async def _execute(
     )
 
 
+def _controlled(f: EngineFacade) -> bool:
+    """Управление аккаунтом у человека: незнакомые и донат-команды уходят сразу, явно запрещённые —
+    с подтверждением. Шлюз перед отправкой проверяет то же по текущему управлению."""
+    return f.control.until is not None
+
+
 def _check_same(stored: ActionRow, req: ActionRequest) -> None:
     if (stored.kind, stored.chat_id, stored.payload) != fingerprint(req):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "idempotency_key reused")
@@ -226,7 +232,7 @@ async def command_send(
     f: Annotated[EngineFacade, Depends(running)],
 ) -> CommandOut:
     chat_id = f.settings.current.chats.game_chat_id
-    cls = classify_text(body.text, f.own_company())
+    cls = classify_text(body.text, f.own_company(), manual_control=_controlled(f))
     return await _execute(
         c,
         scope,
@@ -252,7 +258,7 @@ async def command_click(
     scope: Annotated[AccountScope, Depends(account_scope)],
     f: Annotated[EngineFacade, Depends(running)],
 ) -> CommandOut:
-    cls = classify_callback(body.callback_data, f.own_company())
+    cls = classify_callback(body.callback_data, f.own_company(), manual_control=_controlled(f))
     return await _execute(
         c,
         scope,

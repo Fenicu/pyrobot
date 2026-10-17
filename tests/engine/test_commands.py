@@ -465,3 +465,57 @@ def test_tangerine_gift_commands() -> None:
     assert classify_callback("g_tangerines_small__accept") is F
     assert classify_callback("g_tangerines_small_decline") is F
     assert feature_of_callback("g_tangerines_small_decline") is None
+
+
+# Ручная команда человека при взятом управлении: незнакомое и донат — сразу, явно запрещённое —
+# с подтверждением, пустое — никогда; известные классы не меняются.
+@pytest.mark.parametrize(
+    ("text", "plain", "by_hand"),
+    [
+        ("/craft_something", F, A),
+        ("Создать что-то новое", F, A),
+        ("/changecompany", F, R),
+        ("🎯 Дартс", F, R),
+        ("🖲 📚=>🔩", F, R),
+        ("/finish", D, A),
+        ("🌐Берёзка", D, A),
+        ("/ucon", R, R),
+        ("/job", A, A),
+        ("😎Я", N, N),
+        ("/up_head", N, N),
+        ("/buys_bmesa_5", R, R),
+        ("/buys_stark_5", A, A),
+        ("", F, F),
+        ("   ", F, F),
+    ],
+)
+def test_text_under_manual_control(text: str, plain: CommandClass, by_hand: CommandClass) -> None:
+    assert classify_text(text, "bmesa") is plain
+    assert classify_text(text, "bmesa", manual_control=False) is plain
+    assert classify_text(text, "bmesa", manual_control=True) is by_hand
+
+
+@pytest.mark.parametrize(
+    ("data", "plain", "by_hand"),
+    [
+        ("craft_new_thing_7", F, A),
+        ("fit_106", F, R),
+        ("fit_create_all", F, R),
+        ("sell_all", F, R),
+        ("subprof_select_coder", F, R),
+        ("subprof_select_decline", N, N),
+        ("maze_buf_coins_strong", D, A),
+        ("mether_buy_coins", D, A),
+        ("spring_regenerate", D, A),
+        ("up_head_low", R, R),
+        ("maze_up", A, A),
+        ("cancel_inline", N, N),
+        ("buys_bmesa", R, R),
+        ("", F, F),
+    ],
+)
+def test_callback_under_manual_control(
+    data: str, plain: CommandClass, by_hand: CommandClass
+) -> None:
+    assert classify_callback(data, "bmesa") is plain
+    assert classify_callback(data, "bmesa", manual_control=True) is by_hand

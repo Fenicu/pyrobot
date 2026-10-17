@@ -40,6 +40,8 @@ class Rig:
         self.version = 0
         # Своя компания из профиля: у автора — ☣️Black Mesa.
         self.company: str | None = "bmesa"
+        # Ручное управление аккаунтом взято человеком в админке.
+        self.control = False
         self.gw = ActionGateway(
             transport=self.transport,
             store=self.store,
@@ -50,6 +52,7 @@ class Rig:
             can_send=lambda: self.block,
             state_version=lambda: self.version,
             own_company=lambda: self.company,
+            manual_control=lambda: self.control,
         )
         self.task: asyncio.Task[None] | None = None
 

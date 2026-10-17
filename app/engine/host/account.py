@@ -273,6 +273,7 @@ class AccountRuntime:
             own_company=lambda: company_of(pipeline.state),
             reread=live_reread(transport, pipeline),
             recall=pipeline.recall,
+            manual_control=lambda: self.manual_control.until is not None,
         )
         pending = await actions.unreconciled()
         if pending:

@@ -599,9 +599,18 @@ async def test_manual_control_holds_planner_only(kurigram: Engines, clean_db: Da
     assert planner.loop_view().manual_control_until == until
     # Сверка, реакции и ручные команды ручное управление не держит.
     assert runtime._can_send() is None
+    # Шлюз знает об управлении: незнакомая боту ручная команда — обычное действие.
+    from app.engine.commands import CommandClass
+    from app.engine.gateway.types import ActionKind, ActionRequest, Source
+
+    gateway = runtime.gateway
+    assert gateway is not None
+    unknown = ActionRequest(kind=ActionKind.SEND, chat_id=GAME, text="/new", source=Source.MANUAL)
+    assert gateway._class(unknown) is CommandClass.ACTION
     await facade.release_control(by="admin")
     assert runtime._planner_ready() is None
     assert planner.loop_view().manual_control_until is None
+    assert gateway._class(unknown) is CommandClass.FORBIDDEN
 
 
 async def test_request_timeout_wakes_probe(kurigram: Engines, clean_db: Database) -> None:
