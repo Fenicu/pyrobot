@@ -19,6 +19,7 @@ from app.api.routes_gadgets import router as gadgets_router
 from app.api.routes_invites import router as invites_router
 from app.api.routes_journal import router as journal_router
 from app.api.routes_overview import router as overview_router
+from app.api.routes_overview_schedule import router as overview_schedule_router
 from app.api.routes_planner import router as planner_router
 from app.api.routes_reference import router as reference_router
 from app.api.routes_settings import router as settings_router
@@ -94,6 +95,7 @@ def create_api(container: Container) -> FastAPI:
     app.include_router(daily_router)
     app.include_router(events_router)
     app.include_router(overview_router)
+    app.include_router(overview_schedule_router)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

@@ -339,6 +339,45 @@
         "title": "AccountPatchIn",
         "type": "object"
       },
+      "AccountScheduleOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen At"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "seen_at",
+          "stale",
+          "items"
+        ],
+        "title": "AccountScheduleOut",
+        "type": "object"
+      },
       "AccountTgOut": {
         "properties": {
           "online": {
@@ -8410,6 +8449,93 @@
         "title": "ScenarioRunsPage",
         "type": "object"
       },
+      "ScheduleItemOut": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "state",
+              "planner"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "kind",
+          "at",
+          "source"
+        ],
+        "title": "ScheduleItemOut",
+        "type": "object"
+      },
+      "ScheduleOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/AccountScheduleOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "shared": {
+            "items": {
+              "$ref": "#/components/schemas/SharedScheduleItemOut"
+            },
+            "title": "Shared",
+            "type": "array"
+          },
+          "until": {
+            "format": "date-time",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "now",
+          "until",
+          "shared",
+          "accounts"
+        ],
+        "title": "ScheduleOut",
+        "type": "object"
+      },
       "SendIn": {
         "properties": {
           "confirm_token": {
@@ -8602,6 +8728,48 @@
           "changes"
         ],
         "title": "SettingsVersionOut",
+        "type": "object"
+      },
+      "SharedScheduleItemOut": {
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "battle",
+              "factory",
+              "lottery",
+              "night"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "kind",
+          "at",
+          "label"
+        ],
+        "title": "SharedScheduleItemOut",
         "type": "object"
       },
       "Skills": {
@@ -18930,6 +19098,62 @@
           }
         },
         "summary": "Overview Feed",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/v1/overview/schedule": {
+      "get": {
+        "description": "Расписание ближайших часов: занятость, таймеры и общие события.",
+        "operationId": "schedule_api_v1_overview_schedule_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "hours",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 24,
+              "minimum": 1,
+              "title": "Hours",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Schedule",
         "tags": [
           "overview"
         ]

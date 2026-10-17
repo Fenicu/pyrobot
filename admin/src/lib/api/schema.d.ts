@@ -1596,6 +1596,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Schedule
+         * @description Расписание ближайших часов: занятость, таймеры и общие события.
+         */
+        get: operations["schedule_api_v1_overview_schedule_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/overview/totals": {
         parameters: {
             query?: never;
@@ -1786,6 +1806,17 @@ export interface components {
             enabled?: boolean | null;
             /** Name */
             name?: string | null;
+        };
+        /** AccountScheduleOut */
+        AccountScheduleOut: {
+            /** Id */
+            id: number;
+            /** Items */
+            items: components["schemas"]["ScheduleItemOut"][];
+            /** Seen At */
+            seen_at: string | null;
+            /** Stale */
+            stale: boolean;
         };
         /** AccountTgOut */
         AccountTgOut: {
@@ -4456,6 +4487,42 @@ export interface components {
             /** Next Before */
             next_before: number | null;
         };
+        /** ScheduleItemOut */
+        ScheduleItemOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Detail */
+            detail?: string | null;
+            /** Kind */
+            kind: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "state" | "planner";
+            /** Until */
+            until?: string | null;
+        };
+        /** ScheduleOut */
+        ScheduleOut: {
+            /** Accounts */
+            accounts: components["schemas"]["AccountScheduleOut"][];
+            /**
+             * Now
+             * Format: date-time
+             */
+            now: string;
+            /** Shared */
+            shared: components["schemas"]["SharedScheduleItemOut"][];
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+        };
         /** SendIn */
         SendIn: {
             /** Confirm Token */
@@ -4537,6 +4604,23 @@ export interface components {
             };
             /** Version */
             version: number;
+        };
+        /** SharedScheduleItemOut */
+        SharedScheduleItemOut: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "battle" | "factory" | "lottery" | "night";
+            /** Label */
+            label: string;
+            /** Until */
+            until?: string | null;
         };
         /** Skills */
         Skills: {
@@ -11063,6 +11147,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValidationErrorOut"];
+                };
+            };
+        };
+    };
+    schedule_api_v1_overview_schedule_get: {
+        parameters: {
+            query?: {
+                hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScheduleOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
