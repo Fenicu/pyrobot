@@ -1744,6 +1744,437 @@
         "title": "BalanceOut",
         "type": "object"
       },
+      "BattleAccountOut": {
+        "properties": {
+          "applies": {
+            "title": "Applies",
+            "type": "boolean"
+          },
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "desired": {
+            "title": "Desired",
+            "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "local",
+              "elsewhere",
+              "stopped"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "in_game": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Game"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "ready": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready"
+          },
+          "skills": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkillsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "enum": [
+              "order_corp",
+              "order_all",
+              "override",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "company",
+          "level",
+          "skills",
+          "desired",
+          "source",
+          "in_game",
+          "ready",
+          "applies",
+          "note",
+          "engine"
+        ],
+        "title": "BattleAccountOut",
+        "type": "object"
+      },
+      "BattleHqOut": {
+        "properties": {
+          "battles": {
+            "items": {
+              "$ref": "#/components/schemas/BattleOut"
+            },
+            "title": "Battles",
+            "type": "array"
+          },
+          "companies": {
+            "items": {
+              "$ref": "#/components/schemas/HqCompanyOut"
+            },
+            "title": "Companies",
+            "type": "array"
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/SkippedOut"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "observed",
+              "schedule"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/HqTargetOut"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "now",
+          "source",
+          "targets",
+          "companies",
+          "battles",
+          "skipped"
+        ],
+        "title": "BattleHqOut",
+        "type": "object"
+      },
+      "BattleOrdersIn": {
+        "properties": {
+          "all": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All"
+          },
+          "corporations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Corporations",
+            "type": "object"
+          }
+        },
+        "title": "BattleOrdersIn",
+        "type": "object"
+      },
+      "BattleOrdersOut": {
+        "properties": {
+          "all": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "All"
+          },
+          "corporations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Corporations",
+            "type": "object"
+          }
+        },
+        "required": [
+          "all",
+          "corporations"
+        ],
+        "title": "BattleOrdersOut",
+        "type": "object"
+      },
+      "BattleOrdersSavedOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/BattleAccountOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "battle_at": {
+            "format": "date-time",
+            "title": "Battle At",
+            "type": "string"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "hour_msk": {
+            "title": "Hour Msk",
+            "type": "integer"
+          },
+          "in_s": {
+            "title": "In S",
+            "type": "integer"
+          },
+          "not_woken": {
+            "items": {
+              "$ref": "#/components/schemas/NotWokenOut"
+            },
+            "title": "Not Woken",
+            "type": "array"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "const": "too_late",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "orders": {
+            "$ref": "#/components/schemas/BattleOrdersOut"
+          },
+          "summary": {
+            "items": {
+              "$ref": "#/components/schemas/BattleSummaryOut"
+            },
+            "title": "Summary",
+            "type": "array"
+          },
+          "woken": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Woken",
+            "type": "array"
+          }
+        },
+        "required": [
+          "battle_at",
+          "hour_msk",
+          "in_s",
+          "editable",
+          "note",
+          "orders",
+          "accounts",
+          "summary",
+          "woken",
+          "not_woken"
+        ],
+        "title": "BattleOrdersSavedOut",
+        "type": "object"
+      },
+      "BattleOut": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/BattleAccountOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "battle_at": {
+            "format": "date-time",
+            "title": "Battle At",
+            "type": "string"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "hour_msk": {
+            "title": "Hour Msk",
+            "type": "integer"
+          },
+          "in_s": {
+            "title": "In S",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "const": "too_late",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "orders": {
+            "$ref": "#/components/schemas/BattleOrdersOut"
+          },
+          "summary": {
+            "items": {
+              "$ref": "#/components/schemas/BattleSummaryOut"
+            },
+            "title": "Summary",
+            "type": "array"
+          }
+        },
+        "required": [
+          "battle_at",
+          "hour_msk",
+          "in_s",
+          "editable",
+          "note",
+          "orders",
+          "accounts",
+          "summary"
+        ],
+        "title": "BattleOut",
+        "type": "object"
+      },
+      "BattleSummaryOut": {
+        "properties": {
+          "account_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Account Ids",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "level_avg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Avg"
+          },
+          "level_sum": {
+            "title": "Level Sum",
+            "type": "integer"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "integer"
+          },
+          "skills": {
+            "$ref": "#/components/schemas/SkillsOut"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "unknown": {
+            "title": "Unknown",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target",
+          "count",
+          "level_sum",
+          "level_avg",
+          "unknown",
+          "skills",
+          "account_ids",
+          "ready"
+        ],
+        "title": "BattleSummaryOut",
+        "type": "object"
+      },
       "BoundOut": {
         "properties": {
           "max": {
@@ -3183,6 +3614,54 @@
         "title": "HostStatusOut",
         "type": "object"
       },
+      "HqCompanyOut": {
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "accounts"
+        ],
+        "title": "HqCompanyOut",
+        "type": "object"
+      },
+      "HqTargetOut": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "code"
+        ],
+        "title": "HqTargetOut",
+        "type": "object"
+      },
       "InviteAcceptIn": {
         "properties": {
           "login": {
@@ -4473,6 +4952,24 @@
           "available"
         ],
         "title": "MoneyOut",
+        "type": "object"
+      },
+      "NotWokenOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "reason"
+        ],
+        "title": "NotWokenOut",
         "type": "object"
       },
       "NotificationOut": {
@@ -7607,6 +8104,52 @@
           "wisdom"
         ],
         "title": "Skills",
+        "type": "object"
+      },
+      "SkillsOut": {
+        "properties": {
+          "cunning": {
+            "title": "Cunning",
+            "type": "integer"
+          },
+          "practice": {
+            "title": "Practice",
+            "type": "integer"
+          },
+          "theory": {
+            "title": "Theory",
+            "type": "integer"
+          },
+          "wisdom": {
+            "title": "Wisdom",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "practice",
+          "theory",
+          "cunning",
+          "wisdom"
+        ],
+        "title": "SkillsOut",
+        "type": "object"
+      },
+      "SkippedOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_id",
+          "reason"
+        ],
+        "title": "SkippedOut",
         "type": "object"
       },
       "SmoothieRecipeState": {
@@ -17360,6 +17903,137 @@
         "summary": "Put Home Layout",
         "tags": [
           "ui"
+        ]
+      }
+    },
+    "/api/v1/overview/battle": {
+      "get": {
+        "description": "Штаб битвы: ближайшая и следующая битва, приказы на них и цель каждого аккаунта учётки.",
+        "operationId": "battle_hq_api_v1_overview_battle_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BattleHqOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          }
+        },
+        "summary": "Battle Hq",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/v1/overview/battle/{battle_at}/orders": {
+      "put": {
+        "description": "Заменить приказы на битву целиком (пустой набор - отмена). Последняя запись побеждает.\nДвижки будятся после записи; `woken` - доставка уведомления, не применение.",
+        "operationId": "put_battle_orders_api_v1_overview_battle__battle_at__orders_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "battle_at",
+            "required": true,
+            "schema": {
+              "title": "Battle At",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BattleOrdersIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BattleOrdersSavedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "battle_too_close"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorOut"
+                }
+              }
+            },
+            "description": "battle_not_offered"
+          }
+        },
+        "summary": "Put Battle Orders",
+        "tags": [
+          "overview"
         ]
       }
     },

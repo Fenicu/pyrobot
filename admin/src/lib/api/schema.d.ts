@@ -1508,6 +1508,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview/battle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Battle Hq
+         * @description Штаб битвы: ближайшая и следующая битва, приказы на них и цель каждого аккаунта учётки.
+         */
+        get: operations["battle_hq_api_v1_overview_battle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/overview/battle/{battle_at}/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Battle Orders
+         * @description Заменить приказы на битву целиком (пустой набор - отмена). Последняя запись побеждает.
+         *     Движки будятся после записи; `woken` - доставка уведомления, не применение.
+         */
+        put: operations["put_battle_orders_api_v1_overview_battle__battle_at__orders_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/scenarios": {
         parameters: {
             query?: never;
@@ -2157,6 +2198,141 @@ export interface components {
             /** Delta */
             delta: number | null;
         };
+        /** BattleAccountOut */
+        BattleAccountOut: {
+            /** Applies */
+            applies: boolean;
+            /** Company */
+            company: string | null;
+            /** Desired */
+            desired: string;
+            /**
+             * Engine
+             * @enum {string}
+             */
+            engine: "local" | "elsewhere" | "stopped";
+            /** Id */
+            id: number;
+            /** In Game */
+            in_game: string | null;
+            /** Level */
+            level: number | null;
+            /** Name */
+            name: string;
+            /** Note */
+            note: string | null;
+            /** Ready */
+            ready: boolean | null;
+            skills: components["schemas"]["SkillsOut"] | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "order_corp" | "order_all" | "override" | "default";
+        };
+        /** BattleHqOut */
+        BattleHqOut: {
+            /** Battles */
+            battles: components["schemas"]["BattleOut"][];
+            /** Companies */
+            companies: components["schemas"]["HqCompanyOut"][];
+            /**
+             * Now
+             * Format: date-time
+             */
+            now: string;
+            /** Skipped */
+            skipped: components["schemas"]["SkippedOut"][];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "observed" | "schedule";
+            /** Targets */
+            targets: components["schemas"]["HqTargetOut"][];
+        };
+        /** BattleOrdersIn */
+        BattleOrdersIn: {
+            /** All */
+            all?: string | null;
+            /** Corporations */
+            corporations?: {
+                [key: string]: string;
+            };
+        };
+        /** BattleOrdersOut */
+        BattleOrdersOut: {
+            /** All */
+            all: string | null;
+            /** Corporations */
+            corporations: {
+                [key: string]: string;
+            };
+        };
+        /** BattleOrdersSavedOut */
+        BattleOrdersSavedOut: {
+            /** Accounts */
+            accounts: components["schemas"]["BattleAccountOut"][];
+            /**
+             * Battle At
+             * Format: date-time
+             */
+            battle_at: string;
+            /** Editable */
+            editable: boolean;
+            /** Hour Msk */
+            hour_msk: number;
+            /** In S */
+            in_s: number;
+            /** Not Woken */
+            not_woken: components["schemas"]["NotWokenOut"][];
+            /** Note */
+            note: "too_late" | null;
+            orders: components["schemas"]["BattleOrdersOut"];
+            /** Summary */
+            summary: components["schemas"]["BattleSummaryOut"][];
+            /** Woken */
+            woken: number[];
+        };
+        /** BattleOut */
+        BattleOut: {
+            /** Accounts */
+            accounts: components["schemas"]["BattleAccountOut"][];
+            /**
+             * Battle At
+             * Format: date-time
+             */
+            battle_at: string;
+            /** Editable */
+            editable: boolean;
+            /** Hour Msk */
+            hour_msk: number;
+            /** In S */
+            in_s: number;
+            /** Note */
+            note: "too_late" | null;
+            orders: components["schemas"]["BattleOrdersOut"];
+            /** Summary */
+            summary: components["schemas"]["BattleSummaryOut"][];
+        };
+        /** BattleSummaryOut */
+        BattleSummaryOut: {
+            /** Account Ids */
+            account_ids: number[];
+            /** Count */
+            count: number;
+            /** Level Avg */
+            level_avg: number | null;
+            /** Level Sum */
+            level_sum: number;
+            /** Ready */
+            ready: number;
+            skills: components["schemas"]["SkillsOut"];
+            /** Target */
+            target: string | null;
+            /** Unknown */
+            unknown: number;
+        };
         /** BoundOut */
         BoundOut: {
             /** Max */
@@ -2630,6 +2806,22 @@ export interface components {
             /** Tasks Ok */
             tasks_ok: boolean;
         };
+        /** HqCompanyOut */
+        HqCompanyOut: {
+            /** Accounts */
+            accounts: number;
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** HqTargetOut */
+        HqTargetOut: {
+            /** Code */
+            code: string | null;
+            /** Name */
+            name: string;
+        };
         /** InviteAcceptIn */
         InviteAcceptIn: {
             /** Login */
@@ -3078,6 +3270,13 @@ export interface components {
             reserve: number;
             /** Stocks */
             stocks: number;
+        };
+        /** NotWokenOut */
+        NotWokenOut: {
+            /** Account Id */
+            account_id: number;
+            /** Reason */
+            reason: string;
         };
         /** NotificationOut */
         NotificationOut: {
@@ -4138,6 +4337,24 @@ export interface components {
             theory: number;
             /** Wisdom */
             wisdom: number;
+        };
+        /** SkillsOut */
+        SkillsOut: {
+            /** Cunning */
+            cunning: number;
+            /** Practice */
+            practice: number;
+            /** Theory */
+            theory: number;
+            /** Wisdom */
+            wisdom: number;
+        };
+        /** SkippedOut */
+        SkippedOut: {
+            /** Account Id */
+            account_id: number;
+            /** Reason */
+            reason: string;
         };
         /** SmoothieRecipeState */
         SmoothieRecipeState: {
@@ -10385,6 +10602,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    battle_hq_api_v1_overview_battle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BattleHqOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    put_battle_orders_api_v1_overview_battle__battle_at__orders_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path: {
+                battle_at: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BattleOrdersIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BattleOrdersSavedOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description battle_too_close */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description battle_not_offered */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorOut"];
                 };
             };
         };

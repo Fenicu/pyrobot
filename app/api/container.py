@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from app.db.crypto import SecretBox
     from app.db.invites import InviteRepo
     from app.db.notifications import ServerNotifier
+    from app.db.overview import OverviewReads
     from app.db.recovery import RecoveryCodes, RecoveryRequests
     from app.db.server_settings import ServerSettingsRepo
     from app.db.ui_prefs import UiPrefsRepo
@@ -50,6 +51,7 @@ class Container:
     admin_reads: AdminReads = field(default=None)  # type: ignore[assignment]
     ui_prefs: UiPrefsRepo = field(default=None)  # type: ignore[assignment]
     battle_orders: BattleOrderRepo = field(default=None)  # type: ignore[assignment]
+    overview: OverviewReads = field(default=None)  # type: ignore[assignment]
     confirm: ConfirmTokens = field(default_factory=ConfirmTokens)
     sse_slots: SseSlots = field(default_factory=SseSlots)
     # Сколько запрос ручной команды ждёт итога шлюза, прежде чем ответить 202 pending.
@@ -87,6 +89,10 @@ class Container:
             from app.db.battle_orders import BattleOrderRepo
 
             self.battle_orders = BattleOrderRepo(self.db)
+        if self.overview is None:
+            from app.db.overview import OverviewReads
+
+            self.overview = OverviewReads(self.db)
 
     def spawn(self, coro: Coroutine[Any, Any, Any]) -> None:
         async def _runner() -> None:
