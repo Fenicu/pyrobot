@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Annotated, Any, cast
@@ -28,12 +29,14 @@ from app.engine.facade import SettingsUpdate
 from app.engine.settings import (
     Settings,
     SettingsConflict,
+    SettingsLeafError,
     SettingsPatch,
     SettingsPatchError,
     restart_required,
     settings_diff,
 )
 
+log = logging.getLogger(__name__)
 router = account_router("settings")
 # Через столько клиенту стоит повторить правку, пока движок аккаунта регистрируется.
 ENGINE_STARTING_RETRY_S = 2
@@ -116,12 +119,19 @@ class EngineStarting(Exception):
     """Аренда аккаунта занята, а её держатель (движок) ещё не зарегистрирован."""
 
 
-def _http_error(exc: Exception) -> HTTPException | None:
+def patch_http_error(exc: Exception) -> HTTPException | None:
     """Ошибки правки настроек, которые одиночная ручка отдаёт как 422."""
     if isinstance(exc, SettingsPatchError):
         loc = ["body", "confirm_live"] if exc.code == "live_requires_confirm" else None
         loc = loc or ["body", "changes", *exc.path.split(".")]
         return _unprocessable([{"loc": loc, "msg": exc.code, "type": exc.code}])
+    if isinstance(exc, SettingsLeafError):
+        return _unprocessable(
+            [
+                {"loc": ["body", "changes", *e["loc"]], "msg": e["msg"], "type": e["type"]}
+                for e in exc.errors
+            ]
+        )
     if isinstance(exc, ValidationError):
         return _unprocessable(
             [
@@ -140,6 +150,7 @@ async def _direct(
     confirm_live: bool,
     version: int,
     by: str,
+    tolerate_audit_failure: bool,
 ) -> SettingsUpdate:
     """Правка без движка - прямо в базу; применится при следующем старте движка. Аренда
     занята - `LeaseHeld`: правку делает её держатель."""
@@ -156,13 +167,20 @@ async def _direct(
     old = patch.before
     assert old is not None
     old_mode = old["engine"]["mode"]
+    audit_failed = False
     if old_mode != new.engine.mode:
         # Как у правки через движок: смена режима остаётся в уведомлениях.
-        await DbNotifier(c.db, account_id).notify(
-            "info", "engine_mode", f"mode {old_mode} -> {new.engine.mode} by {by}"
-        )
+        try:
+            await DbNotifier(c.db, account_id).notify(
+                "info", "engine_mode", f"mode {old_mode} -> {new.engine.mode} by {by}"
+            )
+        except Exception:
+            if not tolerate_audit_failure:
+                raise
+            log.warning("engine_mode audit failed after settings were saved", exc_info=True)
+            audit_failed = True
     changed = settings_diff(old, new.model_dump(mode="json"))
-    return SettingsUpdate(new, saved, changed)
+    return SettingsUpdate(new, saved, changed, audit_failed)
 
 
 async def apply_account_patch(
@@ -173,6 +191,7 @@ async def apply_account_patch(
     confirm_live: bool,
     version: int,
     by: str,
+    tolerate_audit_failure: bool = False,
 ) -> SettingsUpdate:
     """Правка настроек аккаунта: с движком - через него, без движка - прямо в базу, если аренда
     свободна; занята - ожидание регистрации движка до `engine_wait_s`, затем `EngineStarting`.
@@ -183,14 +202,26 @@ async def apply_account_patch(
     if f is None:
         try:
             return await _direct(
-                c, scope, changes, confirm_live=confirm_live, version=version, by=by
+                c,
+                scope,
+                changes,
+                confirm_live=confirm_live,
+                version=version,
+                by=by,
+                tolerate_audit_failure=tolerate_audit_failure,
             )
         except LeaseHeld:
             engine = await c.engines.wait_registered(scope.account.id, c.engine_wait_s)
             f = engine.facade if engine is not None else None
         if f is None:
             raise EngineStarting
-    return await f.patch_settings(changes, version=version, by=by, confirm_live=confirm_live)
+    return await f.patch_settings(
+        changes,
+        version=version,
+        by=by,
+        confirm_live=confirm_live,
+        tolerate_audit_failure=tolerate_audit_failure,
+    )
 
 
 @router.patch(
@@ -248,7 +279,7 @@ async def patch_settings(
             {"code": "version_conflict", "version": await _current_version(c, scope)},
         ) from exc
     except (SettingsPatchError, ValidationError) as exc:
-        raise cast(HTTPException, _http_error(exc)) from exc
+        raise cast(HTTPException, patch_http_error(exc)) from exc
     return SettingsPatchOut(
         version=upd.version,
         values=upd.settings.model_dump(mode="json"),

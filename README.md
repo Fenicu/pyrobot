@@ -5204,6 +5204,34 @@ AST полным путём — чтения (`Load`, присваивание �
 (`Settings.model_validate`): у версии, записанной до появления секции, секция считается со
 значениями по умолчанию, а не изменённой.
 
+### Одна настройка у нескольких аккаунтов (обзор)
+
+`POST /api/v1/overview/settings` (сессия, CSRF) с телом `{account_ids: [1..50 без повторов],
+changes: {…}, confirm_live: false}` → `{results: [{account_id, status, version, changed,
+restart_required, error, warnings}]}`. Семантика `changes` та же, что у `PATCH /accounts/{id}/settings`
+(секции сливаются, листья, в том числе `battle.overrides` и списки, заменяются целиком), но версия
+не передаётся: путь пишется поверх текущего значения каждого аккаунта. Общий код правки с одиночной
+ручкой: `apply_account_patch` (`app/api/routes_settings.py`).
+
+- Тело проверяется целиком до записи, ошибка — 422 и ни один аккаунт не тронут: пустые `account_ids`
+  или `changes`, повторы, больше 50 id; путь (`unknown_field`, `read_only`, `section_expected`) и
+  собственные ограничения значения листа (`ge`/`le`, `Literal`, длины) — `validate_changes_shape`
+  (`app/engine/settings.py`). Связи между полями (например, `chats.team_chat_id` не равен чату SWINFO
+  аккаунта) по умолчаниям не проверяются, а решаются на каждом аккаунте по его настройкам.
+  `engine.mode: "live"` без `confirm_live` — 422 `live_requires_confirm`.
+- Дальше аккаунты по одному в порядке запроса, без общей транзакции; ответ 200. Чужой и
+  несуществующий аккаунт неразличимы (`account_not_found`). Запущенный движок пишет через
+  `EngineFacade.patch_settings`, остановленный со свободной арендой — прямая запись в базу, аренда
+  занята — ожидание регистрации движка до `engine_wait_s`, затем `engine_starting`.
+- `unchanged` — значение уже такое: версия и история не пишутся. `applied` — `version`, `changed`
+  (`путь → [было, стало]`) и `restart_required`. Конфликт версий (движок правит настройки сам)
+  повторяется до 3 раз, затем `version_conflict`. Сбой аудита смены режима после записи — `applied`
+  с `warnings: ["audit_failed"]`.
+- `error.code`: `account_not_found`, `account_deleting`, `version_conflict`, `engine_starting`,
+  `lock_lost`, `live_requires_confirm`, `setting_out_of_bounds` (`path`), `chat_is_self` (`path` —
+  поля через запятую), `validation_error` (`loc`), `internal_error` (в логе с id аккаунта). Ошибка
+  одного аккаунта остальных не останавливает.
+
 ### Журнал и детали
 
 `GET /api/v1/accounts/{id}/journal` (сессия, работает и без движка) — общая лента журнала: сообщения (`messages`,

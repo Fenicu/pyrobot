@@ -147,6 +147,8 @@ class SettingsUpdate:
     settings: Settings
     version: int
     changed: dict[str, list[Any]]
+    # Настройки записаны, а запись аудита смены режима упала (только при `tolerate_audit_failure`).
+    audit_failed: bool = False
 
 
 _SET_PAUSED_ATTEMPTS = 3
@@ -557,10 +559,13 @@ class EngineFacade:
         version: int,
         by: str,
         confirm_live: bool = False,
+        tolerate_audit_failure: bool = False,
     ) -> SettingsUpdate:
         """Частичное изменение настроек с оптимистичной блокировкой по `version`.
         Переход в `live` — только с `confirm_live`: из dry_run начинаются реальные траты.
-        Поле `chats.*`, равное пользователю Telegram привязанного аккаунта, — `ChatIsSelf`."""
+        Поле `chats.*`, равное пользователю Telegram привязанного аккаунта, — `ChatIsSelf`.
+        Аудит смены режима пишется после сохранения и может упасть: с `tolerate_audit_failure`
+        запись остаётся результатом (`audit_failed`), без него сбой уходит вызывающему."""
         bounds = self._bounds() if self._bounds is not None else None
         patch = SettingsPatch(
             changes,
@@ -575,10 +580,17 @@ class EngineFacade:
         if self._planner is not None:
             self._planner.wake()
         old_mode = old["engine"]["mode"]
+        audit_failed = False
         if old_mode != new.engine.mode:
-            await self._audit("engine_mode", f"mode {old_mode} -> {new.engine.mode} by {by}")
+            try:
+                await self._audit("engine_mode", f"mode {old_mode} -> {new.engine.mode} by {by}")
+            except Exception:
+                if not tolerate_audit_failure:
+                    raise
+                log.warning("engine_mode audit failed after settings were saved", exc_info=True)
+                audit_failed = True
         changed = settings_diff(old, new.model_dump(mode="json"))
-        return SettingsUpdate(new, saved, changed)
+        return SettingsUpdate(new, saved, changed, audit_failed)
 
     async def reconciled(self, *, by: str) -> None:
         log.info("spending unblocked by %s", by)

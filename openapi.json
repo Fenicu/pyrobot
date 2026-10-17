@@ -8663,6 +8663,168 @@
         "title": "SendIn",
         "type": "object"
       },
+      "SettingsBulkErrorOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "loc": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loc"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "SettingsBulkErrorOut",
+        "type": "object"
+      },
+      "SettingsBulkIn": {
+        "properties": {
+          "account_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Account Ids",
+            "type": "array"
+          },
+          "changes": {
+            "additionalProperties": true,
+            "minProperties": 1,
+            "title": "Changes",
+            "type": "object"
+          },
+          "confirm_live": {
+            "default": false,
+            "title": "Confirm Live",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "account_ids",
+          "changes"
+        ],
+        "title": "SettingsBulkIn",
+        "type": "object"
+      },
+      "SettingsBulkOut": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsBulkResultOut"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "title": "SettingsBulkOut",
+        "type": "object"
+      },
+      "SettingsBulkResultOut": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "integer"
+          },
+          "changed": {
+            "additionalProperties": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Changed",
+            "type": "object"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SettingsBulkErrorOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "restart_required": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Restart Required",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "unchanged",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account_id",
+          "status",
+          "version",
+          "changed",
+          "restart_required",
+          "error"
+        ],
+        "title": "SettingsBulkResultOut",
+        "type": "object"
+      },
       "SettingsHistoryOut": {
         "properties": {
           "items": {
@@ -19328,6 +19490,86 @@
           }
         },
         "summary": "Schedule",
+        "tags": [
+          "overview"
+        ]
+      }
+    },
+    "/api/v1/overview/settings": {
+      "post": {
+        "description": "Одно изменение настроек у нескольких аккаунтов (семантика `PATCH /accounts/{id}/settings`\nбез версии: путь пишется поверх текущего значения каждого). Тело проверяется целиком до\nзаписи; дальше аккаунты по одному, без общей транзакции, сбой одного остальных не\nостанавливает. Чужой и несуществующий аккаунт неразличимы.",
+        "operationId": "overview_settings_api_v1_overview_settings_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-csrf-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsBulkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsBulkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "not authenticated"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "csrf token mismatch"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorOut"
+                }
+              }
+            },
+            "description": "invalid body or changes (nothing is written)"
+          }
+        },
+        "summary": "Overview Settings",
         "tags": [
           "overview"
         ]

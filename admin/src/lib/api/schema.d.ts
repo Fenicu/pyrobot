@@ -1638,6 +1638,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/overview/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Overview Settings
+         * @description Одно изменение настроек у нескольких аккаунтов (семантика `PATCH /accounts/{id}/settings`
+         *     без версии: путь пишется поверх текущего значения каждого). Тело проверяется целиком до
+         *     записи; дальше аккаунты по одному, без общей транзакции, сбой одного остальных не
+         *     останавливает. Чужой и несуществующий аккаунт неразличимы.
+         */
+        post: operations["overview_settings_api_v1_overview_settings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/overview/totals": {
         parameters: {
             query?: never;
@@ -4582,6 +4605,58 @@ export interface components {
             idempotency_key: string;
             /** Text */
             text: string;
+        };
+        /** SettingsBulkErrorOut */
+        SettingsBulkErrorOut: {
+            /** Code */
+            code: string;
+            /** Loc */
+            loc?: (string | number)[] | null;
+            /** Path */
+            path?: string | null;
+        };
+        /** SettingsBulkIn */
+        SettingsBulkIn: {
+            /** Account Ids */
+            account_ids: number[];
+            /** Changes */
+            changes: {
+                [key: string]: unknown;
+            };
+            /**
+             * Confirm Live
+             * @default false
+             */
+            confirm_live: boolean;
+        };
+        /** SettingsBulkOut */
+        SettingsBulkOut: {
+            /** Results */
+            results: components["schemas"]["SettingsBulkResultOut"][];
+        };
+        /** SettingsBulkResultOut */
+        SettingsBulkResultOut: {
+            /** Account Id */
+            account_id: number;
+            /** Changed */
+            changed: {
+                [key: string]: unknown[];
+            };
+            error: components["schemas"]["SettingsBulkErrorOut"] | null;
+            /** Restart Required */
+            restart_required: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "applied" | "unchanged" | "error";
+            /** Version */
+            version: number | null;
+            /**
+             * Warnings
+             * @default []
+             */
+            warnings: string[];
         };
         /** SettingsHistoryOut */
         SettingsHistoryOut: {
@@ -11291,6 +11366,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_settings_api_v1_overview_settings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-csrf-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsBulkIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsBulkOut"];
+                };
+            };
+            /** @description not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description csrf token mismatch */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description invalid body or changes (nothing is written) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorOut"];
                 };
             };
         };

@@ -5,7 +5,14 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Protocol
 
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
 
 if TYPE_CHECKING:
     from app.engine.server_settings import EngineBounds
@@ -492,6 +499,55 @@ def _merge(
             _merge(section, data[key], value, f"{path}.")
         else:
             data[key] = value
+
+
+class SettingsLeafError(ValueError):
+    """Значение листа не проходит собственные ограничения поля; `errors` - как у pydantic, но
+    `loc` полный: от корня настроек."""
+
+    def __init__(self, errors: list[dict[str, Any]]) -> None:
+        super().__init__("; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in errors))
+        self.errors = errors
+
+
+def validate_changes_shape(changes: Mapping[str, Any]) -> None:
+    """Проверка изменения без настроек аккаунта: путь (`SettingsPatchError`: `unknown_field`,
+    `read_only`, `section_expected`) и ограничения самого листа (`SettingsLeafError`). Связи
+    между полями (`model_validator`/`field_validator` с `info.data`) здесь не проверяются:
+    сравнивать их можно только с настройками аккаунта, а не с умолчаниями."""
+    _check_shape(Settings, changes, ())
+
+
+def _check_shape(
+    model: type[BaseModel], changes: Mapping[str, Any], prefix: tuple[str, ...]
+) -> None:
+    for key, value in changes.items():
+        path = (*prefix, key)
+        field = model.model_fields.get(key)
+        if field is None:
+            raise SettingsPatchError("unknown_field", ".".join(path))
+        extra = field.json_schema_extra
+        if isinstance(extra, dict) and extra.get("readOnly"):
+            raise SettingsPatchError("read_only", ".".join(path))
+        section = field.annotation
+        if isinstance(section, type) and issubclass(section, BaseModel):
+            if not isinstance(value, Mapping):
+                raise SettingsPatchError("section_expected", ".".join(path))
+            _check_shape(section, value, path)
+            continue
+        kind: Any = (
+            Annotated[field.annotation, *field.metadata] if field.metadata else field.annotation
+        )
+        adapter: TypeAdapter[Any] = TypeAdapter(kind)
+        try:
+            adapter.validate_python(value)
+        except ValidationError as exc:
+            raise SettingsLeafError(
+                [
+                    {"loc": [*path, *e["loc"]], "msg": e["msg"], "type": e["type"]}
+                    for e in exc.errors(include_url=False)
+                ]
+            ) from exc
 
 
 class SettingsPatch:

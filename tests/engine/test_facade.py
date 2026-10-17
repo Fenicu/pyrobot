@@ -611,6 +611,24 @@ def test_orders_changed_goes_to_planner() -> None:
     build().orders_changed()
 
 
+class _FailingNotifier:
+    async def notify(self, level: str, code: str, text: str) -> None:
+        raise RuntimeError("notifier down")
+
+
+async def test_patch_settings_audit_failure_after_save() -> None:
+    f = build(notifier=_FailingNotifier())
+    live = {"engine": {"mode": "live"}}
+    with pytest.raises(RuntimeError):
+        await f.patch_settings(live, version=0, by="alice", confirm_live=True)
+    assert f.settings.version == 1
+    g = build(notifier=_FailingNotifier())
+    upd = await g.patch_settings(
+        live, version=0, by="alice", confirm_live=True, tolerate_audit_failure=True
+    )
+    assert upd.audit_failed and upd.version == 1 and g.settings.version == 1
+
+
 async def test_patch_settings_wakes_planner_and_audits_mode() -> None:
     rec, planner = _Recorder(), _Planner()
     f = build(notifier=rec, planner=planner)

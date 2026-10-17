@@ -9,6 +9,7 @@ from app.engine.settings import (
     EngineSection,
     Settings,
     SettingsConflict,
+    SettingsLeafError,
     SettingsPatchError,
     StaticSettings,
     apply_patch,
@@ -16,6 +17,7 @@ from app.engine.settings import (
     self_chat_fields,
     settings_diff,
     stored_values,
+    validate_changes_shape,
 )
 
 
@@ -500,3 +502,38 @@ def test_old_settings_read_with_gadget_defaults() -> None:
     old = Settings.model_validate({"engine": {"mode": "live"}, "features": {"trips": False}})
     assert old.features.gadgets_buy is False
     assert old.gadgets.white_until == 7 and old.gadget_upgrade.status == "idle"
+
+
+def test_shape_accepts_valid_leaves_and_sections() -> None:
+    validate_changes_shape({"battle": {"target": "🛡Защита"}, "food": {"banana_reserve": 40}})
+    # Листья-словари и списки заменяются целиком.
+    validate_changes_shape({"battle": {"overrides": {}}})
+    # Связь между полями проверяется не здесь: умолчания аккаунта ничего не значат.
+    validate_changes_shape({"chats": {"team_chat_id": Settings().chats.swinfo_chat_id}})
+
+
+@pytest.mark.parametrize(
+    ("changes", "code", "path"),
+    [
+        ({"nope": 1}, "unknown_field", "nope"),
+        ({"engine": {"nope": 1}}, "unknown_field", "engine.nope"),
+        ({"engine": {"killed": True}}, "read_only", "engine.killed"),
+        ({"artifact_run": {"x": 1}}, "read_only", "artifact_run"),
+        ({"engine": 5}, "section_expected", "engine"),
+    ],
+)
+def test_shape_rejects_bad_paths(changes: dict[str, Any], code: str, path: str) -> None:
+    with pytest.raises(SettingsPatchError) as exc:
+        validate_changes_shape(changes)
+    assert (exc.value.code, exc.value.path) == (code, path)
+
+
+def test_shape_checks_independent_leaf_constraints() -> None:
+    with pytest.raises(SettingsLeafError) as exc:
+        validate_changes_shape({"engine": {"min_request_interval_s": -1}})
+    assert exc.value.errors[0]["loc"] == ["engine", "min_request_interval_s"]
+    assert exc.value.errors[0]["type"] == "greater_than_equal"
+    with pytest.raises(SettingsLeafError):
+        validate_changes_shape({"engine": {"mode": "turbo"}})
+    with pytest.raises(SettingsLeafError):
+        validate_changes_shape({"chats": {"team_chat_id": 5}})
