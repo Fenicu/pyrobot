@@ -38,6 +38,7 @@ def test_busy(msg_id: int, left: int) -> None:
         (3625756, Refused(reason="unknown_command")),
         (3624999, Refused(reason="fastfood_cooldown", left_s=1740)),
         (3532814, Refused(reason="levelup_required")),
+        (3639300, Refused(reason="rob_cooldown", left_s=1920)),
     ],
 )
 def test_refusals(msg_id: int, expected: Refused) -> None:

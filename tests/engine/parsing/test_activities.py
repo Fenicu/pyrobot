@@ -14,6 +14,8 @@ from app.engine.parsing.activities import (
     MotivationFull,
     Price,
     PricesScreen,
+    RobberyFightOutcome,
+    RobberyVictimFound,
     StartupScreen,
     WorkshopScreen,
 )
@@ -40,6 +42,7 @@ def _events(msg_id: int) -> list[Event]:
         (3213190, ActivityStarted(activity="walk", duration_s=247)),
         (3437620, ActivityStarted(activity="confa", duration_s=240, money=7)),
         (3438033, ActivityStarted(activity="confa", duration_s=240, money=7)),
+        (3639298, ActivityStarted(activity="rob", duration_s=240)),
     ],
 )
 def test_starts(msg_id: int, expected: ActivityStarted) -> None:
@@ -194,6 +197,71 @@ def test_confa_results() -> None:
     assert (team.rewards.knowledge, team.rewards.team_task) == (88, (437, 600, "📚"))
     empty = _finished(3437621)
     assert (empty.activity, empty.rewards.knowledge) == ("confa", 0)
+
+
+def test_rob_results() -> None:
+    # not_found (3639299)
+    not_found = _finished(3639299)
+    assert (
+        not_found.activity,
+        not_found.failed,
+        not_found.rewards.exp,
+        not_found.rewards.money,
+    ) == ("rob", True, 104, 0)
+    # robbed_new (1629800)
+    new = _finished(1629800)
+    assert (new.activity, new.failed, new.rewards.exp, new.rewards.money) == (
+        "rob",
+        False,
+        72,
+        227,
+    )
+    # robbed_old (3310633)
+    old = _finished(3310633)
+    assert (old.activity, old.failed, old.rewards.exp, old.rewards.money) == (
+        "rob",
+        False,
+        214,
+        600,
+    )
+    # fight_win (2568751)
+    win_events = _events(2568751)
+    assert len(win_events) == 2
+    win = win_events[0]
+    assert isinstance(win, ActivityFinished)
+    assert (win.activity, win.failed, win.rewards.exp, win.rewards.money, win.rewards.stamina) == (
+        "rob",
+        False,
+        118,
+        16,
+        155,
+    )
+    fight_win = win_events[1]
+    assert isinstance(fight_win, RobberyFightOutcome)
+    assert (fight_win.won, fight_win.level, fight_win.pct) == (True, 33, 15)
+    # fight_loss (1890777)
+    loss_events = _events(1890777)
+    assert len(loss_events) == 2
+    loss = loss_events[0]
+    assert isinstance(loss, ActivityFinished)
+    assert (
+        loss.activity,
+        loss.failed,
+        loss.rewards.exp,
+        loss.rewards.money,
+        loss.rewards.stamina,
+    ) == ("rob", True, 68, -10, 0)
+    fight_loss = loss_events[1]
+    assert isinstance(fight_loss, RobberyFightOutcome)
+    assert (fight_loss.won, fight_loss.level, fight_loss.pct) == (False, 58, 50)
+
+
+def test_robbery_found() -> None:
+    events = _events(1629799)
+    assert len(events) == 1
+    found = events[0]
+    assert isinstance(found, RobberyVictimFound)
+    assert (found.victim, found.level) == ("☂️[PA]\xa0Даримиор", 29)
 
 
 def test_logistic_refund() -> None:

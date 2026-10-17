@@ -73,6 +73,10 @@ _STARTS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "startup",
         re.compile(r'\A"Го пилить стартап!".*?Это займёт (?P<t>' + DURATION + r")", re.S),
     ),
+    (
+        "rob",
+        re.compile(r"\AТы надел маску и пошёл грабить спящих под мостами\.", re.S),
+    ),
 )
 # Итог дела классифицируется по строке продолжения: первая строка — случайная шутка.
 _FINISHES: tuple[tuple[str, str], ...] = (
@@ -113,8 +117,28 @@ _REQ_KEYS = {
     "🔵": "blue",
     "⏰": "minutes",
 }
-_DEEDS_COMPACT = re.compile(r"^(?P<emo>💻|🚶|🔫)\w+ — (?P<mot>\d+)🔥, (?P<min>\d+) ⏰$", re.M)
+_DEEDS_COMPACT = re.compile(
+    r"^(?P<emo>💻|🚶|🔫)\w+ — (?P<mot>\d+)🔥, (?P<min>\d+) ⏰(?:[ /].*?)?$", re.M
+)
 _DEEDS_FULL = re.compile(r"^(?P<emo>💻|🚶|🔫)\w+ - .*?\nТребования: (?P<req>[^\n]+)$", re.M | re.S)
+_ROB_FOUND = re.compile(
+    r"\AТы нашёл спящего в безмятежности под мостом стартапера (?P<victim>.+?) \((?P<level>\d+)\) "
+    r"и решил ограбить его\. Внимание, он может проснуться!"
+)
+_ROB_NOT_FOUND = (
+    "Ты поискал спящих под ближайшими мостами стартаперов, но никого не нашёл. "
+    "Ну что же, отрицательный результат тоже результат."
+)
+_ROB_ROBBED_NEW = "Твой грабёж прошёл очень успешно. Жертва так и не проснулась."
+_ROB_ROBBED_OLD = "Ты нашёл спящего в безмятежности под мостом стартапера и ограбил его."
+_ROB_FIGHT_WIN = re.compile(
+    r"\A(?P<victim>.+?) \((?P<level>\d+)\) проснулся и между вами произошла схватка\n"
+    r"Ты победил в схватке и отобрал (?P<pct>\d+)% 💵"
+)
+_ROB_FIGHT_LOSS = re.compile(
+    r"\A(?P<victim>.+?) \((?P<level>\d+)\) проснулся и между вами произошла схватка\n"
+    r"Ты проиграл в схватке и потерял (?P<pct>\d+)% 💵"
+)
 _DEEDS_STAMINA = re.compile(r"^🔋Выносливость: (?P<st>\d+)%$", re.M)
 _DEEDS_SLEEP_IN = re.compile(r"Свалишься в сон через (?P<t>[^\n]+)")
 _DEEDS_SLEEPING = re.compile(
@@ -191,6 +215,22 @@ class ActivityFinished(Event):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class RobberyVictimFound(Event):
+    kind: ClassVar[str] = "robbery_victim_found"
+    victim: str
+    level: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RobberyFightOutcome(Event):
+    kind: ClassVar[str] = "robbery_fight_outcome"
+    won: bool
+    victim: str
+    level: int
+    pct: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ActivityCancelled(Event):
     kind: ClassVar[str] = "activity_cancelled"
     outcome: ClassVar[bool] = True
@@ -260,10 +300,17 @@ def recognize_start(msg: IncomingMessage) -> list[Event]:
     for activity, pattern in _STARTS:
         if m := pattern.match(text):
             groups = m.groupdict()
+            duration_s = (
+                dur(m["t"])
+                if groups.get("t")
+                else int(groups["min"]) * 60
+                if groups.get("min")
+                else 240
+            )
             return [
                 ActivityStarted(
                     activity=activity,
-                    duration_s=dur(m["t"]) if groups.get("t") else int(m["min"]) * 60,
+                    duration_s=duration_s,
                     money=int(groups.get("money") or 0),
                     details=int(groups.get("details") or 0),
                 )
@@ -288,6 +335,37 @@ def recognize_finish(msg: IncomingMessage) -> list[Event]:
             if _STARTUP_LEVELUP in text:
                 events.append(StartupLevelUp())
             return events
+    if text.startswith(_ROB_NOT_FOUND):
+        return [ActivityFinished(activity="rob", failed=True, rewards=parse_rewards(text))]
+    if text.startswith((_ROB_ROBBED_NEW, _ROB_ROBBED_OLD)):
+        return [ActivityFinished(activity="rob", failed=False, rewards=parse_rewards(text))]
+    if m := _ROB_FIGHT_WIN.match(text):
+        return [
+            ActivityFinished(activity="rob", failed=False, rewards=parse_rewards(text)),
+            RobberyFightOutcome(
+                won=True,
+                victim=m["victim"],
+                level=int(m["level"]),
+                pct=int(m["pct"]),
+            ),
+        ]
+    if m := _ROB_FIGHT_LOSS.match(text):
+        return [
+            ActivityFinished(activity="rob", failed=True, rewards=parse_rewards(text)),
+            RobberyFightOutcome(
+                won=False,
+                victim=m["victim"],
+                level=int(m["level"]),
+                pct=int(m["pct"]),
+            ),
+        ]
+    return []
+
+
+def recognize_robbery_found(msg: IncomingMessage) -> list[Event]:
+    text = msg.text or ""
+    if m := _ROB_FOUND.match(text):
+        return [RobberyVictimFound(victim=m["victim"], level=int(m["level"]))]
     return []
 
 
@@ -435,4 +513,5 @@ RECOGNIZERS = (
     recognize_motivation_full,
     recognize_bonus,
     recognize_screens,
+    recognize_robbery_found,
 )

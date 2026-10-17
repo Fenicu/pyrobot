@@ -58,12 +58,13 @@ def test_one_recognizer_per_message() -> None:
     for family in FAMILIES:
         for msg_id, msg in game(family).items():
             kinds = [e.kind for e in parser.parse(msg)]
-            # Экраны «⏳Дела» дают цены и меню одновременно, прочие — одно событие.
+            # Экраны «⏳Дела» дают цены и меню одновременно, драка при грабеже — итог дела и схватку.
             assert (
                 len(kinds) == 1
                 or kinds == ["prices_screen", "deeds_menu"]
                 or kinds == ["prices_screen", "workshop_screen"]
                 or kinds == ["prices_screen", "startup_screen"]
+                or kinds == ["activity_finished", "robbery_fight_outcome"]
             ), (family, msg_id, kinds)
 
 

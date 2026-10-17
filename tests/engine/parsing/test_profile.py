@@ -70,6 +70,15 @@ def test_other_busy_variants() -> None:
     assert (_profile(3586615).busy_kind, _profile(3586615).busy_left_s) == ("sleep_hotel", 3120)
 
 
+def test_rob_in_profile_is_busy_rob() -> None:
+    msg = game_msg("profile", 3623869)
+    assert msg.text is not None
+    text = msg.text.replace("💻Работаешь (41 сек.)", "🔫Ушёл грабить (3 мин. 58 сек.)")
+    [p] = recognize_compact(replace(msg, text=text))
+    assert isinstance(p, ProfileCompact)
+    assert (p.busy_kind, p.busy_left_s) == ("rob", 238)
+
+
 def _with_mark(mark: str) -> ProfileCompact | None:
     msg = game_msg("profile", 3624478)
     text = (msg.text or "").replace("☣️[SU]", f"{mark}[SU]", 1)

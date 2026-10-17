@@ -270,7 +270,7 @@ DEFAULT_PRICES = {
     "eat": PriceState(money=5, minutes=5),
     "walk": PriceState(motivation=1, minutes=5),
     "confa": PriceState(motivation=3, money=7, minutes=10),
-    "rob": PriceState(motivation=1, minutes=8),
+    "rob": PriceState(motivation=1, minutes=4),
     # «Пилить»: 🔥 и ⏰ (🔩 в PriceState не хранится).
     "startup": PriceState(motivation=2, minutes=8),
 }

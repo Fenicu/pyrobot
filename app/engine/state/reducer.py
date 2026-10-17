@@ -512,7 +512,10 @@ def _finished(p: _Patch, e: ActivityFinished) -> None:
                     update={"progress": s.progress + e.rewards.startup_progress}
                 ),
             )
-    p.effect("deed", amounts(e.rewards), e.rewards.items)
+    if e.activity == "rob" and e.rewards.money < 0:
+        p.effect("robbery", amounts(e.rewards))
+    else:
+        p.effect("deed", amounts(e.rewards), e.rewards.items)
 
 
 @_on(StartupScreen)
