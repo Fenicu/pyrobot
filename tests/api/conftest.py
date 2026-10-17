@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -62,6 +62,7 @@ class FakeEngines:
         self.waited: list[tuple[int, float]] = []
         self.lock_connection_ok = True
         self.pokes = 0
+        self.order_wakes: list[list[int]] = []
         self.stats_map: dict[int, EngineStats] = {}
 
     def put(self, facade: EngineFacade, account_id: int = 1) -> FakeEngine:
@@ -86,6 +87,12 @@ class FakeEngines:
 
     def poke(self) -> None:
         self.pokes += 1
+
+    def orders_changed(self, account_ids: Iterable[int]) -> list[int]:
+        """Запоминает вызовы; будит только движки, которые тест положил."""
+        ids = list(account_ids)
+        self.order_wakes.append(ids)
+        return [i for i in ids if i in self.engines]
 
     def stats(self, account_id: int) -> EngineStats:
         if account_id in self.stats_map:

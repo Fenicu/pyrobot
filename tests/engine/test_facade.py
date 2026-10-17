@@ -517,9 +517,20 @@ class _Planner:
 
     def __init__(self) -> None:
         self.woken = 0
+        self.orders = 0
 
     def wake(self) -> None:
         self.woken += 1
+
+    def orders_changed(self) -> None:
+        self.orders += 1
+
+
+def test_orders_changed_goes_to_planner() -> None:
+    planner = _Planner()
+    build(planner=planner).orders_changed()
+    assert planner.orders == 1
+    build().orders_changed()
 
 
 async def test_patch_settings_wakes_planner_and_audits_mode() -> None:

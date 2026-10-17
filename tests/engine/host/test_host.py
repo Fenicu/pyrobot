@@ -196,6 +196,22 @@ async def test_starts_enabled_accounts_in_id_order_with_gap(
     assert host.capacity == 20
 
 
+async def test_orders_changed_reaches_only_running_engines(
+    clean_db: Database, hosts: Hosts
+) -> None:
+    two = await _add(clean_db)
+    off = await _add(clean_db, "disabled")
+    host = await hosts.open()
+    await _registered(host, 1, two)
+    notified: list[int] = []
+    for account_id in (1, two):
+        facade = _running(host, account_id).facade
+        assert facade is not None
+        facade.orders_changed = lambda account_id=account_id: notified.append(account_id)  # type: ignore[method-assign]
+    assert host.orders_changed([two, off, 999, 1, two]) == [two, 1]
+    assert notified == [two, 1]
+
+
 async def test_start_does_not_wait_for_staged_start(clean_db: Database, hosts: Hosts) -> None:
     two = await _add(clean_db)
     hosts.gate = asyncio.Event()

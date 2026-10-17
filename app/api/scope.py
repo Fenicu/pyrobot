@@ -2,7 +2,7 @@
 доступ проверяет одна зависимость `account_scope`: чужой и несуществующий аккаунт — одинаково 404.
 Движок аккаунта может быть не запущен: тогда чтения идут из базы, а живые пути отвечают 503."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from dataclasses import dataclass
 from typing import Annotated, Protocol
 
@@ -34,6 +34,10 @@ class EngineRegistry(Protocol):
     def host_reason(self, account_id: int) -> str | None:
         """Почему движок аккаунта не запущен здесь: `locked_elsewhere`, `lease_active`; None —
         запущен или причины нет."""
+        ...
+
+    def orders_changed(self, account_ids: Iterable[int]) -> list[int]:
+        """Приказы штаба записаны: разбудить циклы запущенных здесь движков; id разбуженных."""
         ...
 
     def status(self) -> HostStatus:

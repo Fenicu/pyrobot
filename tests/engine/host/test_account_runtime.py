@@ -1,6 +1,7 @@
 import secrets
 from collections.abc import AsyncIterator
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from app.config import AppConfig
 from app.db.accounts import AccountRepo
 from app.db.audit import AuditLog
 from app.db.base import Database
+from app.db.battle_orders import BattleOrderRepo
 from app.db.crypto import SecretBox
 from app.db.models import (
     Account,
@@ -21,13 +23,15 @@ from app.db.models import (
     TgChatMark,
     TgPeer,
     TgSession,
+    User,
 )
 from app.db.notifications import DbNotifier
 from app.db.server_settings import ServerSettingsRepo
 from app.db.settings_store import direct_update
+from app.engine.battle_orders import BattleOrder
 from app.engine.facade import LockLostError
 from app.engine.fence import Fence, LeaseLost
-from app.engine.host.account import AccountRuntime, RuntimeDeps
+from app.engine.host.account import AccountRuntime, OwnerOrders, RuntimeDeps
 from app.engine.host.codes import CodeLimiter
 from app.engine.host.lease import LeaseManager
 from app.engine.lag import LoopLagMonitor
@@ -181,6 +185,44 @@ async def test_two_runtimes_share_process_without_crosstalk(
     assert not any(t.done() for t in two_tasks.values())
     status = two.facade.status()
     assert status.workers_ok and status.lease_ok and not status.paused
+
+
+async def _owner(db: Database, account_id: int = 1) -> int:
+    async with db.sessions() as session, session.begin():
+        user = User(login="bob", password_hash="x", role="user")
+        session.add(user)
+        await session.flush()
+        account = await session.get(Account, account_id)
+        assert account is not None
+        account.owner_id = user.id
+        return user.id
+
+
+async def test_owner_orders_cover_battle_started_two_hours_ago(clean_db: Database) -> None:
+    uid = await _owner(clean_db)
+    now = datetime(2026, 10, 18, 12, 30, tzinfo=UTC)
+    repo = BattleOrderRepo(clean_db)
+    recent = datetime(2026, 10, 18, 10, 30, tzinfo=UTC)
+    await repo.replace(uid, recent, {"all": "🤖Hooli"}, "bob")
+    await repo.replace(uid, recent - timedelta(minutes=1), {"all": "🤖Hooli"}, "bob")
+    await repo.replace(uid, recent + timedelta(hours=9), {"bmesa": "☂️Umbrella"}, "bob")
+    got = await OwnerOrders(repo, uid).active(now)
+    assert got == (
+        BattleOrder(recent, "all", "🤖Hooli"),
+        BattleOrder(recent + timedelta(hours=9), "bmesa", "☂️Umbrella"),
+    )
+
+
+async def test_runtime_gives_planner_owner_orders(engines: Engines, clean_db: Database) -> None:
+    uid = await _owner(clean_db)
+    runtime = await engines.start(1)
+    source = runtime.planner._orders_source if runtime.planner is not None else None
+    assert isinstance(source, OwnerOrders) and source.owner_id == uid
+
+
+async def test_runtime_without_owner_has_no_orders(engines: Engines) -> None:
+    runtime = await engines.start(1)
+    assert runtime.planner is not None and runtime.planner._orders_source is None
 
 
 async def test_loop_and_facade_share_artifact_and_gadget_runs(

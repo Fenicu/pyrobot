@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, Protocol
 
 from app.engine.gametime import MSK, to_msk
 from app.engine.parsing.battle import DEFENSE
@@ -24,6 +24,12 @@ class BattleOrder:
 class TargetChoice(NamedTuple):
     target: str
     source: Literal["order_corp", "order_all", "override", "default"]
+
+
+class BattleOrderSource(Protocol):
+    """Откуда цикл планировщика берёт приказы штаба: приказы владельца на ближайшие битвы."""
+
+    async def active(self, now: datetime) -> tuple[BattleOrder, ...]: ...
 
 
 def targets_own_company(target: str, own: str | None) -> bool:

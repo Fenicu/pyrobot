@@ -21,6 +21,7 @@ from app.config import AppConfig
 from app.db.accounts import AccountInfo, AccountRepo
 from app.db.actions import DbActionStore
 from app.db.base import Database
+from app.db.battle_orders import BattleOrderRepo
 from app.db.chat_marks import ChatMarks
 from app.db.crypto import SecretBox, Undecryptable
 from app.db.journal import DbJournal
@@ -30,6 +31,7 @@ from app.db.notifications import DbNotifier
 from app.db.planner import DbPlannerStore
 from app.db.settings_store import DbSettingsStore
 from app.engine.artifact import ArtifactRuns
+from app.engine.battle_orders import BattleOrder
 from app.engine.bulls_walk import BullsWalk
 from app.engine.bus import Bus
 from app.engine.clock import SystemClock
@@ -83,6 +85,8 @@ PIPELINE_DRAIN_S = 10.0
 HISTORY_DRAIN_S = 60.0
 RECONCILE_POLL_S = 5.0
 PLANNER_POLL_S = 5.0
+# Приказ на битву читается и после её начала: планировщик ещё несколько минут считает её ближайшей.
+ORDERS_LOOKBACK = timedelta(hours=2)
 
 
 def journal_history(journal: DbJournal) -> History:
@@ -147,6 +151,17 @@ def _in_account(account_id: int) -> Iterator[None]:
         yield
     finally:
         current_account.reset(token)
+
+
+@dataclass(frozen=True)
+class OwnerOrders:
+    """Приказы штаба учётки-владельца: на битвы, начавшиеся не раньше чем два часа назад."""
+
+    repo: BattleOrderRepo
+    owner_id: int
+
+    async def active(self, now: datetime) -> tuple[BattleOrder, ...]:
+        return await self.repo.active(self.owner_id, now - ORDERS_LOOKBACK)
 
 
 @dataclass(frozen=True)
@@ -357,6 +372,11 @@ class AccountRuntime:
             publish=self.stream.publish,
             no_answers=self._deps.no_answers,
             manual_until=lambda: self.manual_control.until,
+            battle_orders=(
+                OwnerOrders(BattleOrderRepo(db), owner)
+                if (owner := self._account.owner_id) is not None
+                else None
+            ),
         )
         game_chat = settings.current.chats.game_chat_id
 

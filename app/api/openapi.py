@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import Any
 
 from app.api.app import create_api
@@ -26,6 +27,9 @@ class _NoEngines:
 
     def host_reason(self, account_id: int) -> str | None:
         return None
+
+    def orders_changed(self, account_ids: Iterable[int]) -> list[int]:
+        return []
 
     def status(self) -> HostStatus:
         return HostStatus("", False, [], {}, 0.0, False)

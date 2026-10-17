@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from app.engine.artifact import ArtifactRuns
+from app.engine.battle_orders import BattleOrder, BattleOrderSource
 from app.engine.bus import Delivery
 from app.engine.clock import Clock
 from app.engine.gadgets import GadgetRuns
@@ -39,6 +40,8 @@ from app.engine.settings import SettingsProvider
 from app.engine.state.model import SLOW_MAX_AGE, CharacterState, is_fresh
 
 log = logging.getLogger(__name__)
+# Приказы штаба читаются из базы не чаще раза в столько секунд, пока их не изменили.
+ORDERS_TTL_S = 30.0
 # Серия неудач сценария: 5 мин, 10, 20… но не больше 2 ч.
 RETRY_AFTER = timedelta(minutes=5)
 MAX_RETRY = timedelta(hours=2)
@@ -200,6 +203,7 @@ class PlannerLoop:
         publish: Publish | None = None,
         no_answers: NoAnswers | None = None,
         manual_until: Callable[[], datetime | None] | None = None,
+        battle_orders: BattleOrderSource | None = None,
     ) -> None:
         self._gateway = gateway
         # Поток событий аккаунта: живые кадры сценариев (метро).
@@ -219,6 +223,13 @@ class PlannerLoop:
         self._max_idle_s = max_idle_s
         self._step_timeout_s = step_timeout_s
         self._wake = asyncio.Event()
+        # Приказы штаба: источник (None - приказов нет), кэш цикла, его возраст, счётчик
+        # инвалидаций и признак «изменено, ещё не прочитано».
+        self._orders_source = battle_orders
+        self._orders: tuple[BattleOrder, ...] | None = None
+        self._orders_read_at: float | None = None
+        self._orders_gen = 0
+        self._orders_dirty = False
         self._last_refresh: dict[str, datetime] = {}
         self._cooldowns: dict[str, datetime] = {}
         # Отложенные подавлением: снимаются при смене режима движка.
@@ -270,6 +281,45 @@ class PlannerLoop:
 
     def wake(self) -> None:
         self._wake.set()
+
+    def orders_changed(self) -> None:
+        """Приказы штаба записаны: кэш устарел, «План бота» не из кэша, цикл просыпается."""
+        self._orders_gen += 1
+        self._orders_dirty = True
+        self.revision += 1
+        self.wake()
+
+    async def _battle_orders(
+        self, now: datetime, *, publish: bool
+    ) -> Sequence[BattleOrder] | None:
+        """Приказы для прохода планировщика; None - неизвестны. Чтение, начатое до
+        `orders_changed()`, кэш не обновляет и признак «изменено» не снимает. `publish=False`
+        (план) кэш цикла только читает."""
+        source = self._orders_source
+        if source is None:
+            return ()
+        at = self._clock.monotonic()
+        read_at = self._orders_read_at
+        if (
+            self._orders is not None
+            and not self._orders_dirty
+            and read_at is not None
+            and at - read_at < ORDERS_TTL_S
+        ):
+            return self._orders
+        gen = self._orders_gen
+        try:
+            read = await source.active(now)
+        except Exception:
+            log.exception("battle orders not loaded")
+            # Подтверждённое изменение не прочитано - старый набор мог быть отменён.
+            return None if self._orders_dirty else self._orders
+        if gen != self._orders_gen:
+            return None
+        if publish:
+            self._orders, self._orders_read_at = read, at
+            self._orders_dirty = False
+        return read
 
     async def request(
         self, scenario: str, params: Mapping[str, Any], *, key: str, by: str
@@ -414,6 +464,7 @@ class PlannerLoop:
             metro_durations=self._metro_durations,
             done_today=done_today,
             metro_probes=await self._probes(observed, keep=True),
+            battle_orders=await self._battle_orders(now, publish=True),
         )
         if isinstance(decision, Wait):
             return await self._wait(now, decision)
@@ -557,6 +608,7 @@ class PlannerLoop:
             metro_durations=durations,
             done_today=done_today,
             metro_probes=probes,
+            battle_orders=await self._battle_orders(now, publish=False),
         )
         return now, view
 

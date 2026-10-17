@@ -461,6 +461,11 @@ class EngineFacade:
         if self._planner is not None:
             self._planner.wake()
 
+    def orders_changed(self) -> None:
+        """Приказы штаба записаны: цикл перечитает их и проснётся."""
+        if self._planner is not None:
+            self._planner.orders_changed()
+
     async def manual(self, req: ActionRequest, *, wait_s: float) -> ActionResult | None:
         """Ручное действие через шлюз. None — не завершилось за `wait_s`: оно продолжает
         исполняться, итог отдаст повтор с тем же ключом идемпотентности. KeyReused — ключ

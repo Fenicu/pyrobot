@@ -11,7 +11,7 @@ import asyncio
 import contextlib
 import logging
 from collections import deque
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -171,6 +171,17 @@ class EngineHost:
 
     def host_reason(self, account_id: int) -> str | None:
         return None if self.get(account_id) is not None else self._reasons.get(account_id)
+
+    def orders_changed(self, account_ids: Iterable[int]) -> list[int]:
+        """Будит циклы запущенных здесь движков: приказы штаба записаны. Возвращает их id; движки
+        других хостов приказ подхватят на своём очередном проходе."""
+        woken: list[int] = []
+        for account_id in dict.fromkeys(account_ids):
+            runtime = self.get(account_id)
+            if runtime is not None and runtime.facade is not None:
+                runtime.facade.orders_changed()
+                woken.append(account_id)
+        return woken
 
     def poke(self) -> None:
         """Сверить желаемое состояние сейчас, не дожидаясь `reconcile_s`."""
